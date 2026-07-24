@@ -60,6 +60,20 @@ _Add new ADR-style entries below as they arise._
 
 **Consequences:** Newer toolchain with a longer support runway; verify Spring Initializr and Angular CLI tooling support these versions when Phase 1/3 scaffolding actually happens, since tooling support can lag a few months behind a language runtime's own release.
 
+### 2026-07-24 — Data model conventions: UUID PKs, URL-array images, jsonb links
+
+**Context:** `docs/DATA_MODEL.md` had entities drafted with blank field types — needed concrete types before Flyway migrations or the OpenAPI spec can be written. Three sub-decisions were bundled together since they all shape the schema:
+
+1. **Primary keys:** `uuid` on every table vs. auto-increment `bigint`.
+2. **Project images:** array of external URL strings vs. a normalized `ProjectImage` table with server-side upload/storage.
+3. **Project links:** `jsonb` array of `{label, url}` vs. a normalized `ProjectLink` table vs. a single URL column.
+
+**Decision:** UUID primary keys everywhere; images as a `text[]` of externally-hosted URLs (no upload endpoint); links as a `jsonb` array of `{label, url}` objects on `Project` directly.
+
+**Alternatives considered:** Auto-increment bigint PKs (rejected — sequential IDs are enumerable/guessable once exposed in public API URLs, e.g. `/api/projects/42` vs `/api/projects/f47ac10b-...`). Normalized `ProjectImage`/`ProjectLink` tables (rejected for now — adds joins and, for images, real storage infrastructure the budget-conscious/no-real-scale constraint doesn't justify).
+
+**Consequences:** No file upload/storage backend needed for project images — admin pastes URLs directly, keeping Phase 2 CRUD simple. `links`/`images` are opaque blobs from the DB's perspective (no referential integrity on individual URLs, no per-image ordering/alt-text metadata) — acceptable for a portfolio site with a handful of projects; revisit if per-image metadata is ever needed. UUID PKs mean every table needs `gen_random_uuid()` (Postgres `pgcrypto`/`uuid-ossp` extension, or app-generated UUIDs at the JPA layer) rather than relying on `bigserial`.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**

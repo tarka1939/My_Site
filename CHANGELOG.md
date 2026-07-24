@@ -19,6 +19,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Blog/writeups cut from scope; `BlogPost`/`Writeup` removed from `SPEC.md` in-scope list and struck through in `docs/DATA_MODEL.md`
 - License set to "All rights reserved"; no custom domain planned for GitHub Pages
 - Baseline dev toolchain set to JDK 25 + Node 24 (corrected from an initially floated JDK 21/Node 20 pair, which was stale as of mid-2026) — see `docs/DECISIONS.md`
+- Data model finalized with concrete field types: UUID primary keys throughout, `Project.images` as a `text[]` of external URLs, `Project.links` as a `jsonb` array of `{label, url}` objects, `project_tags` join table, hashed-IP rate limiting on `ContactMessage` — see `docs/DATA_MODEL.md` and `docs/DECISIONS.md` (2026-07-24)
+- ER diagram in `docs/DATA_MODEL.md` expanded to cover all core entities (`Project`, `Tag`, `ContactMessage`, `AdminUser`) plus a separate speculative diagram for Phase 7 draft entities
 
 ### Fixed
 
