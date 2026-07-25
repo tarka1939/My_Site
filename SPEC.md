@@ -20,7 +20,7 @@ Personal portfolio site (Angular + Spring Boot) that hosts your project portfoli
 
 ## Explicit non-goals
 
-- No multi-user support
+- No multi-user support in the initial build — flagged as a possible future extension (basic multi-user support as a proof-of-concept), not implemented in Phase 1–3
 - No real-time features, beyond what 7d specifically needs (polling/WebSocket for async job results)
 - No NgRx — Angular signals are sufficient at this scale
 - No microservices — a single Spring Boot monolith is correct here
@@ -68,5 +68,6 @@ The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (written 2026-07-24, vali
 ## Open questions
 
 - Which VPS provider — decided to self-host (see `docs/DECISIONS.md`) but the specific provider isn't picked; pick before Phase 5 (affects secrets/config structure in earlier phases)
+- Multi-user support (2026-07-24) — no longer a hard non-goal, flagged as a possible future POC/extension. Not scoped or designed yet: `docs/DATA_MODEL.md`'s `AdminUser` table, `docs/DECISIONS.md`'s "Auth flow" ADR, and `docs/openapi.yaml`'s login-only auth contract all still assume a single admin account with no registration endpoint. Revisit those three before actually building multi-user support.
 
 Resolved from the repo's own git remote (`git@github.com:tarka1939/My_Site.git`): frontend is a GitHub *project* page at `https://tarka1939.github.io/My_Site/` — so `--base-href` is `/My_Site/` and the CORS allowlist origin is `https://tarka1939.github.io`.
