@@ -70,6 +70,7 @@ These are the choices that are cheap to make now and expensive to unwind later �
 - [ ] Tag/category system as a proper many-to-many JPA relation (good real practice, and a common interview topic)
 - [ ] Contact form endpoint with basic rate limiting — cheap to add now, a real spam/abuse vector if skipped
 - [ ] (If in scope) JWT admin auth: login endpoint, token issuance, `@PreAuthorize` guards on write endpoints — use Spring Security's established JWT support, don't hand-roll token signing/verification
+- [ ] Password reset flow for the `AdminUser` account: reset-request + reset-confirm endpoints, short-lived single-use reset token, delivered via a transactional email API (Resend recommended — free tier well beyond single-admin volume, simple REST call, no mail server to operate/secure yourself) — added 2026-07-24 during Phase 0 review, not in the original TODO; see `docs/DECISIONS.md`
 
 ## Phase 3 — Frontend foundation (Angular)
 

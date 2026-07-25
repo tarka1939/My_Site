@@ -17,8 +17,10 @@ info:
       Spring Data's raw Page<T> serialization.
     - Multiple `tag` query params on GET /projects are OR'd together (any matching tag), not AND'd.
     - Write endpoints (POST/PUT/DELETE on projects, contact-message reads/deletes) require a
-      bearer JWT obtained from POST /auth/login. There is no self-service registration endpoint --
-      the single AdminUser row is provisioned via a Flyway seed migration, not the API.
+      bearer JWT obtained from POST /auth/login (1 hour expiry, no refresh endpoint). There is no
+      self-service registration endpoint -- the single AdminUser row is provisioned via a Flyway
+      seed migration, not the API. Forgotten passwords go through POST /auth/password-reset-request
+      and POST /auth/password-reset (reset email sent via a transactional email API, not SMTP).
   version: 1.0.0
   contact:
     name: My Site
@@ -260,7 +262,7 @@ paths:
     post:
       operationId: login
       summary: Admin login
-      description: Issues a JWT for the single AdminUser account. No refresh-token endpoint -- re-login once the token expires.
+      description: Issues a JWT for the single AdminUser account, valid for 1 hour. No refresh-token endpoint -- re-login once the token expires.
       tags: [Auth]
       security: []
       requestBody:
@@ -282,6 +284,53 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+
+  /auth/password-reset-request:
+    post:
+      operationId: requestPasswordReset
+      summary: Request a password reset email
+      description: |
+        Public. Always returns 202 regardless of whether the email matches an AdminUser account,
+        to avoid leaking account existence (email enumeration). If it matches, a single-use reset
+        token is generated (30 minute expiry) and emailed via a transactional email API (Resend).
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequestBody'
+      responses:
+        '202':
+          description: Accepted -- a reset email was sent if the address matched an account
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/password-reset:
+    post:
+      operationId: confirmPasswordReset
+      summary: Complete a password reset using a token from the reset email
+      description: Public. Token must be unexpired and unused; consumed (used_at set) on success.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmBody'
+      responses:
+        '200':
+          description: Password updated
+        '400':
+          description: Invalid, expired, or already-used token, or a validation failure on the new password
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetail'
 
 components:
   securitySchemes:
@@ -550,6 +599,27 @@ components:
         expiresAt:
           type: string
           format: date-time
+
+    PasswordResetRequestBody:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+
+    PasswordResetConfirmBody:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          description: The raw reset token from the emailed link (compared against the stored hash server-side).
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
 
     ProblemDetail:
       type: object

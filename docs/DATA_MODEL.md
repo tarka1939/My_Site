@@ -62,6 +62,19 @@ _Confirmed in scope — see SPEC.md → Auth scope decision._
 | password_hash | varchar(255), not null | bcrypt or argon2 — never store plaintext or use a reversible hash |
 | created_at | timestamptz, not null default `now()` | |
 
+### PasswordResetToken
+
+_Added 2026-07-24 — see `docs/DECISIONS.md` → Password reset flow ADR. Supports the `POST /auth/password-reset-request` / `POST /auth/password-reset` endpoints in `docs/openapi.yaml`._
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid, PK | |
+| admin_user_id | uuid, FK → AdminUser, not null | `ON DELETE CASCADE` |
+| token_hash | varchar(255), not null | sha-256 of the reset token — store the hash, never the raw token, same principle as `password_hash` |
+| expires_at | timestamptz, not null | 30 minutes from creation — deliberately shorter than the 1-hour JWT session expiry, since a leaked reset token (e.g. via email interception) is a higher-risk artifact than a session token |
+| used_at | timestamptz, nullable | set on consumption; a used or expired token must be rejected on `POST /auth/password-reset` |
+| created_at | timestamptz, not null default `now()` | |
+
 ---
 
 ## Phase 7 extension entities
@@ -158,6 +171,15 @@ erDiagram
         string password_hash
         timestamptz created_at
     }
+    ADMIN_USER ||--o{ PASSWORD_RESET_TOKEN : "issues"
+    PASSWORD_RESET_TOKEN {
+        uuid id PK
+        uuid admin_user_id FK
+        string token_hash
+        timestamptz expires_at
+        timestamptz used_at
+        timestamptz created_at
+    }
 ```
 
 Phase 7 draft entities (speculative — see caveat above each table) relate back to `PROJECT` as follows; not implemented until each sub-phase starts:
@@ -198,5 +220,5 @@ erDiagram
 
 ## Migration notes
 
-- First migration: `V1__init.sql` (Flyway) — should create `project`, `tag`, `project_tags`, `contact_message`, `admin_user`. Phase 7 tables land in their own later migrations, one per sub-phase, not upfront.
+- First migration: `V1__init.sql` (Flyway) — should create `project`, `tag`, `project_tags`, `contact_message`, `admin_user`, `password_reset_token`. Phase 7 tables land in their own later migrations, one per sub-phase, not upfront.
 - Record schema changes here as they land, or link to migration files directly.

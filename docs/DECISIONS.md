@@ -10,23 +10,23 @@ Each row is a decision. `Status` is one of: `proposed`, `confirmed`, `overridden
 
 | Decision | Default | Status | Notes |
 |---|---|---|---|
-| Repo structure | Monorepo (`/backend`, `/frontend`, `/docs`) | proposed | |
-| Database | PostgreSQL | proposed | |
-| ORM | Spring Data JPA + Hibernate | proposed | |
-| Schema migrations | Flyway | proposed | never `hibernate.ddl-auto=update` outside local scratch experiments |
-| API contract | OpenAPI 3.0, written before implementation | proposed | shared contract for independent backend-agent/frontend-agent sessions (Phase 4) |
-| Auth | JWT-based admin login | **confirmed** (2026-07-21) | see SPEC.md → Auth scope decision |
-| Angular architecture | Standalone components, signals for state | proposed | no NgRx |
-| Frontend hosting | GitHub Pages (static Angular build) | proposed | **hard constraint, not a setting:** static-only, no server-side execution — cannot run Spring Boot |
-| Backend hosting | Render, Railway, or Fly.io free tier | **overridden** (2026-07-21) | replaced by a self-managed VPS — see note below table; specific provider still TBD, pick before Phase 5 |
-| Cross-origin setup | CORS on Spring Boot, allowlisting the GitHub Pages origin (`https://username.github.io`) | proposed | frontend/backend now live on different domains — every API call fails without this |
-| SPA routing on Pages | `404.html` fallback (copy of built `index.html`) | proposed | Pages has no server-side URL rewriting; without this, Angular route refresh/deep-links 404 |
-| CI/CD | GitHub Actions — separate workflows for Pages deploy (frontend) and container build/deploy (backend) | proposed | two distinct deploy targets, not one pipeline |
-| Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done), linked to Issues | proposed | tag issues by phase/component and by agent-assigned vs. self-reviewed |
-| Backend module structure | Package-by-feature: `project/`, `contact/`, `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/` | proposed | replaces a single global controller/service/repository split |
-| Cross-feature communication | Spring `ApplicationEventPublisher` for internal events (e.g. `ProjectCreatedEvent`) | proposed | lets Phase 7 extensions react to core CMS actions without direct coupling |
-| Async/background jobs | Dedicated `@Async` task executor, provisioned in Phase 1 before anything uses it | proposed | needed by the DSP demo (7d); built early so it's not retrofitted under time pressure |
-| Feature rollout | Config-based feature flags per extension | proposed | ship the core CMS live while Phase 7 extensions are still half-built |
+| Repo structure | Monorepo (`/backend`, `/frontend`, `/docs`) | proposed | not revisited in the 2026-07-24 review pass — carry forward as-is unless flagged later |
+| Database | PostgreSQL | **confirmed** (2026-07-24) | already baked into `docs/DATA_MODEL.md` (jsonb, text[]) and `docs/openapi.yaml` |
+| ORM | Spring Data JPA + Hibernate | **confirmed** (2026-07-24) | |
+| Schema migrations | Flyway | **confirmed** (2026-07-24) | never `hibernate.ddl-auto=update` outside local scratch experiments |
+| API contract | OpenAPI 3.0, written before implementation | **confirmed** (2026-07-24) | `docs/openapi.yaml` written and validated; shared contract for independent backend-agent/frontend-agent sessions (Phase 4) |
+| Auth | JWT-based admin login | **confirmed** (2026-07-21) | see SPEC.md → Auth scope decision; expiry/reset flow detailed below (2026-07-24) |
+| Angular architecture | Standalone components, signals for state | **pending** (2026-07-24) | NgRx tradeoffs discussed 2026-07-24, decision not yet made — see chat/PR discussion, not settled here |
+| Frontend hosting | GitHub Pages (static Angular build) | **pending** (2026-07-24) | GitHub Pages vs. Netlify/Vercel tradeoffs discussed 2026-07-24, decision not yet made |
+| Backend hosting | Render, Railway, or Fly.io free tier | **overridden** (2026-07-21) | replaced by a self-managed VPS — see note below table; specific provider still TBD, deliberately deferred (2026-07-24 review) to closer to Phase 5 |
+| Cross-origin setup | CORS on Spring Boot, allowlisting the GitHub Pages origin (`https://username.github.io`) | **pending** (2026-07-24) | explicitly deferred by request during 2026-07-24 review — revisit once frontend hosting is settled, since the allowlisted origin depends on it |
+| SPA routing on Pages | `404.html` fallback (copy of built `index.html`) | **pending** (2026-07-24) | hash-routing alternative discussed 2026-07-24, decision not yet made; also depends on frontend hosting choice above |
+| CI/CD | GitHub Actions — separate workflows for Pages deploy (frontend) and container build/deploy (backend) | **confirmed** (2026-07-24) | two distinct deploy targets, not one pipeline |
+| Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done), linked to Issues | **confirmed** (2026-07-24) | already built: project #1, 68 issues, tagged by phase/component |
+| Backend module structure | Package-by-feature: `project/`, `contact/`, `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/` | **pending** (2026-07-24) | layered-split and Spring Modulith alternatives discussed 2026-07-24, decision not yet made |
+| Cross-feature communication | Spring `ApplicationEventPublisher` for internal events (e.g. `ProjectCreatedEvent`) | **confirmed** (2026-07-24) | lets Phase 7 extensions react to core CMS actions without direct coupling |
+| Async/background jobs | Dedicated `@Async` task executor, provisioned in Phase 1 before anything uses it | **confirmed** (2026-07-24) | needed by the DSP demo (7d); built early so it's not retrofitted under time pressure |
+| Feature rollout | Config-based feature flags per extension | **confirmed** (2026-07-24) | ship the core CMS live while Phase 7 extensions are still half-built |
 
 **Backend hosting override, explained:** chosen over the TODO's Render/Railway/Fly.io default in favor of a self-managed VPS. Trade-off: no free-tier spin-down-on-inactivity cold starts, but you take on OS patching, TLS renewal, reverse proxy, and process supervision yourself instead of a PaaS handling it. Specific provider not yet chosen.
 
@@ -97,6 +97,19 @@ _Add new ADR-style entries below as they arise._
 **Alternatives considered:** Refresh-token endpoint (rejected — real complexity for a single-admin, low-security-stakes portfolio site; re-login is a non-issue at this scale). Self-service admin registration (rejected — directly contradicts the "no multi-user support" non-goal in `SPEC.md`; an API-exposed way to create admin accounts is also a bigger attack surface than a migration-seeded row).
 
 **Consequences:** Simpler backend (`auth` sub-package needs only login + JWT issuance/validation, not refresh/rotation). Provisioning the first admin account is a manual step to document in Phase 1/2 setup instructions (e.g. a Flyway seed migration with a bcrypt-hashed password, or a one-off script) — not yet written, flag if Phase 1 setup docs are missed later.
+
+### 2026-07-24 — JWT expiry (1 hour) and password reset flow via transactional email API
+
+**Context:** Two gaps surfaced during the pre-Phase-1 review: `docs/openapi.yaml`'s `LoginResponse.expiresAt` had no actual duration behind it, and there was no way to recover a forgotten `AdminUser` password (the 2026-07-24 "Auth flow" ADR only covered login/no-refresh/no-registration, not reset).
+
+**Decision:**
+- JWT session tokens expire after **1 hour**.
+- A password reset flow is in scope: `POST /auth/password-reset-request` (always 202, avoids email enumeration) and `POST /auth/password-reset` (token + new password). A new `PasswordResetToken` entity (see `docs/DATA_MODEL.md`) stores a hash of a single-use token with a **30-minute** expiry — shorter than the session token, since a leaked reset token is a higher-risk artifact (email interception) than a session token.
+- Reset emails are sent via a **transactional email API (Resend)**, not self-hosted SMTP.
+
+**Alternatives considered:** Longer JWT expiry (24h/7d) — rejected as unnecessarily permissive for a single-admin account with no compensating refresh flow. No password reset at all (manual DB/migration recovery only) — rejected once weighed against the low cost of adding it versus being locked out of content management with no recourse but a database migration. Self-hosted SMTP via the VPS (`JavaMailSender`) — rejected: real deliverability risk (self-hosted mail is easily spam-flagged) and mail-server security overhead, disproportionate to sending one email type at low volume.
+
+**Consequences:** New `password_reset_token` table and two new public endpoints (`docs/openapi.yaml`, `docs/DATA_MODEL.md` both updated). New external dependency: a Resend account and API key, which needs to go through the CI/CD secret store already planned for Phase 5 (`RESEND_API_KEY`, never committed). New checklist item added to `PROJECT_TODO.md` Phase 2 (not in the original plan). A corresponding GitHub issue should be created and added to project #1.
 
 ### [YYYY-MM-DD] — [Decision title]
 
