@@ -41,13 +41,13 @@ These are the choices that are cheap to make now and expensive to unwind later �
 
 ## Phase 0 — Spec & contract (before any code)
 
-- [ ] Write `SPEC.md`: what the site does, explicit scope, explicit **non-goals** (e.g. "no multi-user support," "no real-time features")
-- [ ] Draft the data model / ER diagram: `Project`, `Tag` (many-to-many with Project), `BlogPost`/`Writeup`, `ContactMessage`, optionally `AdminUser`
-- [ ] Write the full OpenAPI 3.0 spec for all endpoints — this happens **before** backend or frontend code, not alongside it
-- [ ] Decide the auth scope question above, explicitly, in writing
-- [ ] Set up repo skeleton: `/backend`, `/frontend`, `/docs`, `.github/workflows/`
-- [ ] Set up `AGENT_LOG.md` — running log you'll use in Phase 4 to record what agents got wrong
-- [ ] Set up a **GitHub Project** board (columns: Backlog → Ready → In Progress → In Review → Done). Convert each checklist item below into an Issue and add it to the board, tagged by phase/component (`backend`, `frontend`, `infra`). Tag which issues you plan to hand to an agent vs. do yourself — this makes the orchestration decisions visible, not just the code output
+- [x] Write `SPEC.md`: what the site does, explicit scope, explicit **non-goals** (e.g. "no multi-user support," "no real-time features") — done, issue #1
+- [x] Draft the data model / ER diagram: `Project`, `Tag` (many-to-many with Project), `BlogPost`/`Writeup`, `ContactMessage`, optionally `AdminUser` — done, issue #2
+- [x] Write the full OpenAPI 3.0 spec for all endpoints — this happens **before** backend or frontend code, not alongside it — done, issue #3
+- [x] Decide the auth scope question above, explicitly, in writing — done, issue #4
+- [x] Set up repo skeleton: `/backend`, `/frontend`, `/docs`, `.github/workflows/` — done, issue #5
+- [x] Set up `AGENT_LOG.md` — running log you'll use in Phase 4 to record what agents got wrong — done, issue #6
+- [x] Set up a **GitHub Project** board (columns: Backlog → Ready → In Progress → In Review → Done). Convert each checklist item below into an Issue and add it to the board, tagged by phase/component (`backend`, `frontend`, `infra`). Tag which issues you plan to hand to an agent vs. do yourself — this makes the orchestration decisions visible, not just the code output — done, issue #7. Board is project #1, all 69 issues attached. Status field (manually edited on GitHub's site 2026-07-25, since it can't be edited via the API) is now Todo / In Progress / In Review / Done / Canceled — not a literal Backlog/Ready split, but functionally equivalent (Todo covers both pre-work states) with Canceled added on top
 
 ## Phase 1 — Backend foundation (Spring Boot)
 
