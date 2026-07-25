@@ -61,7 +61,7 @@ Phase 7 extensions add entities of their own (analytics events, GitHub sync reco
 
 ## API contract
 
-The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (write this before backend/frontend code — not written yet). Link it here once created:
+The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (written 2026-07-24, validated against `openapi-spec-validator`). Covers Phase 1–3 core endpoints only (Project, Tag, Contact, Auth) — Phase 7 extension endpoints are deliberately excluded until each sub-phase starts, since those entities are still draft/unconfirmed (see `docs/DATA_MODEL.md`).
 
 - `docs/openapi.yaml`
 

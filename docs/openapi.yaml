@@ -1,0 +1,588 @@
+openapi: 3.0.3
+info:
+  title: My Site API
+  description: |
+    API contract for My Site's portfolio CMS (Project/Tag CRUD, contact form, admin auth).
+
+    Scope: Phase 1-3 core endpoints only (see PROJECT_TODO.md). Phase 7 extension endpoints
+    (GitHub sync, agent log, analytics, DSP demo) are intentionally NOT included here --
+    those entities are still marked draft/unconfirmed in docs/DATA_MODEL.md and will get
+    their own OpenAPI additions when each Phase 7 sub-phase actually starts.
+
+    Conventions:
+    - All endpoints are namespaced under /api/v1.
+    - Errors use RFC 7807 Problem Details (application/problem+json), matching Spring Boot 3's
+      native ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas.
+    - List endpoints return a page wrapper (content/page/size/totalElements/totalPages), not
+      Spring Data's raw Page<T> serialization.
+    - Multiple `tag` query params on GET /projects are OR'd together (any matching tag), not AND'd.
+    - Write endpoints (POST/PUT/DELETE on projects, contact-message reads/deletes) require a
+      bearer JWT obtained from POST /auth/login. There is no self-service registration endpoint --
+      the single AdminUser row is provisioned via a Flyway seed migration, not the API.
+  version: 1.0.0
+  contact:
+    name: My Site
+    url: https://tarka1939.github.io/My_Site/
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://TBD-vps-host/api/v1
+    description: Production (VPS provider not yet chosen -- see docs/DECISIONS.md)
+
+tags:
+  - name: Projects
+    description: Public project portfolio + admin-gated writes
+  - name: Tags
+    description: Read-only tag listing (tags are created implicitly via project writes)
+  - name: Contact
+    description: Public contact form submission + admin-gated message management
+  - name: Auth
+    description: Admin login
+
+paths:
+  /projects:
+    get:
+      operationId: listProjects
+      summary: List projects
+      description: Public, paginated, optionally filtered by tag (OR semantics across repeated `tag` params).
+      tags: [Projects]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: tag
+          in: query
+          description: Filter to projects having any of the given tag names. Repeat the param for multiple tags (OR'd together).
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: Paginated list of projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPageResponse'
+    post:
+      operationId: createProject
+      summary: Create a project
+      tags: [Projects]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectWriteRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /projects/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getProject
+      summary: Get a project by id
+      tags: [Projects]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateProject
+      summary: Replace a project (full update)
+      tags: [Projects]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectWriteRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteProject
+      summary: Delete a project
+      tags: [Projects]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tags:
+    get:
+      operationId: listTags
+      summary: List all tags
+      description: Read-only. Tags are created implicitly (upserted by name) when attached to a project via POST/PUT /projects -- there is no POST /tags.
+      tags: [Tags]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tag'
+
+  /contact:
+    post:
+      operationId: submitContactMessage
+      summary: Submit a contact form message
+      description: Public. Rate-limited per requester IP hash -- see docs/DATA_MODEL.md ContactMessage notes.
+      tags: [Contact]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactMessageWriteRequest'
+      responses:
+        '201':
+          description: Message received
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactMessageAck'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /contact-messages:
+    get:
+      operationId: listContactMessages
+      summary: List submitted contact messages
+      description: Admin only.
+      tags: [Contact]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of contact messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactMessagePageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /contact-messages/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getContactMessage
+      summary: Get a contact message by id
+      description: Admin only.
+      tags: [Contact]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteContactMessage
+      summary: Delete a contact message
+      description: Admin only.
+      tags: [Contact]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /auth/login:
+    post:
+      operationId: login
+      summary: Admin login
+      description: Issues a JWT for the single AdminUser account. No refresh-token endpoint -- re-login once the token expires.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Zero-indexed page number
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    SizeParam:
+      name: size
+      in: query
+      description: Page size
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ValidationError:
+      description: Request failed validation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblemDetail'
+    RateLimited:
+      description: Too many requests from this requester
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+  schemas:
+    Link:
+      type: object
+      required: [label, url]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: GitHub
+        url:
+          type: string
+          format: uri
+          maxLength: 500
+          example: https://github.com/tarka1939/Equalizer
+
+    Tag:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: react
+
+    Project:
+      type: object
+      required: [id, title, description, links, images, tags, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        links:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Link'
+        images:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            format: uri
+            maxLength: 500
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProjectWriteRequest:
+      type: object
+      description: Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.
+      required: [title, description, tags]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        links:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Link'
+          default: []
+        images:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            format: uri
+            maxLength: 500
+          default: []
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+          description: Tag names. Matched case-insensitively against existing tags; new names create a new Tag row.
+
+    ProjectPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/Project'
+
+    ContactMessage:
+      type: object
+      required: [id, name, email, message, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        message:
+          type: string
+          maxLength: 5000
+        createdAt:
+          type: string
+          format: date-time
+
+    ContactMessageWriteRequest:
+      type: object
+      required: [name, email, message]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        message:
+          type: string
+          minLength: 1
+          maxLength: 5000
+
+    ContactMessageAck:
+      type: object
+      description: Deliberately minimal -- does not echo the stored message back, just confirms receipt.
+      required: [id, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    ContactMessagePageResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/ContactMessage'
+
+    PageMeta:
+      type: object
+      required: [page, size, totalElements, totalPages]
+      properties:
+        page:
+          type: integer
+          minimum: 0
+        size:
+          type: integer
+          minimum: 1
+        totalElements:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+          format: password
+
+    LoginResponse:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+          description: "JWT bearer token -- pass as `Authorization: Bearer <token>` on subsequent requests."
+        expiresAt:
+          type: string
+          format: date-time
+
+    ProblemDetail:
+      type: object
+      description: RFC 7807 Problem Details, as returned natively by Spring Boot 3's ProblemDetail / @ControllerAdvice.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+
+    ValidationProblemDetail:
+      description: ProblemDetail extended with per-field violations.
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetail'
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string

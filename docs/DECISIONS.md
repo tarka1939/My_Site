@@ -74,6 +74,30 @@ _Add new ADR-style entries below as they arise._
 
 **Consequences:** No file upload/storage backend needed for project images — admin pastes URLs directly, keeping Phase 2 CRUD simple. `links`/`images` are opaque blobs from the DB's perspective (no referential integrity on individual URLs, no per-image ordering/alt-text metadata) — acceptable for a portfolio site with a handful of projects; revisit if per-image metadata is ever needed. UUID PKs mean every table needs `gen_random_uuid()` (Postgres `pgcrypto`/`uuid-ossp` extension, or app-generated UUIDs at the JPA layer) rather than relying on `bigserial`.
 
+### 2026-07-24 — API contract conventions: versioning, pagination, error format, tag filtering
+
+**Context:** Writing `docs/openapi.yaml` required picking conventions that apply across every endpoint, not per-endpoint decisions: URL versioning, pagination shape, error response format, and multi-value tag filtering semantics.
+
+**Decision:**
+- All endpoints namespaced under `/api/v1`.
+- Pagination via `page`/`size` query params (Spring Data `Pageable`-compatible), wrapped in a custom `PageMeta` response (`content`/`page`/`size`/`totalElements`/`totalPages`) rather than Spring Data's raw `Page<T>` serialization.
+- Errors as RFC 7807 Problem Details (`application/problem+json`) — Spring Boot 3's native `ProblemDetail` support, extended with a `ValidationProblemDetail.errors[]` array for field-level Bean Validation failures.
+- Multiple `?tag=` query params on `GET /projects` are OR'd together (any matching tag), not AND'd (intersection).
+
+**Alternatives considered:** No version prefix (rejected — cheap to add now, breaking to add later). Exposing Spring Data's raw `Page<T>` JSON directly (rejected — couples the public contract to an internal Spring type and leaks unused `pageable`/`sort` metadata). A hand-rolled error shape (rejected — RFC 7807 is Spring Boot 3's default, so fighting it costs more than adopting it). AND semantics for multi-tag filtering (rejected — a stricter default that's easy to loosen later if needed, but OR matches how tag-filter UIs typically behave).
+
+**Consequences:** `docs/openapi.yaml` reflects all four; the generated Angular client (Phase 3) and backend `@ControllerAdvice` (Phase 1) should both target this shape from the start, avoiding a contract-mismatch patch later.
+
+### 2026-07-24 — Auth flow: login-only JWT, no refresh token, no self-service registration
+
+**Context:** `docs/openapi.yaml` needed a concrete `/auth/login` contract. Two related scope questions came up: whether to support token refresh, and whether `AdminUser` accounts are created via the API or provisioned another way.
+
+**Decision:** `POST /auth/login` is the only auth endpoint. No refresh-token flow — the frontend re-prompts login once the JWT expires. No `POST /admin-users` or self-service registration — the single `AdminUser` row is seeded via a Flyway migration (or manual DB insert), not the API.
+
+**Alternatives considered:** Refresh-token endpoint (rejected — real complexity for a single-admin, low-security-stakes portfolio site; re-login is a non-issue at this scale). Self-service admin registration (rejected — directly contradicts the "no multi-user support" non-goal in `SPEC.md`; an API-exposed way to create admin accounts is also a bigger attack surface than a migration-seeded row).
+
+**Consequences:** Simpler backend (`auth` sub-package needs only login + JWT issuance/validation, not refresh/rotation). Provisioning the first admin account is a manual step to document in Phase 1/2 setup instructions (e.g. a Flyway seed migration with a bcrypt-hashed password, or a one-off script) — not yet written, flag if Phase 1 setup docs are missed later.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**

@@ -21,6 +21,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Baseline dev toolchain set to JDK 25 + Node 24 (corrected from an initially floated JDK 21/Node 20 pair, which was stale as of mid-2026) — see `docs/DECISIONS.md`
 - Data model finalized with concrete field types: UUID primary keys throughout, `Project.images` as a `text[]` of external URLs, `Project.links` as a `jsonb` array of `{label, url}` objects, `project_tags` join table, hashed-IP rate limiting on `ContactMessage` — see `docs/DATA_MODEL.md` and `docs/DECISIONS.md` (2026-07-24)
 - ER diagram in `docs/DATA_MODEL.md` expanded to cover all core entities (`Project`, `Tag`, `ContactMessage`, `AdminUser`) plus a separate speculative diagram for Phase 7 draft entities
+- Wrote `docs/openapi.yaml`: full OpenAPI 3.0 contract for Phase 1–3 core endpoints (Projects, Tags, Contact, Auth), validated with `openapi-spec-validator`. Phase 7 endpoints deliberately excluded until each sub-phase starts. Conventions (`/api/v1` versioning, custom `PageMeta` pagination wrapper, RFC 7807 error format, OR-semantics tag filtering, login-only auth with no refresh/registration endpoints) recorded in `docs/DECISIONS.md` (2026-07-24)
 
 ### Fixed
 
