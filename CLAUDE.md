@@ -46,6 +46,8 @@ _Fill in once each part of the stack is scaffolded (Phase 1 backend, Phase 3 fro
 
 _Expand this once backend/frontend exist. Skeleton reflects the plan in `PROJECT_TODO.md`._
 
+> **Status note (2026-07-24):** `docs/DECISIONS.md` marks Angular architecture (NgRx vs. signals), frontend hosting (GitHub Pages vs. Netlify/Vercel), SPA routing (404.html vs. hash routing), backend module structure (package-by-feature vs. layered vs. Spring Modulith), and CORS setup as `pending` — the bullets below describe the current working defaults, not confirmed final calls. Check `docs/DECISIONS.md` before treating them as settled.
+
 - **Repo layout:** monorepo — `/backend` (Spring Boot), `/frontend` (Angular), `/docs` (spec, data model, decisions, OpenAPI contract).
 - **Hosting split (hard constraint, not a config choice):** frontend deploys as a static build to GitHub Pages; backend deploys separately to a self-managed VPS (specific provider not yet chosen — this overrides the TODO's original Render/Railway/Fly.io default). Pages cannot run Spring Boot — there is no way to make it do so.
 - **Cross-origin:** Spring Boot must explicitly allowlist the GitHub Pages origin (`https://tarka1939.github.io`) in CORS config — frontend and backend live on different domains, so this isn't optional.

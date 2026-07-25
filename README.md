@@ -28,7 +28,7 @@ Phase 0 — spec & contract (planning docs in progress; no code scaffolded yet).
 | CI/CD | GitHub Actions — separate workflows for Pages deploy (frontend) and container build/deploy (backend) |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done) |
 
-See `docs/DECISIONS.md` for the reasoning behind each choice — all are marked `proposed`, not `confirmed`, until you've actually made the call.
+See `docs/DECISIONS.md` for the reasoning behind each choice and its current status. As of 2026-07-24, most rows above are confirmed, but **Frontend framework** (NgRx vs. signals), **Frontend hosting**, **Cross-origin**, and **Backend** (module structure) are still marked `pending` there — this table states the working defaults, not final calls; check `docs/DECISIONS.md` before treating them as settled.
 
 ## Repo structure
 
