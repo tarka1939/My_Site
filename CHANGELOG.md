@@ -32,6 +32,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   - SPA routing: superseded by the Netlify decision — native `_redirects` handling, no fallback trick needed
   - CORS: confirmed in principle, exact origin deferred to Phase 5 alongside the Netlify site creation
   - See `docs/DECISIONS.md` for full ADRs. Updated for consistency: `SPEC.md` (removed the now-wrong GitHub Pages URL/base-href note), `README.md`, `CLAUDE.md`, `PROJECT_TODO.md` (Phase 3/5 bullets), and GitHub issues #31, #32, #38, #39, #40
+- Final Phase 0 verification pass (2026-07-25): fixed 6 more stale GitHub Pages references missed in the earlier round (`docs/openapi.yaml` contact URL, `.github/workflows/README.md`, `frontend/README.md`, issues #42/#44/#47), checked off the 6 completed Phase 0 checklist boxes in `PROJECT_TODO.md`, and confirmed/closed issue #7 after the project board's Status field was manually updated to Todo/In Progress/In Review/Done/Canceled
+- GitHub Project organization (2026-07-25): added one milestone per phase (Phase 0–7, Ongoing/meta — not yet created, blocked on a manual GitHub-side step since no tool can create milestones) and six parent/sub-issue "epics" for Phase 7a/7b/7c/7d and Phase 5's Frontend/Backend split (issues #70–#75, 24 sub-issues linked) — see `docs/DECISIONS.md` and the new `PROJECT_TODO.md` section
 
 ### Fixed
 

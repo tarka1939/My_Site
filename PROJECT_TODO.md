@@ -39,6 +39,25 @@ These are the choices that are cheap to make now and expensive to unwind later �
 
 ---
 
+## GitHub Project organization (added 2026-07-25)
+
+On top of the flat 69-issue backlog and the `[Phase N]` title-prefix convention, two more layers of structure were added — see `docs/DECISIONS.md` for the full reasoning:
+
+- **Milestones — one per phase (Phase 0 through 7, plus Ongoing/meta).** Groups every issue by phase for a native GitHub percent-complete view, without inventing new structure — it just populates a "Milestone" field the project board already had sitting unused. No due dates, since there's no hard deadline on this project.
+- **Parent/sub-issues — only where a phase already has a real two-level structure**, not applied uniformly (deliberately, to avoid over-structuring a solo-maintained backlog — same discipline as skipping NgRx/Kubernetes elsewhere in this doc). Six parent "epic" issues were created:
+  - #70 — `[Phase 7a] Epic: GitHub webhook auto-sync` (sub-issues #53, #54, #55)
+  - #71 — `[Phase 7b] Epic: Rendered agent build-log page` (sub-issues #56, #57)
+  - #72 — `[Phase 7c] Epic: Custom analytics` (sub-issues #58, #59, #60, #61)
+  - #73 — `[Phase 7d] Epic: Live DSP/audio demo` (sub-issues #62, #63, #64, #65)
+  - #74 — `[Phase 5] Epic: Frontend deploy (Netlify)` (sub-issues #38, #39, #40)
+  - #75 — `[Phase 5] Epic: Backend deploy (self-managed VPS)` (sub-issues #41–#48)
+
+  Phases 0–4 and 6 stay flat — a milestone already groups those, and parent issues on top would just duplicate that view for phases with no real sub-structure.
+
+**Status:** parent/sub-issues are live (all 6 epics created, all 24 sub-issues linked, all added to project #1). Milestones are not yet created — no tool in the connected GitHub integration can create a milestone (only assign an issue to one that already exists), so this needs a manual step on GitHub's site, after which all 69 issues get assigned in one pass.
+
+---
+
 ## Phase 0 — Spec & contract (before any code)
 
 - [x] Write `SPEC.md`: what the site does, explicit scope, explicit **non-goals** (e.g. "no multi-user support," "no real-time features") — done, issue #1

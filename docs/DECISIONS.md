@@ -136,6 +136,18 @@ _Add new ADR-style entries below as they arise._
 
 **Consequences:** One new dependency and one verification test to write in Phase 1, alongside the already-planned package-by-feature scaffolding — low incremental cost. Optional follow-ons worth considering in Phase 1: `spring-modulith-docs` to auto-generate a module diagram from actual code (a low-effort artifact for the site's own build-process page, Phase 6), and `spring-modulith-events` to make the already-confirmed `ApplicationEventPublisher` pattern durable/transactional instead of fire-and-forget in memory — not decided here, revisit when Phase 1's event-publisher example is actually built.
 
+### 2026-07-25 — GitHub Project organization: milestones per phase + selective parent/sub-issues
+
+**Context:** with all 69 issues flat and only distinguished by a `[Phase N]` title prefix, there was no native progress view per phase and no structural link between Phase 7's four sub-phases (7a–7d) or Phase 5's two deploy targets (frontend/backend) and their individual tasks.
+
+**Decision:** two additions, not a full restructure:
+- One GitHub milestone per phase (Phase 0 through 7, plus Ongoing/meta) — populates the project board's already-existing but unused "Milestone" field, gives a native percent-complete view per phase. No due dates (no hard deadline on this project).
+- Parent/sub-issue relationships only where a phase already has real two-level structure: six new parent "epic" issues (#70–#75) covering Phase 7a, 7b, 7c, 7d, and Phase 5's Frontend/Backend split, with the corresponding 24 existing issues linked as sub-issues.
+
+**Alternatives considered:** parent issues for every phase (rejected — phases 0–4 and 6 are flat task lists; a milestone already groups those, so parent issues on top would duplicate that view without adding real hierarchy — the same over-engineering discipline already applied to skipping NgRx/Kubernetes elsewhere in this plan). No milestones, labels only (rejected — labels already exist for component (`backend`/`frontend`/`infra`) and repurposing them for phase would collide with that existing use).
+
+**Consequences:** parent/sub-issues are live as of 2026-07-25 (all 6 epics created, 24 sub-issues linked, all added to project #1). Milestones are blocked on a manual step — the connected GitHub tooling can assign an issue to an existing milestone but has no way to create one — so the 8 milestones need to be created on GitHub's site before all 69 issues can be assigned in one pass.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
