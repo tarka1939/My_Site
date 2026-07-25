@@ -16,14 +16,14 @@ Each row is a decision. `Status` is one of: `proposed`, `confirmed`, `overridden
 | Schema migrations | Flyway | **confirmed** (2026-07-24) | never `hibernate.ddl-auto=update` outside local scratch experiments |
 | API contract | OpenAPI 3.0, written before implementation | **confirmed** (2026-07-24) | `docs/openapi.yaml` written and validated; shared contract for independent backend-agent/frontend-agent sessions (Phase 4) |
 | Auth | JWT-based admin login | **confirmed** (2026-07-21) | see SPEC.md → Auth scope decision; expiry/reset flow detailed below (2026-07-24) |
-| Angular architecture | Standalone components, signals for state | **pending** (2026-07-24) | NgRx tradeoffs discussed 2026-07-24, decision not yet made — see chat/PR discussion, not settled here |
-| Frontend hosting | GitHub Pages (static Angular build) | **pending** (2026-07-24) | GitHub Pages vs. Netlify/Vercel tradeoffs discussed 2026-07-24, decision not yet made |
+| Angular architecture | Standalone components, signals for state, no NgRx | **confirmed** (2026-07-25) | this site's state is simple and mostly server-derived; none of NgRx's justifying cases (undo/redo, optimistic updates, deep cross-cutting state) apply here |
+| Frontend hosting | **Netlify** (overridden from TODO's GitHub Pages default) | **confirmed** (2026-07-25) | see ADR below — no non-commercial ToS restriction (unlike Vercel), native SPA rewrites, no 404.html workaround needed |
 | Backend hosting | Render, Railway, or Fly.io free tier | **overridden** (2026-07-21) | replaced by a self-managed VPS — see note below table; specific provider still TBD, deliberately deferred (2026-07-24 review) to closer to Phase 5 |
-| Cross-origin setup | CORS on Spring Boot, allowlisting the GitHub Pages origin (`https://username.github.io`) | **pending** (2026-07-24) | explicitly deferred by request during 2026-07-24 review — revisit once frontend hosting is settled, since the allowlisted origin depends on it |
-| SPA routing on Pages | `404.html` fallback (copy of built `index.html`) | **pending** (2026-07-24) | hash-routing alternative discussed 2026-07-24, decision not yet made; also depends on frontend hosting choice above |
-| CI/CD | GitHub Actions — separate workflows for Pages deploy (frontend) and container build/deploy (backend) | **confirmed** (2026-07-24) | two distinct deploy targets, not one pipeline |
+| Cross-origin setup | CORS on Spring Boot, allowlisting the frontend origin | **confirmed in principle** (2026-07-25) | exact origin is a `*.netlify.app` subdomain, **TBD until the Netlify site is created** (Phase 5) — no custom domain planned, see `docs/DECISIONS.md` license/domain ADR |
+| SPA routing on Pages | ~~`404.html` fallback~~ — **N/A, superseded** | **confirmed** (2026-07-25) | moot once Netlify was chosen — Netlify handles SPA routing natively via a one-line `_redirects` file, no build-step workaround needed |
+| CI/CD | GitHub Actions — separate workflows for frontend deploy (to Netlify) and backend container build/deploy | **confirmed** (2026-07-24) | two distinct deploy targets, not one pipeline; frontend workflow now deploys to Netlify (e.g. via `nwtgck/actions-netlify`) instead of `actions/deploy-pages` |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done), linked to Issues | **confirmed** (2026-07-24) | already built: project #1, all checklist items converted to issues and added, tagged by phase/component |
-| Backend module structure | Package-by-feature: `project/`, `contact/`, `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/` | **pending** (2026-07-24) | layered-split and Spring Modulith alternatives discussed 2026-07-24, decision not yet made |
+| Backend module structure | Package-by-feature + **Spring Modulith** (enforced boundaries) | **confirmed** (2026-07-25) | see ADR below — low added cost (one dependency, one verification test) for enforced boundaries as Phase 7 adds 4 more packages |
 | Cross-feature communication | Spring `ApplicationEventPublisher` for internal events (e.g. `ProjectCreatedEvent`) | **confirmed** (2026-07-24) | lets Phase 7 extensions react to core CMS actions without direct coupling |
 | Async/background jobs | Dedicated `@Async` task executor, provisioned in Phase 1 before anything uses it | **confirmed** (2026-07-24) | needed by the DSP demo (7d); built early so it's not retrofitted under time pressure |
 | Feature rollout | Config-based feature flags per extension | **confirmed** (2026-07-24) | ship the core CMS live while Phase 7 extensions are still half-built |
@@ -110,6 +110,31 @@ _Add new ADR-style entries below as they arise._
 **Alternatives considered:** Longer JWT expiry (24h/7d) — rejected as unnecessarily permissive for a single-admin account with no compensating refresh flow. No password reset at all (manual DB/migration recovery only) — rejected once weighed against the low cost of adding it versus being locked out of content management with no recourse but a database migration. Self-hosted SMTP via the VPS (`JavaMailSender`) — rejected: real deliverability risk (self-hosted mail is easily spam-flagged) and mail-server security overhead, disproportionate to sending one email type at low volume.
 
 **Consequences:** New `password_reset_token` table and two new public endpoints (`docs/openapi.yaml`, `docs/DATA_MODEL.md` both updated). New external dependency: a Resend account and API key, which needs to go through the CI/CD secret store already planned for Phase 5 (`RESEND_API_KEY`, never committed). New checklist item added to `PROJECT_TODO.md` Phase 2 (not in the original plan). A corresponding GitHub issue should be created and added to project #1.
+
+### 2026-07-25 — Frontend hosting: Netlify instead of GitHub Pages or Vercel
+
+**Context:** `PROJECT_TODO.md` defaulted to GitHub Pages. Reviewed 2026-07-24 alongside Netlify and Vercel as alternatives; verified current (2026) pricing/ToS terms before deciding.
+
+**Decision:** Deploy the Angular frontend to Netlify. Netlify's free tier has no non-commercial-use restriction (unlike Vercel's Hobby plan, which technically requires upgrading to Pro the moment the site does anything monetized) and handles SPA routing natively via a one-line `_redirects` file (`/* /index.html 200`), so the GitHub-Pages-specific `404.html` copy-and-serve-a-real-404-status workaround is no longer needed.
+
+**Alternatives considered:** GitHub Pages (rejected — no second account, but static-only with no native SPA rewrite support, forcing the `404.html` workaround; also a GitHub *project* page requires `--base-href /My_Site/`, adding a path-prefix complication Netlify doesn't have). Vercel (rejected — more generous flat 100GB bandwidth, but Hobby tier ToS is explicitly non-commercial-only; Netlify has no equivalent restriction).
+
+**Consequences — real rework required:**
+- `--base-href` simplifies from `/My_Site/` to the default `/` (a Netlify subdomain or future custom domain serves from root, not a repo-name subpath).
+- CORS allowlist origin changes from `https://tarka1939.github.io` to a `*.netlify.app` subdomain — **exact value TBD until the Netlify site is actually created** (Phase 5); no custom domain planned (see license/domain ADR), so the final origin will be whatever subdomain is chosen then.
+- SPA routing: replace the planned `404.html` copy step with a `frontend/public/_redirects` file containing `/* /index.html 200`.
+- Phase 5 frontend CI/CD workflow deploys to Netlify (e.g. via the `nwtgck/actions-netlify` GitHub Action) instead of `actions/deploy-pages` — CI/CD tool choice (GitHub Actions) itself is unchanged, just the deploy target.
+- `SPEC.md`, `README.md`, `CLAUDE.md`, `PROJECT_TODO.md`, and GitHub issues #31/#32/#38/#39/#40 all referenced GitHub-Pages-specific mechanics and needed updating alongside this decision — see `CHANGELOG.md` for the full list.
+
+### 2026-07-25 — Backend module structure: package-by-feature + Spring Modulith
+
+**Context:** Package-by-feature was already the confirmed directory layout; the open question was whether to add Spring Modulith's enforcement tooling on top of it, discussed 2026-07-24 alongside the classic layered-split alternative. Confirmed current (Spring Modulith 2.0 GA'd November 2025 targeting Spring Boot 4; 1.4 GA'd March 2026 for Boot 3.x — actively maintained either way).
+
+**Decision:** Adopt Spring Modulith on top of the already-confirmed package-by-feature layout. Add `spring-modulith-starter-core` (+ `spring-modulith-starter-test`), each top-level package (`project/`, `contact/`, later `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/`) is auto-recognized as an application module by convention, and a test calling `ApplicationModules.of(MyApplication.class).verify()` fails the build if one module reaches into another's internals instead of going through its public API or an event.
+
+**Alternatives considered:** Plain package-by-feature, no Modulith (rejected — same directory layout, but boundary violations are only caught by code review, not a test; cheaper short-term, weaker guarantee as Phase 7 adds four more packages). Classic layered controller/service/repository split (rejected earlier, 2026-07-24 — shared folders become unwieldy once Phase 7 lands).
+
+**Consequences:** One new dependency and one verification test to write in Phase 1, alongside the already-planned package-by-feature scaffolding — low incremental cost. Optional follow-ons worth considering in Phase 1: `spring-modulith-docs` to auto-generate a module diagram from actual code (a low-effort artifact for the site's own build-process page, Phase 6), and `spring-modulith-events` to make the already-confirmed `ApplicationEventPublisher` pattern durable/transactional instead of fire-and-forget in memory — not decided here, revisit when Phase 1's event-publisher example is actually built.
 
 ### [YYYY-MM-DD] — [Decision title]
 

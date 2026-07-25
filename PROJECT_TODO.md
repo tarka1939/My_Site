@@ -81,8 +81,8 @@ These are the choices that are cheap to make now and expensive to unwind later �
 - [ ] State via Angular signals — skip NgRx at this scale
 - [ ] Component tests for core components
 - [ ] Basic accessibility pass: semantic HTML, alt text, keyboard navigation — cheap to build in, expensive to retrofit later
-- [ ] Configure `--base-href` in the Angular build to match your Pages URL path (`/repo-name/` for a project page, `/` only if using a `username.github.io` user/org page) — get this wrong and every asset path silently breaks on deploy
-- [ ] Add the standard SPA fallback for GitHub Pages: copy `index.html` to `404.html` post-build (or use an equivalent redirect script) so deep links and refreshes on Angular routes don't 404
+- [ ] Configure `--base-href` in the Angular build — adapted 2026-07-25: frontend hosting is now Netlify, not GitHub Pages (see `docs/DECISIONS.md`), so this uses the Angular default (`/`), not a repo-name subpath
+- [ ] Add a `frontend/public/_redirects` file (`/* /index.html 200`) so deep links and refreshes on Angular routes don't 404 — adapted 2026-07-25: Netlify handles SPA routing natively via this one-line file; the originally-planned GitHub Pages `404.html` copy trick is no longer needed
 - [ ] Environment-based API base URL (`environment.ts` / `environment.prod.ts`) pointing at your deployed backend's URL in prod, `localhost` in dev
 
 ## Phase 4 — Integration & multi-agent workflow practice
@@ -94,21 +94,21 @@ This is the phase that actually earns the "multi-agent" label — do it delibera
 - [ ] Document at least 3 concrete cases where an agent's output was subtly wrong and how you caught and fixed it — this is your actual differentiation artifact for interviews, more valuable than the app itself
 - [ ] End-to-end tests (Playwright) covering the main user journeys: browse projects → view detail → submit contact form
 
-## Phase 5 — Infra & deployment (split targets: Pages for frontend, PaaS for backend)
+## Phase 5 — Infra & deployment (split targets: Netlify for frontend, self-managed VPS for backend)
 
-**Frontend (GitHub Pages):**
-- [ ] GitHub Actions workflow that builds the Angular app (with correct `--base-href`) and deploys to Pages on merge to `main` (via `actions/deploy-pages` or `angular-cli-ghpages`)
-- [ ] Confirm the 404.html SPA fallback and base-href both survive the CI build, not just your local build
-- [ ] Custom domain (optional) — if you want `yourname.dev` instead of `username.github.io`, configure this now since it affects CORS origin config below
+**Frontend (Netlify — adapted 2026-07-25, originally GitHub Pages; see `docs/DECISIONS.md`):**
+- [ ] GitHub Actions workflow that builds the Angular app (with default `--base-href /`) and deploys to Netlify on merge to `main` (e.g. via `nwtgck/actions-netlify`)
+- [ ] Confirm the `_redirects` SPA fallback survives the CI build, not just your local build
+- [ ] Custom domain (optional, not currently planned — see `docs/DECISIONS.md`) — if added later, configure before finalizing the CORS origin below
 
-**Backend (Render/Railway/Fly.io):**
+**Backend (self-managed VPS — see `docs/DECISIONS.md`):**
 - [ ] Multi-stage Dockerfile for the Spring Boot app
-- [ ] `docker-compose.yml` for local dev (backend + Postgres) — frontend can run via `ng serve` locally against this, since it's not part of the Pages deploy
-- [ ] Managed Postgres instance on your chosen platform (most free tiers include one)
-- [ ] CORS configuration explicitly allowlisting your GitHub Pages origin (`https://username.github.io`) — do this before you spend a session debugging "why do all my API calls fail from the deployed frontend"
+- [ ] `docker-compose.yml` for local dev (backend + Postgres) — frontend can run via `ng serve` locally against this, since it's not part of the Netlify deploy
+- [ ] Set up Postgres on the VPS (self-hosted, not a managed add-on — see `docs/DECISIONS.md`)
+- [ ] CORS configuration explicitly allowlisting your Netlify origin (`*.netlify.app` subdomain, exact value determined when the Netlify site is created above) — do this before you spend a session debugging "why do all my API calls fail from the deployed frontend"
 - [ ] GitHub Actions workflow: run backend tests, build Docker image, deploy to the platform on merge to `main`
 - [ ] Secrets via CI/CD secret store and the platform's own secret manager — never commit `.env` files, even to a private repo
-- [ ] Confirm HTTPS/TLS on both the Pages domain (automatic) and the backend host (usually automatic, but verify)
+- [ ] Confirm HTTPS/TLS on both the Netlify domain (automatic) and the backend host (usually automatic, but verify)
 - [ ] Basic structured logging at minimum; use whatever free-tier log viewer your backend platform provides
 
 ## Phase 6 — Content & polish

@@ -69,5 +69,6 @@ The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (written 2026-07-24, vali
 
 - Which VPS provider — decided to self-host (see `docs/DECISIONS.md`) but the specific provider isn't picked; pick before Phase 5 (affects secrets/config structure in earlier phases)
 - Multi-user support (2026-07-24) — no longer a hard non-goal, flagged as a possible future POC/extension. Not scoped or designed yet: `docs/DATA_MODEL.md`'s `AdminUser` table, `docs/DECISIONS.md`'s "Auth flow" ADR, and `docs/openapi.yaml`'s login-only auth contract all still assume a single admin account with no registration endpoint. Revisit those three before actually building multi-user support.
+- Exact Netlify site subdomain (2026-07-25) — frontend hosting is confirmed as Netlify (see `docs/DECISIONS.md`), but the actual `*.netlify.app` origin doesn't exist until the site is created in Phase 5. The CORS allowlist origin on the backend can't be finalized until then.
 
-Resolved from the repo's own git remote (`git@github.com:tarka1939/My_Site.git`): frontend is a GitHub *project* page at `https://tarka1939.github.io/My_Site/` — so `--base-href` is `/My_Site/` and the CORS allowlist origin is `https://tarka1939.github.io`.
+**Superseded 2026-07-25:** frontend hosting moved from GitHub Pages to Netlify (see `docs/DECISIONS.md`) — the GitHub Pages URL/`--base-href /My_Site/`/CORS-origin note previously here no longer applies. `--base-href` simplifies to the default `/` (Netlify serves from root, not a repo-name subpath); the CORS origin is now the open question above.
