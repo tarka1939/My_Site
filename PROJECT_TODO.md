@@ -29,6 +29,7 @@ These are the choices that are cheap to make now and expensive to unwind later �
 | CI/CD | GitHub Actions from day 1 — separate workflows for Pages deploy (frontend) and container build/deploy (backend) | Cheap to add now, painful to bolt onto an already-messy history later |
 | Task tracking | GitHub Projects (board linked to Issues) | One card per task/phase below; doubles as a clean way to track which tasks were agent-assigned vs. reviewed by you |
 | Backend module structure | Package-by-feature (`project/`, `contact/`, `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/` — each self-contained) | Keeps future extension features isolated as new packages instead of edits scattered across one global layered structure |
+| Build tool | **Maven** (confirmed 2026-07-29, see `docs/DECISIONS.md`) | Single-module backend gets no benefit from Gradle's build-speed/multi-module advantages; Maven's fixed lifecycle and heavier Spring Boot documentation are the safer bet for an agent-authored build file |
 | Cross-feature communication | Spring `ApplicationEventPublisher` for internal events (e.g. `ProjectCreatedEvent`) | Lets later features (analytics, GitHub sync) react to core CMS actions without being directly coupled to it — the actual mechanism that makes "open for extension" true rather than aspirational |
 | Async/background jobs | `@Async` + a dedicated task executor, provisioned in Phase 1 even before anything uses it | The DSP demo (Phase 7) needs this to avoid blocking request threads on audio processing; building the pattern once now means it's reused later instead of retrofitted under time pressure |
 | Feature rollout | Config-based feature flags per extension | Ship the core CMS live while extensions are still half-built; enable each independently without redeploying broken code |
@@ -70,7 +71,7 @@ On top of the flat 69-issue backlog and the `[Phase N]` title-prefix convention,
 
 ## Phase 1 — Backend foundation (Spring Boot)
 
-- [ ] Initialize via Spring Initializr: Web, Data JPA, Validation, Security (if using auth), PostgreSQL driver, Flyway
+- [ ] Initialize via Spring Initializr: **Maven** project, Web, Data JPA, Validation, Security (if using auth), PostgreSQL driver, Flyway
 - [ ] Layered architecture: controller → service → repository, with DTOs at the controller boundary (never return JPA entities directly from controllers — this is a classic junior mistake that causes lazy-loading and serialization bugs you'll patch repeatedly otherwise)
 - [ ] Flyway migrations starting at `V1__init.sql`
 - [ ] Centralized exception handling via `@ControllerAdvice` — one consistent error response shape from day 1, not per-endpoint ad hoc handling

@@ -24,6 +24,7 @@ Each row is a decision. `Status` is one of: `proposed`, `confirmed`, `overridden
 | CI/CD | GitHub Actions — separate workflows for frontend deploy (to Netlify) and backend container build/deploy | **confirmed** (2026-07-24) | two distinct deploy targets, not one pipeline; frontend workflow now deploys to Netlify (e.g. via `nwtgck/actions-netlify`) instead of `actions/deploy-pages` |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done), linked to Issues | **confirmed** (2026-07-24) | already built: project #1, all checklist items converted to issues and added, tagged by phase/component |
 | Backend module structure | Package-by-feature + **Spring Modulith** (enforced boundaries) | **confirmed** (2026-07-25) | see ADR below — low added cost (one dependency, one verification test) for enforced boundaries as Phase 7 adds 4 more packages |
+| Build tool | **Maven** | **confirmed** (2026-07-29) | see ADR below — never decided until now; single-module backend gets no benefit from Gradle's build-speed/multi-module advantages |
 | Cross-feature communication | Spring `ApplicationEventPublisher` for internal events (e.g. `ProjectCreatedEvent`) | **confirmed** (2026-07-24) | lets Phase 7 extensions react to core CMS actions without direct coupling |
 | Async/background jobs | Dedicated `@Async` task executor, provisioned in Phase 1 before anything uses it | **confirmed** (2026-07-24) | needed by the DSP demo (7d); built early so it's not retrofitted under time pressure |
 | Feature rollout | Config-based feature flags per extension | **confirmed** (2026-07-24) | ship the core CMS live while Phase 7 extensions are still half-built |
@@ -147,6 +148,16 @@ _Add new ADR-style entries below as they arise._
 **Alternatives considered:** parent issues for every phase (rejected — phases 0–4 and 6 are flat task lists; a milestone already groups those, so parent issues on top would duplicate that view without adding real hierarchy — the same over-engineering discipline already applied to skipping NgRx/Kubernetes elsewhere in this plan). No milestones, labels only (rejected — labels already exist for component (`backend`/`frontend`/`infra`) and repurposing them for phase would collide with that existing use).
 
 **Consequences:** parent/sub-issues are live as of 2026-07-25 (all 6 epics created, 24 sub-issues linked, all added to project #1). Milestones are blocked on a manual step — the connected GitHub tooling can assign an issue to an existing milestone but has no way to create one — so the 8 milestones need to be created on GitHub's site before all 69 issues can be assigned in one pass.
+
+### 2026-07-29 — Build tool: Maven
+
+**Context:** never explicitly decided in any project doc (`SPEC.md`, `docs/DECISIONS.md`, `PROJECT_TODO.md` all lacked a build-tool line) despite Spring Initializr requiring a choice on day one of Phase 1. Surfaced ahead of the Phase 1 Claude Code handoff.
+
+**Decision:** Maven for the Spring Boot backend.
+
+**Alternatives considered:** Gradle (rejected — its real advantages are build-cache/incremental-build speed on large or multi-module repos and CI pipelines running builds constantly; `/backend` is a single Spring Boot module with no multi-module structure and no heavy-CI build-speed need, so those advantages don't apply here — the same "you're not getting the benefit, only the complexity" reasoning already used to skip NgRx and Kubernetes elsewhere in this plan. Maven's declarative, fixed-lifecycle POM also has less surface area for an agent-authored build file to introduce a subtle misconfiguration than a scriptable Gradle build, and it's the more heavily-documented option for Spring Boot specifically.).
+
+**Consequences:** Phase 1 Spring Initializr scaffolding selects Maven; `pom.xml` is the build descriptor (`groupId`/`artifactId`/`packaging` to be set at scaffolding time). No multi-module build planned, so this isn't expected to need revisiting.
 
 ### [YYYY-MM-DD] — [Decision title]
 
