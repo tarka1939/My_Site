@@ -8,6 +8,12 @@ spring:
       ddl-auto: validate
     show-sql: true
 
+app:
+  jwt:
+    # Dev-only convenience default (>=32 bytes, HS256's minimum key length) -- never used
+    # outside this profile. Override with JWT_SECRET if needed.
+    secret: ${JWT_SECRET:dev-only-insecure-secret-do-not-use-in-prod-0123456789}
+
 logging:
   level:
     io.github.tarka1939.mysite: DEBUG

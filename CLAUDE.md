@@ -5,6 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commit conventions
 Never add "Co-Authored-By" lines to commits. Do not include Claude attribution in commit messages, PR descriptions, or any git metadata.
 
+## PR conventions
+Every PR needs three pieces of metadata set, not just opened against `main`:
+- **Issues closed:** reference them in the PR body with GitHub's closing keywords (e.g. `Closes #20, #21`), not just prose — this is what auto-closes them on merge.
+- **Milestone:** set to the matching phase (e.g. "Phase 2"). Milestone numbers aren't the same as phase numbers — look them up with `gh api repos/tarka1939/My_Site/milestones --jq '.[] | "\(.number): \(.title)"'` rather than guessing, then set via the issue/PR update call (PRs share the Issues API for this).
+- **Project board:** add the PR to project #1 ("My Site") and set its Status field (`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`) — `In Review` once the PR is open and ready for review.
+
 > Status: `/backend` is scaffolded (Phase 1 — Spring Boot foundation). `/frontend` is not yet scaffolded (Phase 3). Fill in the Frontend commands section once that phase lands.
 
 ## Project

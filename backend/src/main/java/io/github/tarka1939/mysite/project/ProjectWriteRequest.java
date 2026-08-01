@@ -15,7 +15,7 @@ import jakarta.validation.constraints.Size;
 public record ProjectWriteRequest(
     @NotBlank @Size(max = 200) String title,
     @NotBlank @Size(max = 5000) String description,
-    @Valid @Size(max = 10) List<LinkDto> links,
+    @Size(max = 10) List<@Valid LinkDto> links,
     @Size(max = 20) List<@Size(max = 500) String> images,
     @NotNull List<@NotBlank @Size(max = 50) String> tags
 ) {

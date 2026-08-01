@@ -8,6 +8,12 @@ spring:
       ddl-auto: validate
     show-sql: false
 
+app:
+  jwt:
+    # No default -- required. Must be a random value >=32 bytes (HS256's minimum key
+    # length), set via the deploy platform's secret store per docs/DECISIONS.md Phase 5.
+    secret: ${JWT_SECRET}
+
 logging:
   level:
     io.github.tarka1939.mysite: INFO

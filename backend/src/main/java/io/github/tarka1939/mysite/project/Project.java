@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -51,6 +52,9 @@ public class Project {
         joinColumns = @JoinColumn(name = "project_id"),
         inverseJoinColumns = @JoinColumn(name = "tag_id")
     )
+    // Batches lazy tag-collection loads across a page of projects (one IN query per batch)
+    // instead of one query per project -- avoids N+1 when mapping a paginated project list.
+    @BatchSize(size = 25)
     private Set<Tag> tags = new HashSet<>();
 
     @CreationTimestamp

@@ -1,0 +1,5 @@
+app:
+  jwt:
+    # Fixed test secret so @SpringBootTest contexts can resolve app.jwt.secret without an
+    # env var -- deliberately not the dev default, to keep test config self-contained.
+    secret: test-only-jwt-secret-not-for-production-0123456789
