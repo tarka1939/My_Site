@@ -71,18 +71,20 @@ On top of the flat 69-issue backlog and the `[Phase N]` title-prefix convention,
 
 ## Phase 1 — Backend foundation (Spring Boot)
 
-- [ ] Initialize via Spring Initializr: **Maven** project, Web, Data JPA, Validation, Security (if using auth), PostgreSQL driver, Flyway
-- [ ] Layered architecture: controller → service → repository, with DTOs at the controller boundary (never return JPA entities directly from controllers — this is a classic junior mistake that causes lazy-loading and serialization bugs you'll patch repeatedly otherwise)
-- [ ] Flyway migrations starting at `V1__init.sql`
-- [ ] Centralized exception handling via `@ControllerAdvice` — one consistent error response shape from day 1, not per-endpoint ad hoc handling
-- [ ] Request validation (`@Valid` + Bean Validation annotations) on every incoming DTO
-- [ ] Environment-based config: `application-dev.yml` / `application-prod.yml`, secrets via env vars, nothing hardcoded
-- [ ] `/actuator/health` endpoint enabled — trivial now, needed later for deploy health checks
-- [ ] Unit tests for service layer (JUnit 5 + Mockito) written alongside each service, not after
-- [ ] Integration tests with **Testcontainers** running real Postgres — H2-in-tests will pass things that fail against real Postgres, which is exactly the kind of gap that causes late patches. Fair warning: Testcontainers requires Docker running locally and has its own learning curve — budget time for it, don't treat it as free
-- [ ] Scaffold as package-by-feature from day 1 (`project/`, `contact/` as the initial packages) rather than one global `controller/service/repository` split — this is what keeps Phase 7's extensions isolated later instead of scattered edits
-- [ ] Set up a dedicated `@Async` task executor bean now, even with nothing using it yet — the DSP demo (Phase 7d) needs this, and retrofitting async handling under time pressure later is worse than provisioning it early
-- [ ] Add one working `ApplicationEventPublisher` example (e.g. a `ProjectCreatedEvent` published on creation, with a no-op listener) so the pattern exists before Phase 7 needs to hook into it
+> **Status (2026-08-01):** all items below complete — see PR #76 (branch `phase1/backend-foundation`). Spring Boot 4.1.0 / JDK 25 / Maven, Spring Modulith 2.1.0. `mvn test` green (7 tests: unit + Modulith verification + Testcontainers integration). Boot-verified manually against real Postgres in both `dev` and `prod` profiles.
+
+- [x] Initialize via Spring Initializr: **Maven** project, Web, Data JPA, Validation, Security (if using auth), PostgreSQL driver, Flyway — done, issue #8
+- [x] Layered architecture: controller → service → repository, with DTOs at the controller boundary (never return JPA entities directly from controllers — this is a classic junior mistake that causes lazy-loading and serialization bugs you'll patch repeatedly otherwise) — done, issue #9. Note: only the **create** path (`POST /api/v1/projects`) is wired up in Phase 1, deliberately — full CRUD is Phase 2
+- [x] Flyway migrations starting at `V1__init.sql` — done, issue #10. All six core tables from `docs/DATA_MODEL.md`; `admin_user` created empty (seeding needs a bcrypt hash, deferred to Phase 2 alongside the login endpoint)
+- [x] Centralized exception handling via `@ControllerAdvice` — one consistent error response shape from day 1, not per-endpoint ad hoc handling — done, issue #11. RFC 7807 `ProblemDetail`, matching `docs/openapi.yaml`
+- [x] Request validation (`@Valid` + Bean Validation annotations) on every incoming DTO — done, issue #12
+- [x] Environment-based config: `application-dev.yml` / `application-prod.yml`, secrets via env vars, nothing hardcoded — done, issue #13
+- [x] `/actuator/health` endpoint enabled — trivial now, needed later for deploy health checks — done, issue #14
+- [x] Unit tests for service layer (JUnit 5 + Mockito) written alongside each service, not after — done, issue #15
+- [x] Integration tests with **Testcontainers** running real Postgres — H2-in-tests will pass things that fail against real Postgres, which is exactly the kind of gap that causes late patches. Fair warning: Testcontainers requires Docker running locally and has its own learning curve — budget time for it, don't treat it as free — done, issue #16. The warning was accurate: this was the only item blocked on environment setup, and it immediately earned its keep by catching a real bug (null `createdAt`/`updatedAt`) that the mocked unit tests structurally could not — see `AGENT_LOG.md`
+- [x] Scaffold as package-by-feature from day 1 (`project/`, `contact/` as the initial packages) rather than one global `controller/service/repository` split — this is what keeps Phase 7's extensions isolated later instead of scattered edits — done, issue #17. Enforced by Spring Modulith (`ModularityTests` → `ApplicationModules.verify()`), not just convention
+- [x] Set up a dedicated `@Async` task executor bean now, even with nothing using it yet — the DSP demo (Phase 7d) needs this, and retrofitting async handling under time pressure later is worse than provisioning it early — done, issue #18
+- [x] Add one working `ApplicationEventPublisher` example (e.g. a `ProjectCreatedEvent` published on creation, with a no-op listener) so the pattern exists before Phase 7 needs to hook into it — done, issue #19
 
 ## Phase 2 — Core domain features
 
