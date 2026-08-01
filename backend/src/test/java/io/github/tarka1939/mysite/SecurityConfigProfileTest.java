@@ -74,4 +74,34 @@ class SecurityConfigProfileTest {
                 .andExpect(status().isBadRequest());
         }
     }
+
+    /**
+     * No {@code @ActiveProfiles} at all -- the exact scenario {@link SecurityConfig}'s own
+     * Javadoc calls out as the motivating risk: a deploy that forgets to pass
+     * {@code -Dspring-boot.run.profiles} (dev or prod) must still fail closed, not fall back
+     * to permit-all. Only {@code dev} opts into permit-all; everything else, including no
+     * profile set, gets the locked-down chain.
+     */
+    @Nested
+    @SpringBootTest
+    @AutoConfigureMockMvc
+    class NoProfile {
+
+        @Autowired
+        private MockMvc mockMvc;
+
+        @Test
+        void apiWritesAreDeniedByDefault() throws Exception {
+            mockMvc.perform(post("/api/v1/projects")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"title\":\"x\",\"description\":\"x\",\"tags\":[]}"))
+                .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void actuatorHealthIsStillPermitted() throws Exception {
+            mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk());
+        }
+    }
 }
