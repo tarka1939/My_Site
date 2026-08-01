@@ -20,8 +20,11 @@ public record ProjectWriteRequest(
     @NotNull List<@NotBlank @Size(max = 50) String> tags
 ) {
     public ProjectWriteRequest {
+        // links/images are genuinely optional per the contract (default: [], not in
+        // "required"). tags is NOT defaulted here on purpose -- it's a required field
+        // (docs/openapi.yaml: required: [title, description, tags]), so a missing tags
+        // key must fail @NotNull rather than silently becoming an empty list.
         links = links == null ? List.of() : links;
         images = images == null ? List.of() : images;
-        tags = tags == null ? List.of() : tags;
     }
 }
