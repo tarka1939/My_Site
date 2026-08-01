@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commit conventions
 Never add "Co-Authored-By" lines to commits. Do not include Claude attribution in commit messages, PR descriptions, or any git metadata.
 
-> Status: no code exists yet (`/backend`, `/frontend` not scaffolded). This file is a placeholder — fill in each section as the corresponding phase in `PROJECT_TODO.md` is completed. Don't delete the structure below; it mirrors where commands/architecture notes will live once they exist.
+> Status: `/backend` is scaffolded (Phase 1 — Spring Boot foundation). `/frontend` is not yet scaffolded (Phase 3). Fill in the Frontend commands section once that phase lands.
 
 ## Project
 
@@ -13,16 +13,31 @@ My Site — portfolio site (Angular + Spring Boot). Full scope lives in `SPEC.md
 
 ## Commands
 
-_Fill in once each part of the stack is scaffolded (Phase 1 backend, Phase 3 frontend)._
-
 ### Backend (`/backend`)
 
-```
-# Build:
-# Run locally:
-# Run all tests:
+Requires JDK 25 and Maven on `PATH` (or `JAVA_HOME`/`MAVEN_HOME` set). Requires a running
+PostgreSQL instance for anything beyond `compile`/`test` — Phase 1 has no `docker-compose.yml`
+yet (that's Phase 5), so point `DB_NAME`/`DB_USERNAME`/`DB_PASSWORD` at whatever Postgres
+you have locally, or run one yourself: `docker run -e POSTGRES_USER=mysite -e POSTGRES_PASSWORD=mysite -e POSTGRES_DB=mysite_dev -p 5432:5432 postgres`.
+
+```bash
+# Build (compile only, no DB needed):
+cd backend && mvn compile
+
+# Run locally (dev profile, needs Postgres reachable — see above):
+cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=dev
+
+# Run all tests (unit tests + Spring Modulith ApplicationModules.verify() — no DB needed;
+# Testcontainers integration tests additionally need a running Docker daemon):
+cd backend && mvn test
+
 # Run a single test:
-# Lint:
+cd backend && mvn test -Dtest=ProjectServiceTest
+
+# Lint: no linter/formatter has been decided yet (not in docs/DECISIONS.md) — nothing to run.
+
+# Package an executable jar:
+cd backend && mvn clean package
 ```
 
 ### Frontend (`/frontend`)
