@@ -10,6 +10,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.HexFormat;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,8 @@ import jakarta.servlet.http.HttpServletRequest;
 
 @Service
 public class PasswordResetService {
+
+    private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
 
     private static final long TOKEN_TTL_MINUTES = 30;
     private static final int MAX_RESET_REQUESTS_PER_WINDOW = 5;
@@ -77,25 +81,40 @@ public class PasswordResetService {
             passwordResetTokenRepository.save(new PasswordResetToken(adminUser.getId(), tokenHash, expiresAt));
 
             String resetLink = frontendUrl + "/reset-password?token=" + rawToken;
-            resendEmailClient.sendPasswordResetEmail(adminUser.getEmail(), resetLink);
+            try {
+                // Must not propagate: this method is documented to always return 202 from the
+                // caller's perspective regardless of whether the email matched an account, to
+                // avoid email enumeration. A Resend failure (non-2xx, network error) escaping
+                // uncaught here would produce a different response for a known-email-but-Resend-
+                // hiccupped request than for an unknown-email request, reopening exactly the
+                // side channel this design exists to close. The token is already persisted
+                // above, so a failed send here doesn't lose anything worth rolling back for.
+                resendEmailClient.sendPasswordResetEmail(adminUser.getEmail(), resetLink);
+            } catch (RuntimeException e) {
+                log.warn("Failed to send password reset email (request still returns 202)", e);
+            }
         });
     }
 
     @Transactional
     public void confirmReset(PasswordResetConfirmBody request) {
         String tokenHash = sha256Hex(request.token());
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(tokenHash)
-            .orElseThrow(() -> new InvalidResetTokenException("Invalid or expired reset token"));
+        Instant now = Instant.now();
 
-        if (resetToken.getUsedAt() != null || resetToken.getExpiresAt().isBefore(Instant.now())) {
+        // Atomic conditional update first (see PasswordResetTokenRepository.markUsedIfValid),
+        // not a find-then-validate-then-update -- the latter has a check-then-act window
+        // between two concurrent requests racing the same leaked token.
+        int updated = passwordResetTokenRepository.markUsedIfValid(tokenHash, now);
+        if (updated == 0) {
             throw new InvalidResetTokenException("Invalid or expired reset token");
         }
 
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(tokenHash)
+            .orElseThrow(() -> new InvalidResetTokenException("Invalid or expired reset token"));
         AdminUser adminUser = adminUserRepository.findById(resetToken.getAdminUserId())
             .orElseThrow(() -> new InvalidResetTokenException("Invalid or expired reset token"));
 
         adminUser.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        resetToken.setUsedAt(Instant.now());
     }
 
     private String generateRawToken() {

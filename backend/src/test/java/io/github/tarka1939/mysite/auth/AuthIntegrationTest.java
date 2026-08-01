@@ -63,7 +63,8 @@ class AuthIntegrationTest {
     void login_withSeededCredentials_returnsDecodableJwt() {
         createAdminUser("integration-admin", "integration-admin@example.com", "correct-horse-battery-staple");
 
-        LoginResponse response = authService.login(new LoginRequest("integration-admin", "correct-horse-battery-staple"));
+        LoginResponse response = authService.login(
+            new LoginRequest("integration-admin", "correct-horse-battery-staple"), requestFrom("203.0.113.20"));
 
         assertThat(response.token()).isNotBlank();
         assertThat(response.expiresAt()).isAfter(Instant.now());
@@ -74,7 +75,8 @@ class AuthIntegrationTest {
     void login_withWrongPassword_throwsInvalidCredentials() {
         createAdminUser("integration-admin2", "integration-admin2@example.com", "correct-password");
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("integration-admin2", "wrong-password")))
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("integration-admin2", "wrong-password"), requestFrom("203.0.113.21")))
             .isInstanceOf(InvalidCredentialsException.class);
     }
 
@@ -132,6 +134,24 @@ class AuthIntegrationTest {
 
         assertThatThrownBy(() -> passwordResetService.confirmReset(
             new PasswordResetConfirmBody("already-used-token", "new-password-123")))
+            .isInstanceOf(InvalidResetTokenException.class);
+    }
+
+    @Test
+    void confirmReset_calledTwiceWithSameToken_secondCallIsRejectedByTheAtomicGuard() {
+        var adminUser = createAdminUser("double-confirm-admin", "double-confirm-admin@example.com", "old-password");
+        PasswordResetToken token = new PasswordResetToken(
+            adminUser.getId(), sha256Hex("reused-in-same-run-token"), Instant.now().plus(30, ChronoUnit.MINUTES));
+        passwordResetTokenRepository.saveAndFlush(token);
+
+        // Exercises PasswordResetTokenRepository.markUsedIfValid directly rather than the
+        // pre-set-usedAt scenario above -- the first call must succeed (proving the atomic
+        // UPDATE ... WHERE used_at IS NULL still matches a genuinely fresh token), and the
+        // second call against the now-consumed token must be rejected by that same guard.
+        passwordResetService.confirmReset(new PasswordResetConfirmBody("reused-in-same-run-token", "first-new-password"));
+
+        assertThatThrownBy(() -> passwordResetService.confirmReset(
+            new PasswordResetConfirmBody("reused-in-same-run-token", "second-new-password")))
             .isInstanceOf(InvalidResetTokenException.class);
     }
 

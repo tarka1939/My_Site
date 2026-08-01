@@ -1,10 +1,12 @@
 package io.github.tarka1939.mysite.auth;
 
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -54,7 +56,7 @@ public class ResendEmailClient {
 
         Map<String, Object> body = Map.of(
             "from", fromAddress,
-            "to", java.util.List.of(toEmail),
+            "to", List.of(toEmail),
             "subject", "Reset your My Site admin password",
             "html", "<p>A password reset was requested for your My Site admin account.</p>"
                 + "<p><a href=\"" + resetLink + "\">Reset your password</a> (expires in 30 minutes).</p>"
@@ -63,7 +65,7 @@ public class ResendEmailClient {
 
         restClient.post()
             .header("Authorization", "Bearer " + apiKey)
-            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(body)
             .retrieve()
             .toBodilessEntity();

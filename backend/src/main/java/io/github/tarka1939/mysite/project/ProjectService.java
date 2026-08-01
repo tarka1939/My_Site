@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -63,7 +64,7 @@ public class ProjectService {
         // what's a normal (if rare) concurrent-delete race, not an error condition.
         List<ProjectResponse> content = idPage.getContent().stream()
             .map(byId::get)
-            .filter(java.util.Objects::nonNull)
+            .filter(Objects::nonNull)
             .map(ProjectResponse::from)
             .toList();
 

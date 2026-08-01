@@ -71,7 +71,7 @@ _Added 2026-07-24 — see `docs/DECISIONS.md` → Password reset flow ADR. Suppo
 |---|---|---|
 | id | uuid, PK | |
 | admin_user_id | uuid, FK → AdminUser, not null | `ON DELETE CASCADE` |
-| token_hash | varchar(255), not null | sha-256 of the reset token — store the hash, never the raw token, same principle as `password_hash` |
+| token_hash | varchar(255), not null, unique | sha-256 of the reset token — store the hash, never the raw token, same principle as `password_hash`. Unique index added Phase 2 (`V3__password_reset_token_hash_index.sql`) — V1 had no index at all on the column every confirm-reset lookup hits |
 | expires_at | timestamptz, not null | 30 minutes from creation — deliberately shorter than the 1-hour JWT session expiry, since a leaked reset token (e.g. via email interception) is a higher-risk artifact than a session token |
 | used_at | timestamptz, nullable | set on consumption; a used or expired token must be rejected on `POST /auth/password-reset` |
 | created_at | timestamptz, not null default `now()` | |
@@ -224,4 +224,5 @@ erDiagram
 
 - First migration: `V1__init.sql` (Flyway) — should create `project`, `tag`, `project_tags`, `contact_message`, `admin_user`, `password_reset_token`. Phase 7 tables land in their own later migrations, one per sub-phase, not upfront.
 - `V2__admin_user_email_and_seed.sql` (Phase 2) — adds `admin_user.email` (see AdminUser table above) and seeds the single admin row with a bcrypt-hashed password, per the Auth Flow ADR in `docs/DECISIONS.md`.
+- `V3__password_reset_token_hash_index.sql` (Phase 2) — adds a unique index on `password_reset_token.token_hash` (see PasswordResetToken table above), caught in cross-review after V1/V2 had already shipped without one.
 - Record schema changes here as they land, or link to migration files directly.

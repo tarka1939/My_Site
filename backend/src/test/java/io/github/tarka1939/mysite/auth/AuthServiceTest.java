@@ -3,6 +3,10 @@ package io.github.tarka1939.mysite.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -21,7 +25,12 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 
+import io.github.tarka1939.mysite.ClientIpHasher;
+import io.github.tarka1939.mysite.InMemoryRateLimiter;
 import io.github.tarka1939.mysite.InvalidCredentialsException;
+import io.github.tarka1939.mysite.RateLimitExceededException;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -35,11 +44,22 @@ class AuthServiceTest {
     @Mock
     private JwtEncoder jwtEncoder;
 
+    @Mock
+    private ClientIpHasher clientIpHasher;
+
+    @Mock
+    private InMemoryRateLimiter rateLimiter;
+
+    @Mock
+    private HttpServletRequest httpRequest;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(adminUserRepository, passwordEncoder, jwtEncoder);
+        authService = new AuthService(adminUserRepository, passwordEncoder, jwtEncoder, clientIpHasher, rateLimiter);
+        lenient().when(clientIpHasher.hashOf(httpRequest)).thenReturn("hashed-ip");
+        lenient().when(rateLimiter.tryAcquire(anyString(), anyInt(), any())).thenReturn(true);
     }
 
     @Test
@@ -53,7 +73,7 @@ class AuthServiceTest {
             Map.of("alg", "HS256"), Map.of("sub", "admin"));
         when(jwtEncoder.encode(any(JwtEncoderParameters.class))).thenReturn(fakeJwt);
 
-        LoginResponse response = authService.login(new LoginRequest("admin", "correct-password"));
+        LoginResponse response = authService.login(new LoginRequest("admin", "correct-password"), httpRequest);
 
         assertThat(response.token()).isEqualTo("fake-token");
         assertThat(response.expiresAt()).isAfter(Instant.now());
@@ -68,7 +88,7 @@ class AuthServiceTest {
     void login_withUnknownUsername_throwsInvalidCredentials() {
         when(adminUserRepository.findByUsername("ghost")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("ghost", "whatever")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("ghost", "whatever"), httpRequest))
             .isInstanceOf(InvalidCredentialsException.class);
     }
 
@@ -78,8 +98,18 @@ class AuthServiceTest {
         when(adminUserRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
         when(passwordEncoder.matches("wrong-password", "hashed")).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("admin", "wrong-password")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("admin", "wrong-password"), httpRequest))
             .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void login_pastRateLimit_throwsRateLimitExceededBeforeCheckingCredentials() {
+        when(rateLimiter.tryAcquire(eq("hashed-ip"), anyInt(), any())).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("admin", "whatever"), httpRequest))
+            .isInstanceOf(RateLimitExceededException.class);
+
+        org.mockito.Mockito.verifyNoInteractions(adminUserRepository);
     }
 
     private AdminUser newAdminUser(String username, String passwordHash) {
