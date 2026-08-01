@@ -13,10 +13,10 @@ layering and the `ProjectCreatedEvent` publish/listen example — full CRUD (lis
 filtering, update, delete) is Phase 2, not built here. `contact/` has only the entity +
 repository for the same reason.
 
-Not yet verified end-to-end: the app hasn't been booted against a real PostgreSQL instance,
-and there's no Testcontainers integration test yet — both need a running Docker daemon,
-which wasn't available when this was scaffolded. `mvn compile` and `mvn test` (unit tests +
-Modulith verification) both pass without a database.
+Verified end-to-end: `mvn test` runs unit tests, Spring Modulith verification, and a
+Testcontainers integration test against real Postgres (Flyway migration included). The app
+has also been booted manually against a real Postgres instance and exercised via
+`POST /api/v1/projects` and `/actuator/health`.
 
 See `CLAUDE.md` (repo root) for the locked-in architecture conventions and `AGENT_LOG.md`
 for the judgment calls made while scaffolding this.
