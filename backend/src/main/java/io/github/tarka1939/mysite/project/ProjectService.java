@@ -1,18 +1,21 @@
 package io.github.tarka1939.mysite.project;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Phase 1 scope: create only, to prove out the controller-service-repository layering and
- * the {@link ProjectCreatedEvent} publish example. Read/update/delete, pagination, and tag
- * filtering are Phase 2 (Project CRUD) work — deliberately not built here.
- */
+import io.github.tarka1939.mysite.PageResponse;
+import io.github.tarka1939.mysite.ResourceNotFoundException;
+
 @Service
 public class ProjectService {
 
@@ -44,6 +47,55 @@ public class ProjectService {
         Project saved = projectRepository.saveAndFlush(project);
         eventPublisher.publishEvent(new ProjectCreatedEvent(saved.getId()));
         return ProjectResponse.from(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProjectResponse> listProjects(Pageable pageable, List<String> tagNames) {
+        Page<UUID> idPage = (tagNames == null || tagNames.isEmpty())
+            ? projectRepository.findAllIds(pageable)
+            : projectRepository.findIdsByTagNamesIgnoreCase(tagNames.stream().map(String::toLowerCase).toList(), pageable);
+
+        Map<UUID, Project> byId = new HashMap<>();
+        projectRepository.findAllById(idPage.getContent()).forEach(p -> byId.put(p.getId(), p));
+
+        List<ProjectResponse> content = idPage.getContent().stream()
+            .map(byId::get)
+            .map(ProjectResponse::from)
+            .toList();
+
+        return PageResponse.from(idPage, content);
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectResponse getProject(UUID id) {
+        return ProjectResponse.from(findProjectOrThrow(id));
+    }
+
+    @Transactional
+    public ProjectResponse updateProject(UUID id, ProjectWriteRequest request) {
+        Project project = findProjectOrThrow(id);
+        project.setTitle(request.title());
+        project.setDescription(request.description());
+        project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
+        project.setImages(request.images().toArray(new String[0]));
+        project.setTags(resolveTags(request.tags()));
+
+        // saveAndFlush for the same reason as createProject: @UpdateTimestamp only bumps at
+        // flush time, and this endpoint (unlike create) is exactly the one flagged in the
+        // Phase 2 kickoff as likely to reintroduce the null-timestamp bug if this is missed.
+        Project saved = projectRepository.saveAndFlush(project);
+        return ProjectResponse.from(saved);
+    }
+
+    @Transactional
+    public void deleteProject(UUID id) {
+        Project project = findProjectOrThrow(id);
+        projectRepository.delete(project);
+    }
+
+    private Project findProjectOrThrow(UUID id) {
+        return projectRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Project not found: " + id));
     }
 
     private Set<Tag> resolveTags(List<String> tagNames) {
