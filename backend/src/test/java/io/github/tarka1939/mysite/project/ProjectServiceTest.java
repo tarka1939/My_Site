@@ -44,7 +44,7 @@ class ProjectServiceTest {
         when(tagRepository.findByNameIgnoreCase("dsp")).thenReturn(Optional.of(new Tag("dsp")));
         when(tagRepository.findByNameIgnoreCase("java")).thenReturn(Optional.empty());
         when(tagRepository.save(any(Tag.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(projectRepository.save(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProjectResponse response = projectService.createProject(request);
 
@@ -64,7 +64,7 @@ class ProjectServiceTest {
         Tag existing = new Tag("React");
 
         when(tagRepository.findByNameIgnoreCase("react")).thenReturn(Optional.of(existing));
-        when(projectRepository.save(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         projectService.createProject(request);
 
