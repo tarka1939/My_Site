@@ -34,6 +34,107 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-01 — Independent cross-review of PR #77 (third external review of agent output)
+
+**Task given:** User ran an independent review of PR #77 in a separate chat session (after
+their own diff/branch-history pull) and pasted the findings back for verification and fixes —
+same "verify before accepting" discipline as the two prior review rounds this project.
+
+**Agent(s) used:** An independent Claude Code session (different chat, same PR) as reviewer;
+main Claude Code session (this one) as author/responder.
+
+**What went right:**
+
+A reviewer with no memory of *why* each line was written, looking at the finished diff cold,
+caught 4 more real issues — a third consecutive round with genuine findings, after the Copilot
+round (3/6, then 5/6) and this session's own manual-verification bug. The two "Should Fix"
+items are the more interesting kind of bug: each one is a *consequence of a fix already made
+elsewhere in this same PR*, not a fresh mistake:
+
+1. **`requestReset`'s anti-enumeration guarantee breaks the moment Resend has a hiccup.**
+   `resendEmailClient.sendPasswordResetEmail(...)` ran uncaught inside the `@Transactional`
+   method, inside the branch that only executes when the email *does* match an account. Any
+   non-2xx from Resend or a network failure propagates straight out, producing a different
+   response (500, or — per this same session's earlier `/error`-dispatch discovery — possibly
+   401 for an unauthenticated caller) than the unconditional-202 path an unknown email takes.
+   Latent today (no `RESEND_API_KEY` in any live environment until this session verified it
+   locally), but would fire the moment a real deploy hits any Resend hiccup. The reviewer
+   explicitly connected this to a mechanism (`/error` dispatch → 401) this project had already
+   documented from its *own* bug hunt earlier in this same PR cycle, and we still missed
+   applying that lesson here.
+2. **`POST /auth/login` had no rate limiting**, despite `InMemoryRateLimiter` already existing
+   and already being used for the contact form and password-reset-request — the one endpoint
+   guarding the entire admin write surface was the one left unprotected. Not a new pattern to
+   invent, just a miss in applying an existing one everywhere it belonged.
+3. **`PasswordResetTokenRepository.findByTokenHash` had no supporting index** — the table
+   shipped in Phase 1's `V1__init.sql` with an index on `admin_user_id` but not on
+   `token_hash`, and Phase 2 is what makes that column an actual per-request hot path.
+4. **`PasswordResetService.confirmReset` had the same check-then-act shape** this project has
+   now fixed three separate times (Phase 1's tag-upsert race, this session's `listProjects` NPE
+   from the Copilot round, and now this): read `usedAt`/`expiresAt`, decide, *then* write, with
+   no atomic guard between. Two concurrent requests racing the same leaked token could both
+   pass validation before either commits.
+
+Also flagged (correctly) but left as-is: `InMemoryRateLimiter`'s key map never evicts entries
+for IPs that stop being queried — real, but genuinely low-priority for this project's traffic
+scale and would need scheduling infrastructure this codebase doesn't have yet. Filed as issue
+#78 rather than fixed inline, matching the CORS-deferral precedent from the Copilot round
+(explain and track, don't silently drop *or* over-build for load this site will never see).
+`ContactService.submit`'s equivalent check-then-act rate-limit gap was flagged by the reviewer
+themselves as acceptable given it's an explicitly "basic" abuse guard — agreed, no change.
+
+**What went wrong (in the review, not the code):** Nothing to correct this round — all four
+"Should Fix"/"Minor" correctness findings held up against the source, and the one deferred
+item was already correctly scoped as low-priority by the reviewer, not something we had to
+push back on.
+
+**How it was caught:** A second, independent AI reviewer (not the same session that wrote the
+code, not the same tool as the Copilot round) reading the finished diff with no context on
+implementation intent. Each finding was re-verified against current source before any fix, per
+this project's now three-times-demonstrated practice.
+
+**Fix applied:** Four fixes:
+- `PasswordResetService.requestReset`: wrapped the Resend call in try/catch, logs on failure,
+  never lets the exception escape — the 202 response is now genuinely unconditional again.
+- `AuthService.login`: added the same `ClientIpHasher`/`InMemoryRateLimiter` pattern already
+  used elsewhere (5 attempts / 15 minutes per IP hash), threaded `HttpServletRequest` through
+  `AuthController`. Verified live: 5 wrong-password attempts return 401 each, the 6th (and a
+  subsequent *correct*-password attempt) both return 429.
+- `V3__password_reset_token_hash_index.sql`: unique index on `token_hash` (unique, not just
+  indexed — tokens are meant to be single-use).
+- `PasswordResetTokenRepository.markUsedIfValid`: atomic conditional `UPDATE ... WHERE
+  used_at IS NULL AND expires_at > :now`, replacing the find-then-check-then-write shape in
+  `confirmReset`. Returns rows-affected so the caller can distinguish "already consumed" from
+  "never existed" without a second query.
+
+Also cleaned up a minor code-quality note from the same review: several files mixed
+fully-qualified inline references (`java.util.Objects::nonNull`, `org.springframework.http.
+HttpMethod.GET`, etc.) with normal imports elsewhere in the same file — added the missing
+imports for consistency.
+
+`mvn test`: 48 tests green (2 new: a login-rate-limit unit test, an atomic-double-confirm
+integration test). Manually re-verified against real Postgres: all 3 migrations apply cleanly
+in order, login rate limiting trips exactly as designed.
+
+**Takeaway for next time:**
+
+- **Three independent review rounds on one PR, three rounds of real findings.** This is now a
+  firm pattern for this project, not a coincidence: self-review (even careful, test-covered
+  self-review) reliably misses a class of bug that a second pass — human, Copilot, or another
+  agent instance — catches close to every time. Budget for at least one independent review pass
+  as a standing part of the PR workflow here, not an optional nice-to-have.
+- **A fix made in one place can leave the identical gap unfixed somewhere else the same
+  pattern applies.** `InMemoryRateLimiter` existed and was already used twice in this PR before
+  the reviewer had to point out it wasn't used a third, more important time. When adding a
+  cross-cutting utility (rate limiter, hasher, exception type), grep for every call site that
+  *should* use it, not just the one that motivated writing it.
+- **Fixing bug A can create the exact conditions for bug B if the interaction isn't traced
+  through.** The `/error`-dispatch-produces-401-for-unauthenticated-callers behavior this
+  session discovered and documented earlier in this PR is the *same* mechanism the reviewer
+  flagged as a way finding #1 could manifest — we'd already learned this lesson once this PR
+  cycle and it still didn't get connected to the reset-request code path until an outside
+  reader pointed it out.
+
 ## 2026-08-01 — GitHub Copilot review of PR #77 (second external review of agent output)
 
 **Task given:** Requested a Copilot review on PR #77 per the Phase 2 kickoff instructions
