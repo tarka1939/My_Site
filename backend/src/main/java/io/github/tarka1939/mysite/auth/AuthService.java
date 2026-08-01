@@ -52,7 +52,13 @@ public class AuthService {
 
     public LoginResponse login(LoginRequest request, HttpServletRequest httpRequest) {
         String ipHash = clientIpHasher.hashOf(httpRequest);
-        if (!rateLimiter.tryAcquire(ipHash, MAX_LOGIN_ATTEMPTS_PER_WINDOW, LOGIN_RATE_LIMIT_WINDOW)) {
+        // Namespaced ("login:" prefix), not the bare ipHash: InMemoryRateLimiter is a shared
+        // singleton, and PasswordResetService.requestReset independently rate-limits the same
+        // IP under its own key. An unprefixed key would let the two collide on the same
+        // bucket -- failing login 5 times would then also lock that IP out of
+        // password-reset-request (and vice versa) for up to the LONGER of the two windows,
+        // breaking exactly the "forgot my password, let me reset it" recovery path.
+        if (!rateLimiter.tryAcquire("login:" + ipHash, MAX_LOGIN_ATTEMPTS_PER_WINDOW, LOGIN_RATE_LIMIT_WINDOW)) {
             throw new RateLimitExceededException("Too many login attempts");
         }
 

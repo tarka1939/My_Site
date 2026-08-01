@@ -21,6 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import io.github.tarka1939.mysite.InvalidCredentialsException;
 import io.github.tarka1939.mysite.InvalidResetTokenException;
+import io.github.tarka1939.mysite.RateLimitExceededException;
 
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.HttpServletRequest;
@@ -78,6 +79,31 @@ class AuthIntegrationTest {
         assertThatThrownBy(() -> authService.login(
             new LoginRequest("integration-admin2", "wrong-password"), requestFrom("203.0.113.21")))
             .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void loginRateLimitAndPasswordResetRateLimitAreIndependentPerIp() {
+        // Regression test for a real bug: AuthService and PasswordResetService share one
+        // InMemoryRateLimiter singleton. Before the keys were namespaced ("login:"/
+        // "password-reset:" prefixes), both call sites used the bare IP hash as the limiter
+        // key, so exhausting login's bucket (5 attempts/15min) also exhausted
+        // password-reset-request's bucket (5/1hour) for the same IP -- breaking exactly the
+        // "forgot my password, let me reset it" recovery path a legitimate admin would take
+        // right after failing to log in a few times.
+        createAdminUser("isolation-admin", "isolation-admin@example.com", "correct-password");
+        HttpServletRequest httpRequest = requestFrom("203.0.113.22");
+
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> authService.login(
+                new LoginRequest("isolation-admin", "wrong-password"), httpRequest))
+                .isInstanceOf(InvalidCredentialsException.class);
+        }
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("isolation-admin", "wrong-password"), httpRequest))
+            .isInstanceOf(RateLimitExceededException.class);
+
+        // Same IP, different endpoint -- must not be affected by login's exhausted bucket.
+        passwordResetService.requestReset(new PasswordResetRequestBody("isolation-admin@example.com"), httpRequest);
     }
 
     @Test

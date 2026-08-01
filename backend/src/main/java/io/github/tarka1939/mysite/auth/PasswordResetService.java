@@ -69,7 +69,11 @@ public class PasswordResetService {
     @Transactional
     public void requestReset(PasswordResetRequestBody request, HttpServletRequest httpRequest) {
         String ipHash = clientIpHasher.hashOf(httpRequest);
-        if (!rateLimiter.tryAcquire(ipHash, MAX_RESET_REQUESTS_PER_WINDOW, RATE_LIMIT_WINDOW)) {
+        // Namespaced ("password-reset:" prefix) for the same reason AuthService.login
+        // namespaces its key with "login:" -- InMemoryRateLimiter is a shared singleton, and
+        // an unprefixed key would let this collide with login's independent rate limit on the
+        // same IP.
+        if (!rateLimiter.tryAcquire("password-reset:" + ipHash, MAX_RESET_REQUESTS_PER_WINDOW, RATE_LIMIT_WINDOW)) {
             throw new RateLimitExceededException("Too many password reset requests");
         }
 

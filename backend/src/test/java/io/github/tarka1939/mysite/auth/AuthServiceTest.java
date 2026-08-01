@@ -104,7 +104,7 @@ class AuthServiceTest {
 
     @Test
     void login_pastRateLimit_throwsRateLimitExceededBeforeCheckingCredentials() {
-        when(rateLimiter.tryAcquire(eq("hashed-ip"), anyInt(), any())).thenReturn(false);
+        when(rateLimiter.tryAcquire(eq("login:hashed-ip"), anyInt(), any())).thenReturn(false);
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("admin", "whatever"), httpRequest))
             .isInstanceOf(RateLimitExceededException.class);
