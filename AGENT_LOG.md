@@ -34,6 +34,62 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-01 — Merging PR #79 into PR #77, and a test that git couldn't tell was broken
+
+**Task given:** User asked for a review of PR #77's conflicts with `main` after PR #79 (a
+separate, parallel post-merge review pass on Phase 1) merged. Two git conflicts, plus one
+non-conflicting file whose *assertions* silently stopped matching the codebase.
+
+**Agent(s) used:** Main Claude Code session, working alongside a separate session's PR #79 (not
+directed by this session — a parallel review track on Phase 1, merged to `main` independently).
+
+**What went right:**
+
+Did the whole investigation on an isolated scratch branch first (`git merge-tree
+--write-tree` for a read-only conflict preview, then a real trial merge on a throwaway local
+branch) before touching the actual PR branch — meant the real merge, once approved, was a
+known-good replay rather than a live experiment. Caught the important part (see below) *before*
+proposing a resolution, not after.
+
+**What went wrong (be specific):** Not a bug in the merged code, but a trap worth documenting:
+git reported exactly 2 conflicts (`AGENT_LOG.md`, `GlobalExceptionHandler.java`), both trivial.
+`SecurityConfigProfileTest.java` (new in PR #79) merged with **zero conflict markers** — but it
+tests the Phase 1 placeholder `SecurityConfig`'s premise (permit-all in `dev`, deny-all
+elsewhere, behavior varies by profile), which this PR's real-JWT rewrite replaced with one
+uniform chain for every profile. Git had no way to flag this: it's not a textual collision,
+it's two *different, non-overlapping* pieces of code where one's test assertions quietly
+stopped being true about the other. Compiled clean; failed at test-run time (1 wrong-status
+assertion, 4 context-load failures from `app.jwt.secret` being unresolvable in profiles this
+test predates needing).
+
+**How it was caught:** Not by `git merge` (silent), not by `mvn test-compile` (silent) — only
+by actually running `mvn test` on the trial-merged branch and reading which tests broke and
+why, rather than assuming "no conflict markers" meant "safe."
+
+**Fix applied:** Resolved both real conflicts by keeping both sides' additions (no logical
+overlap in either case — see the merge commit for the reasoning per file). Deleted
+`SecurityConfigProfileTest.java`: its premise no longer exists in the codebase, and
+`SecurityIntegrationTest` (already in this PR) covers the equivalent "unauthenticated writes
+rejected" ground for the real-JWT model. Verified `mvn test` green (52) on the trial branch
+*before* proposing this to the user, then replayed the identical resolution on the real branch
+and re-verified green there too. PR #77's `mergeable_state` confirmed `clean` against `main`
+post-push.
+
+**Takeaway for next time:**
+
+- **A clean git merge is not the same claim as "the merged code is still correct."** Two
+  branches can each be internally consistent and still merge into a codebase where one
+  branch's tests no longer mean what they did when written — with no conflict marker anywhere,
+  because there was no textual overlap to conflict on. When two PRs touch the same subsystem
+  from different starting points (here: `SecurityConfig`, rewritten by one PR while another
+  wrote tests against its old behavior), treat "no conflicts" as "not yet disproven," not "safe."
+  Actually running the test suite on the trial merge is what caught this, not reading the diff.
+- **Investigate merges in an isolated scratch branch before touching the real one.** `git
+  merge-tree --write-tree` (a read-only trial merge, no working-directory changes) for the
+  first pass, then a real throwaway local branch for the second (compile + test the actual
+  resolution) — neither touches the branch anyone else can see until the resolution is known
+  good and approved.
+
 ## 2026-08-01 — Shared rate-limiter key collision on PR #77 (fourth external finding, self-introduced this same PR)
 
 **Task given:** User reported a bug they'd found in `AuthService`/`PasswordResetService`:
