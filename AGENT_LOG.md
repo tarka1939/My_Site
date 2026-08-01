@@ -34,6 +34,72 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-01 — Two deprecation gaps found by actually running `-Dmaven.compiler.showDeprecation=true` and reading test output
+
+**Task given:** User ran the build with `-Dmaven.compiler.showDeprecation=true` (the same flag
+PR #79's own AGENT_LOG entry recommended running periodically) and reported two findings: three
+test files still importing the deprecated `org.testcontainers.containers.PostgreSQLContainer`
+(PR #79 fixed this in `ProjectRepositoryIntegrationTest` but that fix predates the three
+Phase 2 test files, which didn't exist yet), and a Hibernate Validator HV000271 runtime warning
+("Using `@Valid` on a container ... is deprecated") logged during `SecurityIntegrationTest`.
+
+**Agent(s) used:** Main Claude Code session.
+
+**What went right:** Verified both against source before fixing (unnecessary here — both were
+unambiguous once confirmed present) but still worth the ten seconds: grepped the exact import
+lines and read `ProjectWriteRequest.java` directly rather than assuming the report's framing
+was complete. Also verified the fix didn't just make the warning disappear but that the
+behavior it protects (cascade validation into each `LinkDto` element) still actually works --
+compile-clean and warning-free isn't the same claim as "still validates correctly."
+
+**What went wrong (be specific):**
+
+1. **Three Testcontainers imports missed by PR #79's fix.** `SecurityIntegrationTest`,
+   `AuthIntegrationTest`, `ContactRepositoryIntegrationTest` (all written this session, after
+   PR #79's `ProjectRepositoryIntegrationTest` fix) still used the deprecated generic
+   `org.testcontainers.containers.PostgreSQLContainer<?>` / `new PostgreSQLContainer<>(...)`.
+   Two parallel PRs fixing the same underlying issue in different files is an easy gap to leave
+   -- PR #79 could only fix files that existed when it was written.
+2. **`ProjectWriteRequest.links` used the pre-3.1 `@Valid` placement.** `@Valid @Size(max = 10)
+   List<LinkDto> links` put `@Valid` on the container; Jakarta Bean Validation 3.1+ wants it on
+   the type argument (`List<@Valid LinkDto> links`) to cascade into each element -- the same
+   pattern the same record already used correctly for `images`/`tags`
+   (`List<@Size(max = 500) String>`, `List<@NotBlank @Size(max = 50) String>`). One field in
+   the record followed the old convention while its siblings followed the new one.
+
+**How it was caught:** Not by `mvn test-compile`'s default output (deprecation warnings are
+suppressed unless explicitly requested) and not by a diff review -- only by actually running
+the build with the verbose flag and reading `mvn test`'s console output for runtime warnings,
+which a passing test suite doesn't surface on its own.
+
+**Fix applied:** Switched all three test files to `org.testcontainers.postgresql.
+PostgreSQLContainer` (non-generic), matching PR #79's established fix exactly. Moved `@Valid`
+to `List<@Valid LinkDto> links`. Verified live via `curl`: a project create with a malformed
+link (`{"label":"","url":"..."}`) still returns 400 with `links[0].label: must not be blank`,
+confirming cascade validation survived the move. Added
+`ProjectWriteRequestValidationTest` (a `@WebMvcTest(ProjectController.class)` slice, following
+PR #79's `GlobalExceptionHandlerTest` pattern -- no DB needed) so this can't silently regress
+again; no existing test exercised an actually-invalid `LinkDto` before this. `mvn test-compile
+-Dmaven.compiler.showDeprecation=true`: zero warnings. `mvn test`: 53 green (was 52, +1 new).
+
+**Takeaway for next time:**
+
+- **A merge closing one deprecation gap doesn't mean the gap is closed everywhere it exists** --
+  it closes it in the files that PR touched. New files written in a parallel branch after the
+  original fix inherit the *old* pattern by default (copy-paste from existing code, or an
+  agent's own prior habit) unless something actively checks for it. Worth grepping for a known-
+  deprecated pattern across the whole tree after a merge, not just trusting the merge resolved
+  it.
+- **`-Dmaven.compiler.showDeprecation=true` and reading `mvn test`'s console output for runtime
+  warnings are both compile-clean-and-tests-green-blind** -- this project's default `mvn test`
+  output had already swallowed both of these. PR #79's own AGENT_LOG entry already made this
+  exact point about `PostgreSQLContainer`; worth actually running that flag as a habit, not
+  just having written down that it's worth running.
+- **When two record fields validate a `List` element with different annotation placements
+  (one correct-per-current-convention, one not), that inconsistency is itself worth noticing**
+  -- `images`/`tags` already showed the right pattern two lines below the wrong one in the same
+  file.
+
 ## 2026-08-01 — Merging PR #79 into PR #77, and a test that git couldn't tell was broken
 
 **Task given:** User asked for a review of PR #77's conflicts with `main` after PR #79 (a
