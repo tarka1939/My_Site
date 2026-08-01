@@ -176,6 +176,17 @@ These are the four "give the backend a real job" candidates from earlier. Build 
 
 ---
 
+## Definition of Done
+
+Beyond each phase's own feature checklist above, every phase's closing PR needs to clear these before it's mergeable. Added 2026-08-01 after Phase 1's two PR review rounds kept surfacing the same handful of gap-shapes rather than new ones each time — see `AGENT_LOG.md`'s 2026-08-01 entries for the specifics that prompted this. Deliberately generic rather than backend- or Phase-1-specific: Phase 2's CRUD expansion and Phase 7's four new extension packages are exactly where these same shapes are likely to recur.
+
+- [ ] **Error paths are tested with actual status/response assertions, not just "doesn't look like the default error page."** A response having the right *shape* doesn't mean the status code is right — verify malformed/unexpected input against the specific status it should produce, not just that something structured comes back.
+- [ ] **Any interim or placeholder security/permission config fails closed by default.** Deny unless an explicitly-named allow case (e.g. an active `dev` profile) matches — never permit unless an explicitly-named deny case matches. Applies even to scaffolding meant to be replaced later; "it's temporary" doesn't lower the bar.
+- [ ] **Absence of configuration is its own test case.** No profile set, a missing env var, an unset default — these need explicit coverage, not just the branches you happened to write config for. A test that "passes" only because the app failed to boot for an unrelated reason doesn't count as coverage of the thing it was meant to verify.
+- [ ] **JPA entities used as `Set`/`Map` elements implement `equals`/`hashCode` by natural key, not identity.** Correctness that only holds because of Hibernate's first-level cache isn't correctness — it breaks the moment two instances for the same row cross a persistence-context boundary. Entity accessors that expose collections or arrays return defensive copies, not live internal references.
+
+---
+
 ## Testing strategy summary
 
 Following the standard pyramid — many fast unit tests, fewer integration tests, fewest E2E tests:
