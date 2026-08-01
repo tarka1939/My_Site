@@ -1,0 +1,28 @@
+# Java / Maven
+backend/target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node / Angular (Phase 3 adds specifics; these are safe now)
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log

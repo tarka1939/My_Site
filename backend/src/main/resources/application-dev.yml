@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${DB_NAME:mysite_dev}
+    username: ${DB_USERNAME:mysite}
+    password: ${DB_PASSWORD:mysite}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+logging:
+  level:
+    io.github.tarka1939.mysite: DEBUG
