@@ -2,6 +2,8 @@ package io.github.tarka1939.mysite.project;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,8 +44,7 @@ class ProjectServiceTest {
             List.of("https://example.com/img.png"), List.of("dsp", "java"));
 
         when(tagRepository.findByNameIgnoreCase("dsp")).thenReturn(Optional.of(new Tag("dsp")));
-        when(tagRepository.findByNameIgnoreCase("java")).thenReturn(Optional.empty());
-        when(tagRepository.save(any(Tag.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tagRepository.findByNameIgnoreCase("java")).thenReturn(Optional.of(new Tag("java")));
         when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProjectResponse response = projectService.createProject(request);
@@ -52,13 +53,16 @@ class ProjectServiceTest {
         assertThat(response.description()).isEqualTo("A DSP project");
         assertThat(response.tags()).extracting(TagResponse::name).containsExactlyInAnyOrder("dsp", "java");
 
+        verify(tagRepository).upsertByName("dsp");
+        verify(tagRepository).upsertByName("java");
+
         ArgumentCaptor<ProjectCreatedEvent> eventCaptor = ArgumentCaptor.forClass(ProjectCreatedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue()).isNotNull();
     }
 
     @Test
-    void createProject_reusesExistingTagInsteadOfDuplicating() {
+    void createProject_upsertsRatherThanCheckThenActToAvoidTagCreationRace() {
         ProjectWriteRequest request = new ProjectWriteRequest(
             "Title", "Description", List.of(), List.of(), List.of("react"));
         Tag existing = new Tag("React");
@@ -68,6 +72,9 @@ class ProjectServiceTest {
 
         projectService.createProject(request);
 
-        verify(tagRepository, org.mockito.Mockito.never()).save(any(Tag.class));
+        // upsertByName is always called (its ON CONFLICT DO NOTHING makes it safe to call
+        // even when the tag already exists) rather than branching on a prior find -- that
+        // branching is exactly the check-then-act race this replaces.
+        verify(tagRepository, times(1)).upsertByName(eq("react"));
     }
 }

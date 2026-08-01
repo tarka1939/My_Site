@@ -90,4 +90,17 @@ class ProjectRepositoryIntegrationTest {
         assertThatThrownBy(() -> tagRepository.saveAndFlush(new Tag("react")))
             .isInstanceOf(DataIntegrityViolationException.class);
     }
+
+    @Test
+    void upsertByNameIsIdempotentAndCaseInsensitive() {
+        tagRepository.upsertByName("Vue");
+        tagRepository.upsertByName("vue");
+        tagRepository.upsertByName("VUE");
+
+        List<Tag> matches = tagRepository.findAll().stream()
+            .filter(t -> t.getName().equalsIgnoreCase("vue"))
+            .toList();
+        assertThat(matches).hasSize(1);
+        assertThat(matches.get(0).getName()).isEqualTo("Vue");
+    }
 }

@@ -49,8 +49,12 @@ public class ProjectService {
     private Set<Tag> resolveTags(List<String> tagNames) {
         Set<Tag> tags = new HashSet<>();
         for (String name : tagNames) {
-            Tag tag = tagRepository.findByNameIgnoreCase(name)
-                .orElseGet(() -> tagRepository.save(new Tag(name)));
+            // upsertByName + re-fetch (not findOrElseSave) to avoid a check-then-act race:
+            // two concurrent requests creating the same new tag would otherwise both miss
+            // the find and both attempt to insert, tripping ux_tag_name_lower on one of them.
+            tagRepository.upsertByName(name);
+            Tag tag = tagRepository.findByNameIgnoreCase(name).orElseThrow(
+                () -> new IllegalStateException("Tag upsert should guarantee existence: " + name));
             tags.add(tag);
         }
         return tags;
