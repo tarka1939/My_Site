@@ -67,4 +67,5 @@ _Expand this once backend/frontend exist. Skeleton reflects the plan in `PROJECT
 - `docs/DECISIONS.md` — locked-in technical decisions and why
 - `docs/DATA_MODEL.md` — entities and relationships
 - `PROJECT_TODO.md` — phase-by-phase build plan
-- `AGENT_LOG.md` — record agent mistakes/fixes here per Phase 4 workflow
+- `AGENT_LOG.md` — record agent mistakes/fixes here for the whole project, not just Phase 4
+- `docs/AGENT_WORKFLOW.md` — how to run agent sessions (sequential single-agent vs. dispatcher vs. isolated worktrees) and when each applies; see also `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md`
