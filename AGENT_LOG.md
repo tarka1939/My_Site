@@ -34,6 +34,108 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-01 — claude (main session): Phase 2 core domain features
+
+**Task given:**
+
+Scaffold Phase 2 (Project CRUD, tags, contact form, JWT admin auth, password reset) per
+`PROJECT_TODO.md`, following `docs/DECISIONS.md` and the Phase 1 gotchas already logged below.
+Explicitly out of scope: Phase 3 (frontend), Phase 4.
+
+**Agent(s) used:**
+
+Main Claude Code session, sequential single-agent (per `docs/AGENT_WORKFLOW.md` — Phase 2 has
+real dependencies between checklist items, no genuine parallelism to exploit with a dispatcher).
+
+**What went right:**
+
+- Read all Phase 1 AGENT_LOG.md entries and the Copilot-review entry before writing code, per
+  the kickoff instructions — avoided re-discovering the `saveAndFlush` timestamp trap on the
+  new PUT endpoint (which the kickoff specifically flagged as likely to reintroduce it) and
+  reused the existing tag upsert-by-name pattern rather than reintroducing the check-then-act
+  race.
+- Manual `curl` verification against a real Docker Postgres (not just `mvn test`) caught a
+  genuine production bug the test suite missed — see below. Consistent with the Phase 1
+  pattern where real-infra testing (Testcontainers, then manual boot) found bugs mocks
+  structurally couldn't.
+
+**What went wrong (be specific):**
+
+1. **`SELECT DISTINCT p.id ... ORDER BY p.createdAt` — Postgres rejects it.** The tag-filter
+   query (`ProjectRepository.findIdsByTagNamesIgnoreCase`) used `SELECT DISTINCT p.id FROM
+   Project p JOIN p.tags t WHERE ...` to collapse a project matching multiple tags back to one
+   row. Postgres requires every `ORDER BY` expression to appear in the `SELECT DISTINCT` list —
+   `ProjectController` always builds a `createdAt`-sorted `Pageable`, so any tag-filtered list
+   request threw `InvalidDataAccessResourceUsageException` (surfaced as a **401**, not a 500,
+   for *unauthenticated* requests specifically — Spring's error dispatch to `/error` isn't
+   itself permitted by the security filter chain's `authorizeHttpRequests` rules, so an
+   unauthenticated caller saw a misleading 401 instead of the real 500; an authenticated caller
+   saw the actual 500). The integration test for this query (`ProjectRepositoryIntegrationTest`)
+   originally used an *unsorted* `PageRequest.of(0, 10)`, which never exercises an `ORDER BY`
+   clause at all — it passed while the real endpoint was broken.
+2. **Spring Modulith cycle: root ↔ auth.** `GlobalExceptionHandler` (root package) needed to
+   catch `auth`-specific exceptions (`InvalidCredentialsException`, `InvalidResetTokenException`),
+   while `PasswordResetService` (in `auth`) needed root-package shared infra
+   (`ClientIpHasher`, `InMemoryRateLimiter`, `RateLimitExceededException`) — a genuine two-node
+   cycle (root → auth → root), caught immediately by `ApplicationModules.verify()` in
+   `ModularityTests` exactly as the Phase 1 ADR intended it to.
+3. **`RestClient.Builder` autoconfiguration didn't resolve in this Boot 4.1.0 setup.**
+   Injecting `RestClient.Builder` into `ResendEmailClient` (the standard, documented Spring Boot
+   pattern) failed application context startup with `NoSuchBeanDefinitionException` — another
+   instance of the test/autoconfig-artifact fragmentation Phase 1 already hit for
+   `@DataJpaTest`. Similarly, Boot's `TestRestTemplate` convenience class wasn't resolvable
+   from `spring-boot-starter-test`'s declared dependencies at all.
+
+**How it was caught:**
+
+Bug 1: manual `curl "GET /api/v1/projects?tag=dsp"` against a real Docker Postgres, after
+`mvn test` had already gone fully green — the exact class of gap Phase 1's AGENT_LOG already
+called out (tests passing ≠ endpoint working). Bugs 2 and 3: `mvn test` itself (Modulith
+verification test and Spring context bean-wiring failures respectively), before any manual
+verification was needed.
+
+**Fix applied:**
+
+1. Rewrote the tag-filter query to use an `IN` subquery (`WHERE p.id IN (SELECT p2.id FROM
+   Project p2 JOIN p2.tags t WHERE ...)`) instead of `JOIN` + `DISTINCT` — no `DISTINCT` needed
+   at all since the outer query is a plain `FROM Project p`. Updated the integration test to
+   use the same sorted `Pageable` shape `ProjectController` actually builds, so this class of
+   bug can't silently regress again.
+2. Moved `InvalidCredentialsException`/`InvalidResetTokenException` out of `auth/` into the
+   root package, alongside the already-root-package `ResourceNotFoundException` — modules throw
+   them, only the root `GlobalExceptionHandler` catches them, so the dependency only ever runs
+   one direction (module → root), matching the existing `ResourceNotFoundException` pattern.
+3. Built the `RestClient` directly via the static `RestClient.builder()` factory instead of an
+   injected `RestClient.Builder` bean. For the one HTTP-level security test
+   (`SecurityIntegrationTest`), used `@LocalServerPort` + a plain `RestTemplate` configured with
+   a non-throwing `DefaultResponseErrorHandler`, sidestepping `TestRestTemplate` entirely.
+
+**Takeaway for next time / non-obvious judgment calls made:**
+
+1. **An integration test's `Pageable`/query shape has to match production usage, not just be
+   "a valid Pageable."** An unsorted `PageRequest.of(page, size)` in a test can pass while the
+   real endpoint (which always adds a default sort) is broken — DISTINCT+ORDER BY interactions,
+   in particular, only surface with an actual `ORDER BY` clause present. Prefer a small test
+   helper that mirrors the controller's actual `Pageable` construction over ad hoc
+   `PageRequest.of()` calls in each test.
+2. **An unauthenticated request hitting a server error can surface as 401, not 500** — masking
+   the real failure — because the error-dispatch path itself isn't `permitAll`'d and Spring
+   Security intercepts it before the true status code reaches the client. When debugging an
+   unexpected 401 on a route that's supposed to be public, retry the same request *with* a
+   valid token before assuming the security config's matcher rules are wrong; the number that
+   comes back (500 vs. 401) tells you which layer actually failed.
+3. **Spring Boot 4.1.0's test/autoconfig fragmentation (already flagged in Phase 1 for
+   `@DataJpaTest`) extends further than expected** — `RestClient.Builder` autoconfiguration and
+   `TestRestTemplate` itself. Default to constructing framework objects via their own static
+   factories (`RestClient.builder()`, `PathPatternRequestMatcher`, etc.) rather than assuming a
+   Boot Starter registers a convenience bean, and verify with a real `mvn test-compile`/`mvn
+   test` before designing further code around an assumed-available bean.
+4. **A cross-cutting root-package exception type (thrown by many modules, caught only by the
+   shared `GlobalExceptionHandler`) is the correct home for it — don't put it in whichever
+   module happens to throw it first.** `ResourceNotFoundException` already established this
+   pattern in Phase 1; `InvalidCredentialsException`/`InvalidResetTokenException` should have
+   followed it from the start instead of being added to `auth/` and needing a follow-up move.
+
 ## 2026-08-01 — claude (main session): Phase 1 backend foundation
 
 **Task given:**
