@@ -90,24 +90,28 @@ public class Project {
         this.description = description;
     }
 
+    /** Defensive copy -- callers can't mutate this entity's internal state through the getter. */
     public List<Link> getLinks() {
-        return links;
+        return List.copyOf(links);
     }
 
     public void setLinks(List<Link> links) {
         this.links = links;
     }
 
+    /** Defensive copy -- arrays are always mutable, so returning {@code images} directly would
+     *  let a caller do {@code project.getImages()[0] = ...} and silently corrupt entity state. */
     public String[] getImages() {
-        return images;
+        return images.clone();
     }
 
     public void setImages(String[] images) {
         this.images = images;
     }
 
+    /** Defensive copy, same reasoning as {@link #getLinks()}. */
     public Set<Tag> getTags() {
-        return tags;
+        return Set.copyOf(tags);
     }
 
     public void setTags(Set<Tag> tags) {
