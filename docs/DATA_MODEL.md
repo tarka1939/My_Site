@@ -59,6 +59,7 @@ _Confirmed in scope — see SPEC.md → Auth scope decision._
 |---|---|---|
 | id | uuid, PK | |
 | username | varchar(100), not null, unique | |
+| email | varchar(320), not null, unique | **added Phase 2** — the original draft omitted this, but `POST /auth/password-reset-request` (`docs/openapi.yaml`) takes an email and needs somewhere to look it up; added via `V2__admin_user_email_and_seed.sql` alongside the seed row rather than retrofitted into `V1__init.sql` (already shipped in Phase 1/PR #76) |
 | password_hash | varchar(255), not null | bcrypt or argon2 — never store plaintext or use a reversible hash |
 | created_at | timestamptz, not null default `now()` | |
 
@@ -168,6 +169,7 @@ erDiagram
     ADMIN_USER {
         uuid id PK
         string username
+        string email
         string password_hash
         timestamptz created_at
     }
@@ -221,4 +223,5 @@ erDiagram
 ## Migration notes
 
 - First migration: `V1__init.sql` (Flyway) — should create `project`, `tag`, `project_tags`, `contact_message`, `admin_user`, `password_reset_token`. Phase 7 tables land in their own later migrations, one per sub-phase, not upfront.
+- `V2__admin_user_email_and_seed.sql` (Phase 2) — adds `admin_user.email` (see AdminUser table above) and seeds the single admin row with a bcrypt-hashed password, per the Auth Flow ADR in `docs/DECISIONS.md`.
 - Record schema changes here as they land, or link to migration files directly.

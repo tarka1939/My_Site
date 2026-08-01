@@ -10,6 +10,16 @@ spring:
   flyway:
     enabled: true
 
+app:
+  # No default here for app.jwt.secret on purpose -- it's set per-profile (dev has a
+  # convenience fallback, prod/test require JWT_SECRET explicitly) so that running with no
+  # active profile fails fast instead of silently picking up an insecure default. Same
+  # discipline as the Phase 1 SecurityConfig fail-open fix -- see AGENT_LOG.md.
+  resend:
+    api-key: ${RESEND_API_KEY:}
+    from-address: ${RESEND_FROM_ADDRESS:onboarding@resend.dev}
+  frontend-url: ${FRONTEND_URL:http://localhost:4200}
+
 management:
   endpoints:
     web:

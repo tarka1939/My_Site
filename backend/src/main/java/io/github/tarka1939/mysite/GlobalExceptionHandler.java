@@ -8,6 +8,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import jakarta.validation.ConstraintViolationException;
+
 /**
  * One consistent error shape for the whole API, matching docs/openapi.yaml's RFC 7807
  * ProblemDetail / ValidationProblemDetail conventions.
@@ -28,10 +30,45 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, "Request failed validation");
+        problem.setTitle("Validation Failed");
+
+        List<FieldErrorDetail> errors = ex.getConstraintViolations().stream()
+            .map(cv -> new FieldErrorDetail(cv.getPropertyPath().toString(), cv.getMessage()))
+            .toList();
+        problem.setProperty("errors", errors);
+        return problem;
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ProblemDetail handleNotFound(ResourceNotFoundException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
         problem.setTitle("Not Found");
+        return problem;
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ProblemDetail handleRateLimitExceeded(RateLimitExceededException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        problem.setTitle("Too Many Requests");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setTitle("Unauthorized");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidResetTokenException.class)
+    public ProblemDetail handleInvalidResetToken(InvalidResetTokenException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Invalid Reset Token");
+        problem.setProperty("errors", List.of(new FieldErrorDetail("token", ex.getMessage())));
         return problem;
     }
 
