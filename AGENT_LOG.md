@@ -34,6 +34,58 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-01 — Shared rate-limiter key collision on PR #77 (fourth external finding, self-introduced this same PR)
+
+**Task given:** User reported a bug they'd found in `AuthService`/`PasswordResetService`:
+both call `rateLimiter.tryAcquire(ipHash, ...)` against the same singleton
+`InMemoryRateLimiter` with an unnamespaced key, so the two logically-independent rate limits
+(login: 5/15min, password-reset: 5/1hour) share one bucket per IP.
+
+**Agent(s) used:** User (direct report, not a tool-generated review this time); main Claude
+Code session as verifier/fixer.
+
+**What went wrong (be specific):** This bug was introduced *by this session*, in the same
+cross-review round that added login rate limiting (see the entry above) — `AuthService.login`
+copied `PasswordResetService.requestReset`'s `rateLimiter.tryAcquire(ipHash, ...)` call
+verbatim, missing that `InMemoryRateLimiter` is a shared singleton bean and the bare IP hash
+collides across both call sites. Traced through: since password-reset's window (1 hour) is
+longer than login's (15 min), and `tryAcquire`'s pruning cutoff is based on the *calling*
+method's own window, a shared bucket exhausted by 5 failed logins would then reject
+password-reset-request for up to the *longer* of the two windows (1 hour) — breaking exactly
+the "I forgot my password, let me reset it" recovery path a real admin would take right after
+failing to log in a few times.
+
+**How it was caught:** User inspection of the diff, reported directly (not via an automated
+review tool this round). Verified by tracing `tryAcquire`'s pruning logic against both call
+sites' actual key values before fixing — confirmed the collision was real and the described
+failure mode (blocked for the *longer* window, not just the shorter one) was accurate.
+
+**Fix applied:** Namespaced both keys (`"login:" + ipHash`, `"password-reset:" + ipHash`).
+Added `AuthIntegrationTest.loginRateLimitAndPasswordResetRateLimitAreIndependentPerIp` — real
+Spring-wired singleton `InMemoryRateLimiter`, not a mock, so this actually exercises the
+shared-bean collision a unit test with per-test-mocked components structurally cannot catch.
+Re-verified live: exhaust login's 5-attempt limit, then confirm password-reset-request from
+the same IP still returns 202. `mvn test`: 49 green.
+
+**Takeaway for next time:**
+
+- **Copying a working pattern (`rateLimiter.tryAcquire(ipHash, ...)`) to a second call site
+  against a *shared singleton* needs a namespace, not just the same shape.** The pattern was
+  correct in isolation at each site; the bug only exists because both sites reach the same
+  mutable state. Any time a new caller is added against an existing shared/singleton
+  component, ask "does this collide with an existing caller's keys?" before copying the call.
+- **A test that mocks the shared component can't catch a shared-component collision bug** —
+  `AuthServiceTest`'s mocked `InMemoryRateLimiter` verified the *login* rate limit worked in
+  isolation and would never have caught two services stepping on each other's real state.
+  Only a test wiring the actual singleton (an integration test, in this codebase's terms)
+  exercises that. Worth remembering when a bug involves a component two+ services share.
+- **Four rounds of external review/report on one PR now (Copilot ×1, independent-agent
+  cross-review ×1, direct user report ×1, plus this session's own manual-verification bug) —
+  every round found something real**, including one bug this same session introduced two
+  commits earlier while fixing a different reviewer's finding. Fixing review feedback is not
+  risk-free; a fix itself needs the same scrutiny as the original code, not a pass because it
+  was "just responding to review."
+
 ## 2026-08-01 — Independent cross-review of PR #77 (third external review of agent output)
 
 **Task given:** User ran an independent review of PR #77 in a separate chat session (after
