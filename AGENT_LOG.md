@@ -34,6 +34,81 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-01 — GitHub Copilot review of PR #77 (second external review of agent output)
+
+**Task given:** Requested a Copilot review on PR #77 per the Phase 2 kickoff instructions
+(same practice as Phase 1's PR #76), then responded to and fixed what was valid.
+
+**Agent(s) used:** GitHub Copilot (automated PR reviewer) as reviewer; main Claude Code
+session as author/responder.
+
+**What went right:**
+
+Copilot found **five genuine issues** across correctness, security, and operability that
+`mvn test` (46 tests) and manual `curl` verification against real Postgres both missed —
+consistent with the Phase 1 finding that an independent reviewer with no context on the
+author's intent catches a different class of problem than self-review or tests do, even after
+real-infra testing already caught one bug this same session (the tag-filter DISTINCT/ORDER BY
+issue, see the entry above):
+
+1. **`ProjectService.listProjects` NPEs on a concurrent-delete race.** `byId::get` on the
+   id→entity map can return null if a project is deleted between the id-page query and the
+   `findAllById` re-fetch, and `ProjectResponse.from(null)` would NPE into an unhandled 500.
+   Fixed by filtering nulls before mapping.
+2. **`ClientIpHasher` trusted `X-Forwarded-For` unconditionally.** With no reverse proxy in
+   front of the app yet (that's Phase 5, not decided), any caller could set the header
+   themselves and spoof their way past the per-IP rate limiter on both the contact form and
+   password-reset-request. Fixed by dropping the header entirely and using `getRemoteAddr()`
+   only, until Phase 5 wires up real trusted-proxy handling.
+3. **`ResendEmailClient` logged the raw reset token at WARN** when `RESEND_API_KEY` wasn't
+   configured (`log.warn(... resetLink ...)`, and `resetLink` embeds the raw token). A 30-minute
+   password-reset token is a credential-equivalent secret; logging it means anyone with log
+   access could reset the admin password. Fixed by keeping the link out of the WARN entirely
+   and moving it to DEBUG (off by default in prod).
+4. **`V2__admin_user_email_and_seed.sql` hardcoded a real personal email address.** Permanent
+   in git history the moment this merges, and gets seeded into every environment that runs the
+   migration — including CI's throwaway Testcontainers databases. Fixed by switching to the
+   RFC 2606 reserved `admin@mysite.invalid` placeholder, with a comment flagging the manual
+   out-of-band update needed before password-reset can reach a real inbox.
+5. **`SecurityConfig`'s JWT secret wasn't length-validated.** HS256 needs >=32 bytes; Nimbus's
+   signer/verifier do reject a shorter key, but only lazily on first login/token-validation —
+   a misconfigured `JWT_SECRET` would look like a healthy boot and only fail once someone
+   actually tried to log in. Fixed by validating length in the `jwtSecretKey` bean factory
+   method itself, failing fast at startup instead. Added `SecurityConfigTest` to cover it.
+
+**What went wrong (in the review, not the code):** None this round — the sixth comment (add
+CORS configuration) was a fair, technically correct observation, not a mistake, but it's
+explicitly out of scope: `PROJECT_TODO.md` places CORS under Phase 5, and there's no concrete
+origin to allowlist yet (no frontend until Phase 3, no Netlify site until Phase 5). Replied on
+the thread explaining the deferral rather than silently ignoring it or guessing a placeholder
+origin now.
+
+**How it was caught:** Automated PR review, then per-comment verification against the actual
+source before accepting or rejecting each one (read the flagged code first, confirmed the
+failure mode was real, then fixed) — same discipline as the Phase 1 Copilot round.
+
+**Fix applied:** Five fixes, one commit (d7e48bc), each re-verified with the full `mvn test`
+suite (46 tests, all green) before pushing. Replied individually on each of the six review
+threads with the verdict and, where fixed, the commit hash.
+
+**Takeaway for next time:**
+
+- **Two rounds of Copilot review now, two rounds of real findings (3/6 and 5/6 respectively)
+  neither test suite nor manual verification caught.** This is no longer a one-off — treat the
+  post-implementation Copilot review as a standard, expected source of real bugs for this
+  project, not a formality to satisfy before merging.
+- **A concurrency-race NPE, a spoofable trust-boundary assumption, a secret logged at the
+  wrong level, PII in a migration, and a lazily-validated config value are all in the same
+  "passes every happy-path test" category** as Phase 1's findings (missing-field validation,
+  a check-then-act race, a shadowed exception name) — none of them show up under well-formed,
+  single-request, no-adversary testing. Worth deliberately red-teaming write paths (concurrent
+  requests, spoofed headers, malformed/adversarial input, secrets in logs) rather than relying
+  on an external reviewer to be the only line of defense for this class of bug.
+- **Not every valid comment should be fixed immediately** — the CORS finding was correct but
+  premature (no origin exists yet to configure). Distinguishing "wrong" from "right but not yet
+  actionable" and saying so explicitly on the thread is different from, and better than, either
+  blindly implementing it with a guessed placeholder or silently ignoring the comment.
+
 ## 2026-08-01 — claude (main session): Phase 2 core domain features
 
 **Task given:**
