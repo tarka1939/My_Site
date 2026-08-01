@@ -42,7 +42,13 @@ public class ResendEmailClient {
 
     public void sendPasswordResetEmail(String toEmail, String resetLink) {
         if (apiKey == null || apiKey.isBlank()) {
-            log.warn("RESEND_API_KEY not configured -- skipping password reset email send (link would have been: {})", resetLink);
+            // resetLink embeds the raw reset token -- a credential-equivalent secret, good for
+            // 30 minutes. Logging it at WARN (visible by default, including in prod) would let
+            // anyone with log access reset the admin password; DEBUG is off by default in prod
+            // (application-prod.yml) but on in dev, which is exactly the "let me test the flow
+            // without a real Resend account" case this no-op path exists for.
+            log.warn("RESEND_API_KEY not configured -- skipping password reset email send for {}", toEmail);
+            log.debug("Reset link that would have been sent: {}", resetLink);
             return;
         }
 

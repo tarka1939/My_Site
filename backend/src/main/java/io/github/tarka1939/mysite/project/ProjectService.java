@@ -58,8 +58,12 @@ public class ProjectService {
         Map<UUID, Project> byId = new HashMap<>();
         projectRepository.findAllById(idPage.getContent()).forEach(p -> byId.put(p.getId(), p));
 
+        // byId.get(id) can miss if a project was deleted between the id query above and
+        // findAllById -- filter rather than let ProjectResponse.from(null) NPE into a 500 for
+        // what's a normal (if rare) concurrent-delete race, not an error condition.
         List<ProjectResponse> content = idPage.getContent().stream()
             .map(byId::get)
+            .filter(java.util.Objects::nonNull)
             .map(ProjectResponse::from)
             .toList();
 

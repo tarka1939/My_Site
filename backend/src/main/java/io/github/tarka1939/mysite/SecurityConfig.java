@@ -48,9 +48,21 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    private static final int HS256_MIN_KEY_BYTES = 32;
+
     @Bean
     public SecretKeySpec jwtSecretKey(@Value("${app.jwt.secret}") String secret) {
-        return new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        // Nimbus's MACSigner/MACVerifier reject a key this short too, but only lazily -- on
+        // the first login/token-validation call, not at startup. Checking here turns a
+        // misconfigured JWT_SECRET into an immediate, actionable boot failure instead of an
+        // app that looks healthy until someone actually tries to log in.
+        if (keyBytes.length < HS256_MIN_KEY_BYTES) {
+            throw new IllegalStateException(
+                "app.jwt.secret (JWT_SECRET) must be at least " + HS256_MIN_KEY_BYTES
+                    + " bytes for HS256; got " + keyBytes.length);
+        }
+        return new SecretKeySpec(keyBytes, "HmacSHA256");
     }
 
     @Bean

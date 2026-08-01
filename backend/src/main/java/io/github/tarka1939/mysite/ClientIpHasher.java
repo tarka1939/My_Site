@@ -22,13 +22,13 @@ public class ClientIpHasher {
     }
 
     private String resolveClientIp(HttpServletRequest request) {
-        // A reverse proxy in front of the app (see docs/DECISIONS.md's VPS hosting ADR) will
-        // set X-Forwarded-For; the first entry is the original client. Falls back to the
-        // socket address directly when there's no proxy (e.g. local dev).
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
+        // Deliberately just getRemoteAddr(), not X-Forwarded-For: X-Forwarded-For is
+        // caller-controlled unless the app sits behind a known, trusted reverse proxy that
+        // strips/overwrites client-supplied values before setting its own -- no such proxy
+        // exists yet (Phase 5, VPS hosting, not decided). Trusting it now would let any caller
+        // spoof the header and trivially bypass per-IP rate limiting. Revisit once Phase 5
+        // picks a reverse proxy and wires up Spring's forwarded-header support
+        // (server.forward-headers-strategy / ForwardedHeaderFilter) with a trusted proxy count.
         return request.getRemoteAddr();
     }
 

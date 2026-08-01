@@ -12,10 +12,17 @@ CREATE UNIQUE INDEX ux_admin_user_email ON admin_user (email);
 -- below, plaintext never committed -- shared with the site owner out of band). Log in once
 -- and rotate via POST /auth/password-reset-request / POST /auth/password-reset once
 -- RESEND_API_KEY is configured.
+--
+-- Email deliberately uses the RFC 2606 reserved .invalid TLD, not a real address: a real
+-- personal email hardcoded into a migration is permanent in git history the moment this
+-- merges, and would seed the exact same address into every environment (dev/test/prod) that
+-- ever runs this migration, including throwaway Testcontainers databases in CI. Update it to
+-- a real address out-of-band (a manual `UPDATE admin_user SET email = ...` against the real
+-- deployment DB) before relying on password-reset-request actually reaching an inbox.
 INSERT INTO admin_user (id, username, email, password_hash)
 VALUES (
     gen_random_uuid(),
     'admin',
-    'krzysztof.tarka1939@gmail.com',
+    'admin@mysite.invalid',
     '$2a$10$ntRuCNz3AZL5PJDNlWjbUOOQxf9b5ZRy2u6ny26xa/thPND.3Dg7i'
 );
