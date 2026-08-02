@@ -1,0 +1,26 @@
+.tag-list,
+.link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+}
+
+.image-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+
+  img {
+    width: 100%;
+    border-radius: 0.375rem;
+  }
+}
+
+.description {
+  white-space: pre-wrap;
+}

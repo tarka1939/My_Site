@@ -1,0 +1,38 @@
+<a routerLink="/">&larr; Back to projects</a>
+
+@if (loading()) {
+  <p role="status">Loading project&hellip;</p>
+} @else if (notFound()) {
+  <p role="alert">Project not found.</p>
+} @else if (project(); as project) {
+  <article>
+    <h1>{{ project.title }}</h1>
+
+    @if (project.tags.length > 0) {
+      <ul class="tag-list" aria-label="Tags">
+        @for (tag of project.tags; track tag.id) {
+          <li>{{ tag.name }}</li>
+        }
+      </ul>
+    }
+
+    @if (project.images.length > 0) {
+      <ul class="image-gallery" aria-label="Project images">
+        @for (image of project.images; track image; let i = $index) {
+          <li><img [src]="image" [alt]="project.title + ' screenshot ' + (i + 1)" loading="lazy" /></li>
+        }
+      </ul>
+    }
+
+    <p class="description">{{ project.description }}</p>
+
+    @if (project.links.length > 0) {
+      <h2>Links</h2>
+      <ul class="link-list">
+        @for (link of project.links; track link.url) {
+          <li><a [href]="link.url" target="_blank" rel="noopener noreferrer">{{ link.label }}</a></li>
+        }
+      </ul>
+    }
+  </article>
+}
