@@ -34,6 +34,49 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-02 — claude (main session): PR #80's "Closes #N" list never actually linked anything
+
+**Task given:** User noticed PR #80's "Development" sidebar had no linked issues, despite the PR
+body listing `Closes #24, #25, #26, #27, #28, #29, #30, #31, #32, #33`.
+
+**What went wrong (be specific):** Two independent, stacked causes, both silent (the rendered PR
+body text looked correct either way -- neither is visible without querying the API/GraphQL
+directly):
+
+1. **The repo's default branch was `master`**, not `main` -- a stale artifact from before the
+   project standardized on `main` (confirmed: `master` was an ancestor of `main`, 57 commits
+   behind, just the original 5-commit skeleton). GitHub only auto-populates a PR's linked-issues
+   sidebar, and only auto-closes on merge, when the PR's base is the repo's *default* branch.
+   Every prior PR (#76, #77, #79) had also silently gotten zero linked issues for this exact
+   reason, not just PR #80.
+2. **Even after fixing (1), a comma-separated `Closes #24, #25, #26, ...` only linked the first
+   issue** (#24) -- confirmed via `gh api graphql` querying `closingIssuesReferences` directly,
+   which is the only way to see this; the rendered body text gives no indication. This contradicts
+   GitHub's own documented syntax for closing multiple issues in one line.
+
+**How it was caught:** User manually checked the PR's "Development" section on GitHub's UI.
+
+**Fix applied:**
+1. `gh api repos/tarka1939/My_Site -X PATCH -f default_branch=main`, then deleted the now-pointless
+   `master` branch (`git push My_Site --delete master`) -- confirmed safe first via
+   `git merge-base --is-ancestor My_Site/master My_Site/main`.
+2. Rewrote PR #80's body to use one `Closes #N` per line instead of the comma-separated list.
+   Re-verified via `gh api graphql` that all 10 issues now appear in `closingIssuesReferences`.
+3. Updated `CLAUDE.md`'s PR conventions section with both findings so future phases don't repeat
+   either mistake.
+
+**Takeaway for next time:**
+
+- **Never trust the rendered PR body to confirm closing keywords worked.** Query
+  `closingIssuesReferences` via `gh api graphql` (or check the PR's own "Development" sidebar on
+  GitHub's site, which is what actually surfaced this) before assuming a multi-issue "Closes"
+  list did anything. A comma-separated list after one keyword is silently wrong; one keyword per
+  issue, one per line, is the only form confirmed to work.
+- **A stale default branch is invisible until you specifically check for it** (`gh api
+  repos/OWNER/REPO --jq '.default_branch'`) -- everything else about the repo (PRs, merges, CI if
+  it existed) can look completely normal while this quietly breaks issue auto-linking/auto-closing
+  for every single PR.
+
 ## 2026-08-02 — claude (main session): Phase 3 frontend foundation
 
 **Task given:**
