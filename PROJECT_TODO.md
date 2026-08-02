@@ -59,6 +59,20 @@ On top of the flat 69-issue backlog and the `[Phase N]` title-prefix convention,
 
 ---
 
+## Autonomous execution workflow (added 2026-08-02)
+
+From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTONOMOUS_WORKFLOW.md` rather than a hand-written kickoff prompt per phase — see that doc and the corresponding ADR in `docs/DECISIONS.md` for the full reasoning. Summary:
+
+- One persistent "Senior Dev" session the user (product owner) talks to directly; it plans and implements phase work against this file, and reports status in standup form rather than raw diffs.
+- Every PR gets reviewed by a fresh, independent Claude Code session with no shared context with the implementation, alongside GitHub Copilot's automated review (both stay — each has independently caught real defects so far).
+- Genuine spec ambiguity gets asked and only blocks the dependent task(s), not the whole phase.
+- "Large problems" (new accounts/credentials/payment, destructive migrations, repeated failed fix attempts, anything touching prod secrets/DNS/billing) always stop and wait for the user.
+- Phase 5 specifically needs human-only setup first (Netlify + VPS account creation, secrets) — see `docs/AUTONOMOUS_WORKFLOW.md`'s pre-flight checklist — plus a manual checkpoint on the first real end-to-end deploy, even once that setup is done.
+
+**Status:** in effect starting Phase 4's tail (2026-08-02).
+
+---
+
 ## Phase 0 — Spec & contract (before any code)
 
 - [x] Write `SPEC.md`: what the site does, explicit scope, explicit **non-goals** (e.g. "no multi-user support," "no real-time features") — done, issue #1
@@ -113,12 +127,12 @@ On top of the flat 69-issue backlog and the `[Phase N]` title-prefix convention,
 
 ## Phase 4 — Integration & multi-agent workflow practice
 
-This is the phase that actually earns the "multi-agent" label — do it deliberately, not as an afterthought:
+> **Status (2026-08-02):** adapted — see `docs/AUTONOMOUS_WORKFLOW.md` and the corresponding ADR in `docs/DECISIONS.md`. The original premise (build backend and frontend blind to each other, then integrate for the first time here) didn't hold: Phase 3 was built and smoke-tested against the real, running backend from the start, so there was no "first integration" left to test in this phase. The backend/frontend isolation exercise moves to Phase 7, where each new extension is a genuine not-yet-built, contract-first venue for it.
 
-- [ ] Run a backend-agent session and a frontend-agent session **independently**, each working only from the OpenAPI contract (not from each other's implementation) — this is the real test of whether your spec was actually complete
-- [ ] Integration pass: bring both together, log every contract mismatch you find in `AGENT_LOG.md`
-- [ ] Document at least 3 concrete cases where an agent's output was subtly wrong and how you caught and fixed it — this is your actual differentiation artifact for interviews, more valuable than the app itself
-- [ ] End-to-end tests (Playwright) covering the main user journeys: browse projects → view detail → submit contact form
+- [ ] ~~Run a backend-agent session and a frontend-agent session independently~~ — moved to Phase 7 (see status note above)
+- [ ] ~~Integration pass: bring both together, log every contract mismatch~~ — superseded; integration already happened live during Phase 3
+- [ ] Document at least 3 concrete cases where an agent's output was subtly wrong and how you caught and fixed it — this is your actual differentiation artifact for interviews, more valuable than the app itself. Already substantively satisfied by `AGENT_LOG.md`'s existing entries (the null-timestamp `saveAndFlush` bug, the Copilot-review findings, the tag-filtered-pagination Postgres bug, the Phase 3 CORS gap) — this item is to formally index/confirm those as the deliverable, not to manufacture new ones
+- [ ] End-to-end tests (Playwright) covering the main user journeys: browse projects → view detail → submit contact form — still genuinely unbuilt, do this for real
 
 ## Phase 5 — Infra & deployment (split targets: Netlify for frontend, self-managed VPS for backend)
 
@@ -137,6 +151,8 @@ This is the phase that actually earns the "multi-agent" label — do it delibera
 - [ ] Confirm HTTPS/TLS on both the Netlify domain (automatic) and the backend host (usually automatic, but verify)
 - [ ] Basic structured logging at minimum; use whatever free-tier log viewer your backend platform provides
 
+**Pre-flight (see `docs/AUTONOMOUS_WORKFLOW.md`):** Netlify + VPS accounts, secrets, and a budget ceiling need to be provided by the user before this phase can run with the same autonomy as Phases 1-4 — account creation and payment are always human-only steps, regardless of session. The first real end-to-end deploy is a manual checkpoint even after that setup is done.
+
 ## Phase 6 — Content & polish
 
 - [ ] Migrate your existing projects (Equalizer, etc.) into the new content model
@@ -147,6 +163,8 @@ This is the phase that actually earns the "multi-agent" label — do it delibera
 ## Phase 7 — Extension features (sequenced — ship one before starting the next)
 
 These are the four "give the backend a real job" candidates from earlier. Build and deploy them in this order, not in parallel — each ships and gets reviewed on its own before the next starts, and later ones reuse infrastructure the earlier ones justify building.
+
+**Note (2026-08-02):** this is also where the genuine backend-agent/frontend-agent isolation exercise from Phase 4's original plan now lives — see `docs/AUTONOMOUS_WORKFLOW.md`. Each extension below is new and not-yet-built, a real contract-first venue for it. Correction from Phase 3's mistake: the frontend side should develop against a mock server generated from the new contract addition, not the live backend, until an explicit integration step.
 
 **7a. GitHub webhook auto-sync**
 - [ ] New `githubsync` package: webhook receiver endpoint, verifying GitHub's signature header before trusting any payload
