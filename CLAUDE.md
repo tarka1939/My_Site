@@ -11,6 +11,9 @@ Every PR needs three pieces of metadata set, not just opened against `main`:
 - **Milestone:** set to the matching phase (e.g. "Phase 2"). Milestone numbers aren't the same as phase numbers — look them up with `gh api repos/tarka1939/My_Site/milestones --jq '.[] | "\(.number): \(.title)"'` rather than guessing, then set via the issue/PR update call (PRs share the Issues API for this).
 - **Project board:** add the PR to project #1 ("My Site") and set its Status field (`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`) — `In Review` once the PR is open and ready for review.
 
+## PROJECT_TODO.md discipline
+Keep `PROJECT_TODO.md`'s phase status blurb current for the *whole* time a phase is being worked, not just once at the initial completion checkpoint. If you do any follow-up after a phase's checklist is first checked off — review-round fixes, hardening, a process/infra discovery like a misconfigured default branch — go back and update that phase's status note (and `AGENT_LOG.md`) to reflect it, in the same session, before moving on. A repeat mistake in this project specifically: fixing something and logging it in `AGENT_LOG.md` alone, without touching `PROJECT_TODO.md`, leaves the phase's own status blurb stale and understates what actually happened.
+
 > Status: `/backend` has full Project CRUD, tag listing, contact form + rate limiting, JWT login, and password reset (Phases 1-2). `/frontend` is scaffolded with routing, a generated API client, auth, and the core CMS pages (Phase 3).
 
 ## Project
