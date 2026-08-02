@@ -1,0 +1,20 @@
+<a routerLink="/admin/messages">&larr; Back to messages</a>
+
+@if (loading()) {
+  <p role="status">Loading&hellip;</p>
+} @else if (notFound()) {
+  <p role="alert">Message not found.</p>
+} @else if (message(); as message) {
+  <article>
+    <h1>Message from {{ message.name }}</h1>
+    <p>
+      <a [href]="'mailto:' + message.email">{{ message.email }}</a>
+    </p>
+    <p><time [attr.datetime]="message.createdAt">{{ message.createdAt | date: 'medium' }}</time></p>
+    <p class="message-body">{{ message.message }}</p>
+
+    <button type="button" (click)="deleteMessage()" [disabled]="deleting()">
+      {{ deleting() ? 'Deleting…' : 'Delete message' }}
+    </button>
+  </article>
+}

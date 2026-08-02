@@ -1,0 +1,13 @@
+export * from './auth.service';
+import { AuthService } from './auth.service';
+export * from './auth.serviceInterface';
+export * from './contact.service';
+import { ContactService } from './contact.service';
+export * from './contact.serviceInterface';
+export * from './projects.service';
+import { ProjectsService } from './projects.service';
+export * from './projects.serviceInterface';
+export * from './tags.service';
+import { TagsService } from './tags.service';
+export * from './tags.serviceInterface';
+export const APIS = [AuthService, ContactService, ProjectsService, TagsService];

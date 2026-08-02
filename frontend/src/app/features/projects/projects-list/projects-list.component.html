@@ -1,0 +1,56 @@
+<h1>Projects</h1>
+
+@if (allTags().length > 0) {
+  <fieldset class="tag-filter">
+    <legend>Filter by tag</legend>
+    @for (tag of allTags(); track tag.id) {
+      <button
+        type="button"
+        [attr.aria-pressed]="selectedTags().includes(tag.name)"
+        [class.is-selected]="selectedTags().includes(tag.name)"
+        (click)="toggleTag(tag.name)"
+      >
+        {{ tag.name }}
+      </button>
+    }
+  </fieldset>
+}
+
+@if (loading()) {
+  <p role="status">Loading projects&hellip;</p>
+} @else if (loadError()) {
+  <p role="alert">{{ loadError() }}</p>
+} @else if (projects().length === 0) {
+  <p>No projects found.</p>
+} @else {
+  <ul class="project-grid">
+    @for (project of projects(); track project.id) {
+      <li class="project-card">
+        <a [routerLink]="['/projects', project.id]">
+          @if (project.images.length > 0) {
+            <img [src]="project.images[0]" [alt]="project.title" loading="lazy" />
+          }
+          <h2>{{ project.title }}</h2>
+        </a>
+        <p>{{ project.description }}</p>
+        @if (project.tags.length > 0) {
+          <ul class="tag-list" aria-label="Tags">
+            @for (tag of project.tags; track tag.id) {
+              <li>{{ tag.name }}</li>
+            }
+          </ul>
+        }
+      </li>
+    }
+  </ul>
+
+  @if (totalPages() > 1) {
+    <nav class="pagination" aria-label="Project pages">
+      <button type="button" (click)="goToPage(page() - 1)" [disabled]="page() === 0">Previous</button>
+      <span>Page {{ page() + 1 }} of {{ totalPages() }} ({{ totalElements() }} projects)</span>
+      <button type="button" (click)="goToPage(page() + 1)" [disabled]="page() + 1 >= totalPages()">
+        Next
+      </button>
+    </nav>
+  }
+}

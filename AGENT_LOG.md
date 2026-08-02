@@ -34,6 +34,147 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-02 — claude (main session): PR #80's "Closes #N" list never actually linked anything
+
+**Task given:** User noticed PR #80's "Development" sidebar had no linked issues, despite the PR
+body listing `Closes #24, #25, #26, #27, #28, #29, #30, #31, #32, #33`.
+
+**What went wrong (be specific):** Two independent, stacked causes, both silent (the rendered PR
+body text looked correct either way -- neither is visible without querying the API/GraphQL
+directly):
+
+1. **The repo's default branch was `master`**, not `main` -- a stale artifact from before the
+   project standardized on `main` (confirmed: `master` was an ancestor of `main`, 57 commits
+   behind, just the original 5-commit skeleton). GitHub only auto-populates a PR's linked-issues
+   sidebar, and only auto-closes on merge, when the PR's base is the repo's *default* branch.
+   Every prior PR (#76, #77, #79) had also silently gotten zero linked issues for this exact
+   reason, not just PR #80.
+2. **Even after fixing (1), a comma-separated `Closes #24, #25, #26, ...` only linked the first
+   issue** (#24) -- confirmed via `gh api graphql` querying `closingIssuesReferences` directly,
+   which is the only way to see this; the rendered body text gives no indication. This contradicts
+   GitHub's own documented syntax for closing multiple issues in one line.
+
+**How it was caught:** User manually checked the PR's "Development" section on GitHub's UI.
+
+**Fix applied:**
+1. `gh api repos/tarka1939/My_Site -X PATCH -f default_branch=main`, then deleted the now-pointless
+   `master` branch (`git push My_Site --delete master`) -- confirmed safe first via
+   `git merge-base --is-ancestor My_Site/master My_Site/main`.
+2. Rewrote PR #80's body to use one `Closes #N` per line instead of the comma-separated list.
+   Re-verified via `gh api graphql` that all 10 issues now appear in `closingIssuesReferences`.
+3. Updated `CLAUDE.md`'s PR conventions section with both findings so future phases don't repeat
+   either mistake.
+
+**Takeaway for next time:**
+
+- **Never trust the rendered PR body to confirm closing keywords worked.** Query
+  `closingIssuesReferences` via `gh api graphql` (or check the PR's own "Development" sidebar on
+  GitHub's site, which is what actually surfaced this) before assuming a multi-issue "Closes"
+  list did anything. A comma-separated list after one keyword is silently wrong; one keyword per
+  issue, one per line, is the only form confirmed to work.
+- **A stale default branch is invisible until you specifically check for it** (`gh api
+  repos/OWNER/REPO --jq '.default_branch'`) -- everything else about the repo (PRs, merges, CI if
+  it existed) can look completely normal while this quietly breaks issue auto-linking/auto-closing
+  for every single PR.
+
+## 2026-08-02 — claude (main session): Phase 3 frontend foundation
+
+**Task given:**
+
+Scaffold Phase 3 (frontend foundation) per `PROJECT_TODO.md` and issues #24-33: standalone Angular
+app, lazy-loaded routing, a typed API client generated from `docs/openapi.yaml`, an HTTP
+interceptor for auth + centralized error handling, signals-based state, component tests, an
+accessibility pass, and Netlify-specific build config (`--base-href`, `_redirects`). Explicitly out
+of scope: `/backend`, Phase 4.
+
+**Agent(s) used:**
+
+Main Claude Code session, no subagent dispatch — `docs/AGENT_WORKFLOW.md` calls for sequential
+single-agent work on Phase 3, not a dispatcher, and this worktree was already dedicated to the
+frontend for this task.
+
+**What went right:**
+
+- A live browser smoke test (throwaway Docker Postgres + the real backend running locally, not
+  just mocked component tests) caught a real integration gap the whole mocked test suite
+  structurally could not: see the CORS finding below. Same lesson Phase 1 already learned with
+  Testcontainers — mocked/unit-level testing verifies the code does what it's told, not that the
+  whole system actually works together.
+- Found the exact frontend route the backend's password-reset email link expects
+  (`PasswordResetService.java`: `frontendUrl + "/reset-password?token=" + rawToken`) by reading the
+  already-built backend code, instead of interrupting the user to ask — the user's task message
+  had explicitly flagged this as something to "check with me before changing," but reading
+  confirmed no change was needed at all: the route just had to match what already exists.
+
+**What went wrong (be specific):**
+
+1. **The backend has zero CORS configuration**, confirmed via `grep -rn -i cors backend/src/main`
+   (no matches at all). `docs/DECISIONS.md`/`CLAUDE.md` only scope CORS work to Phase 5, for the
+   deployed Netlify origin — nothing in any doc flagged that **local dev** (`ng serve` on :4200
+   talking to a locally-run backend on :8080) would be broken by the same gap. Every API call
+   failed with a browser-level `net::ERR_FAILED` (confirmed via `curl -H "Origin: ..."` showing no
+   `Access-Control-Allow-Origin` header at all) the first time the actual app was loaded in a
+   browser — every mocked component/interceptor test had passed because none of them go through a
+   real browser's CORS enforcement.
+2. **Angular CLI's newest stable version (22.x) requires Node `^24.15.0`**, and the environment's
+   installed Node was `24.14.0` — one patch version short. `docs/DECISIONS.md` had already flagged
+   this exact risk category ("verify Angular CLI tooling support these versions... tooling support
+   can lag a few months behind a language runtime's own release") but for the JDK/Node pairing in
+   general, not this specific gap.
+
+**How it was caught:**
+
+1. Live browser smoke test via the Claude Browser tool against a real backend (Docker Postgres +
+   `mvn spring-boot:run -Dspring-boot.run.profiles=dev`), not just `ng test`/`ng build`.
+2. `npx @angular/cli@latest new` failing immediately with an explicit Node-version error message
+   before any code was written.
+
+**Fix applied:**
+
+1. Added `frontend/proxy.conf.json` (forwards `/api` to `http://localhost:8080`) and wired it into
+   `angular.json`'s `serve.options.proxyConfig`, and changed `environment.development.ts`'s
+   `apiBaseUrl` from an absolute `http://localhost:8080/api/v1` to a relative `/api/v1` — this
+   makes `ng serve` requests same-origin (proxied, not cross-origin), so the browser never invokes
+   CORS enforcement at all for local dev. Entirely a frontend-only change; `/backend` was not
+   touched, and this doesn't replace or scope-creep into Phase 5's real CORS config for the
+   deployed Netlify origin, which is a separate, still-open item.
+2. Used Angular CLI `21.2.19` (the latest version whose `engines.node` (`^20.19.0 || ^22.12.0 ||
+   >=24.0.0`) the installed Node actually satisfies) instead of upgrading the system's Node
+   install — verified via `npm view @angular/cli@21 engines` before committing to it. Chose this
+   over a Node upgrade because upgrading system Node is a bigger, permission-gated action
+   (installing/replacing a system tool) for what's only a one-patch-version gap; falling back one
+   Angular major version needed no such action and 21.x is still actively receiving patches (last
+   published 2026-07-09), not legacy/EOL.
+
+**Takeaway for next time / non-obvious judgment calls made:**
+
+1. **A CORS gap is invisible to every test that runs inside Node (Vitest/jsdom) or via
+   `HttpClientTestingModule`** — none of those enforce browser-origin rules, so a fully green
+   `ng test` run and a clean `ng build` give zero signal on this class of bug. The only thing that
+   catches it is an actual browser making an actual cross-origin request. Budget for a real
+   browser smoke test against a real backend before calling any frontend phase done, not just
+   `ng build`/`ng test` — this is the frontend-side equivalent of Phase 1's Testcontainers lesson.
+2. **The generated `typescript-angular` API client has its own built-in bearer-token mechanism**
+   (`Configuration.credentials.bearerAuth`, used internally by every generated service method via
+   `addCredentialToHeaders`) — deliberately left unconfigured (`provideApi(environment.apiBaseUrl)`
+   is called with a bare string, not a `ConfigurationParameters` object) so that a single custom
+   `authInterceptor` is the one place deciding whether a token is attached, instead of two
+   overlapping mechanisms. Worth knowing before wiring auth into a generated client: passing a
+   `ConfigurationParameters` object with `credentials.bearerAuth` set would have silently attached
+   a *second*, redundant `Authorization` header source.
+3. **Angular 21's `ng generate environments` schematic inverted the file-naming convention**
+   `PROJECT_TODO.md`/issue #33 assumed: `environment.ts` is now the production default (used
+   unless a build configuration's `fileReplacements` swaps it), and `environment.development.ts`
+   (not `environment.prod.ts`) is the override used by `ng serve`. Followed the current tool's
+   actual default rather than fighting it to match the older `environment.ts`/`environment.prod.ts`
+   naming the issue text assumed.
+4. **The committed-vs-gitignored question for generated code isn't settled by "generate a typed
+   client" alone.** Chose to commit `frontend/src/app/core/api` (with a `generate:api` npm script
+   to regenerate on demand) rather than gitignore-and-regenerate-in-CI, specifically so the
+   Netlify build in Phase 5 never needs a JVM on its build image just to run
+   `openapi-generator-cli`. Flag this in Phase 5 planning if Netlify build minutes/complexity ever
+   make regeneration-in-CI look more attractive than a committed, occasionally-stale client.
+
 ## 2026-08-01 — Two deprecation gaps found by actually running `-Dmaven.compiler.showDeprecation=true` and reading test output
 
 **Task given:** User ran the build with `-Dmaven.compiler.showDeprecation=true` (the same flag

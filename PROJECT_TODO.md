@@ -98,16 +98,18 @@ On top of the flat 69-issue backlog and the `[Phase N]` title-prefix convention,
 
 ## Phase 3 — Frontend foundation (Angular)
 
-- [ ] Initialize with standalone components (current recommended structure)
-- [ ] Routing with lazy-loaded feature routes
-- [ ] Generate a typed API client from your OpenAPI spec (e.g. `openapi-generator-cli`) rather than hand-writing HTTP calls — this is what keeps frontend/backend contract drift from silently becoming a bug instead of a compile error
-- [ ] HTTP interceptor for centralized error handling and auth token attachment
-- [ ] State via Angular signals — skip NgRx at this scale
-- [ ] Component tests for core components
-- [ ] Basic accessibility pass: semantic HTML, alt text, keyboard navigation — cheap to build in, expensive to retrofit later
-- [ ] Configure `--base-href` in the Angular build — adapted 2026-07-25: frontend hosting is now Netlify, not GitHub Pages (see `docs/DECISIONS.md`), so this uses the Angular default (`/`), not a repo-name subpath
-- [ ] Add a `frontend/public/_redirects` file (`/* /index.html 200`) so deep links and refreshes on Angular routes don't 404 — adapted 2026-07-25: Netlify handles SPA routing natively via this one-line file; the originally-planned GitHub Pages `404.html` copy trick is no longer needed
-- [ ] Environment-based API base URL (`environment.ts` / `environment.prod.ts`) pointing at your deployed backend's URL in prod, `localhost` in dev
+> **Status (2026-08-02):** all items below complete — branch `phase3/frontend-foundation`. Angular 21.2.19 (Node 24.14.0 — the newest Angular CLI, 22.x, needs Node `^24.15.0`, one patch ahead of what was installed; see `docs/DECISIONS.md`/`AGENT_LOG.md`). `ng test` green (23 Vitest tests: components, `AuthService`, `authGuard`, `errorInterceptor`). Manually smoke-tested against a real backend (throwaway Docker Postgres + `mvn spring-boot:run -Dspring-boot.run.profiles=dev`) via the Claude Browser tool: browse → filter by tag → project detail → contact form submit → admin login → create/edit project → view contact messages → logout → guard redirect. A real gap (no backend CORS config, breaking local dev) was caught only by that live browser test, not by `ng test`/`ng build` — see `AGENT_LOG.md`.
+
+- [x] Initialize with standalone components (current recommended structure) — done, issue #24
+- [x] Routing with lazy-loaded feature routes — done, issue #25. Per-feature `loadChildren` (`projects`, `contact`, `admin`) plus per-page `loadComponent` within each
+- [x] Generate a typed API client from your OpenAPI spec (e.g. `openapi-generator-cli`) rather than hand-writing HTTP calls — this is what keeps frontend/backend contract drift from silently becoming a bug instead of a compile error — done, issue #26. Committed to `frontend/src/app/core/api` (not gitignored-and-regenerated-in-CI, so Netlify's Phase 5 build never needs a JVM); regenerate via `npm run generate:api`
+- [x] HTTP interceptor for centralized error handling and auth token attachment — done, issue #27. Split into `authInterceptor` (attaches the admin JWT) and `errorInterceptor` (normalizes every failed response into an `ApiProblem`, handles 401/429 specifically, surfaces non-field errors via a global notification banner)
+- [x] State via Angular signals — skip NgRx at this scale — done, issue #28
+- [x] Component tests for core components — done, issue #29. Vitest, 23 tests across `App`, `ProjectsListComponent`, `ContactFormComponent`, `AdminLoginComponent`, `AuthService`, `authGuard`, `errorInterceptor`
+- [x] Basic accessibility pass: semantic HTML, alt text, keyboard navigation — cheap to build in, expensive to retrofit later — done, issue #30. Skip link, focus moved to `<main>` on route change, `aria-live` notifications, per-item (not shared) `aria-label`s on repeated remove/dismiss buttons
+- [x] Configure `--base-href` in the Angular build — adapted 2026-07-25: frontend hosting is now Netlify, not GitHub Pages (see `docs/DECISIONS.md`), so this uses the Angular default (`/`), not a repo-name subpath — done, issue #31. Verified in the production build's `index.html`
+- [x] Add a `frontend/public/_redirects` file (`/* /index.html 200`) so deep links and refreshes on Angular routes don't 404 — adapted 2026-07-25: Netlify handles SPA routing natively via this one-line file; the originally-planned GitHub Pages `404.html` copy trick is no longer needed — done, issue #32. Verified it survives into `dist/frontend/browser/_redirects`
+- [x] Environment-based API base URL (`environment.ts` / `environment.prod.ts`) pointing at your deployed backend's URL in prod, `localhost` in dev — done, issue #33. Angular 21's `ng generate environments` schematic now names the dev override `environment.development.ts`, not `environment.prod.ts` (the naming inverted from the convention this line assumed — `environment.ts` is the prod default now). Dev's `apiBaseUrl` is a relative `/api/v1`, proxied to `localhost:8080` by `frontend/proxy.conf.json` — see `AGENT_LOG.md`'s CORS finding
 
 ## Phase 4 — Integration & multi-agent workflow practice
 

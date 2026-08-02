@@ -1,0 +1,67 @@
+<a routerLink="/admin/projects">&larr; Back to projects</a>
+
+<h1>{{ isEditMode ? 'Edit project' : 'New project' }}</h1>
+
+@if (loading()) {
+  <p role="status">Loading&hellip;</p>
+} @else {
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <div class="field">
+      <label for="project-title">Title</label>
+      <input id="project-title" type="text" formControlName="title" />
+      @if (fieldErrors()['title']) {
+        <p class="field-error" role="alert">{{ fieldErrors()['title'] }}</p>
+      }
+    </div>
+
+    <div class="field">
+      <label for="project-description">Description</label>
+      <textarea id="project-description" rows="6" formControlName="description"></textarea>
+      @if (fieldErrors()['description']) {
+        <p class="field-error" role="alert">{{ fieldErrors()['description'] }}</p>
+      }
+    </div>
+
+    <div class="field">
+      <label for="project-tags">Tags (comma-separated)</label>
+      <input id="project-tags" type="text" formControlName="tags" placeholder="angular, dsp, portfolio" />
+      @if (fieldErrors()['tags']) {
+        <p class="field-error" role="alert">{{ fieldErrors()['tags'] }}</p>
+      }
+    </div>
+
+    <fieldset formArrayName="links">
+      <legend>Links</legend>
+      @for (link of form.controls.links.controls; track $index) {
+        <div class="repeatable-row" [formGroupName]="$index">
+          <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
+          <input [id]="'link-label-' + $index" type="text" formControlName="label" placeholder="Label" />
+          <label [attr.for]="'link-url-' + $index" class="visually-hidden">Link URL</label>
+          <input [id]="'link-url-' + $index" type="url" formControlName="url" placeholder="https://…" />
+          <button type="button" (click)="removeLink($index)" [attr.aria-label]="'Remove link ' + ($index + 1)">
+            Remove
+          </button>
+        </div>
+      }
+      <button type="button" (click)="addLink()">+ Add link</button>
+    </fieldset>
+
+    <fieldset formArrayName="images">
+      <legend>Image URLs</legend>
+      @for (image of form.controls.images.controls; track $index) {
+        <div class="repeatable-row">
+          <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
+          <input [id]="'image-' + $index" type="url" [formControlName]="$index" placeholder="https://…" />
+          <button type="button" (click)="removeImage($index)" [attr.aria-label]="'Remove image ' + ($index + 1)">
+            Remove
+          </button>
+        </div>
+      }
+      <button type="button" (click)="addImage()">+ Add image</button>
+    </fieldset>
+
+    <button type="submit" [disabled]="submitting()">
+      {{ submitting() ? 'Saving…' : 'Save project' }}
+    </button>
+  </form>
+}

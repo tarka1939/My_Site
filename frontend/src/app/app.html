@@ -1,0 +1,27 @@
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<header class="site-header">
+  <nav class="site-nav" aria-label="Primary">
+    <a class="site-nav__brand" routerLink="/">My Site</a>
+    <ul>
+      <li><a routerLink="/" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: true }">Projects</a></li>
+      <li><a routerLink="/contact" routerLinkActive="is-active">Contact</a></li>
+      @if (auth.isLoggedIn()) {
+        <li><a routerLink="/admin/projects" routerLinkActive="is-active">Admin</a></li>
+        <li><button type="button" class="link-button" (click)="logout()">Log out</button></li>
+      } @else {
+        <li><a routerLink="/admin/login" routerLinkActive="is-active">Admin</a></li>
+      }
+    </ul>
+  </nav>
+</header>
+
+<main id="main-content" tabindex="-1">
+  <router-outlet />
+</main>
+
+<footer class="site-footer">
+  <p>&copy; {{ currentYear }} My Site. All rights reserved.</p>
+</footer>
+
+<app-notification-banner />

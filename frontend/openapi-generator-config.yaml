@@ -1,0 +1,10 @@
+generatorName: typescript-angular
+inputSpec: ../docs/openapi.yaml
+outputDir: src/app/core/api
+additionalProperties:
+  ngVersion: 21.2.0
+  providedInRoot: true
+  useSingleRequestParameter: true
+  withInterfaces: true
+  supportsES6: true
+  npmName: "@mysite/api-client"
