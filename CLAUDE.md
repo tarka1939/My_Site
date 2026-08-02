@@ -113,3 +113,4 @@ _Expand this once backend/frontend exist. Skeleton reflects the plan in `PROJECT
 - `PROJECT_TODO.md` — phase-by-phase build plan
 - `AGENT_LOG.md` — record agent mistakes/fixes here for the whole project, not just Phase 4
 - `docs/AGENT_WORKFLOW.md` — how to run agent sessions (sequential single-agent vs. dispatcher vs. isolated worktrees) and when each applies; see also `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md`
+- `docs/AUTONOMOUS_WORKFLOW.md` — the operative workflow for Phase 4's tail through Phase 6: one persistent "Senior Dev" session, independent fresh-session PR review, ambiguity/escalation handling, and the Phase 5 pre-flight checklist
