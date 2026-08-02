@@ -44,7 +44,7 @@ export class AdminProjectFormComponent {
           });
           project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
           project.images.forEach((image) =>
-            this.form.controls.images.push(this.formBuilder.nonNullable.control(image)),
+            this.form.controls.images.push(this.buildImageControl(image)),
           );
           this.loading.set(false);
         },
@@ -62,7 +62,7 @@ export class AdminProjectFormComponent {
   }
 
   protected addImage(): void {
-    this.form.controls.images.push(this.formBuilder.nonNullable.control(''));
+    this.form.controls.images.push(this.buildImageControl());
   }
 
   protected removeImage(index: number): void {
@@ -109,5 +109,9 @@ export class AdminProjectFormComponent {
       label: [label, Validators.required],
       url: [url, Validators.required],
     });
+  }
+
+  private buildImageControl(url = ''): FormControl<string> {
+    return this.formBuilder.nonNullable.control(url, Validators.required);
   }
 }

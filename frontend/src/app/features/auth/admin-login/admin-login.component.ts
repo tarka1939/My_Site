@@ -37,13 +37,26 @@ export class AdminLoginComponent {
       next: (response) => {
         this.auth.setSession(response);
         this.submitting.set(false);
-        const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/admin';
-        this.router.navigateByUrl(returnUrl);
+        this.router.navigateByUrl(this.resolveReturnUrl());
       },
       error: () => {
         // Surfaced globally by errorInterceptor (invalid credentials -> 401, no field errors).
         this.submitting.set(false);
       },
     });
+  }
+
+  /**
+   * authGuard only ever writes a same-app router URL into returnUrl, but it arrives back here as
+   * an ordinary query param, so a crafted login link could set it to anything. navigateByUrl
+   * can't actually leave the app with it (Angular's UrlSerializer + the History API's same-origin
+   * pushState restriction rule that out), but rejecting anything that isn't a plain same-app path
+   * (single leading `/`, not the protocol-relative `//host/...`) is a cheap, direct guarantee
+   * rather than relying on those other layers to keep holding.
+   */
+  private resolveReturnUrl(): string {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    const isSameAppPath = returnUrl !== null && returnUrl.startsWith('/') && !returnUrl.startsWith('//');
+    return isSameAppPath ? returnUrl : '/admin';
   }
 }
