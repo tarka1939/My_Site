@@ -1,16 +1,16 @@
 # My Site
 
-_One-sentence description of the site._
+_Personal portfolio site (Angular + Spring Boot), doubling as a practice ground for multi-agent development workflows._
 
 ## Status
 
-Phase 0 — spec & contract (planning docs in progress; no code scaffolded yet). See `PROJECT_TODO.md` for the full phase plan.
+Phases 0-3 complete: spec/contract, backend foundation, backend core domain features (project CRUD, tags, contact form, JWT auth, password reset), and frontend foundation (Angular app, routing, generated API client, auth, admin CRUD pages) — see PRs [#76](https://github.com/tarka1939/My_Site/pull/76), [#77](https://github.com/tarka1939/My_Site/pull/77), [#79](https://github.com/tarka1939/My_Site/pull/79), [#80](https://github.com/tarka1939/My_Site/pull/80). Phase 4 (independent backend-agent/frontend-agent integration practice) is next. See `PROJECT_TODO.md` for the full phase plan and current per-phase status notes.
 
 ## Overview
 
-- **What it is:**
-- **Who it's for:**
-- **Live URL:** (once deployed)
+- **What it is:** A personal portfolio site (Angular + Spring Boot) hosting a project portfolio, doubling as a deliberate practice ground for multi-agent development workflows (spec-first, parallel agents, documented review).
+- **Who it's for:** Visitors browsing the portfolio and submitting contact messages; a single site-owner admin managing project content.
+- **Live URL:** (once deployed — Phase 5)
 
 ## Stack
 
@@ -36,11 +36,12 @@ See `docs/DECISIONS.md` for full reasoning. All 14 foundational decisions are no
 /backend
   /project        Project CRUD (title, description, tags, links, images)
   /contact        Contact form + rate limiting
+  /auth           JWT admin login, password reset
   /analytics      Phase 7c — usage analytics (privacy-respecting)
   /githubsync     Phase 7a — GitHub webhook auto-sync
   /agentlog       Phase 7b — rendered agent build-log page
   /dspdemo        Phase 7d — live DSP/audio demo (built last)
-/frontend         Angular app (standalone components, signals)
+/frontend         Angular app (standalone components, signals, generated API client, admin CRUD)
 /docs             SPEC, data model, decisions, OpenAPI contract
 .github/workflows Separate CI/CD: Netlify deploy (frontend), container build/deploy (backend)
 ```
@@ -65,15 +66,32 @@ Backend is package-by-feature with Spring Modulith enforcing boundaries between 
 
 ### Local development
 
+No `docker-compose.yml` yet (that's Phase 5) — point the backend at whatever Postgres you have
+locally, or run one yourself:
+
 ```bash
-# Fill in setup commands once Phase 1/3 scaffolding exists
+docker run -e POSTGRES_USER=mysite -e POSTGRES_PASSWORD=mysite -e POSTGRES_DB=mysite_dev -p 5432:5432 postgres
 ```
+
+```bash
+# Backend (dev profile, needs Postgres reachable — see above):
+cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=dev
+
+# Frontend (separate terminal):
+cd frontend && npm install && npm start
+```
+
+`ng serve`'s dev-server proxy (`frontend/proxy.conf.json`) forwards `/api/*` to `localhost:8080`,
+so the browser sees same-origin requests — the backend has no CORS config yet (Phase 5 adds it,
+for the deployed Netlify origin only, not local dev). See `CLAUDE.md`'s Commands section for the
+full command reference (tests, builds, regenerating the API client, etc.).
 
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — scope, non-goals
 - [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) — entities and relationships
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — locked-in decisions and rationale
+- [`docs/openapi.yaml`](./docs/openapi.yaml) — API contract (source of truth for the generated Angular client)
 - [`AGENT_LOG.md`](./AGENT_LOG.md) — multi-agent workflow log
 - [`PROJECT_TODO.md`](./PROJECT_TODO.md) — phased build plan
 - [`CHANGELOG.md`](./CHANGELOG.md) — notable changes over time
