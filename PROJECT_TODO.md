@@ -134,9 +134,11 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 - [ ] ~~Run a backend-agent session and a frontend-agent session independently~~ — moved to Phase 7 (see status note above)
 - [ ] ~~Integration pass: bring both together, log every contract mismatch~~ — superseded; integration already happened live during Phase 3
 - [ ] Document at least 3 concrete cases where an agent's output was subtly wrong and how you caught and fixed it — this is your actual differentiation artifact for interviews, more valuable than the app itself. Already substantively satisfied by `AGENT_LOG.md`'s existing entries (the null-timestamp `saveAndFlush` bug, the Copilot-review findings, the tag-filtered-pagination Postgres bug, the Phase 3 CORS gap) — this item is to formally index/confirm those as the deliverable, not to manufacture new ones
-- [ ] End-to-end tests (Playwright) covering the main user journeys: browse projects → view detail → submit contact form — still genuinely unbuilt, do this for real
+- [ ] End-to-end tests (Playwright) covering the main user journeys: browse projects → view detail → submit contact form — still genuinely unbuilt, do this for real. Fully unblocked regardless of Phase 5's status: Playwright drives the app against local dev servers (`ng serve` + `mvn spring-boot:run`), not a live deployment.
 
 ## Phase 5 — Infra & deployment (split targets: Netlify for frontend, self-managed VPS for backend)
+
+> **Status (2026-08-05):** paused — backend VPS/Coolify setup is still being evaluated (Hetzner Cloud vs. Mikrus vs. reusing a home laptop; see chat history for the trade-off analysis). Per `docs/AUTONOMOUS_WORKFLOW.md`'s task-dependency model, a blocked phase only blocks the tasks that actually depend on it — Phase 6 and Phase 7 are not gated on this and may proceed in the meantime; see the notes added to each below for exactly what can and can't move forward without a live deploy target.
 
 **Frontend (Netlify — adapted 2026-07-25, originally GitHub Pages; see `docs/DECISIONS.md`):**
 - [ ] GitHub Actions workflow that builds the Angular app (with default `--base-href /`) and deploys to Netlify on merge to `main` (e.g. via `nwtgck/actions-netlify`)
@@ -157,6 +159,8 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 
 ## Phase 6 — Content & polish
 
+> **Note (2026-08-05):** not blocked by Phase 5's pause — content migration, the performance pass, and the README can all be done against local dev. One exception: sitemap.xml/robots.txt need the real canonical domain to be correct, so draft them with a placeholder and leave that checkbox flagged incomplete until Phase 5 actually lands, rather than treating it as done against a guess.
+
 - [ ] Migrate your existing projects (Equalizer, etc.) into the new content model
 - [ ] SEO basics: meta tags, sitemap.xml, robots.txt — cheap now, annoying to retrofit
 - [ ] Performance pass: Angular build budgets, image optimization, lazy loading
@@ -167,6 +171,8 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 These are the four "give the backend a real job" candidates from earlier. Build and deploy them in this order, not in parallel — each ships and gets reviewed on its own before the next starts, and later ones reuse infrastructure the earlier ones justify building.
 
 **Note (2026-08-02):** this is also where the genuine backend-agent/frontend-agent isolation exercise from Phase 4's original plan now lives — see `docs/AUTONOMOUS_WORKFLOW.md`. Each extension below is new and not-yet-built, a real contract-first venue for it. Correction from Phase 3's mistake: the frontend side should develop against a mock server generated from the new contract addition, not the live backend, until an explicit integration step.
+
+**Note (2026-08-05):** Phase 5's pause doesn't block starting 7a–7d — all four are backend/frontend feature development that runs fully against local dev. The one piece that can't be finished yet is 7a's final step of pointing GitHub's real webhook at a live public endpoint; build and test the receiver locally with a webhook relay tool (e.g. smee.io, or a temporary tunnel) and defer only that last wiring step until Phase 5 is done.
 
 **7a. GitHub webhook auto-sync**
 - [ ] New `githubsync` package: webhook receiver endpoint, verifying GitHub's signature header before trusting any payload
