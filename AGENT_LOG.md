@@ -141,6 +141,87 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-07 — Senior Dev session: Phase 4 (E2E suite + this index), first run of the dispatcher model
+
+**Task given:**
+
+First session run under `docs/AUTONOMOUS_WORKFLOW.md`'s Senior Dev model — coordinator and
+dispatcher, explicitly *not* implementer. Close out Phase 4: the Playwright E2E suite (#37) and the
+agent-mistake index (#36).
+
+**Agent(s) used:**
+
+This session as Senior Dev; one `general-purpose` junior dispatched into a dedicated worktree
+(`D:\repos\My_Site-e2e-playwright`, branch `phase4/playwright-e2e`) for the E2E implementation.
+Issue #36 was kept in-house — `AGENT_LOG.md` is the Senior Dev's file to own, not a junior's.
+
+**What went right:**
+
+- **Worktree isolation held under a real test.** The junior's entire 1,370-line diff landed under
+  `/e2e` with zero changes to `backend/` or `frontend/`, verified by `git diff --stat` after the
+  fact rather than trusted from the instruction. Manual `git worktree add` was chosen over the
+  CLI's `isolation: "worktree"` specifically because the auto-managed variant picks its own branch
+  name and auto-cleans — neither compatible with a branch that has to survive into a PR.
+- **The junior's code was genuinely good** where it counted: a structural non-localhost guard on the
+  one DB write, purge-before-seed for rerunnability, and a real discovery that login is rate-limited
+  5/15min (so it caches and revalidates the JWT rather than logging in every run).
+- **Re-running the gate personally is what caught the headline problem below.** Reviewing the diff
+  alone would not have.
+
+**What went wrong (be specific):**
+
+1. **The junior's suite had never been executed once.** It hit an API session limit mid-verification,
+   and its final output was a truncated "Cold-start verification run:" with no results. The code was
+   articulate, heavily commented, and cited `PROJECT_TODO.md` by section — and the Playwright browser
+   binary was never installed, so all four browser-driven tests failed instantly with
+   `Executable doesn't exist`. Its own `e2e/README.md` correctly lists `npm run install:browsers` as
+   a prerequisite; it documented the step it hadn't performed.
+2. **Senior Dev error — a worktree cleanup that made things worse.** Four merged-PR worktrees were
+   removed after checking each had a clean `git status`. `git worktree remove` then failed with
+   `Permission denied` (files locked), but the registrations were already gone. Result: four
+   directories still on disk with broken `.git` links, where `git status` now silently resolves to
+   the *main checkout* instead of failing. A session sitting in one would believe it was isolated
+   while operating on `D:\repos\My_Site` — the exact collision worktrees exist to prevent. "Clean
+   working tree" was read as "dead session"; the permission error was the evidence otherwise.
+3. **Senior Dev error — a verification gate that couldn't fail.** The regression gate was written as
+   `(cd backend && mvn -q test 2>&1 | tail -35); echo "BACKEND_EXIT=$?"`. `$?` after a pipeline is
+   the exit status of the *last* command — `tail` — which succeeds unconditionally. `BACKEND_EXIT=0`
+   was therefore guaranteed regardless of whether Maven passed, and `-q` plus `tail -35` had also
+   discarded the "Tests run:" summary that would have provided independent evidence. Caught by
+   grepping the log for an actual result line, finding none, and re-running with the exit code
+   captured directly.
+
+**How it was caught:**
+
+(1) By running the suite personally as the pre-review gate, rather than accepting the branch on the
+strength of how well-written it was. (2) By the `Permission denied` output, which was noticed but
+initially under-weighted. (3) By refusing to treat `EXIT=0` as evidence and going looking for the
+underlying "Tests run:" line — which did not exist.
+
+**Fix applied:**
+
+Installed the missing browser, then ran the suite three times: 4 failed / 3 passed (browser absent),
+then 7/7, then 7/7 again immediately with no database wipe to prove rerunnability. Teardown removed
+exactly its own rows both times. Backend and frontend suites re-run with exit codes captured
+correctly. The orphaned worktree directories were escalated to the user rather than force-deleted,
+since something holding a file lock is evidence of a live process, not an obstacle to route around.
+
+**Takeaway for next time:**
+
+- **Fluent, well-reasoned, spec-citing code is not evidence that the code runs.** Every prior entry
+  in this log warns that green tests don't imply correct code. This is the inverse and it is
+  sharper: prose quality reads as a *proxy* for verification, and here it was inversely correlated
+  with it — the comments described passing behavior no one had observed. The dispatcher model makes
+  this the single most important thing the Senior Dev does: re-run the gate, never accept on polish.
+- **A verification gate has to be able to fail.** A gate whose success is structurally guaranteed is
+  worse than no gate, because it produces a false record of having checked. `set -o pipefail`, or
+  capture the exit code before piping. Notably this project's own log already had a section on
+  tooling that reports success while doing nothing — and the same mistake was made anyway, one hour
+  after writing it. Knowing the pattern is not the same as applying it.
+- **A failed destructive operation can leave worse state than either doing it or not doing it.**
+  Partial success is the dangerous outcome, and "the resource is locked" is information about the
+  world, not friction to overcome.
+
 ## 2026-08-02 — claude (main session): PR #80's "Closes #N" list never actually linked anything
 
 **Task given:** User noticed PR #80's "Development" sidebar had no linked issues, despite the PR
