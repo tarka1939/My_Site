@@ -6,6 +6,12 @@
   --color-text: canvastext;
   --color-accent: #3457d5;
   --color-border: #ccc;
+
+  // Semi-transparent grey, so it composites against whatever --color-bg resolves to and stays a
+  // subtle backdrop in both light and dark. Use this, not --color-border, for anything that fills
+  // an area rather than drawing a 1px stroke -- --color-border is a fixed light grey and reads as
+  // glaring bars on a dark canvas.
+  --color-surface-muted: rgb(128 128 128 / 18%);
 }
 
 * {

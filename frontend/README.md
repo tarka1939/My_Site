@@ -45,6 +45,48 @@ Compiles the project and writes build artifacts to `dist/frontend`. The producti
 default `--base-href /` (Netlify serves from root) and copies `public/_redirects`
 (`/* /index.html 200`) for SPA routing -- see `docs/DECISIONS.md`.
 
+### Build budgets
+
+`angular.json`'s production budgets were re-baselined against a real build in Phase 6. They are
+deliberately close to current output -- a budget with several hundred kB of headroom can't fail on
+any realistic regression, and one that fails on every feature branch gets ignored.
+
+| Budget | Baseline (2026-08-07) | Warning | Error |
+|---|---|---|---|
+| `initial` | 284.39 kB | 320 kB | 400 kB |
+| `any` (single chunk) | 170.84 kB (the Angular framework chunk) | 200 kB | 300 kB |
+| `anyComponentStyle` | 991 bytes (`projects-list.component.scss`) | 2 kB | 4 kB |
+
+Notes, all verified against the builder rather than assumed:
+
+- Budgets are measured against **raw** size, not the "estimated transfer size" column the build
+  also prints. `initial` at 284.39 kB raw is 81.34 kB over the wire.
+- `initial` is the budget that should stay meaningful as the app grows: Phase 7's four extensions
+  are lazy routes, so they must not move it. If it fires for a legitimate reason, re-baseline it
+  here rather than doubling the number.
+- `any` exists because `initial` is blind to lazy chunks. It's set just above the Angular framework
+  chunk, so it means "no single chunk should outweigh the framework" -- normal feature work won't
+  approach it; a heavyweight dependency dragged into one route will.
+- There is deliberately **no per-name `bundle` budget**. A `bundle` budget whose `name` matches no
+  chunk is silently ignored -- no warning, no error -- and chunk names are derived from component
+  filenames, so renaming a component would switch its budget off without telling anyone.
+- There is deliberately no `all` budget: Phase 7 adds four whole feature areas as lazy routes, so a
+  total-size budget would fire repeatedly for expected growth.
+
+### Images
+
+Project images are external URLs pasted by the admin (`docs/DECISIONS.md`, 2026-07-24). There is no
+upload pipeline, no local image assets, and therefore no build-time image compression step. Their
+intrinsic dimensions are unknown, so `width`/`height` attributes can't be emitted; layout space is
+reserved with CSS instead (a fixed height on the card grid, `aspect-ratio` on the detail gallery).
+The first card thumbnail and the first gallery image are the LCP candidates on their pages and load
+eagerly at high fetch priority; everything else is `loading="lazy"`.
+
+`NgOptimizedImage` was evaluated in Phase 6 and deliberately not adopted -- with arbitrary external
+origins, no image CDN loader, no SSR, and unknown dimensions (forcing `fill` mode) every feature it
+provides is either inert or actively counterproductive here. If an image CDN is ever put in front of
+project images, revisit that.
+
 ## Running unit tests
 
 ```bash
