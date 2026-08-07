@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import {
   API_BASE,
@@ -101,23 +101,45 @@ export async function login(
 }
 
 /**
- * Returns a usable admin JWT, reusing the one cached by a previous run when it is still valid.
+ * Returns a usable admin JWT, caching it for the rest of the run.
  *
- * This is not premature optimization — `AuthService` rate-limits login to 5 attempts per
- * 15 minutes per IP, so a suite that logs in unconditionally on every run would start failing
- * with a 429 after a couple of consecutive runs. Caching keeps the Node-side cost at zero for
- * back-to-back runs and leaves the whole budget for the UI login the admin journey performs
- * for real. The cached token is validated against the API before being trusted, so a restarted
- * backend or a rotated secret falls back to a fresh login instead of failing mid-suite.
+ * The cache is per-run, not across runs: `teardown` deletes it (see {@link discardCachedToken}),
+ * because an admin token that outlives the account it was minted for is a live credential
+ * sitting on disk. That costs the suite one login per run on top of the admin journey's real UI
+ * login — two of `AuthService`'s five-per-15-minutes budget — which is the deliberate trade.
+ *
+ * The reuse path still matters *within* a run, and it revalidates against the API before
+ * trusting what it read, so a backend restarted mid-run or a rotated secret falls back to a
+ * fresh login instead of failing somewhere less obvious.
  */
 export async function acquireToken(): Promise<string> {
   const cached = await readCachedToken();
   if (cached && (await tokenStillWorks(cached))) {
     return cached;
   }
-  const { token, expiresAt } = await login();
-  await writeCachedToken(token, expiresAt);
-  return token;
+
+  let response: LoginResponse;
+  try {
+    response = await login();
+  } catch (error) {
+    // The login budget is this suite's scarcest resource, and a bare "-> 429 Too Many Requests"
+    // says nothing about what to do next. AuthService counts the attempt *before* it checks the
+    // credentials, so failed attempts cost exactly as much as successful ones.
+    if (error instanceof Error && error.message.includes('429')) {
+      throw new Error(
+        `${error.message}\n` +
+          `AuthService allows 5 login attempts per 15 minutes per IP and this suite spends 2 per ` +
+          `run (this one, plus the admin journey's real UI login), so roughly the 3rd run inside ` +
+          `a window hits this. The limiter is in-memory: restart the backend to clear it, or ` +
+          `wait out the window.`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+
+  await writeCachedToken(response.token, response.expiresAt);
+  return response.token;
 }
 
 /** Reads the token cached by `setup`. Throws rather than logging in again, so an accidental
@@ -149,7 +171,30 @@ async function readCachedToken(): Promise<string | null> {
 
 async function writeCachedToken(token: string, expiresAt: string): Promise<void> {
   await mkdir(dirname(TOKEN_FILE), { recursive: true });
-  await writeFile(TOKEN_FILE, JSON.stringify({ token, expiresAt }, null, 2), 'utf8');
+  // Unlink before writing: `mode` only applies when `writeFile` *creates* the file, so writing
+  // over a token cached by an older version of this code would silently keep its 0644.
+  await rm(TOKEN_FILE, { force: true });
+  await writeFile(TOKEN_FILE, JSON.stringify({ token, expiresAt }, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+}
+
+/**
+ * Deletes the cached admin JWT. Called by `teardown`, unconditionally, alongside removing the
+ * `e2e-admin` row.
+ *
+ * Both halves are needed, and deleting the row is the weaker of the two. `SecurityConfig`
+ * configures a stateless resource server whose authorities come from the token's `roles` claim;
+ * `AdminUserRepository` is consulted at login and never again. So a token minted before the row
+ * was deleted keeps working for the rest of its hour — meaning that without this, the account
+ * was cleaned up but the credential that actually grants admin write access stayed on disk.
+ *
+ * Idempotent (`force: true`), so it is safe in a teardown path that must not add failures of
+ * its own.
+ */
+export async function discardCachedToken(): Promise<void> {
+  await rm(TOKEN_FILE, { force: true });
 }
 
 async function tokenStillWorks(token: string): Promise<boolean> {
@@ -203,9 +248,20 @@ async function collectPages<T>(fetchPage: (page: number) => Promise<PageResponse
  * Deletes every contact message this suite created, matched by the reserved `.invalid` email
  * domain in `support/env.ts` — never anything a developer submitted by hand.
  *
- * Doubles as the reset for the contact form's rate limit: `ContactService` derives it from a
- * `count(*)` over `contact_message` rows in the trailing hour, not from in-memory state, so
- * deleting the rows frees the window again.
+ * **This frees the contact form's rate-limit window only partially, and the distinction
+ * matters.** `ContactService` does derive the limit from a `count(*)` over `contact_message`
+ * rather than from in-memory state, so deleting rows does move the counter — but it counts by
+ * `requester_ip_hash`, not by email:
+ *
+ * ```java
+ * countByRequesterIpHashAndCreatedAtAfter(ipHash, Instant.now().minus(RATE_LIMIT_WINDOW))
+ * ```
+ *
+ * So this reclaims the slots *this suite* used, and nothing else. A message a developer
+ * submitted by hand from the same machine inside the trailing hour still occupies a slot, and
+ * no purge that stays inside the suite's own namespace can reclaim it. Widening the match would
+ * mean deleting a developer's real data, which is not a trade this suite gets to make — so the
+ * rate-limit journey asserts the precondition explicitly instead (see `tests/contact.spec.ts`).
  *
  * Deliberately narrower than {@link purgeE2eData}: the contact journeys call this between
  * tests, and must not take the seeded fixture projects with them.
@@ -218,6 +274,23 @@ export async function purgeE2eContactMessages(token: string): Promise<number> {
     await deleteContactMessage(token, message.id);
   }
   return messages.length;
+}
+
+/**
+ * Deletes this suite's projects carrying `tag`. Scoped to one tag so a journey can reset just
+ * the rows it owns without disturbing the fixture projects the other journeys assert against.
+ *
+ * Still filtered by title prefix as well as by tag: the tag alone is namespaced by convention,
+ * the prefix is what actually keeps a developer's own project out of a DELETE loop.
+ */
+export async function purgeE2eProjectsByTag(token: string, tag: string): Promise<number> {
+  const projects = (await listProjectsByTag(tag)).filter((p) =>
+    p.title.startsWith(E2E_TITLE_PREFIX),
+  );
+  for (const project of projects) {
+    await deleteProject(token, project.id);
+  }
+  return projects.length;
 }
 
 /** Deletes every project this suite created, matched by title prefix. */
