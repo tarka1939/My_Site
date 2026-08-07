@@ -65,7 +65,7 @@ On top of the flat 69-issue backlog and the `[Phase N]` title-prefix convention,
 
 From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTONOMOUS_WORKFLOW.md` rather than a hand-written kickoff prompt per phase — see that doc and the corresponding ADR in `docs/DECISIONS.md` for the full reasoning. Summary:
 
-- One persistent "Senior Dev" session the user (product owner) talks to directly; it plans and implements phase work against this file, and reports status in standup form rather than raw diffs.
+- One persistent "Senior Dev" session the user (product owner) talks to directly — **coordinator and dispatcher, not implementer.** It breaks phase work from this file into discrete tasks and dispatches each to a fresh "junior" session that writes the actual code, checks the result against spec before accepting it, opens the PR, keeps `AGENT_LOG.md`/`CHANGELOG.md`/this file/READMEs current itself, and reports status in standup form rather than raw diffs. (Corrected 2026-08-07: this line still described the Phases 1-3 model, where the same session planned and implemented; `docs/AUTONOMOUS_WORKFLOW.md` and the ADR were updated on 2026-08-02 and this summary was missed.)
 - Every PR gets reviewed by a fresh, independent Claude Code session with no shared context with the implementation, alongside GitHub Copilot's automated review (both stay — each has independently caught real defects so far).
 - Genuine spec ambiguity gets asked and only blocks the dependent task(s), not the whole phase.
 - "Large problems" (new accounts/credentials/payment, destructive migrations, repeated failed fix attempts, anything touching prod secrets/DNS/billing) always stop and wait for the user.
