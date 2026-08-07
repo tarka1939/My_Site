@@ -1105,6 +1105,9 @@ catch:
 Nothing in the build was capable of failing on it — both chains compile, both wire up, the app boots.
 There was no test on `SecurityConfig`'s profile behavior at all at this point; the first one
 (`SecurityConfigProfileTest`) came later, in PR #79 — see "post-merge code review followups" above.
+It no longer exists: Phase 2's real-JWT rewrite removed the profile split entirely, so the test's
+premise went with it and it was deleted at the PR #79 → PR #77 merge (see "Merging PR #79 into
+PR #77" above). Don't go looking for it in `backend/src/test`.
 
 **Fix applied:**
 
