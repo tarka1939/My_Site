@@ -28,11 +28,16 @@
       <li class="project-card">
         <a [routerLink]="['/projects', project.id]">
           @if (project.images.length > 0) {
-            <!-- The first card's thumbnail is the likely LCP element above the fold, so it is
-                 fetched eagerly and at high priority; every other card stays lazy. Two elements
-                 with static attributes rather than one with `[attr.loading]`, so `loading` is
-                 applied at element creation (before `src`) instead of after it. -->
-            @if ($first) {
+            <!-- The first thumbnail the grid actually renders is the likely LCP element above the
+                 fold, so it is fetched eagerly and at high priority; every other card stays lazy.
+                 Keyed off firstImageProjectId() rather than `$first`, because `$first` indexes over
+                 projects and a project may have no images -- see the comment on that computed.
+                 Two elements with static attributes rather than one with `[attr.loading]`, so
+                 `loading` is applied at element creation (before `src`) instead of after it; the
+                 specs assert that ordering, not just the final attribute values. `decoding` is left
+                 at the browser default on the eager branch on purpose -- deferring the decode of the
+                 LCP image is the one thing worth not doing. -->
+            @if (project.id === firstImageProjectId()) {
               <img [src]="project.images[0]" [alt]="project.title" loading="eager" fetchpriority="high" />
             } @else {
               <img [src]="project.images[0]" [alt]="project.title" loading="lazy" decoding="async" />

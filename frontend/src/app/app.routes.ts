@@ -2,10 +2,6 @@ import { Routes } from '@angular/router';
 
 export const routes: Routes = [
   {
-    path: '',
-    loadChildren: () => import('./features/projects/projects.routes').then((m) => m.PROJECTS_ROUTES),
-  },
-  {
     path: 'contact',
     loadChildren: () => import('./features/contact/contact.routes').then((m) => m.CONTACT_ROUTES),
   },
@@ -22,6 +18,21 @@ export const routes: Routes = [
   {
     path: 'admin',
     loadChildren: () => import('./features/auth/admin.routes').then((m) => m.ADMIN_ROUTES),
+  },
+  {
+    // Deliberately declared last but one, *after* every named route rather than first. Its path is
+    // '' with the default pathMatch: 'prefix', which prefix-matches every URL -- so while it sat
+    // first the router had to fetch this chunk and inspect its children before it could rule the
+    // branch out and backtrack, on every cold entry to /contact, /admin/*, /reset-password and any
+    // 404. That cost was ~314 bytes until projects.routes.ts started importing the list component
+    // statically; it is now 5.73 kB raw of never-rendered code on those routes.
+    //
+    // pathMatch: 'full' would also stop the over-matching, but it cannot be used here: a full-match
+    // parent consumes the entire URL, which makes its 'projects/:id' child unreachable -- verified,
+    // /projects/abc then falls through to the wildcard and renders "not found". Ordering is the fix
+    // that keeps deep links working. Only genuine 404s still pay the backtrack.
+    path: '',
+    loadChildren: () => import('./features/projects/projects.routes').then((m) => m.PROJECTS_ROUTES),
   },
   {
     path: '**',
