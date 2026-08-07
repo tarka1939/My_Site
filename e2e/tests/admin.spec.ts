@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { listProjectsByTag } from '../support/api';
+import { listProjectsByTag, purgeE2eProjectsByTag, requireCachedToken } from '../support/api';
 import {
   E2E_ADMIN_PASSWORD,
   E2E_ADMIN_USERNAME,
@@ -15,6 +15,25 @@ import {
  * The account this logs in with is provisioned by `setup/global.setup.ts`; see `support/db.ts`
  * for why that has to bypass the API.
  */
+
+/**
+ * Makes the test idempotent across attempts, which `retries: 1` under CI requires.
+ *
+ * This journey creates a project through the UI and then asserts that exactly one project
+ * carries `TAG_ADMIN_CREATED`. `TAG_ADMIN_CREATED` is fixed (per `support/env.ts`, unique
+ * per-run tags would leave orphan rows in the filter UI), and nothing runs between a failed
+ * attempt and its retry -- `setup` has already been and gone. So once the POST has succeeded,
+ * a retry that fails for any *later* reason used to be unwinnable: it would create a second
+ * project under the same tag and die on `toHaveLength(1)` with "expected 1, received 2", a
+ * message that points at a double submit rather than at whatever actually broke.
+ *
+ * Purging before each attempt rather than after each one is deliberate: an attempt killed hard
+ * enough to skip its own cleanup still cannot poison the next. Same reasoning as
+ * `global.setup.ts` purging before it seeds.
+ */
+test.beforeEach(async () => {
+  await purgeE2eProjectsByTag(await requireCachedToken(), TAG_ADMIN_CREATED);
+});
 test('an admin can log in, publish a project, and log back out', async ({ page }) => {
   const title = `${E2E_TITLE_PREFIX} Admin-created ${Date.now()}`;
   const description = 'Created through the admin UI by the Playwright E2E suite.';
@@ -65,7 +84,8 @@ test('an admin can log in, publish a project, and log back out', async ({ page }
   await expect(page.getByRole('link', { name: title, exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(1);
 
-  // ...and it really is one persisted project, not two from a double submit.
+  // ...and it really is one persisted project, not two from a double submit. Trustworthy as a
+  // double-submit check only because `beforeEach` guarantees the tag started this attempt empty.
   expect(await listProjectsByTag(TAG_ADMIN_CREATED)).toHaveLength(1);
 
   await page.getByRole('button', { name: 'Log out' }).click();

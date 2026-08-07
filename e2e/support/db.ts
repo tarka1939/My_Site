@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Client } from 'pg';
 import { E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD, E2E_ADMIN_USERNAME } from './env';
+import { assertLocalHost } from './locality';
 
 /**
  * The one and only thing in this suite that touches Postgres directly. Everything else goes
@@ -12,6 +13,19 @@ import { E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD, E2E_ADMIN_USERNAME } from './env';
  * the suite logs in with has to be provisioned out of band, once, before any HTTP call happens.
  */
 
+/**
+ * Connection settings for the *same* database the backend under test is using — not an
+ * independent target. That is a real constraint, not a preference:
+ * `backend/src/main/resources/application-dev.yml` hardcodes
+ * `jdbc:postgresql://localhost:5432/${DB_NAME:mysite_dev}`, so it exposes no env var for host
+ * or port at all, and names the other three `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD`.
+ *
+ * So `E2E_DB_HOST` and `E2E_DB_PORT` can only ever be moved *away* from what the application
+ * reads — they are kept solely so the locality guard below has something to check, and
+ * `e2e/README.md` deliberately does not advertise them as overrides. The other three must be
+ * set in both namespaces or the suite provisions `e2e-admin` into a database the backend never
+ * opens, which surfaces later as an unexplained 401 on the admin journey's login.
+ */
 const DB_HOST = process.env.E2E_DB_HOST ?? '127.0.0.1';
 const DB_PORT = Number(process.env.E2E_DB_PORT ?? 5432);
 const DB_NAME = process.env.E2E_DB_NAME ?? 'mysite_dev';
@@ -19,26 +33,13 @@ const DB_USER = process.env.E2E_DB_USERNAME ?? 'mysite';
 const DB_PASSWORD = process.env.E2E_DB_PASSWORD ?? 'mysite';
 
 /**
- * Hosts this suite is allowed to write an admin row into. Anything else is a hard stop.
- *
- * This is a structural guard, not a warning: the row inserted below carries a password that is
- * committed to a public repository in plain text (see `support/env.ts`). Making the insert
- * *impossible* to run against a non-local database is the only safe way to ship a fixture like
- * that. Do not add a "force" flag or an env-var override to this list.
+ * The admin row written below carries a password committed to a public repository in plain
+ * text, so the insert has to be *impossible* to aim anywhere but a local throwaway. The
+ * allowlist itself lives in `support/locality.ts`, shared with the destructive HTTP path in
+ * `support/api.ts` — the guard's promise was only half true while it covered this file alone.
  */
-const ALLOWED_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0:0:0:0:0:0:0:1']);
-
 function assertLocalDatabase(): void {
-  const host = DB_HOST.trim().toLowerCase();
-  if (!ALLOWED_DB_HOSTS.has(host)) {
-    throw new Error(
-      `Refusing to provision the E2E admin user against a non-local database.\n` +
-        `  E2E_DB_HOST resolved to: ${DB_HOST}\n` +
-        `  Allowed: ${[...ALLOWED_DB_HOSTS].join(', ')}\n` +
-        `This fixture inserts an admin account whose password is publicly known ` +
-        `(see e2e/README.md). It must only ever run against a throwaway local Postgres.`,
-    );
-  }
+  assertLocalHost(DB_HOST, 'E2E_DB_HOST');
 }
 
 async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {

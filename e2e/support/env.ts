@@ -1,18 +1,29 @@
 import { fileURLToPath } from 'node:url';
+import { assertLocalUrl } from './locality';
 
 /**
  * Single place where every environment-dependent value and every magic string the suite
  * relies on is defined. Nothing else in the suite should read `process.env` directly.
+ *
+ * Both URLs below are run through `support/locality.ts` as they are read, so a target outside
+ * the loopback allowlist fails at import time — before Playwright loads its config, and long
+ * before `purgeE2eData` could issue a DELETE against it.
  */
 
 /** Angular dev server. Always drive the browser through this, never the backend directly:
  *  `frontend/proxy.conf.json` forwards `/api/*` to the backend so the browser sees
  *  same-origin requests. The backend has no CORS config until Phase 5, so hitting :8080
  *  from the page would fail. */
-export const FRONTEND_URL = process.env.E2E_FRONTEND_URL ?? 'http://localhost:4200';
+export const FRONTEND_URL = assertLocalUrl(
+  process.env.E2E_FRONTEND_URL ?? 'http://localhost:4200',
+  'E2E_FRONTEND_URL',
+);
 
 /** Spring Boot. Used only by Node-side fixture seeding/cleanup, never by the browser. */
-export const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'http://127.0.0.1:8080';
+export const BACKEND_URL = assertLocalUrl(
+  process.env.E2E_BACKEND_URL ?? 'http://127.0.0.1:8080',
+  'E2E_BACKEND_URL',
+);
 
 export const API_BASE = `${BACKEND_URL}/api/v1`;
 

@@ -92,14 +92,36 @@ So `setup/global.setup.ts` inserts a **separate, test-only** admin row directly 
 | Email | `e2e-admin@e2e.invalid` |
 
 **That password is public. It is in this file and in `support/env.ts`, on purpose.** It grants
-full admin write access to whatever database it exists in, so `support/db.ts` refuses to run
-unless the target host is `localhost`/`127.0.0.1`/`::1`, and fails loudly rather than skipping
-the check. There is intentionally no override flag — if you find yourself wanting one, the
-answer is a different account, not a bypass. The account uses a distinct username so it can
-never collide with or overwrite the real seeded `admin` row, and teardown deletes it again.
+full admin write access to whatever stack it exists in, so `support/locality.ts` refuses any
+target whose host is not `localhost`/`127.0.0.1`/`::1`, and fails loudly rather than skipping the
+check. That covers **both** paths that can do damage, not just the database one:
 
-Connection settings default to the `docker run` above and can be overridden with `E2E_DB_HOST`,
-`E2E_DB_PORT`, `E2E_DB_NAME`, `E2E_DB_USERNAME`, `E2E_DB_PASSWORD`.
+- the direct `INSERT` in `support/db.ts`, and
+- `E2E_BACKEND_URL`, which `setup` and `teardown` aim `DELETE /projects/{id}` and
+  `DELETE /contact-messages/{id}` at. `E2E_FRONTEND_URL` is checked the same way.
+
+Both URLs are validated as they are read, so a bad value fails at import time — before Playwright
+loads its config, and long before anything could be deleted. There is intentionally no override
+flag; if you find yourself wanting one, the answer is a different account, not a bypass.
+
+The account uses a distinct username so it can never collide with or overwrite the real seeded
+`admin` row. Teardown deletes the row **and** the JWT cached in `.auth/api-token.json`, and does
+both **unconditionally** — even when the run failed before it ever acquired a token, and even
+when cleanup itself fails. Deleting the row alone would not be enough: the backend is a stateless
+resource server that never re-checks a token's subject, so a token minted before the delete keeps
+working for the rest of its hour.
+
+### Database connection settings
+
+`E2E_DB_NAME`, `E2E_DB_USERNAME` and `E2E_DB_PASSWORD` default to the `docker run` above. Change
+any of them and you must **also** set the backend's own `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD`
+to match — different names, same values. Otherwise the suite provisions `e2e-admin` into a
+database the application never opens, and the admin journey fails with an unexplained `401`.
+
+There is deliberately **no** host or port override. `backend/src/main/resources/application-dev.yml`
+hardcodes `jdbc:postgresql://localhost:5432/...` and exposes no environment variable for either,
+so moving the suite's host or port could only ever point it at a *different* database than the
+application under test.
 
 ## Journeys
 
@@ -118,27 +140,53 @@ Reruns must not depend on how the previous run ended, so:
   messages by the reserved `@e2e.invalid` email domain. Cleanup only ever matches those, never a
   developer's own local data.
 - `setup` **purges before it seeds**, so a run that was interrupted before teardown cannot poison
-  the next one. Teardown purges again and removes the `e2e-admin` row.
+  the next one. Teardown purges again, and removes the `e2e-admin` row and its cached token —
+  those two unconditionally, so a run that died before it ever logged in still cleans up the
+  credential it had already created.
+- The admin journey purges its own tag before **each attempt**, not after, so CI's single retry
+  starts from a clean slate instead of tripping over the project the failed attempt already
+  created.
 - Tag names are fixed rather than unique-per-run. Tags are upserted implicitly by project writes
   and there is no `DELETE /tags`, so per-run tag names would leave an ever-growing pile of orphan
   rows in the tag filter UI.
-- The contact journeys purge their own messages between tests. `ContactService` derives its rate
-  limit from a `count(*)` over `contact_message`, so deleting the rows is also what resets the
-  window — without it the suite would pass once per hour.
+- The contact journeys purge their own messages between tests, which reclaims the rate-limit
+  slots the suite spent: `ContactService` derives its limit from a `count(*)` over
+  `contact_message` rather than from in-memory state, so deleting rows really does move the
+  counter. It does **not** free the whole window, though — the count is keyed on requester IP
+  hash, not on email, so a message you submitted by hand from this machine within the last hour
+  still costs a slot, and cleanup here will never touch it (it only ever matches `@e2e.invalid`;
+  deleting your real messages is not this suite's call). The rate-limit journey needs all five
+  slots, so it asserts that precondition up front and tells you how to clear it, instead of
+  failing mid-loop on a 429 that looks like an application bug.
 
 ## Things worth knowing before you extend this
 
-- **`AuthService` rate-limits login to 5 attempts per 15 minutes per IP.** The suite spends
-  exactly one per run (the admin journey's real UI login); `setup` caches its API token in
-  `.auth/api-token.json` (gitignored) and revalidates it instead of logging in again. If you add
-  a journey that logs in, you are spending from a budget of five. That limiter is in-memory
-  (`InMemoryRateLimiter`), unlike the contact form's, so restarting the backend clears it —
-  which is the escape hatch if you ever do hit a `429` on login.
+- **`AuthService` rate-limits login to 5 attempts per 15 minutes per IP.** The suite spends **two**
+  per run: `setup` logs in for its API token, and the admin journey logs in through the UI for
+  real. The token `setup` caches in `.auth/api-token.json` (gitignored) is reused for the rest of
+  that run, but deliberately *not* across runs — teardown deletes it, because a token that
+  outlives the account it was minted for is a live admin credential sitting on disk, and the
+  backend never re-checks a token's subject. One extra login per run is the price of that.
+
+  Whether the budget ever bites depends on who owns the backend. That limiter is in-memory
+  (`InMemoryRateLimiter`), unlike the contact form's, so it dies with the process:
+
+  - **Playwright started the backend** (nothing was on :8080) — it also stops it at the end, so
+    every run gets a fresh limiter and the budget effectively resets. You will not hit this.
+  - **You started the backend** and Playwright is reusing it — the count accumulates across runs,
+    so roughly the **third** run inside a 15-minute window fails on a `429`.
+
+  Either way the escape hatch is the same: **restart the backend**. `acquireToken` says so in the
+  error rather than surfacing a bare status code.
 - **Run serially.** `workers: 1` / `fullyParallel: false` is not laziness: the journeys share one
   seeded dataset and one per-IP rate-limit window on the server. Parallel workers would race on
   both.
 - **No local retries.** A journey that only passes on the second attempt is a defect in the test
-  or the app. CI gets one retry for infrastructure noise, nothing more.
+  or the app. CI gets one retry for infrastructure noise, nothing more. That retry does mean any
+  journey which *writes* must be idempotent across attempts — nothing runs between a failed
+  attempt and its retry, so reset the rows it owns in a `beforeEach`, the way `admin.spec.ts`
+  and `contact.spec.ts` do. A retry that cannot win is worse than no retry: its failure message
+  describes the leftover state, not the original defect.
 - **No `waitForTimeout`.** Use web-first assertions and `waitForResponse`; the suite asserts on
   real HTTP status codes, not just on rendered text.
 - **Prefer role- and label-based locators.** Phase 3 did real accessibility work — semantic
