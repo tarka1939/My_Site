@@ -13,9 +13,29 @@ wrong and how you caught and fixed it." Phases 1-3 produced far more than three.
 deliverable: the cases below are grouped by **which layer of verification failed to catch them**,
 because that's the transferable part — chronology isn't.
 
-The through-line across every case: **each bug was invisible to the specific kind of testing that
-was already passing at the time.** Not "we forgot to write a test" — the tests existed, ran green,
-and were structurally incapable of failing on these.
+The through-line across every case: **each bug got past whatever verification was actually in place
+at the moment it shipped.** The *shape* of that gap varies, and the variation is most of the value
+here:
+
+- **A test existed, ran green, and was structurally incapable of failing on it** — a mock that
+  cannot simulate flush timing; an unsorted `Pageable` that never emits an `ORDER BY`. Section 1 is
+  mostly this class.
+- **No test existed at all**, because the thing had never been framed as testable — a real email
+  hardcoded in a migration, a reset token logged at WARN, a `Closes #N` keyword nobody had ever
+  confirmed did anything, a `@Profile` predicate with no coverage of its own default case. For
+  several of these, writing the first test *was* the fix.
+- **The tooling reported success without having performed the check** — a clean `git merge` with no
+  conflict markers, a Flyway migration that silently never executed, a build that hides deprecation
+  warnings unless asked. Section 5 is entirely this class.
+
+So "we forgot to write a test" is the honest diagnosis for a decent share of these, and it's said
+where it applies rather than dressed up. Where a test suite *did* do the catching, that's said too:
+the clean-merge case in section 5 was exposed by `mvn test` going red on a trial merge, after git
+and the compiler had both stayed quiet. The claim isn't that testing doesn't work — it's that every
+one of these slipped past the specific signal that was being trusted at the time.
+
+Each case cites the `AGENT_LOG.md` entry it comes from (date, and PR number where there is one) so
+the full writeup is one search away, and says how it was fixed, not just how it was found.
 
 ### 1. Bugs that mocked tests structurally cannot catch (needed real infrastructure)
 
@@ -23,16 +43,25 @@ and were structurally incapable of failing on these.
   `"createdAt":null`. Hibernate's `@CreationTimestamp` populates at *flush*, which `@Transactional`
   defers to commit — after the method already built its response. The mocked unit test could never
   fail: Mockito echoes back the same Java object, simulating no flush timing at all. Caught by a
-  manual `curl` against real Postgres *after* `mvn test` was fully green.
+  manual `curl` against real Postgres *after* `mvn test` was fully green. **Fixed** by switching to
+  `saveAndFlush`, plus a new integration test calling `ProjectService` against real Postgres and
+  asserting both timestamps are non-null, so it can't regress silently.
+  *(2026-08-01, "Docker came up, closed out #16 and found a real bug" — PR #76.)*
 - **`SELECT DISTINCT ... ORDER BY` broke every tag-filtered request.** Postgres requires `ORDER BY`
   expressions to appear in the `DISTINCT` list. The integration test used an *unsorted*
   `PageRequest.of(0, 10)`, so it never emitted an `ORDER BY` at all — it passed while the real
-  endpoint (which always sorts by `createdAt`) was broken for every tag filter.
+  endpoint (which always sorts by `createdAt`) was broken for every tag filter. **Fixed** by
+  rewriting the query as an `IN` subquery, which needs no `DISTINCT` at all, and changing the test
+  to use the same sorted `Pageable` shape the controller actually builds.
+  *(2026-08-01, "Phase 2 core domain features" — PR #77.)*
 - **Two services shared one rate-limit bucket.** `AuthService.login` copied
   `rateLimiter.tryAcquire(ipHash, ...)` verbatim from `PasswordResetService`, missing that the
   limiter is a shared singleton. Five failed logins then blocked password reset for up to an hour —
   breaking exactly the "I forgot my password" recovery path. The unit test mocked the limiter, so it
   verified login's limit in isolation and could not observe two services colliding on real state.
+  **Fixed** by namespacing both keys (`"login:" + ipHash`, `"password-reset:" + ipHash`) and adding
+  an integration test that wires the real Spring singleton rather than a mock.
+  *(2026-08-01, "Shared rate-limiter key collision on PR #77" — PR #77.)*
 
 **Lesson:** a mock verifies the code does what it was told. It cannot verify the system works. Where
 a bug lives in *timing*, *dialect*, or *shared state*, the mock is the thing hiding it.
@@ -43,7 +72,13 @@ a bug lives in *timing*, *dialect*, or *shared state*, the mock is the thing hid
   opened in an actual browser. Every component and interceptor test passed — Vitest/jsdom and
   `HttpClientTestingModule` don't enforce browser origin rules. A green `ng test` and a clean
   `ng build` give exactly zero signal on this class of bug. Caught only by a live browser smoke test
-  against a running backend.
+  against a running backend. **Fixed — and be clear about what the fix is not: the backend still
+  has no CORS configuration.** The fix was frontend-only: an `ng serve` proxy
+  (`frontend/proxy.conf.json` forwarding `/api` to `localhost:8080`, wired into `angular.json`) plus
+  switching `environment.development.ts`'s `apiBaseUrl` to a relative `/api/v1`, so local dev
+  requests are same-origin and the browser never invokes CORS enforcement at all. Real CORS config
+  for the deployed Netlify origin is still an open Phase 5 item; `/backend` was not touched.
+  *(2026-08-02, "Phase 3 frontend foundation" — PR #80.)*
 
 **Lesson:** this is the frontend's exact analogue of the Testcontainers lesson above.
 
@@ -52,11 +87,22 @@ a bug lives in *timing*, *dialect*, or *shared state*, the mock is the thing hid
 - **A record's compact constructor silently defeated `@NotNull`.** `tags = tags == null ? List.of() : tags`
   runs *before* Bean Validation inspects the object, so a request omitting `tags` became an empty
   list instead of a 400 — contradicting the OpenAPI contract. Needed a request with a **missing key**,
-  not an empty array, to expose.
+  not an empty array, to expose. **Fixed** by dropping `tags` from the compact constructor's
+  defaulting (`links`/`images` keep theirs — those are genuinely optional in the contract), verified
+  by hand that an omitted `tags` now returns 400.
+  *(2026-08-01, "GitHub Copilot review of PR #76".)*
 - **`X-Forwarded-For` was trusted unconditionally**, letting any caller spoof their IP past the
-  per-IP rate limiter. Needed an *adversary*, not a well-formed request.
+  per-IP rate limiter. Needed an *adversary*, not a well-formed request. **Fixed** by dropping the
+  header entirely and using `getRemoteAddr()` only, until Phase 5 puts a real trusted proxy in front.
+  *(2026-08-01, "GitHub Copilot review of PR #77".)*
 - **Three separate check-then-act races**: tag upsert, `listProjects`' concurrent-delete NPE, and
   reset-token double-confirm. Each needed *concurrency* to expose; each passed single-request testing.
+  **Fixed** one per race, each by removing the gap rather than narrowing it: a native
+  `INSERT ... ON CONFLICT ((lower(name))) DO NOTHING` upsert plus re-fetch (tag); filtering nulls
+  before mapping (`listProjects`); and an atomic `UPDATE ... WHERE used_at IS NULL AND expires_at >
+  :now` returning rows-affected, replacing find-then-check-then-write (reset token).
+  *(2026-08-01, in order: "GitHub Copilot review of PR #76", "GitHub Copilot review of PR #77",
+  "Independent cross-review of PR #77" — PRs #76 and #77.)*
 
 **Lesson:** happy-path testing with well-formed, single-threaded, non-hostile input is a narrow slice
 of the input space. These bugs share one shape — they live everywhere outside that slice.
@@ -65,13 +111,28 @@ of the input space. These bugs share one shape — they live everywhere outside 
 
 - **An inverted `@Profile("!prod")` predicate made permit-all the default** for any profile that
   wasn't literally `prod` — including no profile set at all. Documented as a "temporary placeholder,"
-  which is not the same claim as "safe if deployed."
+  which is not the same claim as "safe if deployed." The sharpest detail in this whole index: **that
+  fail-open default was introduced by the fix for an earlier fail-open finding on the same file**,
+  about 25 minutes earlier in the same review round. Two profiles were named in the code, those two
+  profiles were tested, and the default case the split had just created fell between them. **Fixed**
+  by inverting the polarity — permit-all became opt-in via `@Profile("dev")`, and `@Profile("!dev")`
+  (prod, any other profile, or none) got the locked-down chain; a no-`@ActiveProfiles` test asserting
+  the default is locked down followed in PR #79.
+  *(2026-08-01, "`SecurityConfig` failed open by default, not closed" — PR #76. That entry is the one
+  case here that was never logged live; it was reconstructed from commit history on 2026-08-07 and
+  says so at the top.)*
 - **The JWT secret's length was validated lazily**, so a misconfigured `JWT_SECRET` booted looking
-  perfectly healthy and only failed when someone first tried to log in.
+  perfectly healthy and only failed when someone first tried to log in. **Fixed** by checking the key
+  length in the `jwtSecretKey` bean factory itself, turning it into an immediate boot failure, with
+  `SecurityConfigTest` covering it. *(2026-08-01, "GitHub Copilot review of PR #77".)*
 - **A raw password-reset token was logged at WARN** — a credential-equivalent secret, readable by
-  anyone with log access.
+  anyone with log access. **Fixed** by keeping the reset link out of the WARN entirely and moving it
+  to DEBUG, which is off by default in prod. *(2026-08-01, "GitHub Copilot review of PR #77".)*
 - **A real personal email was hardcoded into a Flyway migration**, which would be permanent in git
   history on merge and seeded into every environment that ran it, including CI's throwaway databases.
+  **Fixed** by switching to the RFC 2606 reserved `admin@mysite.invalid`, with a comment flagging the
+  out-of-band update needed before password reset can reach a real inbox.
+  *(2026-08-01, "GitHub Copilot review of PR #77".)*
 
 **Lesson:** this class is why `PROJECT_TODO.md`'s Definition of Done now requires that placeholder
 security config fail *closed*, and that absence-of-configuration be its own test case.
@@ -84,29 +145,66 @@ The most dangerous class, because the feedback signal is actively misleading:
   default branch was a stale `master` (GitHub only auto-links against the *default* branch), and a
   comma-separated `Closes #24, #25, ...` only ever links the first issue. The rendered PR body looks
   identical either way — the only way to see it is querying `closingIssuesReferences` via GraphQL.
+  No test was ever in play here; nobody had thought to check the mechanism at all. **Fixed** by
+  switching the default branch to `main` and deleting `master` (after confirming it was an ancestor),
+  rewriting the PR body to one `Closes #N` per line, re-verifying via `gh api graphql` that all ten
+  issues appeared, and writing both rules into `CLAUDE.md`'s PR conventions.
+  *(2026-08-02, "PR #80's `Closes #N` list never actually linked anything" — PR #80.)*
 - **Flyway silently never ran.** `flyway-core` alone compiles fine under Boot 4 but doesn't trigger
   autoconfiguration — no error, no log line, just an empty schema and a confusing "relation does not
-  exist" from the first query.
+  exist" from the first query. **Fixed** by depending on `spring-boot-starter-flyway` instead, which
+  is what pulls in the relocated `FlywayAutoConfiguration`.
+  *(2026-08-01, "Docker came up, closed out #16 and found a real bug" — PR #76.)*
 - **A clean git merge left a test asserting things that were no longer true.** Zero conflict markers,
   because there was no textual overlap: one branch rewrote `SecurityConfig` while another wrote tests
-  against its old behavior. Compiled clean; only `mvn test` on a trial merge exposed it.
-- **Deprecation warnings are suppressed by default**, hiding a Bean Validation `@Valid` placement that
-  had quietly stopped cascading into list elements.
+  against its old behavior. The layers that reported success were `git merge` and `mvn test-compile`;
+  the test suite is what actually caught it, going red on a trial merge (1 wrong-status assertion, 4
+  context-load failures). It belongs in this section for what stayed silent, not for what the tests
+  missed. **Fixed** by deleting `SecurityConfigProfileTest` — its premise (behavior varies by profile)
+  no longer existed after the JWT rewrite, and `SecurityIntegrationTest` already covered
+  "unauthenticated writes rejected" for the new model — then replaying the identical resolution on the
+  real branch and re-verifying green there.
+  *(2026-08-01, "Merging PR #79 into PR #77, and a test that git couldn't tell was broken" — PRs #77
+  and #79.)*
+- **Two warnings the default build output swallows, from two different layers.** `mvn test-compile`
+  hides deprecation warnings unless `-Dmaven.compiler.showDeprecation=true` is passed — which is what
+  surfaced three test files still importing the deprecated
+  `org.testcontainers.containers.PostgreSQLContainer` after an earlier PR had already "fixed" that
+  (it could only fix files that existed when it was written). Separately, a Hibernate Validator
+  **runtime** warning (HV000271, about `@Valid`'s pre-3.1 placement on `ProjectWriteRequest.links`)
+  had been printing into `mvn test`'s console output the whole time, where a green suite gives nobody
+  a reason to look. Worth stating precisely, because it's easy to inflate: **cascade validation never
+  stopped working.** HV000271 is a deprecation notice about *where* the annotation sits, not a
+  behavior change — a `curl` after the move confirmed `links[0].label: must not be blank` still fires,
+  i.e. cascade validation survived it. The real gap was that no test exercised an invalid `LinkDto` at
+  all. **Fixed** by moving `@Valid` onto the type argument (`List<@Valid LinkDto> links`), switching
+  the three imports to the non-generic `org.testcontainers.postgresql.PostgreSQLContainer`, and adding
+  `ProjectWriteRequestValidationTest` as the first coverage of an actually-invalid link.
+  *(2026-08-01, "Two deprecation gaps found by actually running `-Dmaven.compiler.showDeprecation=true`
+  and reading test output" — PR #77.)*
 
 **Lesson:** "it ran and didn't complain" is not evidence it did anything. For anything whose success
 is invisible (issue linking, migrations, merges), verify the *effect* directly, not the exit code.
+The last bullet is the near-miss variant and is worth separating out: sometimes the tool *did*
+complain, into output nobody was reading because the summary line said green.
 
 ### 6. What the review process itself taught
 
 Every independent review round on this project has found real defects — Copilot twice (3/6 and 5/6
 comments valid), an independent agent session once (4/4 valid), and direct user review twice. Self-review,
 even careful and test-covered, reliably misses a whole class of bug that a cold second pass catches.
+*(2026-08-01: "GitHub Copilot review of PR #76", "GitHub Copilot review of PR #77", "Independent
+cross-review of PR #77", "Shared rate-limiter key collision on PR #77", "a self-introduced regression,
+caught by the user's own review of PR #79".)*
 
 The counterweight matters just as much: **one Copilot finding was factually wrong** — it claimed
 `gen_random_uuid()` requires the `pgcrypto` extension, true before Postgres 13 but not since. It was
 disproved empirically (spin up a vanilla container, check `\dx`, run the actual SQL) rather than argued
 from memory, in under a minute. Another was simply stale. Accepting all six uncritically would have
-added a pointless extension; dismissing them defensively would have shipped three real bugs.
+added a pointless extension; dismissing them defensively would have shipped three real bugs. The
+resolution in both directions is the same move: **reply on the thread with the verdict and the
+evidence** — the fix commit where it was real, the container transcript where it wasn't — rather than
+silently implementing or silently ignoring. *(2026-08-01, "GitHub Copilot review of PR #76" — PR #76.)*
 
 **Lesson, and the one this project actually runs on:** verify each finding independently. Neither
 deference nor defensiveness — evidence.
