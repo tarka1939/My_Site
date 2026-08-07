@@ -28,7 +28,15 @@
       <li class="project-card">
         <a [routerLink]="['/projects', project.id]">
           @if (project.images.length > 0) {
-            <img [src]="project.images[0]" [alt]="project.title" loading="lazy" />
+            <!-- The first card's thumbnail is the likely LCP element above the fold, so it is
+                 fetched eagerly and at high priority; every other card stays lazy. Two elements
+                 with static attributes rather than one with `[attr.loading]`, so `loading` is
+                 applied at element creation (before `src`) instead of after it. -->
+            @if ($first) {
+              <img [src]="project.images[0]" [alt]="project.title" loading="eager" fetchpriority="high" />
+            } @else {
+              <img [src]="project.images[0]" [alt]="project.title" loading="lazy" decoding="async" />
+            }
           }
           <h2>{{ project.title }}</h2>
         </a>

@@ -16,6 +16,13 @@ const PROJECT = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
+const PROJECT_WITH_IMAGE = {
+  ...PROJECT,
+  id: 'p2',
+  title: 'Reverb',
+  images: ['https://images.example.com/reverb.png'],
+};
+
 describe('ProjectsListComponent', () => {
   let listProjects: ReturnType<typeof vi.fn>;
   let listTags: ReturnType<typeof vi.fn>;
@@ -54,6 +61,32 @@ describe('ProjectsListComponent', () => {
     fixture.componentInstance['toggleTag']('dsp');
 
     expect(listProjects).toHaveBeenLastCalledWith({ page: 0, size: 12, tag: ['dsp'] });
+  });
+
+  it('loads the first card image eagerly and the rest lazily', () => {
+    listProjects.mockReturnValue(
+      of({
+        content: [
+          { ...PROJECT_WITH_IMAGE, id: 'p2' },
+          { ...PROJECT_WITH_IMAGE, id: 'p3' },
+        ],
+        page: 0,
+        size: 12,
+        totalElements: 2,
+        totalPages: 1,
+      }),
+    );
+
+    const fixture = TestBed.createComponent(ProjectsListComponent);
+    fixture.detectChanges();
+
+    const images = (fixture.nativeElement as HTMLElement).querySelectorAll('.project-card img');
+    expect(images.length).toBe(2);
+    // The first card is the above-the-fold LCP candidate -- lazy-loading it would delay LCP.
+    expect(images[0].getAttribute('loading')).toBe('eager');
+    expect(images[0].getAttribute('fetchpriority')).toBe('high');
+    expect(images[1].getAttribute('loading')).toBe('lazy');
+    expect(images[1].getAttribute('fetchpriority')).toBeNull();
   });
 
   it('does not navigate past the last page', () => {

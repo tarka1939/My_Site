@@ -19,7 +19,27 @@
     @if (project.images.length > 0) {
       <ul class="image-gallery" aria-label="Project images">
         @for (image of project.images; track image; let i = $index) {
-          <li><img [src]="image" [alt]="project.title + ' screenshot ' + (i + 1)" loading="lazy" /></li>
+          <li>
+            <!-- The first gallery image is the likely LCP element, so it is fetched eagerly and at
+                 high priority; the rest stay lazy. Split into two elements with static attributes
+                 rather than one element with `[attr.loading]`, so `loading` is applied at element
+                 creation (before `src`) instead of in the update pass after it. -->
+            @if ($first) {
+              <img
+                [src]="image"
+                [alt]="project.title + ' screenshot ' + (i + 1)"
+                loading="eager"
+                fetchpriority="high"
+              />
+            } @else {
+              <img
+                [src]="image"
+                [alt]="project.title + ' screenshot ' + (i + 1)"
+                loading="lazy"
+                decoding="async"
+              />
+            }
+          </li>
         }
       </ul>
     }
