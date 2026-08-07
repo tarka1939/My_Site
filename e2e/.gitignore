@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Playwright output -- reports, traces, screenshots, videos. None of this belongs in git.
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Admin JWT cached by setup/global.setup.ts so repeat runs don't burn the backend's
+# login rate-limit budget. A real (if short-lived) credential -- never commit it.
+.auth/
