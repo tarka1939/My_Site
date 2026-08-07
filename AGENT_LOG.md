@@ -834,7 +834,7 @@ User reviewed PR #79 (the post-merge followups PR below) and found 2 problems wi
 **Takeaway for next time:**
 
 1. **When a "before/after" test plan shows a status code changed, verify the new code is *correct*, not just *different from the raw default page*.** "No longer falls through to Boot's Whitelabel error" and "returns the right status code" are two different claims — I only checked the first.
-2. **A test that reproduces the bug's own motivating scenario is stronger evidence than a test that only checks the two profiles you happened to name in code.** The no-profile gap here is the second time in this project a "the obvious two cases" test missed the actual deploy-mistake scenario the fix was meant to prevent (see the `!prod` vs `!dev` entry above).
+2. **A test that reproduces the bug's own motivating scenario is stronger evidence than a test that only checks the two profiles you happened to name in code.** The no-profile gap here is the second time in this project a "the obvious two cases" test missed the actual deploy-mistake scenario the fix was meant to prevent (see the 2026-08-01 "`SecurityConfig` failed open by default, not closed" entry — the `!prod`-vs-`!dev` bug — at the end of this log).
 3. Extending Spring's own `ResponseEntityExceptionHandler` rather than hand-rolling a broad catch-all is the textbook pattern here for a reason — worth defaulting to it from the start next time this shape of problem comes up, instead of arriving at it via a shipped regression.
 
 ## 2026-08-01 — claude (main session): post-merge code review followups
@@ -853,7 +853,7 @@ While fixing, discovered `org.testcontainers.containers.PostgreSQLContainer` (us
 
 1. **`GlobalExceptionHandler` had no catch-all.** Added `@ExceptionHandler(Exception.class)` → 500 `ProblemDetail`, logging the full exception server-side but not echoing `ex.getMessage()` to the client (an unanticipated exception's message could contain internals). Verified with a malformed-JSON request: got back `{"detail":"An unexpected error occurred","status":500,...}` instead of Boot's default Whitelabel/JSON error page, and confirmed the real `HttpMessageNotReadableException` + stack trace landed in the server log.
 2. **`Tag` had no `equals`/`hashCode`.** Added natural-key equality (case-insensitive `name`, matching `ux_tag_name_lower`) with a constant `hashCode()` (Vlad Mihalcea's recommended JPA pattern — an entity's hashCode must stay stable for its lifetime in a hash-based collection, but a natural key can be null pre-persistence). The reviewer was right that this only "worked" before by accident: within one persistence context, Hibernate's identity map returns the same Java instance for repeated loads by primary key, but a query-derived lookup like `findByNameIgnoreCase` doesn't carry that guarantee across a persistence-context boundary.
-3. **No test for `SecurityConfig`'s profile behavior.** Added `SecurityConfigProfileTest` (`@Nested` classes per profile, sharing one Testcontainers Postgres) asserting prod denies `POST /api/v1/projects` (403) but allows `/actuator/health` (200), and dev's permit-all still lets requests reach validation (400 on an empty body, not 403). This is exactly the regression class from the `!prod`-vs-`!dev` bug two sessions ago — now caught by `mvn test`, not by remembering to curl it by hand.
+3. **No test for `SecurityConfig`'s profile behavior.** Added `SecurityConfigProfileTest` (`@Nested` classes per profile, sharing one Testcontainers Postgres) asserting prod denies `POST /api/v1/projects` (403) but allows `/actuator/health` (200), and dev's permit-all still lets requests reach validation (400 on an empty body, not 403). This is exactly the regression class from the `!prod`-vs-`!dev` bug earlier the same day (the 2026-08-01 "`SecurityConfig` failed open by default, not closed" entry, at the end of this log) — now caught by `mvn test`, not by remembering to curl it by hand.
 4. **`Project.getLinks()`/`getImages()`/`getTags()` returned live internal references.** Changed to defensive copies (`List.copyOf`, `array.clone()`, `Set.copyOf`). Confirmed safe against Hibernate's dirty-checking: all JPA annotations are on the fields, not the getters, so Hibernate uses field access and never goes through these methods at all.
 
 **Deferred (per the reviewer's own scoping, not silently dropped):**
@@ -954,3 +954,92 @@ One of Copilot's six comments was **factually incorrect**: it claimed `gen_rando
 
 - **Do not accept review claims uncritically, and do not reject them defensively either — verify each one.** 3 of 6 comments were real defects worth fixing, 1 was a reasonable hardening call, 1 was factually wrong, 1 was stale. Uncritically accepting all six would have meant a pointless `pgcrypto` extension in the migration; uncritically dismissing them would have shipped three real bugs. The empirical check (spin up a container, run the actual SQL) took under a minute and settled the disputed one definitively.
 - **The bugs Copilot found share a shape: they're all invisible to tests that only exercise the happy path with well-formed input.** The `tags` gap needed a request with a *missing key* (not an empty array); the race needed *concurrency*; the exception-name collision needed a *future* wrong import. Worth deliberately testing malformed/omitted input and adversarial ordering in Phase 2, not just valid-input paths.
+
+## 2026-08-01 — `SecurityConfig` failed open by default, not closed (PR #76)
+
+> **Reconstructed 2026-08-07 from evidence, not written live.** This one never got an entry at the
+> time, even though three places already refer back to it as if it had: `CLAUDE.md`'s "Security
+> defaults" rule, and the "`!prod` vs `!dev`" cross-references in the two PR #79 entries above.
+> Sources used, all still checkable: commits `6453007` and `e5f07ef` (messages + diffs), the PR #76
+> review threads on `SecurityConfig.java` (`gh api repos/tarka1939/My_Site/pulls/76/comments`), and
+> the current `SecurityConfig` source. Nothing here is recalled. Where the record is silent, this
+> entry says so instead of filling the gap in.
+
+**Task given:**
+
+Not recorded. The trigger the evidence does show: a GitHub Copilot *follow-up* comment on PR #76's
+`SecurityConfig.java` review thread, posted 2026-08-01 11:59:59Z — roughly 12 minutes after the fix
+for that thread's *original* comment had been pushed and replied to.
+
+**Agent(s) used:**
+
+GitHub Copilot as reviewer (a second comment on the same file/thread); main Claude Code session as
+author/responder — the same pairing as the rest of the PR #76 review round logged above.
+
+**What went wrong (be specific):**
+
+`SecurityConfig`'s permit-all filter chain was annotated `@Profile("!prod")`. That predicate is
+active for *anything* that isn't literally the `prod` profile — including the default, no-profile-set
+case. A run that forgot `-Dspring-boot.run.profiles=prod` got `anyRequest().permitAll()` with no auth
+of any kind, since Phase 2's real JWT work hadn't landed yet.
+
+The part worth keeping is where it came from: **this fail-open default was introduced by the fix for
+an earlier fail-open finding on the same file, ~25 minutes earlier in the same review round.**
+Copilot's original comment (11:01:10Z) flagged that the single `permitAll()` chain applied in every
+profile, prod included. Commit `6453007` ("Harden SecurityConfig: deny by default in prod, permitAll
+only outside it", 11:46:45Z) fixed exactly that, splitting it into `@Profile("!prod")` permit-all and
+`@Profile("prod")` deny-all-but-`/actuator/health` — and verified it by booting under `dev` and under
+`prod`, both of which behaved correctly. Two profiles were named in the code, those same two profiles
+were tested, and the case the split had just created — no profile named at all — fell through the gap
+between them. The response on the thread (12:11:57Z) names it directly: "a genuine regression in the
+previous fix, not a restatement of the original finding."
+
+**How it was caught:**
+
+By Copilot's follow-up review comment, quoted here in full because it is the entire record of the
+catch:
+
+> `@Profile("!prod")` makes the permit-all chain active for the default profile (and any non-`prod`
+> environment), so an accidental deploy without `prod` explicitly enabled would expose all
+> endpoints. To actually "fail closed" unless explicitly running `dev`, scope permit-all to `dev`
+> only and apply the deny-all (except health) chain for all non-dev profiles.
+
+Nothing in the build was capable of failing on it — both chains compile, both wire up, the app boots.
+There was no test on `SecurityConfig`'s profile behavior at all at this point; the first one
+(`SecurityConfigProfileTest`) came later, in PR #79 — see "post-merge code review followups" above.
+
+**Fix applied:**
+
+Commit `e5f07ef` inverted the polarity: permit-all became opt-in via `@Profile("dev")`, and
+`@Profile("!dev")` — prod, any other profile, or none at all — got the locked-down chain. The class
+Javadoc was rewritten to record the inverted-predicate mistake explicitly rather than only describing
+the new behavior, so the next reader sees the trap and not just the result.
+
+Verified by booting all three cases (per the commit message and the thread reply): `dev` → `POST
+/api/v1/projects` 201; `prod` → 403; no profile at all → the app fails to start, because no datasource
+is configured outside the dev/prod profile YAMLs. That third check is weak evidence and was flagged as
+such on the thread at the time — it's fail-closed for an unrelated reason. The PR #79 entry above
+sharpens the same point: `SecurityConfigProfileTest`'s no-`@ActiveProfiles` case is a real test of the
+predicate precisely because `@ServiceConnection` hands it a datasource regardless of profile, so it
+cannot "pass" by failing to boot.
+
+**Takeaway for next time:**
+
+- **A fix for a fail-open bug can ship a different fail-open bug**, and the review round that found
+  the first one is where the second is least likely to be scrutinized — the finding already reads as
+  "closed." This project hit the general form of that twice more afterwards: PR #79's
+  `GlobalExceptionHandler` catch-all regression, and the rate-limiter key collision introduced while
+  fixing a reviewer's finding on PR #77. A fix earns the same scrutiny as original code, not a pass
+  for being a fix.
+- **Naming two profiles in code does not mean there are two cases.** `@Profile("!x")` is a *default*,
+  not a branch. When a config predicate is written as a negation, the first case to test is the one
+  nobody named.
+- **The absence of configuration deserves its own test case.** `CLAUDE.md`'s "Security defaults" rule
+  and `PROJECT_TODO.md`'s Definition of Done both trace to this.
+
+**Deliberately not reconstructed:** what the session was actually asked to do, and anything about how
+the problem was noticed beyond the review comment itself — the record doesn't say, so this entry
+doesn't either. Two things that *are* checkable and worth stating so nobody infers worse: the
+`@Profile("!prod")` state existed for about 25 minutes on the PR branch only, and `e5f07ef` is an
+ancestor of PR #76's merge commit (`752965c`), so `main` never had a tree in that state. There was
+also no deployment target at Phase 1 — hosting is Phase 5 — so the practical blast radius was zero.
