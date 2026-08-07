@@ -165,7 +165,7 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 
 - [ ] Migrate your existing projects (Equalizer, etc.) into the new content model
 - [ ] SEO basics: meta tags, sitemap.xml, robots.txt — cheap now, annoying to retrofit
-- [ ] Performance pass: Angular build budgets, image optimization, lazy loading
+- [x] Performance pass: Angular build budgets, image optimization, lazy loading — done, issue #51 (PR #83). Total bytes barely moved; the wins were elsewhere. Build budgets were replaced because the stock ones **could not fire** (500 kB warn against 284 kB of actual output); a request waterfall was found on the landing route (`app.routes.ts` → `projects.routes.ts` → the list component, three sequential requests before first render); and layout shift was removed by reserving the gallery box. `NgOptimizedImage` was evaluated against `@angular/common` source and **rejected** — every feature it offers is inert given admin-pasted external image URLs with no CDN loader and no known intrinsic dimensions. Two review findings caught real defects: the LCP hint silently no-op'd when the newest project had no images, and `path: ''` without `pathMatch` prefix-matched every URL, so the router fetched the projects chunk and backtracked on every cold entry. See `AGENT_LOG.md`
 - [ ] Top-level `README.md` documenting the whole workflow — this is the externally-visible artifact that shows the process, not just the output
 
 ## Phase 7 — Extension features (sequenced — ship one before starting the next)
