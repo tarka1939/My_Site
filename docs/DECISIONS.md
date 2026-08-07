@@ -180,6 +180,26 @@ _Add new ADR-style entries below as they arise._
 
 **Consequences:** `docs/AUTONOMOUS_WORKFLOW.md` is the operative spec going forward for Phase 4's tail through Phase 6. `PROJECT_TODO.md`'s Phase 4 checklist is annotated with the adaptation rather than silently reinterpreted. GitHub Copilot's review continues alongside the new independent-session review, not replaced by it — both have independently caught real defects so far.
 
+### 2026-08-07 — Playwright E2E lives in a top-level `/e2e`, and provisions its own admin account
+
+**Context:** Phase 4's E2E suite (issue #37) needed a home, and a way to authenticate. Neither was settled by any existing doc. Two sub-decisions, bundled because the second only arises once the first is made:
+
+1. **Location:** inside `frontend/` (reusing its `package.json` and `node_modules`) vs. a new top-level `/e2e` package.
+2. **Authentication:** the suite has to log in as an admin to seed fixtures and exercise the admin journey, but `docs/DECISIONS.md`'s "Auth flow" ADR deliberately rules out a registration endpoint, and the plaintext password behind `V2__admin_user_email_and_seed.sql`'s bcrypt hash was never committed — it was generated once and shared out of band, so it is unavailable from a clean checkout.
+
+**Decision:** A top-level `/e2e` package with its own `package.json`. `frontend/package.json` is left untouched.
+
+For auth, the suite provisions a **separate, test-only** admin row (`e2e-admin`) directly in Postgres during global setup, then does everything else — login, fixture seeding, read-back assertions, cleanup — through the real HTTP API. The direct database write is guarded: `e2e/support/db.ts` refuses to run against any host outside a localhost allowlist, and explicitly forbids adding a force-override, because the password it inserts is committed in plain text.
+
+**Alternatives considered:**
+
+- *Playwright inside `frontend/`* (rejected — Phase 5 deploys `frontend/` to Netlify, so every production build would install a browser-automation framework for no benefit; the suite is also cross-cutting by nature, driving the backend as much as the frontend, so filing it under one side misrepresents it).
+- *Reusing the seeded `admin` account* (rejected — impossible, not merely inconvenient: the password does not exist in the repository by design).
+- *Adding a test-only registration endpoint or seeding profile to the backend* (rejected — production attack surface, or production code paths existing only for tests, to avoid one guarded fixture insert).
+- *Seeding fixture projects directly via SQL too* (rejected — the suite's value is exercising the real contract; bypassing the API for convenience would test the database, not the application).
+
+**Consequences:** Running the suite needs its own `npm install` plus `npx playwright install` (~115 MB browser download) — a prerequisite documented in `e2e/README.md`, and the exact step whose omission made the suite fail on its first real run (see `AGENT_LOG.md`, 2026-08-07). Postgres is deliberately *not* managed by Playwright's `webServer`, so the runner can never drop a developer's database on exit; the two application servers are, since they're stateless. The admin journey performs a real UI login each run, which can't be cached, so roughly five full runs inside fifteen minutes will trip `AuthService`'s login rate limit — acceptable at normal cadence, noted in `e2e/README.md`. When Phase 5 adds CI, this suite needs Postgres, a JDK, Node, and a browser in the runner image — a heavier job than the existing backend/frontend test steps.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**

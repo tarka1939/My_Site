@@ -86,6 +86,18 @@ so the browser sees same-origin requests — the backend has no CORS config yet 
 for the deployed Netlify origin only, not local dev). See `CLAUDE.md`'s Commands section for the
 full command reference (tests, builds, regenerating the API client, etc.).
 
+### End-to-end tests
+
+```bash
+cd e2e && npm install && npm run install:browsers   # one-time (~115 MB browser download)
+cd e2e && npm test
+```
+
+Playwright starts the backend and frontend itself (and reuses them if already running), so only
+Postgres needs to be up first. JDK 25 and Maven must be on `PATH` — the runner shells out to
+`mvn spring-boot:run`. Full prerequisites, the four covered journeys, and why the suite provisions
+its own throwaway admin account are in `e2e/README.md`.
+
 ## Documentation
 
 - [`SPEC.md`](./SPEC.md) — scope, non-goals
