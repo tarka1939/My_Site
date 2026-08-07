@@ -6,6 +6,113 @@ Convert relative dates to absolute (YYYY-MM-DD) when logging.
 
 ---
 
+## Index — the cases worth reading (Phase 4 deliverable, issue #36)
+
+`PROJECT_TODO.md` Phase 4 asks for "at least 3 concrete cases where an agent's output was subtly
+wrong and how you caught and fixed it." Phases 1-3 produced far more than three. This index is the
+deliverable: the cases below are grouped by **which layer of verification failed to catch them**,
+because that's the transferable part — chronology isn't.
+
+The through-line across every case: **each bug was invisible to the specific kind of testing that
+was already passing at the time.** Not "we forgot to write a test" — the tests existed, ran green,
+and were structurally incapable of failing on these.
+
+### 1. Bugs that mocked tests structurally cannot catch (needed real infrastructure)
+
+- **`save()` vs `saveAndFlush()` returned null timestamps.** `POST /projects` returned 201 with
+  `"createdAt":null`. Hibernate's `@CreationTimestamp` populates at *flush*, which `@Transactional`
+  defers to commit — after the method already built its response. The mocked unit test could never
+  fail: Mockito echoes back the same Java object, simulating no flush timing at all. Caught by a
+  manual `curl` against real Postgres *after* `mvn test` was fully green.
+- **`SELECT DISTINCT ... ORDER BY` broke every tag-filtered request.** Postgres requires `ORDER BY`
+  expressions to appear in the `DISTINCT` list. The integration test used an *unsorted*
+  `PageRequest.of(0, 10)`, so it never emitted an `ORDER BY` at all — it passed while the real
+  endpoint (which always sorts by `createdAt`) was broken for every tag filter.
+- **Two services shared one rate-limit bucket.** `AuthService.login` copied
+  `rateLimiter.tryAcquire(ipHash, ...)` verbatim from `PasswordResetService`, missing that the
+  limiter is a shared singleton. Five failed logins then blocked password reset for up to an hour —
+  breaking exactly the "I forgot my password" recovery path. The unit test mocked the limiter, so it
+  verified login's limit in isolation and could not observe two services colliding on real state.
+
+**Lesson:** a mock verifies the code does what it was told. It cannot verify the system works. Where
+a bug lives in *timing*, *dialect*, or *shared state*, the mock is the thing hiding it.
+
+### 2. Bugs no test outside a real browser can catch
+
+- **The backend had zero CORS configuration**, which broke all local dev the first time the app was
+  opened in an actual browser. Every component and interceptor test passed — Vitest/jsdom and
+  `HttpClientTestingModule` don't enforce browser origin rules. A green `ng test` and a clean
+  `ng build` give exactly zero signal on this class of bug. Caught only by a live browser smoke test
+  against a running backend.
+
+**Lesson:** this is the frontend's exact analogue of the Testcontainers lesson above.
+
+### 3. Bugs that only appear under adversarial, malformed, or concurrent input
+
+- **A record's compact constructor silently defeated `@NotNull`.** `tags = tags == null ? List.of() : tags`
+  runs *before* Bean Validation inspects the object, so a request omitting `tags` became an empty
+  list instead of a 400 — contradicting the OpenAPI contract. Needed a request with a **missing key**,
+  not an empty array, to expose.
+- **`X-Forwarded-For` was trusted unconditionally**, letting any caller spoof their IP past the
+  per-IP rate limiter. Needed an *adversary*, not a well-formed request.
+- **Three separate check-then-act races**: tag upsert, `listProjects`' concurrent-delete NPE, and
+  reset-token double-confirm. Each needed *concurrency* to expose; each passed single-request testing.
+
+**Lesson:** happy-path testing with well-formed, single-threaded, non-hostile input is a narrow slice
+of the input space. These bugs share one shape — they live everywhere outside that slice.
+
+### 4. Security and config that fails *open* while looking correct
+
+- **An inverted `@Profile("!prod")` predicate made permit-all the default** for any profile that
+  wasn't literally `prod` — including no profile set at all. Documented as a "temporary placeholder,"
+  which is not the same claim as "safe if deployed."
+- **The JWT secret's length was validated lazily**, so a misconfigured `JWT_SECRET` booted looking
+  perfectly healthy and only failed when someone first tried to log in.
+- **A raw password-reset token was logged at WARN** — a credential-equivalent secret, readable by
+  anyone with log access.
+- **A real personal email was hardcoded into a Flyway migration**, which would be permanent in git
+  history on merge and seeded into every environment that ran it, including CI's throwaway databases.
+
+**Lesson:** this class is why `PROJECT_TODO.md`'s Definition of Done now requires that placeholder
+security config fail *closed*, and that absence-of-configuration be its own test case.
+
+### 5. Tooling that reports success while silently doing nothing
+
+The most dangerous class, because the feedback signal is actively misleading:
+
+- **Every PR's `Closes #N` had silently linked nothing since Phase 1.** Two stacked causes: the repo's
+  default branch was a stale `master` (GitHub only auto-links against the *default* branch), and a
+  comma-separated `Closes #24, #25, ...` only ever links the first issue. The rendered PR body looks
+  identical either way — the only way to see it is querying `closingIssuesReferences` via GraphQL.
+- **Flyway silently never ran.** `flyway-core` alone compiles fine under Boot 4 but doesn't trigger
+  autoconfiguration — no error, no log line, just an empty schema and a confusing "relation does not
+  exist" from the first query.
+- **A clean git merge left a test asserting things that were no longer true.** Zero conflict markers,
+  because there was no textual overlap: one branch rewrote `SecurityConfig` while another wrote tests
+  against its old behavior. Compiled clean; only `mvn test` on a trial merge exposed it.
+- **Deprecation warnings are suppressed by default**, hiding a Bean Validation `@Valid` placement that
+  had quietly stopped cascading into list elements.
+
+**Lesson:** "it ran and didn't complain" is not evidence it did anything. For anything whose success
+is invisible (issue linking, migrations, merges), verify the *effect* directly, not the exit code.
+
+### 6. What the review process itself taught
+
+Every independent review round on this project has found real defects — Copilot twice (3/6 and 5/6
+comments valid), an independent agent session once (4/4 valid), and direct user review twice. Self-review,
+even careful and test-covered, reliably misses a whole class of bug that a cold second pass catches.
+
+The counterweight matters just as much: **one Copilot finding was factually wrong** — it claimed
+`gen_random_uuid()` requires the `pgcrypto` extension, true before Postgres 13 but not since. It was
+disproved empirically (spin up a vanilla container, check `\dx`, run the actual SQL) rather than argued
+from memory, in under a minute. Another was simply stale. Accepting all six uncritically would have
+added a pointless extension; dismissing them defensively would have shipped three real bugs.
+
+**Lesson, and the one this project actually runs on:** verify each finding independently. Neither
+deference nor defensiveness — evidence.
+
+---
+
 ## Log format
 
 Copy this block per entry:
