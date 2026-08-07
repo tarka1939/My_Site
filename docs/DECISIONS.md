@@ -148,7 +148,7 @@ _Add new ADR-style entries below as they arise._
 
 **Alternatives considered:** parent issues for every phase (rejected — phases 0–4 and 6 are flat task lists; a milestone already groups those, so parent issues on top would duplicate that view without adding real hierarchy — the same over-engineering discipline already applied to skipping NgRx/Kubernetes elsewhere in this plan). No milestones, labels only (rejected — labels already exist for component (`backend`/`frontend`/`infra`) and repurposing them for phase would collide with that existing use).
 
-**Consequences:** parent/sub-issues are live as of 2026-07-25 (all 6 epics created, 24 sub-issues linked, all added to project #1). Milestones are blocked on a manual step — the connected GitHub tooling can assign an issue to an existing milestone but has no way to create one — so the 8 milestones need to be created on GitHub's site before all 69 issues can be assigned in one pass.
+**Consequences:** parent/sub-issues are live as of 2026-07-25 (all 6 epics created, 24 sub-issues linked, all added to project #1). Milestones were initially blocked on a manual step — the connected GitHub tooling can assign an issue to an existing milestone but has no way to create one. **Resolved (updated 2026-08-07):** all 9 milestones now exist, created by hand on GitHub's site — Phase 0 through Phase 7, plus `Meta`. Milestone *numbers* do not line up with phase numbers (Phase 4 is milestone `5`, Phase 7 is `8`, `Meta` is `9`), so look them up with `gh api repos/tarka1939/My_Site/milestones` rather than inferring them from the phase — see `CLAUDE.md`'s PR conventions.
 
 ### 2026-07-29 — Build tool: Maven
 
