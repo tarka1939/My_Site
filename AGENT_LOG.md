@@ -255,15 +255,22 @@ PR #83 fix round.
 
 **What went wrong (be specific):**
 
-Every dispatched agent that dies can be continued with **`SendMessage` addressed to its agent ID,
-which preserves its full context** — a fresh `Agent` call starts cold instead. The completion
-notification for each failed agent said this explicitly, and noted the same task ID can fire more
-than once for exactly this reason. It was read three times and acted on zero times.
+A dispatched agent that dies can be continued with **`SendMessage` addressed to its agent ID, which
+the tooling states preserves its context** — a fresh `Agent` call starts cold instead. The
+completion notification for each failed agent said this explicitly, and noted the same task ID can
+fire more than once for exactly this reason. It was read three times and acted on zero times.
+
+Stated precisely, because this entry is about not overclaiming: the capability is documented in the
+tooling's own notification text and was **not** verified in this session — nobody attempted a
+resume. `CLAUDE.md` carries the same caveat. What is certain is that resuming was never *tried*,
+not that it would have worked.
 
 Instead, each death was handled by inspecting the abandoned worktree, inferring what the agent had
-been trying to do, and finishing it manually. That worked, but it was slower, it put the Senior Dev
-back into implementation work it is not supposed to do, and in one case it came close to shipping a
-defect.
+been trying to do, and finishing it manually. The three cases were not equally bad. For the Phase 4
+E2E agent the salvage was harmless — its work was already committed, only verification was
+outstanding, and running the gate is the Senior Dev's job anyway (that gate is what caught the suite
+having never been executed, which is logged separately and stands on its own). The PR #82 fix agent
+left coherent uncommitted work that reviewed cleanly. The PR #83 fix agent is the one that mattered.
 
 **The near-miss, which is the reason this is worth logging at all.** The PR #83 fix agent had
 finished its fixes and moved on to *mutation-testing its own tests* — deliberately reintroducing
@@ -303,6 +310,20 @@ rather than last. `docs/AUTONOMOUS_WORKFLOW.md` cross-references it.
 - **Three consecutive identical failures should have prompted a process question, not a third
   workaround.** After the second manual salvage the right response was to ask whether salvage was
   the correct move at all. Repetition of a workaround is itself evidence worth reading.
+- **A correction has to be checked as carefully as the thing it corrects.** The first version of
+  this change shipped a note in `docs/AUTONOMOUS_WORKFLOW.md` claiming to correct a stale rule
+  ("the Senior Dev now launches reviewers itself, rather than handing a prompt to the user") — but
+  that document had said "dispatches PR review to independent sessions" in its opening paragraph
+  since its very first commit. The hand-the-prompt-over instruction came from a *session kickoff
+  prompt*, not from any doc. A false "corrected 2026-08-07" note was therefore written into the
+  permanent record, inside a PR whose whole subject is being honest about process failures, and was
+  caught by the independent review rather than by its author. Verify what a document actually says
+  before writing that you have corrected it.
+- **The same change also missed two files saying the superseded thing** (`PROJECT_TODO.md` line 69
+  and `docs/DECISIONS.md`'s 2026-08-02 ADR) — and line 69 already carried a note recording that it
+  had been missed the *previous* time this doc changed. `CLAUDE.md`'s doc-currency rule exists for
+  exactly this and still was not enough; grep for the superseded claim across the repo rather than
+  updating the file you happen to be editing.
 
 ## 2026-08-07 — Senior Dev session: Phase 4 (E2E suite + this index), first run of the dispatcher model
 
