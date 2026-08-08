@@ -8,6 +8,8 @@
   <article>
     <h1>{{ project.title }}</h1>
 
+    <app-project-period [startedOn]="project.startedOn" [completedOn]="project.completedOn" />
+
     @if (project.tags.length > 0) {
       <ul class="tag-list" aria-label="Tags">
         @for (tag of project.tags; track tag.id) {

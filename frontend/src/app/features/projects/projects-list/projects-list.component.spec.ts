@@ -31,6 +31,22 @@ const OTHER_PROJECT_WITH_IMAGE = {
   images: ['https://images.example.com/delay.png'],
 };
 
+const COMPLETED_PROJECT = {
+  ...PROJECT,
+  id: 'p4',
+  title: 'Compressor',
+  startedOn: '2024-03-01',
+  completedOn: '2025-06-01',
+};
+
+const ONGOING_PROJECT = {
+  ...PROJECT,
+  id: 'p5',
+  title: 'Synth',
+  startedOn: '2026-02-01',
+  completedOn: null,
+};
+
 function pageOf(content: unknown[]) {
   return of({ content, page: 0, size: 12, totalElements: content.length, totalPages: 1 });
 }
@@ -134,6 +150,31 @@ describe('ProjectsListComponent', () => {
       const order = tracker.writesFor(image).filter((name) => name === 'loading' || name === 'src');
       expect(order).toEqual(['loading', 'src']);
     }
+  });
+
+  it('shows each card period as month/year, ongoing where there is no end date', () => {
+    // PROJECT has neither date -- its card must show no period element at all, rather than an
+    // empty label or a dangling dash.
+    listProjects.mockReturnValue(pageOf([COMPLETED_PROJECT, ONGOING_PROJECT, PROJECT]));
+
+    const fixture = TestBed.createComponent(ProjectsListComponent);
+    fixture.detectChanges();
+
+    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.project-card');
+    expect(cards.length).toBe(3);
+
+    const completed = cards[0].querySelector('.project-period');
+    expect(completed?.textContent).toContain('March 2024');
+    expect(completed?.textContent).toContain('June 2025');
+    // Month precision in the machine-readable value too -- the stored day never surfaces.
+    expect([...cards[0].querySelectorAll('time')].map((t) => t.getAttribute('datetime'))).toEqual([
+      '2024-03',
+      '2025-06',
+    ]);
+
+    expect(cards[1].querySelector('.project-period')?.textContent).toContain('ongoing');
+
+    expect(cards[2].querySelector('.project-period')).toBeNull();
   });
 
   it('does not navigate past the last page', () => {

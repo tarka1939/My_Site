@@ -11,7 +11,7 @@ import { Link } from './link';
 
 
 /**
- * Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.
+ * Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.  startedOn/completedOn are both optional and both nullable. Because this body is also used for full replacement (PUT), omitting either field clears it -- it does not preserve the stored value. 
  */
 export interface ProjectWriteRequest { 
     title: string;
@@ -22,5 +22,13 @@ export interface ProjectWriteRequest {
      * Tag names. Matched case-insensitively against existing tags; new names create a new Tag row.
      */
     tags: Array<string>;
+    /**
+     * When work started. Optional; null or omitted means unspecified. Only ever rendered as month/year -- see the Project schema.
+     */
+    startedOn?: string | null;
+    /**
+     * When work finished. Null or omitted means **ongoing**. Rejected with 400 if it precedes startedOn, or if it is supplied while startedOn is not -- a project cannot finish without having started. 
+     */
+    completedOn?: string | null;
 }
 

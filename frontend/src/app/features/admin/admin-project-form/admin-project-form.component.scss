@@ -29,6 +29,12 @@ textarea {
   margin: 0;
 }
 
+.field-hint {
+  color: gray;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
 fieldset {
   border: 1px solid var(--color-border);
   border-radius: 0.375rem;
@@ -36,6 +42,11 @@ fieldset {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+// Date inputs have a fixed intrinsic width; stretching them across the fieldset just looks broken.
+.period .field input {
+  align-self: flex-start;
 }
 
 .repeatable-row {

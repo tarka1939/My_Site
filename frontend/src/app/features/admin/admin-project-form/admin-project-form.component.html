@@ -30,6 +30,43 @@
       }
     </div>
 
+    <fieldset class="period">
+      <legend>Project period</legend>
+
+      <div class="field">
+        <label for="project-started-on">Start date</label>
+        <input
+          id="project-started-on"
+          type="date"
+          formControlName="startedOn"
+          aria-describedby="project-started-on-hint"
+        />
+        <p id="project-started-on-hint" class="field-hint">
+          Only the month and year are shown on the site.
+        </p>
+        @if (fieldErrors()['startedOn']) {
+          <p class="field-error" role="alert">{{ fieldErrors()['startedOn'] }}</p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="project-completed-on">Completion date</label>
+        <input
+          id="project-completed-on"
+          type="date"
+          formControlName="completedOn"
+          aria-describedby="project-completed-on-hint"
+          [attr.aria-invalid]="completedOnError() ? 'true' : null"
+        />
+        <p id="project-completed-on-hint" class="field-hint">
+          Leave empty while the project is ongoing &mdash; the site says so explicitly.
+        </p>
+        @if (completedOnError(); as message) {
+          <p class="field-error" role="alert">{{ message }}</p>
+        }
+      </div>
+    </fieldset>
+
     <fieldset formArrayName="links">
       <legend>Links</legend>
       @for (link of form.controls.links.controls; track $index) {
