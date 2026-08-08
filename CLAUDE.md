@@ -18,6 +18,20 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 > Status: `/backend` has full Project CRUD, tag listing, contact form + rate limiting, JWT login, and password reset (Phases 1-2). `/frontend` is scaffolded with routing, a generated API client, auth, and the core CMS pages (Phase 3).
 
+## When a dispatched agent dies mid-task
+
+Added 2026-08-08 after three agents were lost to API/session limits in a single session, and were each salvaged by hand when they should simply have been resumed.
+
+**Resume the agent; do not reconstruct its work.** `SendMessage` addressed to the agent's ID continues it **with its context intact** — a fresh `Agent` call starts cold and loses everything it knew. The completion notification for a failed agent says so explicitly, and the same task ID can notify more than once for this reason. Waiting for the limit to reset and sending one message beats reverse-engineering intent from a working tree, every time.
+
+**A dying agent's last message is not a status report.** It is whatever it happened to be saying when the process stopped. Treat it as a fragment, never as a summary of what was completed.
+
+**If you genuinely must salvage, treat the working tree as an unknown intermediate state, not a finished one.** "Died just before committing" and "died in the middle of an experiment" look identical from outside. A real example from 2026-08-07, on PR #83: an agent finished its fixes, then began mutation-testing its own tests — deliberately reintroducing each bug to prove the tests caught it. It died with a mutation still applied. The working tree contained a live, intentional defect sitting directly beneath a comment stating the opposite. Committing that would have shipped the exact bug the tests existed to prevent. What caught it was noticing the code contradicted its own comment and then running the suite; a resume would have avoided the situation entirely, because the agent knew it had a mutation applied and that restoring it was the next step.
+
+**Before salvaging anything, run the tests first, not last.** They are the cheapest available check on whether a working tree is in the state its author intended.
+
+Caveat: resumption after an API-error termination is documented by the tooling but has not been verified in this project across a multi-hour gap. If a resume comes back confused or empty-handed, fall back to salvage — with the discipline above.
+
 ## Project
 
 My Site — portfolio site (Angular + Spring Boot). Full scope lives in `SPEC.md`; phased build plan in `PROJECT_TODO.md`.

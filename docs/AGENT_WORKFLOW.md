@@ -51,6 +51,12 @@ Both hooks return a structured `permissionDecision: "deny"` with a human-readabl
 
 This is the mechanical counterpart to `docs/AUTONOMOUS_WORKFLOW.md`'s Senior Dev / junior / independent-reviewer model: the Senior Dev session uses the native `TaskCreate`/`TaskList`/`TaskUpdate` tools as the shared task board, breaking phase work from `PROJECT_TODO.md` into discrete tasks with real `addBlockedBy`/`addBlocks` dependencies (not a flat list), then for each independently-startable task creates a worktree and dispatches a fresh session scoped to just that one task. Once that task's branch is pushed and a PR opened, review happens in a genuinely separate session with no shared context (a new session/process, not a continuation of the implementing one) — per `docs/AUTONOMOUS_WORKFLOW.md`'s PR review protocol — with the automated gate (`mvn test`, including the Modulith `ApplicationModules.verify()` check) run first as a cheap filter before spending a fresh session's attention on it.
 
+## When a dispatched agent dies mid-task (added 2026-08-08)
+
+The operative rule lives in `CLAUDE.md` ("When a dispatched agent dies mid-task"): **resume the agent via `SendMessage` with its ID rather than salvaging its work by hand**, and treat a dying agent's final message as a fragment rather than a status report. `AGENT_LOG.md`'s 2026-08-08 entry has the full account of why.
+
+The part that belongs here, because it interacts with the worktree rules above: **a dead agent's worktree is not automatically free.** Do not remove or reassign it while a resume is still possible — resuming a session whose working directory has been deleted or checked out to a different branch defeats the point. If you do decide to salvage instead, the worktree stays assigned to that task until its branch merges, and the deletion-before-prune ordering in the cleanup guidance above still applies (a half-removed worktree leaves a directory whose git commands silently resolve to the main checkout).
+
 ## Git worktree pattern (Phase 7 isolation exercise)
 
 ```
