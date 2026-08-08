@@ -212,6 +212,34 @@ describe('AdminProjectFormComponent', () => {
     expect(host.querySelector('#project-completed-on')?.getAttribute('aria-invalid')).toBe('true');
   });
 
+  it('points the completion input at its error message, not just at the hint', () => {
+    // aria-invalid alone tells a screen-reader user the field is wrong without saying why:
+    // role="alert" fires once as the message appears, and nothing re-announces it when the user
+    // tabs back. The description is what carries the reason on every later visit, so the ids
+    // aria-describedby lists have to include the error element and still resolve to real nodes.
+    const fixture = TestBed.createComponent(AdminProjectFormComponent);
+    fixture.detectChanges();
+    fillRequiredFields(fixture);
+    const host = fixture.nativeElement as HTMLElement;
+    const input = host.querySelector('#project-completed-on');
+
+    expect(input?.getAttribute('aria-describedby')).toBe('project-completed-on-hint');
+
+    fixture.componentInstance['form'].patchValue({
+      startedOn: '2025-06-01',
+      completedOn: '2024-03-01',
+    });
+    fixture.detectChanges();
+
+    const describedBy = input?.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+    expect(describedBy).toContain('project-completed-on-error');
+    expect(describedBy).toContain('project-completed-on-hint');
+    // A dangling id reference is announced as nothing at all, so resolve each one.
+    const described = describedBy.map((id) => host.querySelector(`#${id}`)?.textContent?.trim());
+    expect(described.every((text) => !!text)).toBe(true);
+    expect(described.join(' ')).toContain('cannot be earlier');
+  });
+
   it('blocks a completion date supplied without a start date', () => {
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();

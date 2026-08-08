@@ -55,14 +55,22 @@
           id="project-completed-on"
           type="date"
           formControlName="completedOn"
-          aria-describedby="project-completed-on-hint"
+          [attr.aria-describedby]="
+            completedOnError()
+              ? 'project-completed-on-hint project-completed-on-error'
+              : 'project-completed-on-hint'
+          "
           [attr.aria-invalid]="completedOnError() ? 'true' : null"
         />
         <p id="project-completed-on-hint" class="field-hint">
           Leave empty while the project is ongoing &mdash; the site says so explicitly.
         </p>
         @if (completedOnError(); as message) {
-          <p class="field-error" role="alert">{{ message }}</p>
+          <!-- role="alert" announces this once, when it appears. The id is what the input's
+               aria-describedby points at, which is what makes the reason available again on every
+               later visit to the field -- without it the input announces as invalid and never
+               says why. -->
+          <p id="project-completed-on-error" class="field-error" role="alert">{{ message }}</p>
         }
       </div>
     </fieldset>

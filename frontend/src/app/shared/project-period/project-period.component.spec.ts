@@ -107,4 +107,19 @@ describe('ProjectPeriodComponent', () => {
 
     expect(host.querySelector('.project-period')).toBeNull();
   });
+
+  it('does not call a project with an unreadable completion date "ongoing"', () => {
+    // The asymmetry that makes this its own case: for `completedOn`, null is not "nothing" -- it
+    // *means* ongoing. So collapsing an unparseable value into null, the way `startedOn` can
+    // safely do, would turn a finished project into a positive claim that it is still running:
+    // a false statement rather than a gap. Unreachable through the API (a Postgres date only ever
+    // leaves as ISO_LOCAL_DATE), which is precisely why nothing else would catch a regression.
+    const { host } = renderPeriod('2024-03-01', 'not-a-date');
+
+    expect(visibleText(host)).toBe('March 2024');
+    expect(host.querySelector('.is-ongoing')).toBeNull();
+    // One date and no stray dash hanging off it.
+    expect(host.querySelectorAll('time').length).toBe(1);
+    expect(announcedText(host)).toBe('Project period: March 2024');
+  });
 });

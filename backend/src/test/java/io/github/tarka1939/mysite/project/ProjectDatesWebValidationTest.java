@@ -54,8 +54,13 @@ class ProjectDatesWebValidationTest {
                 {"title":"Ongoing","description":"No dates recorded","tags":[]}
                 """))
             .andExpect(status().isCreated())
-            // Present-and-null, not omitted: the contract marks both nullable, and the
-            // generated client distinguishes an explicit null from a missing key.
+            // Present-and-null, not omitted. This pins backend behaviour rather than
+            // restating the contract: Project lists neither field in `required`, so the
+            // generated type is `startedOn?: string | null`, which accepts an absent key
+            // and an explicit null identically -- it cannot tell them apart, and no client
+            // should have to. Jackson's default inclusion is what makes the key always
+            // present, so this asserts it stays that way. (jsonPath throws on an absent
+            // key rather than yielding null, so it does test presence, not just the value.)
             .andExpect(jsonPath("$.startedOn").value(nullValue()))
             .andExpect(jsonPath("$.completedOn").value(nullValue()));
 

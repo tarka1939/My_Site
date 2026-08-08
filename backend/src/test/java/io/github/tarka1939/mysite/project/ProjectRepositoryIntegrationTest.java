@@ -326,21 +326,34 @@ class ProjectRepositoryIntegrationTest {
             .hasMessageContaining("ck_project_date_period");
     }
 
+    // The three permitted cases below clear the persistence context and read the row back, the
+    // same way the createProject_* tests above do. Asserting on what saveAndFlush returns would
+    // be asserting on the very instance that was handed in -- true before the write, and true
+    // even if the value never reached Postgres. The flush is what proves the CHECK does not
+    // fire; the re-read is what gives the assertions something they can fail on.
+
     @Test
     void databasePermitsBothDatesNull() {
-        Project project = projectRepository.saveAndFlush(new Project("Undated", "No period at all"));
+        UUID id = projectRepository.saveAndFlush(new Project("Undated", "No period at all")).getId();
+        entityManager.clear();
 
-        assertThat(project.getStartedOn()).isNull();
-        assertThat(project.getCompletedOn()).isNull();
+        Project reloaded = projectRepository.findById(id).orElseThrow();
+
+        assertThat(reloaded.getStartedOn()).isNull();
+        assertThat(reloaded.getCompletedOn()).isNull();
     }
 
     @Test
     void databasePermitsStartedOnWithoutCompletedOn() {
         Project project = new Project("Ongoing", "Still going");
         project.setStartedOn(LocalDate.of(2026, 2, 1));
+        UUID id = projectRepository.saveAndFlush(project).getId();
+        entityManager.clear();
 
-        assertThat(projectRepository.saveAndFlush(project).getStartedOn())
-            .isEqualTo(LocalDate.of(2026, 2, 1));
+        Project reloaded = projectRepository.findById(id).orElseThrow();
+
+        assertThat(reloaded.getStartedOn()).isEqualTo(LocalDate.of(2026, 2, 1));
+        assertThat(reloaded.getCompletedOn()).isNull();
     }
 
     @Test
@@ -348,9 +361,13 @@ class ProjectRepositoryIntegrationTest {
         Project project = new Project("Weekend build", "Same-day period");
         project.setStartedOn(LocalDate.of(2024, 3, 1));
         project.setCompletedOn(LocalDate.of(2024, 3, 1));
+        UUID id = projectRepository.saveAndFlush(project).getId();
+        entityManager.clear();
 
-        assertThat(projectRepository.saveAndFlush(project).getCompletedOn())
-            .isEqualTo(LocalDate.of(2024, 3, 1));
+        Project reloaded = projectRepository.findById(id).orElseThrow();
+
+        assertThat(reloaded.getStartedOn()).isEqualTo(LocalDate.of(2024, 3, 1));
+        assertThat(reloaded.getCompletedOn()).isEqualTo(LocalDate.of(2024, 3, 1));
     }
 
     private ProjectResponse createProject(String title, List<String> tags) {

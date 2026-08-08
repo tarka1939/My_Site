@@ -20,8 +20,15 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
  * Deliberately string surgery rather than `new Date(value)`: parsing `'2024-03-01'` yields UTC
  * midnight, so formatting it in any negative-offset timezone would render "February 2024".
  *
- * Returns null for empty *and* for unparseable input, so callers get one "nothing to show" branch
- * and a malformed value renders nothing instead of throwing inside DatePipe.
+ * Returns null for empty *and* for unparseable input, so a malformed value renders nothing instead
+ * of throwing inside DatePipe.
+ *
+ * **Null is therefore not the same claim as "no date was supplied".** That distinction is load
+ * bearing for `completedOn`, where absence *means* ongoing (rule 1 above): collapsing an
+ * unrenderable completion date into the same null would make a finished project announce itself as
+ * still running, which is worse than showing nothing. Callers that care must ask
+ * {@link hasDateValue} about the raw input rather than reading null as absence -- see
+ * ProjectPeriodComponent.ongoing.
  */
 export function toProjectMonth(value: string | null | undefined): string | null {
   if (!value) {
@@ -40,6 +47,15 @@ export function toProjectMonth(value: string | null | undefined): string | null 
   }
 
   return `${year}-${month}`;
+}
+
+/**
+ * Whether a date input carries anything at all, regardless of whether {@link toProjectMonth} can
+ * make sense of it. The counterpart to that function's null: `hasDateValue(v) && !toProjectMonth(v)`
+ * is exactly "supplied, but unrenderable".
+ */
+export function hasDateValue(value: string | null | undefined): boolean {
+  return blankToNull(value) !== null;
 }
 
 /**
