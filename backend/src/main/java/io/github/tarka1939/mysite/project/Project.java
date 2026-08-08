@@ -1,6 +1,7 @@
 package io.github.tarka1939.mysite.project;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -56,6 +57,15 @@ public class Project {
     // instead of one query per project -- avoids N+1 when mapping a paginated project list.
     @BatchSize(size = 25)
     private Set<Tag> tags = new HashSet<>();
+
+    // Nullable on purpose: null startedOn means unspecified, null completedOn means the
+    // project is ongoing -- a meaningful value, not missing data. The DB additionally
+    // enforces that completedOn neither precedes startedOn nor exists without it
+    // (ck_project_date_period, V4__project_dates.sql); the primary check is
+    // @ValidProjectDatePeriod on the write DTO, which turns a violation into a 400.
+    private LocalDate startedOn;
+
+    private LocalDate completedOn;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
@@ -120,6 +130,22 @@ public class Project {
 
     public void setTags(Set<Tag> tags) {
         this.tags = tags;
+    }
+
+    public LocalDate getStartedOn() {
+        return startedOn;
+    }
+
+    public void setStartedOn(LocalDate startedOn) {
+        this.startedOn = startedOn;
+    }
+
+    public LocalDate getCompletedOn() {
+        return completedOn;
+    }
+
+    public void setCompletedOn(LocalDate completedOn) {
+        this.completedOn = completedOn;
     }
 
     public Instant getCreatedAt() {

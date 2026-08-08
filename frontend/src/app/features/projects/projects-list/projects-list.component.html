@@ -45,6 +45,7 @@
           }
           <h2>{{ project.title }}</h2>
         </a>
+        <app-project-period [startedOn]="project.startedOn" [completedOn]="project.completedOn" />
         <p>{{ project.description }}</p>
         @if (project.tags.length > 0) {
           <ul class="tag-list" aria-label="Tags">

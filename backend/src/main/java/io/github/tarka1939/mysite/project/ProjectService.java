@@ -40,6 +40,8 @@ public class ProjectService {
         project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
         project.setImages(request.images().toArray(new String[0]));
         project.setTags(resolveTags(request.tags()));
+        project.setStartedOn(request.startedOn());
+        project.setCompletedOn(request.completedOn());
 
         // saveAndFlush (not save): @CreationTimestamp/@UpdateTimestamp are populated by
         // Hibernate at flush time. A plain save() defers that flush to transaction commit,
@@ -84,6 +86,12 @@ public class ProjectService {
         project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
         project.setImages(request.images().toArray(new String[0]));
         project.setTags(resolveTags(request.tags()));
+        // Unconditional assignment, including null: PUT is a full replacement, so omitting
+        // startedOn/completedOn clears them rather than preserving what's stored. Skipping
+        // the write when the incoming value is null would make it impossible to un-set a
+        // date, and would silently diverge from the contract's stated semantics.
+        project.setStartedOn(request.startedOn());
+        project.setCompletedOn(request.completedOn());
 
         // saveAndFlush for the same reason as createProject: @UpdateTimestamp only bumps at
         // flush time, and this endpoint (unlike create) is exactly the one flagged in the

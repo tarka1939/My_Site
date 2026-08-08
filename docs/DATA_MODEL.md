@@ -20,8 +20,12 @@ Draft the ER diagram and entity definitions here before writing migrations or JP
 | description | text, not null | |
 | links | jsonb, not null default `[]` | array of `{label, url}` — see Conventions above |
 | images | text[], not null default `{}` | array of external image URLs |
+| started_on | date, nullable | when work on the project started; null = unspecified. Added 2026-08-08, see ADR below |
+| completed_on | date, nullable | when work finished; **null = ongoing**, a meaningful value rather than missing data. Must not precede `started_on` — enforced at the DTO layer *and* by a table `CHECK` constraint |
 | created_at | timestamptz, not null default `now()` | |
 | updated_at | timestamptz, not null default `now()` | bump on every update |
+
+**On `started_on`/`completed_on` vs `created_at`/`updated_at`:** these are not duplicates. `created_at`/`updated_at` are *record* timestamps — when the row was entered and last edited. `started_on`/`completed_on` describe *the work itself*, which routinely predates the row by years. Both are `date`, not `timestamptz`: the UI renders month/year only, since the source material can't support day-level accuracy, and the convention is the 1st of the month. Sorting a portfolio by "most recent work" means ordering on these, not on `created_at`.
 
 Relationships: many-to-many with `Tag` via join table `project_tags` (`project_id` FK, `tag_id` FK, composite PK, `ON DELETE CASCADE` both sides). Needs pagination/filtering support from the start (Phase 2 — retrofitting later, once real data and a frontend depend on the shape, is the thing to avoid).
 
@@ -225,4 +229,5 @@ erDiagram
 - First migration: `V1__init.sql` (Flyway) — should create `project`, `tag`, `project_tags`, `contact_message`, `admin_user`, `password_reset_token`. Phase 7 tables land in their own later migrations, one per sub-phase, not upfront.
 - `V2__admin_user_email_and_seed.sql` (Phase 2) — adds `admin_user.email` (see AdminUser table above) and seeds the single admin row with a bcrypt-hashed password, per the Auth Flow ADR in `docs/DECISIONS.md`.
 - `V3__password_reset_token_hash_index.sql` (Phase 2) — adds a unique index on `password_reset_token.token_hash` (see PasswordResetToken table above), caught in cross-review after V1/V2 had already shipped without one.
+- `V4__project_dates.sql` (Phase 6) — adds nullable `project.started_on` and `project.completed_on` plus a `CHECK` enforcing that `completed_on` neither precedes `started_on` nor exists without it. Additive and non-destructive: both columns are nullable, so existing rows are untouched and no backfill is required. See the 2026-08-08 project-dates ADR in `docs/DECISIONS.md`.
 - Record schema changes here as they land, or link to migration files directly.

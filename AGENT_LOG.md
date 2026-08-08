@@ -239,6 +239,88 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-08 — Project date period (#85): contract-first across two agents, and three bugs the obvious implementation would have shipped
+
+**Task given:**
+
+Close the spec/model divergence found during Phase 6 content drafting: `SPEC.md` had promised
+"dates" on project detail since Phase 0, but `Project` only ever had `created_at`/`updated_at`.
+Add a real date period, contract-first.
+
+**Agent(s) used:**
+
+Senior Dev wrote the contract (`docs/openapi.yaml`, `docs/DATA_MODEL.md`, the ADR) and validated it
+before dispatching anything. Then `backend-agent` and, once the backend was verified,
+`frontend-agent` — each building against the settled contract, neither reading the other's code.
+Sequential, per `docs/AGENT_WORKFLOW.md`'s Phase 6 default.
+
+**What went right:**
+
+Contract-first worked as advertised, for the first time on this project with a genuinely
+cross-cutting change. Both halves matched the contract field-for-field on the first attempt, with no
+integration round. The backend explicitly confirmed the contract was implementable as written rather
+than quietly diverging — a stop-and-report condition in its brief.
+
+**Three bugs the obvious implementation would have shipped, each prevented by a different mechanism:**
+
+1. **A `CHECK` constraint that would have permitted what it existed to forbid.** The natural
+   `CHECK (completed_on >= started_on)` evaluates to NULL for a completed-but-never-started row, and
+   a `CHECK` is *satisfied* by NULL — so it would silently allow exactly one of the two cases it was
+   written to reject. Written instead as
+   `completed_on IS NULL OR (started_on IS NOT NULL AND completed_on >= started_on)`, which can never
+   evaluate to NULL. Flagged in the dispatch brief as a known trap, reasoned through by the agent,
+   then verified by building the truth table directly in Postgres rather than reading the SQL — both
+   must-reject cases return `f`, not NULL.
+2. **A timezone bug in date rendering.** `new Date('2024-03-01')` parses as UTC midnight, so
+   formatting it in any negative-offset timezone renders **February 2024**. The frontend converts by
+   string surgery instead. Invisible to anyone developing in Europe; wrong for a large share of
+   visitors.
+3. **A validator that worked only inside Spring.** A package-private `ConstraintValidator` resolves
+   fine through Spring's bean factory but fails under a plain
+   `Validation.buildDefaultValidatorFactory()`, which requires a public class (HV000064). The 12
+   in-container MockMvc tests were green while the standalone unit test was 7/7 erroring. An
+   in-container-only suite would never have surfaced it.
+
+**A junior correctly refused an instruction.** The ADR records "1st of the month" as the storage
+convention, so the obvious move is to snap picked dates. The frontend agent declined: snapping would
+rewrite a stored `2024-03-17` to `2024-03-01` on any unrelated edit — a silent data change directly
+contradicting the round-trip requirement in the same brief. It stores the day as picked, never
+renders it, and flagged the decision for reversal rather than burying it. Accepted.
+
+It also **proved its own mutation testing had been undone** — grep for markers plus the committed
+diff — a direct response to the incident logged below, where an agent died mid-mutation and left a
+live defect in the working tree. The `CLAUDE.md` guidance written that day was picked up and applied
+without being restated.
+
+**What went wrong (be specific):** nothing that reached a branch. Both halves passed their gates on
+the first attempt: backend 84 tests / BUILD SUCCESS, frontend 30 → 52 tests, build clean with no
+budget warnings, E2E 7/7.
+
+**How it was caught:** N/A — the three defects above were prevented rather than caught.
+
+**Fix applied:** N/A.
+
+**Takeaway for next time / non-obvious judgment calls made:**
+
+1. **A `CHECK` constraint involving a nullable column needs its truth table checked, not just read.**
+   Three-valued logic makes "obviously correct" constraints permissive in exactly the cases that
+   matter. Same family as every other silent-success bug in this log: the mechanism reports success
+   by doing nothing.
+2. **`ProjectWriteRequest` is also the PUT body, so omitting a field clears it.** Documented in the
+   contract deliberately, because it makes the admin edit form a data-loss hazard if it does not
+   round-trip existing values — a bug that only appears on a user's *second* edit. Covered by a test
+   specifically.
+3. **Version skew in the test stack.** Testcontainers runs `postgres:17-alpine`; the local dev
+   database is 18.4. Both accepted V4 identically, but "mvn test is green" is not the same claim as
+   "it works on the deployed version" — worth settling a production Postgres version in Phase 5
+   rather than discovering the gap there.
+4. **`ProjectWriteRequest` is a positional record**, so adding two components broke all 8 existing
+   constructor call sites in tests. Cheap at this size; worth a builder or named test factory before
+   the record grows further.
+5. **Prettier is configured (`frontend/.prettierrc`) but unenforced, and most existing files already
+   fail it.** The frontend agent formatted only its own files rather than dumping unrelated churn
+   into the diff — correct call, but the inconsistency is now visible and wants a decision.
+
 ## 2026-08-08 — Senior Dev: three agents lost to session limits, all salvaged by hand when they should have been resumed
 
 **Task given:**
