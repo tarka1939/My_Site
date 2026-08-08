@@ -239,6 +239,71 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-08 — Senior Dev: three agents lost to session limits, all salvaged by hand when they should have been resumed
+
+**Task given:**
+
+Not a task — a process failure of the Senior Dev's own, noticed only when the user asked whether a
+terminated agent could be resumed rather than picked up from where it died. It could. It should
+have been.
+
+**Agent(s) used:**
+
+Senior Dev session (this one) as the party at fault. Three dispatched juniors terminated by API
+session limits across 2026-08-07: the Phase 4 E2E implementation, the PR #82 fix round, and the
+PR #83 fix round.
+
+**What went wrong (be specific):**
+
+Every dispatched agent that dies can be continued with **`SendMessage` addressed to its agent ID,
+which preserves its full context** — a fresh `Agent` call starts cold instead. The completion
+notification for each failed agent said this explicitly, and noted the same task ID can fire more
+than once for exactly this reason. It was read three times and acted on zero times.
+
+Instead, each death was handled by inspecting the abandoned worktree, inferring what the agent had
+been trying to do, and finishing it manually. That worked, but it was slower, it put the Senior Dev
+back into implementation work it is not supposed to do, and in one case it came close to shipping a
+defect.
+
+**The near-miss, which is the reason this is worth logging at all.** The PR #83 fix agent had
+finished its fixes and moved on to *mutation-testing its own tests* — deliberately reintroducing
+each bug to confirm the test caught it. It died with a mutation still applied. Its final streamed
+words were `"Restoring, then testing the [attr.loading] collapse."`
+
+So the working tree contained a live, intentional defect: a single `<img>` using `[attr.loading]`,
+sitting directly beneath a comment its own author had written explaining why that construct must
+**not** be used (a binding lands in the update pass after `src`, silently defeating lazy loading
+while every attribute still reads correctly in the DOM). Committing that state would have shipped
+the exact bug the new tests existed to prevent, under a comment asserting the opposite.
+
+What caught it: noticing the code contradicted the comment three lines above it, then running the
+suite, which failed with `expected [ 'src', 'loading' ] to deeply equal [ 'loading', 'src' ]` — the
+mutation test working precisely as designed. Resuming the agent would have avoided the whole
+episode, because the agent knew it had a mutation applied and that restoring it was the next step.
+
+**How it was caught:** the user asked, directly, whether resuming was possible. Not by any check
+the Senior Dev ran.
+
+**Fix applied:**
+
+`CLAUDE.md` gained a "When a dispatched agent dies mid-task" section — resume rather than salvage;
+a dying agent's last message is a fragment and not a status report; if salvage is genuinely
+unavoidable, treat the working tree as an unknown intermediate state and run the tests *first*
+rather than last. `docs/AUTONOMOUS_WORKFLOW.md` cross-references it.
+
+**Takeaway for next time:**
+
+- **"Died just before committing" and "died in the middle of a deliberate experiment" are
+  indistinguishable from outside the process.** Both leave coherent-looking uncommitted work. The
+  second is dangerous precisely because the work looks finished, and the agent's own comments
+  describe the intended state rather than the actual one. Only running the tests separates them.
+- **Read the affordances the tooling hands you.** The resume instruction was in the text of all
+  three failure notifications. This is the same class of error as the rest of this log — a signal
+  present and unexamined — except the signal here was an explicit instruction, not a subtle one.
+- **Three consecutive identical failures should have prompted a process question, not a third
+  workaround.** After the second manual salvage the right response was to ask whether salvage was
+  the correct move at all. Repetition of a workaround is itself evidence worth reading.
+
 ## 2026-08-07 — Senior Dev session: Phase 4 (E2E suite + this index), first run of the dispatcher model
 
 **Task given:**

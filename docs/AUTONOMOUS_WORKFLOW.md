@@ -10,7 +10,11 @@ Confirmed 2026-08-02. See `docs/DECISIONS.md` for the ADR.
 
 **Junior (fresh session, per implementation task).** A new Claude Code session dispatched by the Senior Dev for one discrete task from `PROJECT_TODO.md` — writes the actual code/config/tests. Scoped narrowly to that task, not the whole phase, so a wrong turn stays contained and easy for the Senior Dev to catch on review.
 
-**Independent reviewer (fresh session, per PR).** For every PR, a brand-new Claude Code session — no shared conversation history with the Senior Dev session, no knowledge of *why* a given approach was taken, only the diff plus the standing docs (`CLAUDE.md`, `docs/openapi.yaml`, `docs/DECISIONS.md`, `docs/DATA_MODEL.md`). This mirrors a cold human reviewer, not a rubber stamp from someone who already agrees with their own reasoning. Runs alongside GitHub Copilot's automated review, not instead of it — Copilot has independently caught real defects (missing validation, a race condition, an exception-naming collision) across Phases 1-3, so both layers stay.
+**Independent reviewer (fresh session, per PR).** For every PR, a brand-new Claude Code session — no shared conversation history with the Senior Dev session, no knowledge of *why* a given approach was taken, only the diff plus the standing docs (`CLAUDE.md`, `docs/openapi.yaml`, `docs/DECISIONS.md`, `docs/DATA_MODEL.md`). This mirrors a cold human reviewer, not a rubber stamp from someone who already agrees with their own reasoning.
+
+**Who launches it (corrected 2026-08-07):** the Senior Dev launches the reviewer itself, in its own detached `git worktree`, rather than handing a prompt to the user to paste into a separately-started session. The original rule required the hand-off out of a concern that the Senior Dev would leak implementation framing into a review meant to be blind. That risk is real but lives in the *prompt text*, not in who presses go — a dispatched agent starts with a fresh context window and inherits nothing else. So the neutrality constraint moves onto the prompt: PR pointer plus the standing docs, and nothing about why an approach was taken.
+
+**On Copilot (deviated 2026-08-07):** Copilot's review was originally a required second layer alongside this one, and it earned that place — it independently caught real defects (missing validation, a race condition, an exception-naming collision) across Phases 1-3. It is currently **unavailable**: its quota is exhausted until 2026-08-25, and it responds to review requests with a quota error rather than a review. PRs #81, #82 and #83 were merged on the independent review alone. This is a deliberate deviation, not an oversight — stalling the project for two and a half weeks was the worse trade. Restore Copilot as a required layer once quota returns; a quota error is emphatically **not** the same claim as "the automated reviewer found nothing."
 
 **The user (product owner).** Answers genuine spec-ambiguity questions when they come up, approves anything in the escalation list below, and does the one-time Phase 5 pre-flight setup that only a human can do (account creation, payment, credentials).
 
@@ -31,10 +35,14 @@ These always stop and wait for the user — they are not treated as "keep workin
 ## PR review protocol
 
 1. Senior Dev opens a PR, following `CLAUDE.md`'s PR conventions (closing keywords, correct milestone, project board status).
-2. A fresh Claude Code session reviews the diff cold — no context beyond the PR itself and the standing docs. Findings get posted as PR review comments, same shape as the Copilot review pattern already established.
-3. GitHub Copilot's automated review also runs (unchanged from Phases 1-3).
+2. The Senior Dev dispatches a fresh session to review the diff cold, in its own detached worktree — no context beyond the PR itself and the standing docs. Findings get posted as PR review comments, same shape as the Copilot review pattern already established.
+3. GitHub Copilot's automated review also runs — **suspended until 2026-08-25 while its quota is exhausted; see the note above.**
 4. Senior Dev addresses valid findings, verifying each one rather than accepting or rejecting on the spot (per the pattern in `AGENT_LOG.md`'s Copilot-review entries — one finding across the project so far has turned out to be factually wrong, and blind acceptance would have made the code worse, not better).
-5. Only merges once both reviews are addressed.
+5. Only merges once every available review layer is addressed — both while Copilot is running, the independent review alone during the suspension above.
+
+## When a dispatched agent dies mid-task
+
+See `CLAUDE.md`'s "When a dispatched agent dies mid-task" for the operative rule. In short: **resume the agent via `SendMessage` with its ID rather than salvaging its work by hand** — its context survives, and a dying agent's final message is a fragment, not a status report. Three agents were lost to API/session limits on 2026-08-07 and all three were salvaged manually when a resume would have been correct; one of them had died mid-mutation-test and left a deliberate defect in the working tree. `AGENT_LOG.md`'s 2026-08-08 entry has the full account.
 
 ## Reporting
 
