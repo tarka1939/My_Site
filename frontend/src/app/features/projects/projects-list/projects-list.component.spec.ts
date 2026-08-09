@@ -218,6 +218,12 @@ describe('ProjectsListComponent', () => {
 
     expect(style.getPropertyValue('-webkit-line-clamp')).toBe('3');
     expect(style.display).toBe('-webkit-box');
+    // The one declaration whose removal is both silent and total: `-webkit-box` without an
+    // explicit `vertical` orientation lays the text out in a single horizontal box, so the clamp
+    // becomes completely inert in a real browser while every other assertion here still passes.
+    // It is also the declaration most at risk from a minifier, since it is the only one of the
+    // four with no unprefixed equivalent to fall back to.
+    expect(style.getPropertyValue('-webkit-box-orient')).toBe('vertical');
     expect(style.overflow).toBe('hidden');
     // No pixel height anywhere in the clamp: one would cut mid-line as soon as the user zooms.
     expect(style.height).not.toMatch(/px/);

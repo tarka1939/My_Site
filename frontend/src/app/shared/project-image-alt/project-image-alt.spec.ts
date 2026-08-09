@@ -15,8 +15,12 @@ describe('projectImageAlt', () => {
     }
   });
 
-  it('drops the count for a single image, where there is nothing to orient against', () => {
-    expect(projectImageAlt('Animal Vision', 0, 1)).toBe('Animal Vision, image');
+  it('names a single image with just the title, adding no role word', () => {
+    // With one image there is no position to give, and "image" on its own is the "image of"
+    // prefix WAI's alt decision tree rules out -- a screen reader announces the role already, so
+    // "Animal Vision, image" comes out as "Animal Vision, image, graphic".
+    expect(projectImageAlt('Animal Vision', 0, 1)).toBe('Animal Vision');
+    expect(projectImageAlt('Animal Vision', 0, 1)).not.toMatch(/\bimage\b/);
   });
 
   it('falls back to the bare position when a title is missing or blank', () => {

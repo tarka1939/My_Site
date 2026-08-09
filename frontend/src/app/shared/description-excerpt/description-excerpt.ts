@@ -20,11 +20,13 @@
  * So this is the fallback bound and the payload bound; the stylesheet is the layout bound. Neither
  * destroys anything: the detail page still renders `description` in full, and the card links to it.
  *
- * The first paragraph is taken whole rather than the first N characters of the description,
- * because a paragraph is the smallest unit of this content that is written to stand on its own --
+ * The first paragraph is taken whole rather than the first N characters of the description:
  * docs/CONTENT_DRAFT.md (branch `phase6/content-draft`) says each drafted entry's opening
- * paragraph was written as exactly that. Falling straight to a character cut would routinely
- * splice the end of one paragraph onto the start of the next.
+ * paragraph was written to stand on its own, and a blind character cut would routinely splice the
+ * end of one paragraph onto the start of the next. What the paragraph unit buys is that a cut
+ * never runs *past* a paragraph boundary -- not that there is never a cut. The paragraph is not
+ * automatically short enough: one of the five drafted openers is 287 characters and is still cut
+ * by the cap below.
  */
 
 /**
@@ -39,13 +41,36 @@ const TRAILING_PUNCTUATION = /[\s.,;:!?–—-]+$/;
 /**
  * Characters of description text a card may carry, excluding the appended ellipsis.
  *
- * Sized to comfortably exceed what the CSS clamp can show, not to match it: the page is capped at
- * 60rem (`app.scss`), which gives roughly 100-120 visible characters across three clamped lines at
- * the default font size, and fewer as text is zoomed. Leaving that headroom is deliberate -- the
- * stylesheet decides what is visible, and it must never run out of text before it runs out of
- * lines, or the clamp would silently do nothing on wide cards.
+ * Sized to sit *above* what the CSS clamp can show, so the stylesheet is normally what decides the
+ * visible cut and this is the fallback bound on the payload. Measured in headless Chromium against
+ * the real drafted copy, at the site's own font stack and default text size:
+ *
+ * | card                                          | description box | prose in 3 lines |
+ * |-----------------------------------------------|-----------------|------------------|
+ * | 3 columns, page at its 60rem max width        | 259 px          | 101-103 chars    |
+ * | 1 column, viewport 567 px -- the widest card  | 501 px          | 200 chars        |
+ *
+ * **The widest card is not the widest viewport**, which is what the previous version of this
+ * comment got wrong. `.project-grid` is `repeat(auto-fill, minmax(16rem, 1fr))` with a 1.5rem gap
+ * inside a `main` of `min(100vw, 60rem)` less 2rem of padding, so two columns need 536 px of
+ * content width: the grid is one full-width column at 567 px and below (measured -- 568 px is the
+ * first two-column width), and there a single card spans the whole container and its description
+ * box is nearly twice the three-column width.
+ *
+ * **This is a sizing heuristic, not a guarantee.** Characters per line depends on the glyphs -- the
+ * same 501 px box holds 325 characters of narrow text ("il1 tif jil ...") against 132 of wide
+ * ("MWQ WMO ..."), so no fixed character count can dominate it for every input. When the cap does
+ * bind first the consequence is mild: the reader sees this function's "…" rather than the
+ * browser's, the payload is still bounded, and the detail page still carries the full text. What
+ * the headroom buys is that the clamp is not routinely a no-op -- at 200 the cap and the widest
+ * card's measured three-line capacity were the same number, leaving the clamp nothing to do there.
+ *
+ * 240 rather than a tighter number for a second reason: it clears four of the five drafted first
+ * paragraphs (129, 164, 171 and 204 characters), so those reach the card whole, which is the point
+ * of taking the paragraph as the unit at all. Only System Equalizer's 287-character opener is cut.
+ * At 200 it was two of five, one of them losing a single word.
  */
-export const CARD_EXCERPT_MAX_CHARS = 200;
+export const CARD_EXCERPT_MAX_CHARS = 240;
 
 /**
  * The card summary for a description: its first paragraph, whitespace collapsed, cut at a word
@@ -72,7 +97,13 @@ export function toCardExcerpt(
   if (text.length <= maxChars) {
     return text;
   }
-  return `${cutAtWordBoundary(text, maxChars)}…`;
+
+  const cut = cutAtWordBoundary(text, maxChars);
+  // A cut made entirely of punctuation or whitespace strips to nothing -- an opening paragraph
+  // that begins with an ASCII rule ("-----...") does it. Appending the ellipsis regardless would
+  // render a card whose whole description is "…", which is truthy and so sails through the
+  // template's `@if (… ; as excerpt)` guard. Say nothing instead.
+  return cut ? `${cut}…` : '';
 }
 
 /**
@@ -82,8 +113,26 @@ export function toCardExcerpt(
  * characters, and a hard cut of a long token is the better of the two bad options there.
  */
 function cutAtWordBoundary(text: string, maxChars: number): string {
-  const head = text.slice(0, maxChars);
+  const head = cutAtCodePoint(text, maxChars);
   const lastSpace = head.lastIndexOf(' ');
   const cut = lastSpace >= maxChars / 2 ? head.slice(0, lastSpace) : head;
   return cut.replace(TRAILING_PUNCTUATION, '');
+}
+
+/**
+ * Cuts to at most `maxChars` on a whole code point.
+ *
+ * `slice` counts UTF-16 code units, so a cut landing between the halves of a surrogate pair leaves
+ * an unpaired surrogate, which renders as the replacement glyph. A high surrogate at the end of the
+ * head is always unpaired -- its partner sits at index `maxChars`, outside the slice -- so dropping
+ * it is enough. Only the hard-cut path can reach this (a word cut lands on a space, and a space is
+ * never half of a pair), so it takes an unbroken token longer than the cap with an astral character
+ * exactly at the boundary: a long URL or identifier carrying an emoji, or text in one of the
+ * scripts that live above the BMP.
+ */
+function cutAtCodePoint(text: string, maxChars: number): string {
+  const head = text.slice(0, maxChars);
+  const lastUnit = head.charCodeAt(head.length - 1);
+  const endsMidPair = lastUnit >= 0xd800 && lastUnit <= 0xdbff;
+  return endsMidPair ? head.slice(0, -1) : head;
 }

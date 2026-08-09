@@ -127,14 +127,18 @@ describe('ProjectDetailComponent', () => {
     }
   });
 
-  it('drops the count from the alt text when a project has a single image', () => {
+  it('names a single image with the title alone, with no position and no role word', () => {
+    // One image has no position to report, and "image" on its own would be the "image of" prefix
+    // WAI's alt decision tree rules out -- assistive tech announces the role itself, so it would
+    // read as "Equalizer, image, graphic". The alt stays non-empty, so the image is still in the
+    // accessibility tree; it just claims nothing beyond which project it belongs to.
     getProject.mockReturnValue(of({ ...PROJECT, images: ['https://images.example.com/one.png'] }));
 
     const fixture = TestBed.createComponent(ProjectDetailComponent);
     fixture.detectChanges();
 
     const image = (fixture.nativeElement as HTMLElement).querySelector('.image-gallery img')!;
-    expect(image.getAttribute('alt')).toBe('Equalizer, image');
+    expect(image.getAttribute('alt')).toBe('Equalizer');
   });
 
   it('loads the first gallery image eagerly and the rest lazily', () => {

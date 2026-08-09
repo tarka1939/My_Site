@@ -11,8 +11,10 @@
  * **The honest constraint: there is no per-image alt text to use.** `images` is a bare array of
  * URLs in the contract and the data model, with no label, caption or ordering metadata, so nothing
  * the frontend can reach describes what any given image contains. This function therefore asserts
- * only the two things that are actually known -- which project the image belongs to, and where it
- * sits in the set -- and nothing about its content or type.
+ * only what is actually known -- which project the image belongs to, and, in a gallery of more
+ * than one, where it sits in the set -- and nothing about its content or type. It also says no
+ * more than that: no "image"/"photo of" role word, which W3C/WAI's alt decision tree rules out
+ * because assistive tech announces the role itself.
  *
  * **Why not `alt=""`.** Empty alt is the correct marking for a decorative image, and W3C/WAI's
  * decorative-images guidance turns on whether the image adds information the surrounding text
@@ -35,13 +37,23 @@
  * Until then this is the most that can truthfully be said.
  */
 export function projectImageAlt(title: string, index: number, total: number): string {
-  // "image N of M" gives orientation within the gallery -- how many there are, and which one this
-  // is. With a single image there is nothing to orient against, so "image 1 of 1" would just be
-  // noise ahead of the screen reader's own "graphic" announcement.
-  const position = total > 1 ? `image ${index + 1} of ${total}` : 'image';
-
   // `title` is required and non-empty per the contract; if it ever arrives blank, drop the naming
   // clause rather than emitting a leading comma.
   const name = title?.trim();
-  return name ? `${name}, ${position}` : position;
+
+  // "image N of M" gives orientation within the gallery -- how many there are, and which one this
+  // is. That position is information the user cannot get any other way, and it is worth the
+  // redundancy of the word "image" sitting in front of the screen reader's own "graphic".
+  if (total > 1) {
+    const position = `image ${index + 1} of ${total}`;
+    return name ? `${name}, ${position}` : position;
+  }
+
+  // A lone image has nothing to orient against, so there is no position to give -- and a bare
+  // "image" is the "image of"/"photo of" prefix that W3C/WAI's alt decision tree exists to talk
+  // people out of: assistive tech announces the role itself, so the word only adds "graphic,
+  // image, graphic". The title alone is everything that is both known and worth saying. The blank
+  // fallback stays "image" rather than "" on purpose -- an empty alt marks the image decorative,
+  // which is the one claim the paragraph above rules out.
+  return name || 'image';
 }
