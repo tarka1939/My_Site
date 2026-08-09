@@ -18,6 +18,21 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 > Status: `/backend` has full Project CRUD, tag listing, contact form + rate limiting, JWT login, and password reset (Phases 1-2). `/frontend` is scaffolded with routing, a generated API client, auth, and the core CMS pages (Phase 3).
 
+## Never quote a working tree without naming its branch
+
+**`D:\repos\My_Site` — the main checkout, and the most obvious place to run a command — sits on `phase1/review-followups`, 58 commits behind `main` as of 2026-08-09.** Its files parse fine, grep fine, and are wrong. Several worktrees exist alongside it on their own task branches; none of them is `main` either. There is no checkout of `main` on this machine by default.
+
+So: **a path alone is not a reference to anything.** `AGENT_LOG.md` means a different file in every one of those directories.
+
+- **Resolve file content through an explicit ref, not through whatever a directory happens to hold:** `git show My_Site/main:AGENT_LOG.md`, or `git show <branch>:<path>` for the branch actually under discussion. Do this for any evidence that leaves this session — a PR body, a review reply, a doc, a claim to the user.
+- **Before grepping or reading a working tree as evidence, run `git rev-parse --abbrev-ref HEAD`** and state which branch the finding came from. "I grepped the repo" is not a provenance.
+- **Don't cite line numbers in fast-moving files.** `AGENT_LOG.md` grew by hundreds of lines in a day; a line number is stale before the PR merges. Quote enough text to be searchable instead.
+- **`git fetch` before comparing against `main`.** A local `main` ref can lag the remote by a full session's work.
+
+This is not hypothetical. PR #94 cited `AGENT_LOG.md:611` as evidence for a factual claim; the correct line on `main` was 1243, and 611 came from grepping the stale main checkout — inside a PR whose other half was about stale-branch confusion. See `AGENT_LOG.md`'s 2026-08-09 entry.
+
+Worth fixing at the root too: if you own the machine, get the main checkout back onto `main`, or stop treating it as a place to read from.
+
 ## When a dispatched agent dies mid-task
 
 Added 2026-08-08 after three agents were lost to API/session limits in a single session, and were each salvaged by hand when they should simply have been resumed.
