@@ -30,18 +30,25 @@
                  (before `src`) instead of in the update pass after it -- the spec asserts that
                  ordering, not just the final attribute values. `decoding` is left at the browser
                  default on the eager branch on purpose: deferring the decode of the LCP image is
-                 the one thing worth not doing. -->
+                 the one thing worth not doing.
+
+                 The alt text says only what is actually known -- which project, and, where there is
+                 more than one image, which of how many. It must not claim the image is a
+                 screenshot: nothing here knows that, and for the drafted System Equalizer entry it
+                 is false. See
+                 shared/project-image-alt/project-image-alt.ts for the full reasoning, including why
+                 these are not marked decorative with alt="". -->
             @if ($first) {
               <img
                 [src]="image"
-                [alt]="project.title + ' screenshot ' + (i + 1)"
+                [alt]="imageAlt(project, i)"
                 loading="eager"
                 fetchpriority="high"
               />
             } @else {
               <img
                 [src]="image"
-                [alt]="project.title + ' screenshot ' + (i + 1)"
+                [alt]="imageAlt(project, i)"
                 loading="lazy"
                 decoding="async"
               />
