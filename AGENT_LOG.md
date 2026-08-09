@@ -239,6 +239,76 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-09 — The README overclaimed the very methodology it was describing
+
+**Task given:**
+
+Issue #52 — write the top-level README as the externally-visible artifact for `SPEC.md`'s
+multi-agent goal. PR #98.
+
+**Agent(s) used:**
+
+Senior Dev (this session) as author; an independent fresh session as reviewer, briefed specifically
+to hunt for overselling, because a portfolio artifact creates pressure to make the process sound
+more rigorous than it is.
+
+**What went wrong (be specific):**
+
+The reviewer found what it was asked to look for, in the author's own writing. Three overstatements,
+all verified, in a section whose subject is the project catching unverified claims.
+
+1. **"built in separate worktrees, neither able to read the other's code."** False. The commits are
+   one linear branch — `2a739af` → `7edcbfd` → `febefc7`, twenty-seven minutes apart, zero merge
+   commits — because both implementation sessions were dispatched to the *same* worktree,
+   sequentially. The only separation was a prompt instruction, and `docs/AGENT_WORKFLOW.md` states
+   in terms that prompt-level discipline is not a filesystem boundary. Worse, the claim describes
+   as *done* the isolated backend-agent/frontend-agent exercise that three separate documents record
+   as moved to Phase 7 and not yet run.
+2. **"green in the report"**, of the test suite that had never been executed. There was no green
+   report: the log's own account says the junior "hit an API session limit mid-verification, and its
+   final output was a truncated 'Cold-start verification run:' with no results." A fabricated detail,
+   inside the bullet about a fabricated verification.
+3. **"matched the contract field-for-field on the first attempt."** True, but presented as evidence
+   of independent agreement when the frontend's client is *generated* from that contract by
+   `openapi-generator-cli` — so part of the match is mechanical, not corroborating.
+
+Also: a `CHECK`-constraint case was listed under "what the process catches" when it is a prevented
+counterfactual, taken from the one log entry whose headline lesson is that prevented bugs need proof
+of reachability; an "a suite that tested a different build" example appears in **no** log entry at
+all (it happened, but was only ever written in a PR comment); the worktree hook was described as
+denying out-of-worktree writes without noting it is opt-in via `CLAUDE_WORKTREE_ROOT` and scoped to
+`Edit`/`Write`; and "every PR is reviewed by a separate session" holds only from 2026-08-02.
+
+**How it was caught:**
+
+Cold review of PR #98, checking each claim against git history, the hook scripts and `AGENT_LOG.md`
+itself — including checking the author's own list of what he had verified.
+
+**Fix applied:**
+
+The contract-first paragraph now states plainly what the sequence does and does not demonstrate, and
+that true isolation is a Phase 7 exercise that has not run. The fabricated "green in the report" is
+gone. The `CHECK` counterfactual is replaced with the `-webkit-box-orient` case — a real defect,
+caught, where deleting one declaration left every test green and the feature inert. The unlogged
+example is removed. The hook description names its opt-in condition. And the section now carries its
+own correction, naming the two claims the review disproved, because a document arguing for verified
+claims cannot quietly edit out the moment it failed that standard.
+
+**Takeaway for next time:**
+
+- **The artifact describing the process is the piece most likely to overstate it.** Everywhere else,
+  a false claim is caught by a test or a reviewer reading code. In a README there is nothing to
+  contradict it — the claim *is* the deliverable. That makes it the single place most needing a cold
+  reader, which is the opposite of how documentation is usually treated.
+- **"Neither read the other's code" and "neither could read the other's code" are different claims.**
+  The first is about behaviour, the second about architecture, and only the second is a property of
+  the system. This author wrote the second while the evidence supported only the first. Wherever
+  isolation is claimed, name the mechanism enforcing it — and if the mechanism is an instruction in
+  a prompt, say so.
+- **A briefing can find what it asks for.** This reviewer was told to hunt for overselling and found
+  three instances the previous reviewers, given general briefs on the same body of work, did not.
+  Naming the failure mode you fear is a cheap and apparently effective review instruction.
+
 ## 2026-08-09 — Content rendering (#86, #87): a junior declined the fix the issue asked for, and was right
 
 **Task given:**
