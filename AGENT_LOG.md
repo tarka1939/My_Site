@@ -261,7 +261,8 @@ cross-cutting change. Both halves matched the contract field-for-field on the fi
 integration round. The backend explicitly confirmed the contract was implementable as written rather
 than quietly diverging — a stop-and-report condition in its brief.
 
-**Three bugs the obvious implementation would have shipped, each prevented by a different mechanism:**
+**~~Three~~ two bugs the obvious implementation would have shipped** (the count was corrected on
+2026-08-08 — item 2 below was an overclaim by the Senior Dev and is retracted in place):
 
 1. **A `CHECK` constraint that would have permitted what it existed to forbid.** The natural
    `CHECK (completed_on >= started_on)` evaluates to NULL for a completed-but-never-started row, and
@@ -271,10 +272,22 @@ than quietly diverging — a stop-and-report condition in its brief.
    evaluate to NULL. Flagged in the dispatch brief as a known trap, reasoned through by the agent,
    then verified by building the truth table directly in Postgres rather than reading the SQL — both
    must-reject cases return `f`, not NULL.
-2. **A timezone bug in date rendering.** `new Date('2024-03-01')` parses as UTC midnight, so
-   formatting it in any negative-offset timezone renders **February 2024**. The frontend converts by
-   string surgery instead. Invisible to anyone developing in Europe; wrong for a large share of
-   visitors.
+2. ~~**A timezone bug in date rendering.**~~ **Retracted 2026-08-08 — this claim was wrong, and it
+   was mine.** The original entry said `new Date('2024-03-01')` parses as UTC midnight and would
+   therefore render **February 2024** in a negative-offset timezone, and credited the frontend's
+   string-surgery conversion with preventing it. The first half is true of `new Date` in isolation;
+   the conclusion does not follow. Angular's `DatePipe` never calls `new Date(value)` for that
+   shape — `toDate` in `@angular/common` matches `/^(\d{4}(-\d{1,2}(-\d{1,2})?)?)$/` and builds a
+   **local** date via `createDate(y, m - 1, d)` (verified by reading the installed 21.2.19 source,
+   after an independent reviewer disputed the claim). So the obvious implementation,
+   `{{ startedOn | date: 'LLLL y' }}`, would have rendered correctly in every timezone. No bug was
+   prevented here.
+
+   The string-surgery util is still the right call — it is independent of pipe internals, and the
+   trap is real for anyone who reaches for `new Date()` directly — but "prevented a shipped bug" was
+   an overclaim. Left visible rather than deleted: this file is the source for Phase 7b's public
+   build-log page, and a log about unverified claims that quietly edits its own mistakes would be
+   worth nothing.
 3. **A validator that worked only inside Spring.** A package-private `ConstraintValidator` resolves
    fine through Spring's bean factory but fails under a plain
    `Validation.buildDefaultValidatorFactory()`, which requires a public class (HV000064). The 12
@@ -292,16 +305,40 @@ diff — a direct response to the incident logged below, where an agent died mid
 live defect in the working tree. The `CLAUDE.md` guidance written that day was picked up and applied
 without being restated.
 
-**What went wrong (be specific):** nothing that reached a branch. Both halves passed their gates on
-the first attempt: backend 84 tests / BUILD SUCCESS, frontend 30 → 52 tests, build clean with no
-budget warnings, E2E 7/7.
+**What went wrong (be specific):**
 
-**How it was caught:** N/A — the three defects above were prevented rather than caught.
+No implementation defect reached a branch — both halves passed their gates first time (backend 84
+tests / BUILD SUCCESS, frontend 30 → 52, build clean, E2E 7/7). What went wrong was in *this entry*:
+the Senior Dev credited the frontend with preventing a timezone bug that Angular's `DatePipe` would
+never have produced, and wrote it up as fact without checking the pipe's behaviour. See the
+retraction at item 2 above.
 
-**Fix applied:** N/A.
+That is the second false claim written into `AGENT_LOG.md` in two days by the same author — after
+the 2026-08-07 index shipped three, and after a "corrected" note in `AUTONOMOUS_WORKFLOW.md` claimed
+to fix a rule that document never contained. All three were caught by independent review, none by
+self-review.
+
+A second, smaller gap the same review found: **the E2E suite's `e2e/support/api.ts` declares itself
+as following `docs/openapi.yaml` but is a hand-written mirror**, and it did not gain the two new
+fields. So "E2E 7/7" was a true statement that said nothing whatsoever about this feature — no
+fixture or assertion touches a date. A green gate that cannot observe the change under test is
+exactly the failure mode this log is otherwise full of, arrived at from a new direction.
+
+**How it was caught:** independent review of PR #91, disputing a claim in the entry rather than in
+the code, and verifying against the installed `@angular/common` source.
+
+**Fix applied:** claim retracted in place rather than deleted, with the evidence. `e2e/support/api.ts`
+updated so the E2E contract mirror actually mirrors the contract.
 
 **Takeaway for next time / non-obvious judgment calls made:**
 
+0. **Writing up a *prevented* bug requires proving the bug was reachable.** A caught bug comes with
+   evidence attached — a red test, a bad response. A prevented one comes with none, so "the obvious
+   implementation would have shipped X" is a claim about a counterfactual and has to be tested like
+   one: write the obvious implementation, or at minimum read what it actually does. Both false
+   claims this author has put in this file were of this shape — asserting what *would* have happened
+   rather than reporting what did. The near-miss write-ups are the most quotable entries here and
+   therefore the ones most worth doubting.
 1. **A `CHECK` constraint involving a nullable column needs its truth table checked, not just read.**
    Three-valued logic makes "obviously correct" constraints permissive in exactly the cases that
    matter. Same family as every other silent-success bug in this log: the mechanism reports success
