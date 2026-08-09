@@ -20,16 +20,14 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 ## Never quote a working tree without naming its branch
 
-**`D:\repos\My_Site` — the main checkout, and the most obvious place to run a command — sits on `phase1/review-followups`, 58 commits behind `main` as of 2026-08-09.** Its files parse fine, grep fine, and are wrong. Several worktrees exist alongside it on their own task branches; none of them is `main` either. There is no checkout of `main` on this machine by default.
+**A path alone is not a reference to anything.** This repo is worked through many checkouts at once — the main checkout plus a worktree per task, several of them detached. `AGENT_LOG.md` means a different file in each, and none of them is reliably `main`. Files from a stale checkout parse fine, grep fine, and are wrong.
 
-So: **a path alone is not a reference to anything.** `AGENT_LOG.md` means a different file in every one of those directories.
+- **Resolve content through an explicit ref, never through whatever a directory happens to hold:** `git show <ref>:<path>` — e.g. `git show origin/main:AGENT_LOG.md`, or the branch actually under discussion. Do this for anything that leaves the session: a PR body, a review reply, a doc, a claim to the user. (This repo's remote is named `My_Site`, not `origin` — check with `git remote` rather than assuming either.)
+- **State provenance as a commit, not a branch name.** Use `git rev-parse --short HEAD` **plus** `git status --porcelain`, and report both. A branch name is not enough for two reasons, each of which has already produced a false claim here: `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in a detached worktree (and the PR-review worktrees this project mandates are detached), and a clean-looking branch name says nothing about uncommitted edits sitting on top of it.
+- **Don't cite line numbers in fast-moving files.** `AGENT_LOG.md` has grown by hundreds of lines in a day; a line number is stale before the PR merges. Quote enough text to be searchable instead.
+- **`git fetch` before comparing against any remote-tracking ref**, and don't assume a local branch matches its remote — including `main`. A local `main` here was 85 commits behind the remote while an unrelated branch was only 58 behind, so "just switch to `main`" made things *worse*, not better.
 
-- **Resolve file content through an explicit ref, not through whatever a directory happens to hold:** `git show My_Site/main:AGENT_LOG.md`, or `git show <branch>:<path>` for the branch actually under discussion. Do this for any evidence that leaves this session — a PR body, a review reply, a doc, a claim to the user.
-- **Before grepping or reading a working tree as evidence, run `git rev-parse --abbrev-ref HEAD`** and state which branch the finding came from. "I grepped the repo" is not a provenance.
-- **Don't cite line numbers in fast-moving files.** `AGENT_LOG.md` grew by hundreds of lines in a day; a line number is stale before the PR merges. Quote enough text to be searchable instead.
-- **`git fetch` before comparing against `main`.** A local `main` ref can lag the remote by a full session's work.
-
-This is not hypothetical. PR #94 cited `AGENT_LOG.md:611` as evidence for a factual claim; the correct line on `main` was 1243, and 611 came from grepping the stale main checkout — inside a PR whose other half was about stale-branch confusion. See `AGENT_LOG.md`'s 2026-08-09 entry.
+Not hypothetical: PR #94 cited a line number as evidence for a factual claim, taken from a checkout sitting on a stale branch — inside a PR whose other half was about stale-branch confusion. PR #95 then shipped guidance whose own prescribed command fails in exactly the worktrees where it matters. Both in `AGENT_LOG.md`'s 2026-08-09 entries. Current per-checkout state and the recommended cleanup live in `docs/AGENT_WORKFLOW.md`, which is the right place for facts that expire.
 
 Worth fixing at the root too: if you own the machine, get the main checkout back onto `main`, or stop treating it as a place to read from.
 
