@@ -239,6 +239,87 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-09 — A rule against stale references, whose own prescribed command was stale-blind; plus three branch scares that were all benign
+
+**Task given:**
+
+Two things, a few hours apart. First: add a safeguard to `CLAUDE.md` against citing evidence from a
+stale checkout, after PR #94 did exactly that (PR #95). Second: the user asked why three branches
+looked wrong — the content draft unmerged, `phase1/review-followups` "18 commits ahead", and
+`phase3/frontend-foundation` "2 commits ahead".
+
+**Agent(s) used:**
+
+Senior Dev (this session) as author; an independent fresh session as reviewer of PR #95.
+
+**What went wrong (be specific):**
+
+**The safeguard failed on its own terms, in three ways, all found by review.**
+
+1. **The prescribed provenance command doesn't work where it matters most.** The rule said to run
+   `git rev-parse --abbrev-ref HEAD` and state the branch. In a **detached** worktree that returns
+   the literal string `HEAD` — and roughly half this project's checkouts are detached, specifically
+   every `My_Site-review-NN` worktree created for PR review. That is precisely where evidence gets
+   quoted into a review comment and leaves the session. The command was chosen without testing it in
+   the case the rule exists to protect.
+2. **The recommended "root fix" would have made things worse.** The section advised getting the main
+   checkout back onto `main`. Local `main` was **85 commits behind** the remote, while the "stale"
+   branch it sat on was only **58** behind — so following the advice moves that checkout *further*
+   from current. `.claude/hooks/block-protected-branch-ops.sh` also denies `git checkout main`
+   outright, so the instruction was un-followable as well as wrong.
+3. **Naming a branch is not sufficient provenance anyway.** `D:\repos\My_Site` has uncommitted edits
+   to `CLAUDE.md` itself. An agent could follow the rule exactly — check the branch, state it, read
+   the file — and report content matching neither that branch nor `main`, with full ceremony.
+
+Also flagged: the entry cited `AGENT_LOG.md:1243`, already stale at 1325 post-merge, **inside a
+bullet warning about stale line numbers**; and leading the section with machine-specific counts
+means it reads as obsolete the moment the checkout is fixed, burying the durable rule underneath
+perishable facts.
+
+**The three branch scares were all benign, but only the third was cheap to establish.**
+
+- **Content draft unmerged** — correct and deliberate. It is a proposal about the user's own work
+  awaiting their sign-off, not code. The failure was communicative: its status was never stated, so
+  it read as an oversight.
+- **`phase1/review-followups`, 18 ahead** — ahead of its *remote-tracking ref*, which stopped
+  advancing when PR #79 merged. `git rev-list --count My_Site/main..phase1/review-followups` is
+  **0**: everything is already in `main`.
+- **`phase3/frontend-foundation`, 2 ahead** — this one genuinely looked like stranded work.
+  `git cherry` marked one of the two commits `+` (not in `main`), and its patch-id differed from the
+  same-titled commit that had landed. Both signals were misleading: the patch-ids diverge only
+  because of *surrounding context*, and the actual `+`/`-` lines are byte-identical. Every added
+  line is present in `main` today — the `## PROJECT_TODO.md discipline` heading only appeared
+  missing because its content was folded into `Keeping docs current` and reworded.
+
+**How it was caught:** independent review of PR #95, which tested the commands in a detached
+worktree and measured the local `main` gap rather than reading the prose. The branch questions came
+from the user noticing counts that didn't match expectations.
+
+**Fix applied:**
+
+Provenance now uses `git rev-parse --short HEAD` **plus** `git status --porcelain` — a commit and a
+dirty flag, both of which survive detachment. The root-fix advice is replaced with a fast-forward
+(`git switch main && git merge --ff-only`) and the note that a local branch name never implies
+currency. The machine-specific inventory moved to `docs/AGENT_WORKFLOW.md`, which is the right home
+for facts that expire, leaving `CLAUDE.md` holding only the durable rule. The `origin`-vs-`My_Site`
+remote-name assumption is called out rather than hardcoded.
+
+**Takeaway for next time:**
+
+- **A rule about verification has to be verified.** Both defects in PR #95 would have been caught by
+  running the prescribed command once in a review worktree, and by running `git rev-list` on local
+  `main` once. Writing "check X before claiming Y" is itself a claim about X, and it inherits every
+  obligation it imposes.
+- **Put perishable facts where they're allowed to rot.** Counts, branch names and machine layout
+  belong in a document someone re-derives; `CLAUDE.md` loads into every session and should carry
+  only what stays true. A rule justified by a condition that has since been fixed reads as obsolete
+  and gets ignored wholesale, including the durable part.
+- **`git cherry` and patch-id answer "is this commit present", not "is this content present".**
+  Both are context-sensitive and will flag rebased or re-applied commits as missing. To decide
+  whether work is genuinely stranded, compare the added lines. And a `grep` of patch lines beginning
+  with `-` silently reports "missing" for everything unless you use `grep -e` or `--` — that bug
+  produced two false negatives in this very investigation before it was noticed.
+
 ## 2026-08-09 — Senior Dev: three invented mechanisms in one docs PR, and a citation taken from the stale branch it warns about
 
 **Task given:**

@@ -18,6 +18,19 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 > Status: `/backend` has full Project CRUD, tag listing, contact form + rate limiting, JWT login, and password reset (Phases 1-2). `/frontend` is scaffolded with routing, a generated API client, auth, and the core CMS pages (Phase 3).
 
+## Never quote a working tree without naming its branch
+
+**A path alone is not a reference to anything.** This repo is worked through many checkouts at once — the main checkout plus a worktree per task, several of them detached. `AGENT_LOG.md` means a different file in each, and none of them is reliably `main`. Files from a stale checkout parse fine, grep fine, and are wrong.
+
+- **Resolve content through an explicit ref, never through whatever a directory happens to hold:** `git show <ref>:<path>` — e.g. `git show origin/main:AGENT_LOG.md`, or the branch actually under discussion. Do this for anything that leaves the session: a PR body, a review reply, a doc, a claim to the user. (This repo's remote is named `My_Site`, not `origin` — check with `git remote` rather than assuming either.)
+- **State provenance as a commit, not a branch name.** Use `git rev-parse --short HEAD` **plus** `git status --porcelain`, and report both. A branch name is not enough for two reasons, each of which has already produced a false claim here: `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in a detached worktree (and the PR-review worktrees this project mandates are detached), and a clean-looking branch name says nothing about uncommitted edits sitting on top of it.
+- **Don't cite line numbers in fast-moving files.** `AGENT_LOG.md` has grown by hundreds of lines in a day; a line number is stale before the PR merges. Quote enough text to be searchable instead.
+- **`git fetch` before comparing against any remote-tracking ref**, and don't assume a local branch matches its remote — including `main`. A local `main` here was 85 commits behind the remote while an unrelated branch was only 58 behind, so "just switch to `main`" made things *worse*, not better.
+
+Not hypothetical: PR #94 cited a line number as evidence for a factual claim, taken from a checkout sitting on a stale branch — inside a PR whose other half was about stale-branch confusion. PR #95 then shipped guidance whose own prescribed command fails in exactly the worktrees where it matters. Both in `AGENT_LOG.md`'s 2026-08-09 entries. Current per-checkout state and the recommended cleanup live in `docs/AGENT_WORKFLOW.md`, which is the right place for facts that expire.
+
+Worth fixing at the root too: if you own the machine, get the main checkout back onto `main`, or stop treating it as a place to read from.
+
 ## When a dispatched agent dies mid-task
 
 Added 2026-08-08 after three agents were lost to API/session limits in a single session, and were each salvaged by hand when they should simply have been resumed.
