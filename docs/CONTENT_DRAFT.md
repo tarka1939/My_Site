@@ -10,15 +10,15 @@
 > can check the draft rather than trust it. Where a repo did not tell me something, it is
 > listed under **Needs your input** instead of being filled in with plausible-sounding text.
 >
-> **⚠ Dates are the single largest remaining gap blocking #49.** Two of the five entries
-> below have `startedOn` and `completedOn` deliberately left blank, and the three that carry
-> proposed values carry them marked `# PROPOSED`. Nothing here can be entered as final until
-> you resolve **§5**, which lays out every piece of date evidence I could find per project and
-> says exactly where it runs out. Do not read a blank field as an oversight — each one is
-> argued for.
+> **Dates are now mostly settled — one confirmation outstanding.** Four of the five entries
+> carry dates you decided; System Equalizer's are **inferred from repo evidence and still
+> awaiting your confirmation**, and are marked as such wherever they appear. The two coursework
+> entries are blank *by decision*, not for want of evidence — see §5, which is the audit trail.
+> Do not read a blank field as an oversight; each one is argued for, and §5.8 lists every gap I
+> was tempted to fill and didn't.
 >
 > **Next step:** read each entry, correct or delete what's wrong, answer the
-> "Needs your input" items, and resolve §5. Only after that should anything be entered
+> "Needs your input" items, and confirm §5.1. Only after that should anything be entered
 > through the admin UI (`POST /projects`) or a seed script. This file is documentation;
 > it is not wired to anything.
 >
@@ -26,7 +26,8 @@
 > (Phase 6 — "Migrate existing projects into the new content model").
 > **Revised 2026-08-09:** scope cut to five entries (the AI-labs entry removed — see §3.1),
 > `startedOn`/`completedOn` added throughout following PR #91, all evidence re-gathered and
-> all URLs re-verified.
+> all URLs re-verified. **Updated later the same day** with the owner's date answers —
+> §5 now separates what was decided from what is still inferred.
 
 ---
 
@@ -95,8 +96,8 @@ how the descriptions are written, so they're recorded here.
 
 ```yaml
 title: System Equalizer
-startedOn: 2026-01-01   # PROPOSED — earliest dated artifact in the repo; see §5.1
-completedOn:            # PROPOSED as ongoing (null); see §5.1 and §5.6
+startedOn: 2026-01-01   # FLOOR, NOT CONFIRMED — earliest dated artifact in the repo; see §5.1
+completedOn:            # CONFIRMED by owner — null = ongoing ("still WIP"); see §5.1
 description: |
   A cross-platform, system-level audio equalizer built around a shared C++17 DSP core,
   with three cooperating modules: a real-time audio daemon and a Windows Audio Processing
@@ -201,11 +202,16 @@ images:
   "System Equalizer screenshot 1/2", which is wrong, and `images[0]` becomes the list-card
   thumbnail. Options: keep them, drop them and ship with `images: []`, or replace them with a
   real screenshot of the Avalonia GUI, which the repo does not currently contain.
-- **Dates — see §5.1.** Short version: a report inside the repo is dated 29 January 2026, so
-  I proposed that as `startedOn`. It is a floor, not a fact.
-- **Is it finished, paused, or active?** This is now a field, not a sentence — see §5.6. I
-  have drafted it as ongoing (`completedOn` null), which publishes "January 2026 – ongoing".
-  If that's wrong, it is wrong on the page, so it needs an answer.
+- **Status — confirmed ongoing (2026-08-09).** You confirmed the project is still WIP, so
+  `completedOn` stays null and the page reads "January 2026 – ongoing". That matches what the
+  repo already showed independently: six open items in `ARCHITECTURE.md` §7, a daemon that
+  still doesn't build on Windows/macOS, and a final commit that *adds* a feature rather than
+  closing one.
+- **⚠ `startedOn` is still a floor, not a fact.** The status is settled; the start date isn't.
+  `2026-01-01` comes from a report inside the repo dated 29 January 2026 — the earliest dated
+  artifact anywhere in it, and a month *before* the first commit, so the work provably predates
+  the repository. It is the earliest defensible value, not necessarily the true one. If you
+  started in 2025, this is wrong and only you can say so.
 - **What was it for?** There is a `report.md` in the repo titled *"Raport Techniczny —
   Equalizer APO"*, written in Polish and structured like an academic report (target platform,
   technologies, libraries, build configuration), signed **"Autor: Krzysztof Tarka, Data:
@@ -226,8 +232,8 @@ images:
 
 ```yaml
 title: Animal Vision Simulator
-startedOn: 2026-07-01   # PROPOSED — whole repo built 5–6 July 2026; see §5.2
-completedOn:            # PROPOSED as ongoing (null) — but genuinely uncertain; see §5.2, §5.6
+startedOn: 2026-07-01   # CONFIRMED by owner — whole repo built 5–6 July 2026; see §5.2
+completedOn:            # CONFIRMED by owner — null = ongoing ("WIP but functional"); see §5.2
 description: |
   A desktop application that simulates how other animals — and human colour-blindness
   variants — might see a photograph, based on published cone photoreceptor sensitivities.
@@ -318,8 +324,17 @@ images: []
   because **the README does not mention them** (I searched it for "display mode", "novelty",
   "contrast" — no hits), and every other sentence in this entry is sourced from the README.
   If you want them in the copy, update the README and I'll pull them through.
-- **Ongoing or parked?** See §5.6. Drafted as ongoing, which publishes "July 2026 – ongoing".
-  A `[Unreleased]` changelog and `version = "0.1.0"` are consistent with either.
+- **Ongoing — answered, and the copy was left alone on purpose.** You called it *"WIP but
+  functional"*, so `completedOn` stays null and the page will read "July 2026 – ongoing". I
+  considered adding a "still in development, but usable today" line to the description and
+  decided against it, for two reasons worth your disagreement: the copy above already describes
+  a working, tested application and nowhere implies a broken prototype, so there is nothing to
+  correct; and "ongoing" is exactly what the date field is for — saying it again in prose would
+  duplicate the field and read as apologising for the project. The only thing the README would
+  support beyond this is that it is at `0.1.0` with an untagged changelog, which is a weaker
+  signal than the word "functional" and not obviously worth printing. **If you want "WIP but
+  functional" said out loud in the copy, say so and I'll add one clause** — but it should be
+  your call, not a liberty taken with a one-word answer.
 - **What was it for?** Nothing in the repo says whether this was coursework, a personal
   experiment, or something you were asked to build.
 - **Is there a demo?** No release, no `homepage`, no packaged build.
@@ -330,8 +345,8 @@ images: []
 
 ```yaml
 title: Counter App
-startedOn: 2026-06-01   # PROPOSED — see §5.3
-completedOn: 2026-06-01 # PROPOSED — renders as the single month "June 2026"; see §5.3
+startedOn: 2026-06-01   # CONFIRMED by owner — see §5.3
+completedOn: 2026-06-01 # CONFIRMED by owner — renders as the single month "June 2026"; see §5.3
 description: |
   A small desktop utility for keeping several named counters in one window — eggs in the
   fridge, CVs sent, books read, coffee cups.
@@ -414,15 +429,22 @@ images:
 ## 2. University coursework
 
 Drafted separately and clearly labelled, per the brief. Both READMEs have a framing I
-deliberately did not carry over — see §3.2. Both entries have **no dates**, for reasons
-argued in §5.4 and §5.5; that is the deliberate output, not an omission.
+deliberately did not carry over — see §3.2.
+
+**Both entries have no dates, and that is now a decision rather than a gap.** Each of these
+repos holds several separate projects, each done in **under a month**. An aggregate entry
+therefore has no single coherent period to report: a range spanning all of them would describe
+a continuous stretch of work that never happened, which is a category error rather than an
+approximation. `startedOn` and `completedOn` stay null on both, and the page renders no period
+at all. Full reasoning in §5.4 and §5.5, and see §5.6 for what this implies about splitting
+them up.
 
 ### 2.1 Algorithms & Data Structures coursework (C++)
 
 ```yaml
 title: Algorithms & Data Structures coursework (C++)
-startedOn:              # BLANK — evidence is contradictory; see §5.4
-completedOn:            # BLANK — must stay blank while startedOn is blank; see §0 item 1
+startedOn:              # BLANK by decision — five short projects, no single period; see §5.4
+completedOn:            # BLANK by decision — same reason; see §5.4
 description: |
   Five graded C++ assignments from a university Algorithms and Data Structures course, each
   solved with hand-written data structures rather than the standard library.
@@ -480,10 +502,15 @@ images: []
 
 **Needs your input**
 
-- **Dates — see §5.4.** Both fields are blank and I recommend they stay blank until you
-  supply the term. Two of five folder names say 2024; three carry no year; and the Visual
-  Studio version strings inside the `.sln` files split the five projects into three groups
-  that cannot all be 2024. **Which academic year(s) was this, and did it all happen in one?**
+- **Dates — settled as blank; see §5.4.** Five separate projects, each under a month, so the
+  aggregate has no period to state. The evidence I gathered (2024 in two of five folder names,
+  three different Visual Studio versions across the five `.sln` files) is kept in §5.4 as
+  findings, not as candidate values.
+- **"Each done in under a month" is publishable — but as prose, not as a date.** It says
+  something real about scope and pace, and a date field cannot express it. If you want it, it
+  belongs in `description`; a candidate clause would be *"each assignment built and graded
+  inside a month"*. **I have not added it**, because it's your fact rather than the README's
+  and every other sentence in this entry is sourced from the repo. Say the word and it goes in.
 - **Which course/institution**, if you want that named. The README says only "a core computer
   science university course" and names the course as AISD (*Algorytmy i Struktury Danych*).
 - **Repo hygiene, before linking it publicly.** This repo is ~317 MB (GitHub reports
@@ -507,8 +534,8 @@ images: []
 
 ```yaml
 title: Numerical Methods coursework (Python)
-startedOn:              # BLANK — candidate 2025-03-01, deliberately not filled; see §5.5
-completedOn:            # BLANK — no evidence for an end month; see §5.5
+startedOn:              # BLANK by decision — three short projects, no single period; see §5.5
+completedOn:            # BLANK by decision — same reason; see §5.5
 description: |
   Three university Numerical Methods projects, each implementing a classical algorithm from
   scratch rather than calling a library, then applying it to a real dataset and plotting or
@@ -558,9 +585,13 @@ images: []
 
 **Needs your input**
 
-- **Dates — see §5.5.** There is a genuine candidate here (`startedOn: 2025-03-01`) and I did
-  not fill it in. Read §5.5 for why; it is a one-keystroke fix if you confirm, but it needs a
-  `completedOn` alongside it or the page will say your coursework is ongoing.
+- **Dates — settled as blank; see §5.5.** Three separate projects, each under a month. The
+  dated artifacts I found (a report PDF created 1 April 2025, a dataset ending 21 March 2025)
+  are real and are kept in §5.5, but they date *one* of the three projects, which is precisely
+  why the aggregate has no period to report.
+- **"Each done in under a month" is publishable — but as prose, not as a date.** Same as §2.1:
+  it belongs in `description` if anywhere. A candidate clause: *"three self-contained projects,
+  each built inside a month"*. Not added — your fact, your call.
 - **`MN_Proj_1/MN_Proj_1/Document.pdf` is yours — that question is now answered.** Last pass
   I flagged it as possibly a course handout that shouldn't be in a public repo. Its embedded
   metadata says `/Author (Krzysztof Tarka)`, `/Creator (Microsoft Word)`, created
@@ -762,30 +793,41 @@ disappear on parse; a blank value after the colon parses as null, which is what'
 
 ---
 
-## 5. Dates — the evidence, and where it runs out
+## 5. Dates — what was decided, and the evidence behind it
 
-**This section is the largest thing standing between this draft and closing #49.** Everything
-else is a wording choice you can settle in a sitting; dates need information that exists only
-in your memory.
+Mostly settled. This section is now an audit trail rather than an open question, with one
+exception flagged below.
 
-The problem, stated once: **git history does not record when this work happened.** The
+**Where each value came from — read this before trusting any date on the page:**
+
+| Entry | `startedOn` | `completedOn` | Provenance |
+|---|---|---|---|
+| System Equalizer | `2026-01-01` | *(null → ongoing)* | **⚠ Inferred by me from repo evidence. Not confirmed by you.** |
+| Animal Vision Simulator | `2026-07-01` | *(null → ongoing)* | **Your decision** — "WIP but functional" |
+| Counter App | `2026-06-01` | `2026-06-01` | **Your decision** |
+| AISD coursework | *(null)* | *(null)* | **Your decision** — several short projects, no single period |
+| MN coursework | *(null)* | *(null)* | **Your decision** — same |
+
+The background, stated once: **git history does not record when this work happened.** The
 coursework repos were bulk-uploaded years later — `Repozytorium_Projektow_AISD` and
 `Repozytorium_Projektow_MN` both consist of an `Initial commit` and an `Initial Upload` about
 six minutes apart on 2026-02-24, with a README bolted on in July 2026 — while their folder
 names say 2024 and their internal artifacts say 2025. A first-commit date is a **repo creation
-date**. It is labelled as such everywhere below and is never used as a work date.
+date**. It is labelled as such everywhere below and is never used as a work date. The evidence
+tables survive because they were the basis for the questions you answered, and because a reader
+six months from now should be able to see the working rather than take the dates on faith.
 
-So each entry below gets the same treatment: the evidence, with its source named; a proposal
-only where the evidence carries one; and a blank where it doesn't. **A blank is the correct
-answer to an unanswerable question.** You are the only source of truth here.
+Two structural facts drive the blanks, and neither is "the information was lost":
 
-One structural constraint governs every decision below, restated from §0 item 1: a `startedOn`
-without a `completedOn` publishes the word **"ongoing"**, and the API refuses a `completedOn`
-without a `startedOn`. So the fields are one decision, not two. For finished work whose start
-month is unknown, the honest output is *both blank* — which renders nothing — rather than a
-start month that silently claims the work never ended.
+- **The fields are one decision, not two.** A `startedOn` without a `completedOn` publishes the
+  word **"ongoing"**, and the API refuses a `completedOn` without a `startedOn` (§0 item 1). So
+  a finished project either gets both or neither; a lone start month would quietly claim the
+  work never ended.
+- **An aggregate entry covering several short projects has no period to report.** This is the
+  coursework case, and it is a category error rather than a measurement problem — see §5.4,
+  §5.5 and §5.6.
 
-### 5.1 System Equalizer — proposed `2026-01-01` → ongoing
+### 5.1 System Equalizer — `2026-01-01` → ongoing, inferred and awaiting your confirmation
 
 | Evidence | Source | What it supports |
 |---|---|---|
@@ -794,13 +836,19 @@ start month that silently claims the work never ended.
 | 15 commits, 2026-02-25 → 2026-07-21, with feature messages ("Add OLA FFT convolution engine", "Wire FFT convolution into the execution pipeline") | commits API | Unlike the coursework repos, this reads as genuine incremental development history. It is decent evidence of *activity* from Feb 2026 on, but says nothing about January or earlier. |
 | `Equalizer.sln` records `VisualStudioVersion = 18.3.11520.95` | the file itself | The solution was last saved by a Visual Studio 18.x. A lower bound on *last save*, not on start. I'm not attaching a release date to it — that would be outside knowledge I can't verify from the repo. |
 
-**Proposal: `startedOn: 2026-01-01`.** Supported by the `report.md` signature and nothing else.
-It is a **floor**: the work existed by 29 January 2026, so it started no later than that month.
-It could easily have started in 2025. If you know it did, overwrite this.
+**⚠ This is the only entry whose dates you have not confirmed.** Both values below are mine.
+They are on the page as drafted, so if they are wrong they will be wrong in public.
 
-**`completedOn`: left null, i.e. ongoing.** See §5.6.
+**`startedOn: 2026-01-01`.** Supported by the `report.md` signature and nothing else. It is a
+**floor**: the work existed by 29 January 2026, so it started no later than that month. It
+could easily have started in 2025 — the report describes a mature APO with a
+registry-installation troubleshooting document beside it, which does not read like a month's
+work. If you know it started earlier, overwrite this.
 
-### 5.2 Animal Vision Simulator — proposed `2026-07-01` → ongoing
+**`completedOn`: null, i.e. ongoing.** An inference, reasoned in §5.7, not something you've
+said.
+
+### 5.2 Animal Vision Simulator — `2026-07-01` → ongoing (your decision)
 
 | Evidence | Source | What it supports |
 |---|---|---|
@@ -813,12 +861,19 @@ It could easily have started in 2025. If you know it did, overwrite this.
 commit followed within 29 hours by a complete, tested, documented application is what building
 something from nothing looks like; there is no sign of a pre-existing codebase being imported.
 
-**Proposal: `startedOn: 2026-07-01`** → renders "July 2026". Well supported. The only way this
-is wrong is if you had the colour-science engine sitting on disk beforehand.
+**`startedOn: 2026-07-01`** → renders "July 2026". Well supported by the evidence and confirmed
+by you. The only way this is wrong is if you had the colour-science engine sitting on disk
+beforehand.
 
-**`completedOn`: left null, i.e. ongoing — the shakiest of the three proposals.** See §5.6.
+**`completedOn`: null, i.e. ongoing — you settled this.** Your words: *"WIP but functional"*.
+That resolves the coin flip I flagged last pass, and it is the reading the artifacts already
+leaned towards: an `[Unreleased]` changelog, `version = "0.1.0"`, and a final commit that added
+four substantial features rather than tidying up. The page will read "July 2026 – ongoing".
+Note what "ongoing" does *not* say: it doesn't say unfinished-and-unusable. See §1.2's
+"Needs your input" for why I left the description's wording alone rather than adding a
+"still in development" line.
 
-### 5.3 Counter App — proposed `2026-06-01` → `2026-06-01` (renders "June 2026")
+### 5.3 Counter App — `2026-06-01` → `2026-06-01`, renders "June 2026" (your decision)
 
 | Evidence | Source | What it supports |
 |---|---|---|
@@ -826,17 +881,26 @@ is wrong is if you had the colour-science engine sitting on disk beforehand.
 | `CHANGELOG.md` heading `## [1.0.0] — 2026-06-11` | the file | A dated 1.0.0 release, agreeing with the commits. |
 | GitHub `pushed_at` still 2026-06-11 | repo API, re-checked 2026-08-09 | Nothing has been pushed in the two months since. |
 
-**Proposal: both fields `2026-06-01`**, which the renderer collapses to the single month
-"June 2026" rather than a range. This is the best-evidenced entry in the document: a dated
-release tag, a one-hour commit window, and two months of silence all agree.
+**Both fields `2026-06-01`**, confirmed by you and unchanged from the draft. The renderer
+collapses that to the single month "June 2026" rather than a range. This is the best-evidenced
+entry in the document: a dated release tag, a one-hour commit window, and two months of silence
+all agree, and it is the only entry with a closed period.
 
 **Caveat worth one sentence:** 16 commits in 59 minutes is fast enough that some of the code may
 have existed locally before the first commit. At month precision that only matters if it began
 in May.
 
-### 5.4 AISD coursework — both fields blank; the evidence actively conflicts
+### 5.4 AISD coursework — both fields blank, by decision
 
-This is the entry where I most wanted to write "2024" and didn't.
+**The reason is structural, not evidential.** This entry aggregates **five separate projects,
+each built in under a month**. There is no single period to report: `2024 – 2024` would compress
+five short bursts into one continuous stretch, and any wider range would describe work that
+didn't happen in the gaps. That is a category error rather than an approximation, and no amount
+of extra archaeology would fix it — even a perfect record of all five start dates would not
+produce one honest `startedOn` for the aggregate.
+
+The evidence below is kept because it is real and because it turned up a live question about
+these five (see §5.6). **It is no longer offered as candidate values.**
 
 | Evidence | Source | What it supports |
 |---|---|---|
@@ -846,26 +910,34 @@ This is the entry where I most wanted to write "2024" and didn't.
 | `tests.rar` internal file timestamps — **all 2026-07-06T17:39Z** | I parsed the RAR5 headers directly (29 entries, all mtimes within 0.3 s of each other) | **Negative result, reported because I looked.** Archives often preserve original modification times; this one doesn't. The files were re-created when the archive was made for committing, so it carries nothing about the coursework. |
 | The README's only "2022" is the string "Visual Studio 2022" | `README.md` "Building" | Flagged so a future search doesn't mistake it for a date. |
 
-**Proposal: none. Both fields blank.** Three reasons, in order of weight:
+**Both fields blank.** The decisive reason is the one above; the evidence adds three
+corroborating ones, all pointing the same way:
 
-1. The folder-name "2024" describes two of five projects, and the `.sln` version spread says
-   at least two others were last touched noticeably earlier. A single 2024 period would
-   misdescribe part of the entry.
-2. Even for the two 2024 folders, I can't tell whether "2024" is a calendar year or the tail of
-   a 2023/24 academic year — those are different `startedOn` months.
-3. Graded coursework is *finished*. Filling `startedOn` alone would publish "2024 – ongoing",
-   which is false; and the contract won't accept a `completedOn` without a `startedOn`. Blank
-   is the only honest state until you supply both.
+1. The folder-name "2024" describes two of five projects, and the `.sln` version spread says at
+   least two others were last touched noticeably earlier. Even setting the aggregation problem
+   aside, a single 2024 period would misdescribe part of the entry.
+2. Even for the two 2024 folders, "2024" could be a calendar year or the tail of a 2023/24
+   academic year — different `startedOn` months.
+3. Graded coursework is *finished*. A `startedOn` alone would publish "2024 – ongoing", which is
+   false, and the contract won't accept a `completedOn` without a `startedOn` (§0 item 1).
 
-**What I need from you:** the term (or terms) this was done in. And — a genuine question raised
-by the `.sln` spread — **were all five of these from the same course instance?** If the CSS
-parser and the Dijkstra planner are from an earlier year, this may want to be two entries, not
-one.
+**Still open, and worth your answer even though the dates are settled:** the `.sln` spread
+raises a real question about the *entry*, not its dates — **were all five of these from the same
+course instance?** Three of the five solutions carry VS 17.7; the CSS parser carries 17.0 and
+the Dijkstra planner 17.2. See §5.6.
 
-### 5.5 MN coursework — both fields blank, but there is a real candidate
+### 5.5 MN coursework — both fields blank, by decision
 
-This is where the evidence got closest to an answer, and it is worth reading before you dismiss
-the blank.
+**Same structural reason as §5.4:** this entry aggregates **three separate projects, each built
+in under a month**, so there is no coherent period for the aggregate to report.
+
+That is worth stating plainly because this is the repo where the archaeology got closest to a
+date, and the temptation was correspondingly strongest. The findings below stand — they are
+accurate, and the PDF metadata resolved a separate open question about that file's authorship —
+but they date **one of the three projects**, which is exactly the point. A first project dated
+to March/April 2025 tells you nothing about when the second and third were done, and stretching
+its date over all three would be the category error again. **The `startedOn: 2025-03-01`
+candidate floated in the previous revision is withdrawn.**
 
 | Evidence | Source | What it supports |
 |---|---|---|
