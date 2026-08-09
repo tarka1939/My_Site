@@ -149,9 +149,13 @@ Known failure modes, stated plainly:
   depends on titles not colliding. The five titles are distinctive enough that this is unlikely,
   but it is a real limit of title matching rather than something the script defends against.
 - **Two stored projects sharing a seeded title is ambiguous, so the run refuses** rather than
-  picking one. Resolve it by hand and re-run.
-- `--remove` deletes exactly the stored projects whose title appears in `projects.json`, prints
-  each one before deleting, and reports how many it left alone. It is the only mode that deletes.
+  picking one — in **both** modes. `--remove` used to delete both silently, which turned a title
+  collision into exactly the data loss the bullet above warns about; it now refuses the same way
+  `apply` does. Resolve it by hand and re-run.
+- `--remove` deletes exactly the stored projects whose title appears in `projects.json`, logs each
+  one **after** its delete succeeds, and reports how many it left alone. It is the only mode that
+  deletes. If it fails partway it says how many it actually removed — it does not announce the
+  batch up front, because the one destructive mode should never overstate what it did.
 
 ## The locality guard
 
@@ -171,6 +175,17 @@ Loopback targets are allowed. **Anything else needs two independent keys:**
 
 Remote targets must additionally be HTTPS, since the admin password crosses that connection.
 
+**Redirects are refused, and that is part of the guard, not a detail.** `fetch` follows redirects
+by default and the guard only ever sees `SEED_BACKEND_URL`, so a 3xx from an approved host would
+send the *next* request somewhere the guard never evaluated. Node strips the `Authorization` header
+across origins but forwards the request **body** verbatim — which on `/auth/login` is the plaintext
+admin password. That was reproduced on Node 24.14.0 against this script before `redirect: 'error'`
+was added to `request()`. The precondition is not exotic: it needs only something other than the
+intended backend answering on the expected port, which is the scenario in Troubleshooting below.
+
+So the promise is: **the bytes cannot leave loopback**, not merely that no env var names a remote
+host. Nothing in this API legitimately redirects, so refusing costs nothing.
+
 The reason for all of this: this script authenticates as an admin and writes portfolio copy that
 has not been signed off. A mistyped host should not be able to publish a draft.
 
@@ -189,9 +204,12 @@ When it does land, the change here is mechanical rather than a rewrite:
 - `seed.mjs` — one validation branch, the block commented `images` in `validate()`. Nothing else
   reads `images`; it is passed through by the field allowlist untouched.
 
-Worth flagging when it lands: System Equalizer's two images are architecture **diagrams**, and the
-detail page currently hardcodes alt text of the form `"<title> screenshot N"` — which is exactly
-the inaccuracy #97 exists to fix, and is already noted on that record's `_images` field.
+Worth knowing when it lands: System Equalizer's two images are architecture **diagrams**, not
+screenshots. The detail page used to hardcode `"<title> screenshot N"`, which said so wrongly — but
+that was already fixed by issue #87 (commit `c730443`, an ancestor of this branch). It now calls
+`projectImageAlt()`, which emits `"System Equalizer, image 1 of 2"` and cites these very diagrams
+as the reason it exists. So the mislabelling is already gone; what #97 would add is the ability to
+say what each image actually *contains*, which nothing on the frontend can invent from a bare URL.
 
 ## The shape of `projects.json`
 

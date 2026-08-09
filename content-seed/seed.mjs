@@ -87,6 +87,26 @@ async function loadRecords(file) {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * True only for a real calendar date in `YYYY-MM-DD`.
+ *
+ * The shape check alone is not enough: `2026-02-30`, `2026-13-01` and `0000-00-00` all match the
+ * pattern, pass to the API, and come back as a 400 from Jackson — *mid-loop*, after earlier records
+ * have already been written. Catching it here is the whole reason validation runs before the first
+ * socket. Round-tripping through `Date.UTC` rejects overflow, because JS normalises an impossible
+ * date to a real one (Feb 30 becomes Mar 2) and the components then no longer match. Leap years
+ * come out correct for free: 2024-02-29 round-trips, 2025-02-29 does not.
+ */
+function isRealDate(value) {
+  if (!DATE_RE.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (month < 1 || month > 12 || day < 1) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
+/**
  * Re-checks every constraint `ProjectWriteRequest` declares, locally, before any network call.
  *
  * The API enforces these too, so this is not the last line of defence — it is the one that fails
@@ -188,8 +208,8 @@ function validate(records) {
     // before a run rather than during one.
     const { startedOn, completedOn } = record;
     for (const [name, value] of [['startedOn', startedOn], ['completedOn', completedOn]]) {
-      if (value !== null && value !== undefined && !(typeof value === 'string' && DATE_RE.test(value))) {
-        fail(`${name} must be null or a YYYY-MM-DD date, got ${JSON.stringify(value)}`);
+      if (value !== null && value !== undefined && !(typeof value === 'string' && isRealDate(value))) {
+        fail(`${name} must be null or a real YYYY-MM-DD date, got ${JSON.stringify(value)}`);
       }
     }
     if (completedOn && !startedOn) {
@@ -214,18 +234,58 @@ function isUri(value) {
   }
 }
 
+/** True if `error` is fetch's report of a refused redirect rather than a transport failure.
+ *  Matched on the cause's message because undici exposes no code for it. */
+function isRedirectError(error) {
+  for (let e = error; e; e = e.cause) {
+    if (typeof e.message === 'string' && /redirect/i.test(e.message)) return true;
+  }
+  return false;
+}
+
 /* ---------------------------------------------------------------------------- HTTP helpers */
 
 async function request(path, init = {}) {
   const { token, expectStatus, ...rest } = init;
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...rest,
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...rest,
+      // Do not follow redirects — this is what keeps the locality guard's promise true.
+      //
+      // `fetch` defaults to `redirect: 'follow'`, and the guard only ever sees SEED_BACKEND_URL.
+      // So a 3xx from an approved host would send the *next* request to an origin the guard never
+      // evaluated. Node strips the Authorization header cross-origin, but it forwards the request
+      // BODY verbatim — which on /auth/login is the plaintext admin password, and on /projects is
+      // copy that has not been signed off. Reproduced on Node 24.14.0 before this line existed.
+      //
+      // The precondition is not exotic: it only needs something other than the intended backend
+      // answering on the expected port — the exact scenario this seed's own Troubleshooting
+      // section documents. Nothing this API does legitimately redirects, so refusing is free.
+      redirect: 'error',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
+    });
+  } catch (error) {
+    // `redirect: 'error'` surfaces as a generic "fetch failed", which would read as the server
+    // being down. Name what actually happened, because it is a security-relevant event.
+    if (isRedirectError(error)) {
+      throw new Error(
+        `Refusing to follow a redirect.\n` +
+          `  ${rest.method ?? 'GET'} ${API_BASE}${path} answered with a redirect.\n` +
+          `  Following it would send this request — including the admin password on /auth/login — ` +
+          `to an origin the locality guard never checked.\n` +
+          `  Nothing in this API legitimately redirects. Check what is actually listening on that ` +
+          `port (see "Troubleshooting" in content-seed/README.md).`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
 
   const ok = expectStatus !== undefined ? response.status === expectStatus : response.ok;
   if (!ok) {
@@ -348,19 +408,33 @@ async function apply(doc, { dryRun }) {
   let created = 0;
   let updated = 0;
 
-  for (const step of plan) {
-    const body = JSON.stringify(toWriteRequest(step.record));
-    if (step.existing) {
-      // PUT is a full replacement, which is exactly what re-applying a source-of-truth file means:
-      // a field deleted from the data file is cleared on the stored row rather than lingering.
-      const result = await request(`/projects/${step.existing.id}`, { method: 'PUT', token, body, expectStatus: 200 });
-      updated++;
-      console.log(`  updated  ${result.id}  ${result.title}`);
-    } else {
-      const result = await request('/projects', { method: 'POST', token, body, expectStatus: 201 });
-      created++;
-      console.log(`  created  ${result.id}  ${result.title}`);
+  try {
+    for (const step of plan) {
+      const body = JSON.stringify(toWriteRequest(step.record));
+      if (step.existing) {
+        // PUT is a full replacement, which is exactly what re-applying a source-of-truth file means:
+        // a field deleted from the data file is cleared on the stored row rather than lingering.
+        const result = await request(`/projects/${step.existing.id}`, { method: 'PUT', token, body, expectStatus: 200 });
+        updated++;
+        console.log(`  updated  ${result.id}  ${result.title}`);
+      } else {
+        const result = await request('/projects', { method: 'POST', token, body, expectStatus: 201 });
+        created++;
+        console.log(`  created  ${result.id}  ${result.title}`);
+      }
     }
+  } catch (error) {
+    // Say what was written before re-throwing. Without this the run ends on a raw HTTP error and a
+    // partial apply is indistinguishable from one that failed on the first record — at exactly the
+    // moment that difference matters most.
+    const done = created + updated;
+    console.error(
+      `\n  PARTIAL APPLY — ${done} of ${plan.length} record(s) written ` +
+        `(${created} created, ${updated} updated) before the failure below.\n` +
+        `  Nothing was deleted. This seed is idempotent: fix the cause and re-run to finish — ` +
+        `the ${done} already written will be updated in place, not duplicated.`,
+    );
+    throw error;
   }
 
   console.log(`\n  done: ${created} created, ${updated} updated, ${created + updated} total.`);
@@ -371,30 +445,94 @@ async function remove(doc, { dryRun }) {
   const existing = await listAllProjects();
   const doomed = existing.filter((p) => titles.has(p.title));
 
-  console.log(`\n  ${existing.length} project(s) stored, ${doomed.length} match a title in the data file.\n`);
-  for (const project of doomed) {
-    console.log(`  ${dryRun ? 'would delete' : 'deleting   '} ${project.id}  ${project.title}`);
+  // Same ambiguity refusal `apply` gets, for the same reason and more urgently: this is the mode
+  // that destroys data. Two rows sharing a seeded title means one of them is probably not the
+  // seed's — deleting both without asking is precisely the "never deletes what it didn't create"
+  // promise being broken, silently.
+  const duplicates = [...Map.groupBy(doomed, (p) => p.title)].filter(([, rows]) => rows.length > 1);
+  if (duplicates.length) {
+    throw new Error(
+      `Refusing to remove: title matching is ambiguous.\n` +
+        duplicates
+          .map(([title, rows]) => `  - "${title}" matches ${rows.length} stored projects: ${rows.map((r) => r.id).join(', ')}`)
+          .join('\n') +
+        `\nOne of these is probably not this seed's. Delete the right one by hand — this script ` +
+        `will not guess which row it owns.`,
+    );
   }
+
+  console.log(`\n  ${existing.length} project(s) stored, ${doomed.length} match a title in the data file.\n`);
+
   if (!doomed.length) {
     console.log('  nothing to remove.');
     return;
   }
   if (dryRun) {
+    for (const project of doomed) {
+      console.log(`  would delete  ${project.id}  ${project.title}`);
+    }
     console.log(`\n  dry run — nothing was deleted.`);
     return;
   }
 
   const token = await login();
-  for (const project of doomed) {
-    await request(`/projects/${project.id}`, { method: 'DELETE', token, expectStatus: 204 });
+  let deleted = 0;
+  try {
+    for (const project of doomed) {
+      await request(`/projects/${project.id}`, { method: 'DELETE', token, expectStatus: 204 });
+      deleted++;
+      // Logged *after* the DELETE succeeds, not before. Announcing the whole batch up front made
+      // the one destructive mode the one whose output overstated what it had done.
+      console.log(`  deleted  ${project.id}  ${project.title}`);
+    }
+  } catch (error) {
+    console.error(
+      `\n  PARTIAL REMOVE — ${deleted} of ${doomed.length} project(s) deleted before the failure ` +
+        `below. The remaining ${doomed.length - deleted} are still stored; re-run to finish.`,
+    );
+    throw error;
   }
-  console.log(`\n  done: ${doomed.length} deleted. ${existing.length - doomed.length} project(s) left untouched.`);
+  console.log(`\n  done: ${deleted} deleted. ${existing.length - deleted} project(s) left untouched.`);
 }
 
 /* ------------------------------------------------------------------------------------ main */
 
 const args = process.argv.slice(2);
 const wants = (flag) => args.includes(flag);
+
+/**
+ * Reject anything unrecognised instead of ignoring it.
+ *
+ * `--dryrun` is one keystroke from `--dry-run` and used to be silently discarded, which meant the
+ * most likely typo a user of this script can make turned a "show me the plan" into a real write.
+ * For a script this deliberate about failing closed, an unknown argument must never fall through
+ * to the destructive default.
+ */
+const KNOWN_FLAGS = new Set(['--dry-run', '--remove', '--file', '--help', '-h']);
+{
+  const unknown = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--file') {
+      // Its value is arbitrary, so skip it — but a trailing `--file` with nothing after it used to
+      // fall back to the bundled data file, which silently applies content the caller didn't ask
+      // for.
+      if (i + 1 >= args.length) {
+        throw new Error(`--file needs a path after it.`);
+      }
+      i++;
+      continue;
+    }
+    if (!KNOWN_FLAGS.has(args[i])) unknown.push(args[i]);
+  }
+  if (unknown.length) {
+    throw new Error(
+      `Unknown argument(s): ${unknown.join(', ')}\n` +
+        `  Known: ${[...KNOWN_FLAGS].join(', ')}\n` +
+        `  Refusing rather than ignoring them — "--dryrun" instead of "--dry-run" would otherwise ` +
+        `perform a real write.`,
+    );
+  }
+}
 
 if (wants('--help') || wants('-h')) {
   console.log(
@@ -411,8 +549,8 @@ if (wants('--help') || wants('-h')) {
 
 const fileArg = args.indexOf('--file');
 const dataFile =
-  fileArg !== -1 && args[fileArg + 1]
-    ? args[fileArg + 1]
+  fileArg !== -1
+    ? args[fileArg + 1] // guaranteed present by the argument check above
     : fileURLToPath(new URL('./projects.json', import.meta.url));
 
 const doc = await loadRecords(dataFile);
