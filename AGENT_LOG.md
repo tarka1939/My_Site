@@ -239,6 +239,84 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-09 — Content rendering (#86, #87): a junior declined the fix the issue asked for, and was right
+
+**Task given:**
+
+Fix #86 (project cards render the entire description, no clamp) and #87 (gallery alt text hardcoded
+as "screenshot N"). Both blocking #49, since the drafted portfolio entries run 1,000–2,400
+characters each and Equalizer's images are architecture diagrams, not screenshots.
+
+**Agent(s) used:**
+
+`frontend-agent` in an isolated worktree; Senior Dev reviewing and running the gates.
+
+**What went right:**
+
+**The issue asked for a CSS `line-clamp`. The agent refused to stop there, and the reason is the
+interesting part:** `overflow: hidden` hides text *visually* while leaving every character in the
+accessibility tree. Twelve cards at 2,400 characters would still be read out in full to a
+screen-reader user — the same "unusable list" defect the issue describes, just non-visually, and
+still shipped in the markup. So it bounded the text reaching the DOM *and* clamped the rendered
+lines.
+
+It also set the two limits so they cannot silently disagree: the character cap (200) deliberately
+exceeds what three lines can display (~100–120 at the page's max width), so the stylesheet always
+runs out of lines before the excerpt runs out of text. The inverse ordering would have let the clamp
+no-op on wide cards while still looking correct.
+
+**On alt text it applied one WAI rule and got opposite answers for two images in the same feature**,
+which is what distinguishes reasoning from picking a convention:
+
+- *Gallery images* → `"<title>, image 1 of 2"`. Explicitly **not** `alt=""`: the gallery is the only
+  place a project's visual material appears and the description never describes it, so empty alt
+  would drop the images out of the accessibility tree entirely. Withholding an image's existence is
+  a different failure from mislabelling it, not a safer one.
+- *Card thumbnail* → `alt=""`. It sits inside a link whose visible text is already the title, so its
+  alt was redundant with adjacent text and made the link announce the title twice.
+
+It rejected deriving alt from the filename — `dsp_execution_pipeline.svg` is a path component, not
+prose written for a reader, and the next upload could be `IMG_20240513.png`. That trades one
+unfounded claim for a less predictable one.
+
+**Verification was done in a real browser, not jsdom**, which does no layout: page height 2098 →
+1050 px at 375 px wide, description boxes measured exactly 72 px = 3 × 24 px line-height at both
+mobile and desktop widths, still three lines at a 32 px body font, and no horizontal overflow even
+for a description opening with a 100-character URL. It also checked `-webkit-box-orient` survived
+production minification, which some CSS minifiers strip.
+
+Mutation testing was properly controlled — three defects reintroduced one at a time, each failing a
+*different* test (proving neither test covered the other half), then restored with the tree
+re-verified clean.
+
+**What went wrong (be specific):**
+
+Nothing reached a branch. Gates re-run independently from confirmed-free ports: frontend 54 → **77**
+tests, build clean with no budget warnings, E2E **7/7**.
+
+**How it was caught:** N/A.
+
+**Fix applied:** N/A.
+
+**Takeaway for next time:**
+
+1. **"Hidden visually" is not "not present".** `overflow: hidden`, `line-clamp`, `max-height` and
+   friends change rendering, not the accessibility tree or the payload. Any truncation intended to
+   make a page *usable* has to bound what reaches the DOM, or it only fixes the sighted case. This
+   generalises well beyond this issue.
+2. **Two limits enforcing one intent need an explicit ordering, or one silently stops applying.**
+   Here the character cap had to exceed the line clamp's visible capacity. Whenever a fix has a belt
+   and braces, work out which is load-bearing at each viewport, or you ship a constraint that only
+   appears to be active.
+3. **An issue's proposed fix is a hypothesis, not a specification.** #86 named the mechanism
+   (`line-clamp`) rather than the outcome, and implementing it literally would have produced a
+   passing PR with the defect half-intact. A junior pushing back on the *how* while honouring the
+   *why* is the behaviour to encourage — the second time in two days one has done so, after the
+   frontend agent declined to snap dates to the 1st (2026-08-08).
+4. **The accessibility answer can differ for two images in the same component.** Applying one
+   convention everywhere would have been wrong in one of the two places here. The rule is about each
+   image's relationship to its surrounding text, not about images in general.
+
 ## 2026-08-09 — A rule against stale references, whose own prescribed command was stale-blind; plus three branch scares that were all benign
 
 **Task given:**
