@@ -239,6 +239,88 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-09 — Senior Dev: three invented mechanisms in one docs PR, and a citation taken from the stale branch it warns about
+
+**Task given:**
+
+Add a backend correctness checklist to `CLAUDE.md` (from a draft the user found in uncommitted
+changes on a stale branch), and record what the day's half-removed-worktree incident had taught.
+PR #94.
+
+**Agent(s) used:**
+
+Senior Dev (this session) as author; an independent fresh session as reviewer.
+
+**What went right:**
+
+The checklist's seven substantive claims all held — the reviewer verified each against both
+`AGENT_LOG.md` and current `backend/src`. Two corrections made to the user's draft before
+committing were also correct: the tag-upsert race really is Phase 1 / PR #76, and
+`ResendEmailClient` really does log the reset link at DEBUG under a comment explaining why, with
+`application-prod.yml` pinning the app package to `INFO` so "off by default in prod" is concretely
+true rather than assumed.
+
+**What went wrong (be specific):**
+
+Four defects, all authored here, none caught by self-review.
+
+1. **"`git status` in the husk reports the main checkout" was overgeneralised from one layout.**
+   True only when the husk sits *nested inside* a repo, which is this project's
+   `.claude/worktrees/<slug>` arrangement. For the `../My_Site-<slug>` sibling layout that the
+   *same bullet list* recommends three lines earlier, you get a loud `fatal: not a git repository`.
+   The guidance was written from the single case observed and presented as general.
+2. **The stated mechanism was wrong.** The entry blamed "a dangling `.git` link". A husk that still
+   held its gitfile would error loudly and name the missing admin directory; the silent case
+   requires the `.git` to be **absent entirely**, and what happens then is ordinary
+   parent-directory discovery. Plausible-sounding and unverified.
+3. **A correct diagnostic was dismissed as noise, with an invented explanation.** The entry claimed
+   `git --git-dir=<main>/.git --work-tree=<husk> diff <branch>` reported "193 meaningless files"
+   because it used the main repo's index. It was not meaningless: the output was
+   `193 files changed, 21298 deletions(-)` — pure deletions, one per tracked file — and
+   `git ls-tree -r --name-only <branch> | wc -l` is exactly 193. The command was correctly
+   reporting that every tracked file was missing from an empty directory, which was the answer
+   being looked for.
+4. **The `CLAUDE.md` "Config validation" bullet forbade what the codebase deliberately does** —
+   `ResendEmailClient` boots happily with no `RESEND_API_KEY` and degrades to warn-and-skip so the
+   reset flow can be exercised without a Resend account. This is the *same trap* caught and
+   corrected one bullet earlier for the DEBUG-logging rule, in the same commit, against the same
+   class in the same file. Catching a trap once did not generalise to looking for it again.
+
+Separately, the PR body cited **`AGENT_LOG.md:611`** as evidence for the Phase 1 attribution. The
+correct line in `main` is **1243**. The 611 came from grepping `D:\repos\My_Site`, which sits on the
+stale `phase1/review-followups` branch — evidence quoted from the stale checkout this very session
+had been warning about for two days, in a PR whose other half is about stale-branch confusion.
+
+**How it was caught:**
+
+Independent review of PR #94, which reproduced the worktree behaviour empirically in a throwaway
+repo rather than reasoning from the prose, and counted the tree to test the "193" claim.
+
+**Fix applied:**
+
+Both worktree bullets rewritten to distinguish nested from sibling layouts and to name
+parent-directory discovery as the actual mechanism; the diff bullet now explains what the number
+meant, with an inline note that the earlier explanation was invented and disproved. The config
+bullet now separates *present-but-malformed* (fail fast) from *absent-but-optional* (degrade
+deliberately). The check-then-act bullet no longer prescribes atomicity universally — it
+distinguishes writes that must not double-apply from reads that merely go stale, and names
+`ContactService.submit` as a knowingly-accepted instance.
+
+**Takeaway for next time:**
+
+- **Three of the four defects were invented *explanations*, not wrong observations.** The husk
+  behaviour was real, the 193 was real, the incident was real. What was fabricated each time was
+  the *because*. This is now the fourth documented instance of the same authorial habit, after the
+  retracted timezone claim and the false "corrected" note — and unlike a wrong observation, a wrong
+  mechanism reads as insight and gets repeated.
+- **Catching a class of error once does not immunise the next paragraph.** The DEBUG rule was
+  corrected precisely because it contradicted the code; the config rule contradicted the *same
+  file* and shipped anyway. After finding one contradiction between a proposed rule and the
+  codebase, grep for the others rather than assuming the one found was the only one.
+- **Line-number citations need the branch named, or they need re-deriving.** Better still, quote
+  the text and let the reader search — line numbers in a file that grows by hundreds of lines a
+  day are stale before the PR is merged.
+
 ## 2026-08-08 — Project date period (#85): contract-first across two agents, and three bugs the obvious implementation would have shipped
 
 **Task given:**
