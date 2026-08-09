@@ -12,6 +12,22 @@
   // an area rather than drawing a 1px stroke -- --color-border is a fixed light grey and reads as
   // glaring bars on a dark canvas.
   --color-surface-muted: rgb(128 128 128 / 18%);
+
+  // De-emphasised *text* -- hints, tags, dates. Use this rather than a literal `gray`: `gray`
+  // (#808080) is only 3.95:1 on the light canvas, under WCAG AA's 4.5:1 for body text, even though
+  // it clears it on a dark one. Unlike --color-surface-muted this cannot be one semi-transparent
+  // value, because contrast has to be measured against the resolved canvas, not composited onto
+  // it -- so it is flipped per scheme below. #666 is 5.7:1 on white.
+  --color-text-muted: #666;
+}
+
+// Paired with `color-scheme: light dark` above: the canvas follows the same preference this query
+// reads, so the two can never disagree about which theme is on screen. #a3a3a3 is 7.4:1 on
+// Chrome's dark canvas (#121212) and still 5.6:1 on the lightest of the major browsers' (#2b2a33).
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text-muted: #a3a3a3;
+  }
 }
 
 * {

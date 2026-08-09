@@ -15,7 +15,12 @@ import {
  * client: this suite is checking the contract from the outside, so it should not share code
  * with one of the two sides it is testing.
  *
- * Shapes below follow `docs/openapi.yaml`.
+ * Shapes below follow `docs/openapi.yaml`, and being a hand-written mirror is exactly why they
+ * have to be kept level with it by hand: this is the contract's *third* implementation, alongside
+ * the backend DTOs and the generated Angular client, and the only one no tool will regenerate.
+ * A field added to the contract but not to these interfaces makes the suite silently stop
+ * covering it -- and makes adding a fixture for it a type error in the file that claims to be
+ * the contract.
  */
 
 export interface Tag {
@@ -30,6 +35,17 @@ export interface Project {
   links: { label: string; url: string }[];
   images: string[];
   tags: Tag[];
+  /**
+   * `format: date` (`YYYY-MM-DD`). Null means the start is unspecified.
+   *
+   * Optional, not merely nullable, because `Project.required` in the contract lists neither date
+   * -- so a conforming server may omit the key entirely. The backend always sends it (Jackson's
+   * default inclusion), but this mirror follows what is promised rather than what is observed;
+   * asserting more than the contract says is how a suite ends up pinning an accident.
+   */
+  startedOn?: string | null;
+  /** `format: date`, same optionality. **Null means ongoing** -- a value, not missing data. */
+  completedOn?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,6 +72,10 @@ export interface ProjectWriteRequest {
   tags: string[];
   links?: { label: string; url: string }[];
   images?: string[];
+  /** `format: date`. Omitting it on a PUT clears the stored value -- PUT is a full replacement. */
+  startedOn?: string | null;
+  /** `format: date`. Null (or omitted) is what makes a project ongoing rather than undated. */
+  completedOn?: string | null;
 }
 
 interface LoginResponse {

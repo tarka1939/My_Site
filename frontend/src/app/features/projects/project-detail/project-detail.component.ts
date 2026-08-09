@@ -2,11 +2,12 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { Project } from '../../../core/api/model/project';
+import { ProjectPeriodComponent } from '../../../shared/project-period/project-period.component';
 
 @Component({
   selector: 'app-project-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink],
+  imports: [RouterLink, ProjectPeriodComponent],
   templateUrl: './project-detail.component.html',
   styleUrl: './project-detail.component.scss',
 })

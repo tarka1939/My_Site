@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,7 +52,7 @@ class ProjectServiceTest {
     void createProject_savesProjectAndPublishesEvent() {
         ProjectWriteRequest request = new ProjectWriteRequest(
             "Equalizer", "A DSP project", List.of(new LinkDto("GitHub", "https://github.com/x/y")),
-            List.of("https://example.com/img.png"), List.of("dsp", "java"));
+            List.of("https://example.com/img.png"), List.of("dsp", "java"), null, null);
 
         when(tagRepository.findByNameIgnoreCase("dsp")).thenReturn(Optional.of(new Tag("dsp")));
         when(tagRepository.findByNameIgnoreCase("java")).thenReturn(Optional.of(new Tag("java")));
@@ -74,7 +75,7 @@ class ProjectServiceTest {
     @Test
     void createProject_upsertsRatherThanCheckThenActToAvoidTagCreationRace() {
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "Title", "Description", List.of(), List.of(), List.of("react"));
+            "Title", "Description", List.of(), List.of(), List.of("react"), null, null);
         Tag existing = new Tag("React");
 
         when(tagRepository.findByNameIgnoreCase("react")).thenReturn(Optional.of(existing));
@@ -139,7 +140,7 @@ class ProjectServiceTest {
         when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "New title", "New description", List.of(), List.of(), List.of("dsp"));
+            "New title", "New description", List.of(), List.of(), List.of("dsp"), null, null);
 
         ProjectResponse response = projectService.updateProject(id, request);
 
@@ -149,10 +150,44 @@ class ProjectServiceTest {
     }
 
     @Test
+    void createProject_mapsTheDatePeriodOntoTheEntity() {
+        ProjectWriteRequest request = new ProjectWriteRequest(
+            "Equalizer", "A DSP project", List.of(), List.of(), List.of(),
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.createProject(request);
+
+        assertThat(response.startedOn()).isEqualTo(LocalDate.of(2024, 3, 1));
+        assertThat(response.completedOn()).isEqualTo(LocalDate.of(2025, 6, 1));
+    }
+
+    @Test
+    void updateProject_withOmittedDates_clearsThemRatherThanPreservingStoredValues() {
+        // PUT is a full replacement (docs/openapi.yaml's ProjectWriteRequest), so a null
+        // incoming date must be written through. Guarding against the tempting
+        // "if (request.startedOn() != null)" variant, which would make dates un-clearable.
+        UUID id = UUID.randomUUID();
+        Project existing = new Project("Old title", "Old description");
+        existing.setStartedOn(LocalDate.of(2024, 3, 1));
+        existing.setCompletedOn(LocalDate.of(2025, 6, 1));
+        when(projectRepository.findById(id)).thenReturn(Optional.of(existing));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.updateProject(id, new ProjectWriteRequest(
+            "New title", "New description", List.of(), List.of(), List.of(), null, null));
+
+        assertThat(response.startedOn()).isNull();
+        assertThat(response.completedOn()).isNull();
+        assertThat(existing.getStartedOn()).isNull();
+        assertThat(existing.getCompletedOn()).isNull();
+    }
+
+    @Test
     void updateProject_whenMissing_throwsResourceNotFoundException() {
         UUID id = UUID.randomUUID();
         when(projectRepository.findById(id)).thenReturn(Optional.empty());
-        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of());
+        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> projectService.updateProject(id, request))
             .isInstanceOf(ResourceNotFoundException.class);

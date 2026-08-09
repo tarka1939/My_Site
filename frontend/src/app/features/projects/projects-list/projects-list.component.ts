@@ -4,13 +4,14 @@ import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
 import { Project } from '../../../core/api/model/project';
 import { Tag } from '../../../core/api/model/tag';
+import { ProjectPeriodComponent } from '../../../shared/project-period/project-period.component';
 
 const PAGE_SIZE = 12;
 
 @Component({
   selector: 'app-projects-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink],
+  imports: [RouterLink, ProjectPeriodComponent],
   templateUrl: './projects-list.component.html',
   styleUrl: './projects-list.component.scss',
 })

@@ -35,6 +35,42 @@ describe('ProjectDetailComponent', () => {
     }).compileComponents();
   });
 
+  it('renders a completed period as a month/year range', () => {
+    getProject.mockReturnValue(
+      of({ ...PROJECT, startedOn: '2024-03-01', completedOn: '2025-06-01' }),
+    );
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const period = (fixture.nativeElement as HTMLElement).querySelector('.project-period');
+    expect(period?.textContent).toContain('March 2024');
+    expect(period?.textContent).toContain('June 2025');
+    expect([...period!.querySelectorAll('time')].map((t) => t.getAttribute('datetime'))).toEqual([
+      '2024-03',
+      '2025-06',
+    ]);
+  });
+
+  it('renders an ongoing project as ongoing', () => {
+    getProject.mockReturnValue(of({ ...PROJECT, startedOn: '2026-02-01', completedOn: null }));
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const period = (fixture.nativeElement as HTMLElement).querySelector('.project-period');
+    expect(period?.textContent).toContain('February 2026');
+    expect(period?.textContent).toContain('ongoing');
+  });
+
+  it('renders no period at all for a project with neither date', () => {
+    // PROJECT carries no startedOn/completedOn -- the page must not show an empty label or a dash.
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.project-period')).toBeNull();
+  });
+
   it('loads the first gallery image eagerly and the rest lazily', () => {
     const fixture = TestBed.createComponent(ProjectDetailComponent);
     fixture.detectChanges();

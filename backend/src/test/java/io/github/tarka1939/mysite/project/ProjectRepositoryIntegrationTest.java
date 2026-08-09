@@ -3,6 +3,7 @@ package io.github.tarka1939.mysite.project;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,10 +28,10 @@ import io.github.tarka1939.mysite.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 
 /**
- * Boots the full application context against a real Postgres via Testcontainers, running
- * the real V1__init.sql/V2__admin_user_email_and_seed.sql Flyway migrations — H2-in-tests
- * would pass jsonb/text[] mapping bugs that only surface against real Postgres. See
- * PROJECT_TODO.md's Phase 1 Testcontainers item.
+ * Boots the full application context against a real Postgres via Testcontainers, running the
+ * real Flyway migrations (V1__init.sql through V4__project_dates.sql) — H2-in-tests would
+ * pass jsonb/text[] mapping bugs, and would not enforce V4's CHECK constraint the way
+ * Postgres does. See PROJECT_TODO.md's Phase 1 Testcontainers item.
  *
  * {@code @Transactional} keeps each test in one persistence context (matching how
  * ProjectService's real @Transactional methods behave) and rolls back after each test.
@@ -87,7 +88,7 @@ class ProjectRepositoryIntegrationTest {
         // is built — a plain save() defers that flush to commit, after the method returns,
         // and a mock-based unit test can't catch it since mocks don't simulate flush timing.
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"));
+            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"), null, null);
 
         ProjectResponse response = projectService.createProject(request);
 
@@ -172,7 +173,7 @@ class ProjectRepositoryIntegrationTest {
         Thread.sleep(5);
 
         ProjectWriteRequest updateRequest = new ProjectWriteRequest(
-            "Updated title", "Updated description", List.of(), List.of(), List.of("java"));
+            "Updated title", "Updated description", List.of(), List.of(), List.of("java"), null, null);
         ProjectResponse updated = projectService.updateProject(created.id(), updateRequest);
 
         assertThat(updated.title()).isEqualTo("Updated title");
@@ -184,7 +185,7 @@ class ProjectRepositoryIntegrationTest {
 
     @Test
     void updateProject_whenIdDoesNotExist_throwsResourceNotFoundException() {
-        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of());
+        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of(), null, null);
 
         assertThatThrownBy(() -> projectService.updateProject(UUID.randomUUID(), request))
             .isInstanceOf(ResourceNotFoundException.class);
@@ -219,8 +220,159 @@ class ProjectRepositoryIntegrationTest {
             .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    @Test
+    void createProject_withAFullDatePeriod_roundTripsBothDates() {
+        ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
+            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"),
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1)));
+        entityManager.clear();
+
+        Project reloaded = projectRepository.findById(created.id()).orElseThrow();
+
+        assertThat(created.startedOn()).isEqualTo(LocalDate.of(2024, 3, 1));
+        assertThat(created.completedOn()).isEqualTo(LocalDate.of(2025, 6, 1));
+        assertThat(reloaded.getStartedOn()).isEqualTo(LocalDate.of(2024, 3, 1));
+        assertThat(reloaded.getCompletedOn()).isEqualTo(LocalDate.of(2025, 6, 1));
+    }
+
+    @Test
+    void createProject_withStartedOnOnly_storesAnOngoingProject() {
+        ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
+            "Ongoing", "Still being worked on", List.of(), List.of(), List.of("dsp"),
+            LocalDate.of(2026, 2, 1), null));
+        entityManager.clear();
+
+        Project reloaded = projectRepository.findById(created.id()).orElseThrow();
+
+        assertThat(created.startedOn()).isEqualTo(LocalDate.of(2026, 2, 1));
+        assertThat(created.completedOn()).isNull();
+        assertThat(reloaded.getCompletedOn()).isNull();
+    }
+
+    @Test
+    void createProject_withNoDates_leavesBothColumnsNull() {
+        // Absence is its own case: the columns are nullable and nothing (no DB default, no
+        // fallback to created_at) may quietly fill them in.
+        ProjectResponse created = createProject("Undated", List.of("dsp"));
+        entityManager.clear();
+
+        Project reloaded = projectRepository.findById(created.id()).orElseThrow();
+
+        assertThat(created.startedOn()).isNull();
+        assertThat(created.completedOn()).isNull();
+        assertThat(reloaded.getStartedOn()).isNull();
+        assertThat(reloaded.getCompletedOn()).isNull();
+    }
+
+    @Test
+    void updateProject_omittingDates_clearsPreviouslyStoredOnes() {
+        // PUT is a full replacement (docs/openapi.yaml's ProjectWriteRequest): omitting a
+        // date clears it rather than preserving the stored value.
+        ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
+            "Dated", "Has a period", List.of(), List.of(), List.of("dsp"),
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1)));
+
+        ProjectResponse updated = projectService.updateProject(created.id(), new ProjectWriteRequest(
+            "Dated", "Period removed", List.of(), List.of(), List.of("dsp"), null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(updated.startedOn()).isNull();
+        assertThat(updated.completedOn()).isNull();
+        Project reloaded = projectRepository.findById(created.id()).orElseThrow();
+        assertThat(reloaded.getStartedOn()).isNull();
+        assertThat(reloaded.getCompletedOn()).isNull();
+    }
+
+    @Test
+    void updateProject_canCloseOutAnOngoingProject() {
+        ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
+            "Ongoing", "Not finished yet", List.of(), List.of(), List.of("dsp"),
+            LocalDate.of(2024, 3, 1), null));
+
+        ProjectResponse updated = projectService.updateProject(created.id(), new ProjectWriteRequest(
+            "Ongoing", "Now finished", List.of(), List.of(), List.of("dsp"),
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1)));
+
+        assertThat(updated.completedOn()).isEqualTo(LocalDate.of(2025, 6, 1));
+    }
+
+    // --- ck_project_date_period: the defence-in-depth layer, exercised against real Postgres.
+    // These bypass ProjectWriteRequest entirely (the DTO validation is what the API relies on;
+    // this is what holds for a psql session, a bulk import or a future migration). One
+    // violating write per test method -- a failed statement dooms the surrounding transaction,
+    // so two in one method would fail for the wrong reason.
+
+    @Test
+    void databaseRejectsCompletedOnBeforeStartedOn() {
+        Project project = new Project("Backwards", "Ends before it begins");
+        project.setStartedOn(LocalDate.of(2025, 6, 1));
+        project.setCompletedOn(LocalDate.of(2024, 3, 1));
+
+        assertThatThrownBy(() -> projectRepository.saveAndFlush(project))
+            .isInstanceOf(DataIntegrityViolationException.class)
+            .hasMessageContaining("ck_project_date_period");
+    }
+
+    @Test
+    void databaseRejectsCompletedOnWithoutStartedOn() {
+        // The three-valued-logic case: a naive `completed_on >= started_on` CHECK evaluates
+        // to NULL here and would therefore be *satisfied*, letting the row through.
+        Project project = new Project("Finished but never started", "Impossible");
+        project.setCompletedOn(LocalDate.of(2024, 3, 1));
+
+        assertThatThrownBy(() -> projectRepository.saveAndFlush(project))
+            .isInstanceOf(DataIntegrityViolationException.class)
+            .hasMessageContaining("ck_project_date_period");
+    }
+
+    // The three permitted cases below clear the persistence context and read the row back, the
+    // same way the createProject_* tests above do. Asserting on what saveAndFlush returns would
+    // be asserting on the very instance that was handed in -- true before the write, and true
+    // even if the value never reached Postgres. The flush is what proves the CHECK does not
+    // fire; the re-read is what gives the assertions something they can fail on.
+
+    @Test
+    void databasePermitsBothDatesNull() {
+        UUID id = projectRepository.saveAndFlush(new Project("Undated", "No period at all")).getId();
+        entityManager.clear();
+
+        Project reloaded = projectRepository.findById(id).orElseThrow();
+
+        assertThat(reloaded.getStartedOn()).isNull();
+        assertThat(reloaded.getCompletedOn()).isNull();
+    }
+
+    @Test
+    void databasePermitsStartedOnWithoutCompletedOn() {
+        Project project = new Project("Ongoing", "Still going");
+        project.setStartedOn(LocalDate.of(2026, 2, 1));
+        UUID id = projectRepository.saveAndFlush(project).getId();
+        entityManager.clear();
+
+        Project reloaded = projectRepository.findById(id).orElseThrow();
+
+        assertThat(reloaded.getStartedOn()).isEqualTo(LocalDate.of(2026, 2, 1));
+        assertThat(reloaded.getCompletedOn()).isNull();
+    }
+
+    @Test
+    void databasePermitsAStartAndCompletionOnTheSameDay() {
+        Project project = new Project("Weekend build", "Same-day period");
+        project.setStartedOn(LocalDate.of(2024, 3, 1));
+        project.setCompletedOn(LocalDate.of(2024, 3, 1));
+        UUID id = projectRepository.saveAndFlush(project).getId();
+        entityManager.clear();
+
+        Project reloaded = projectRepository.findById(id).orElseThrow();
+
+        assertThat(reloaded.getStartedOn()).isEqualTo(LocalDate.of(2024, 3, 1));
+        assertThat(reloaded.getCompletedOn()).isEqualTo(LocalDate.of(2024, 3, 1));
+    }
+
     private ProjectResponse createProject(String title, List<String> tags) {
-        ProjectWriteRequest request = new ProjectWriteRequest(title, "Description of " + title, List.of(), List.of(), tags);
+        ProjectWriteRequest request = new ProjectWriteRequest(
+            title, "Description of " + title, List.of(), List.of(), tags, null, null);
         return projectService.createProject(request);
     }
 
