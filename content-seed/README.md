@@ -113,7 +113,13 @@ non-dry run spends one. `--dry-run` spends none, because it only reads the publi
 - **It does not delete anything in its normal mode.** See below.
 - **It does not touch contact messages or tags directly.** Tags are created implicitly by project
   writes; there is no `DELETE /tags`, so re-running with a tag removed from the data file detaches
-  it from the project but leaves the tag row in place.
+  it from the project but leaves the tag row in place. `--remove` has the same limit: it deletes
+  the projects and their tag links, and leaves every tag row behind. Clearing those means a manual
+  `DELETE FROM tag` against a local database — not something this script can do through the API.
+- **It does not control the order tags are displayed in.** Verified against the running backend:
+  tags come back in a different order from the one they were sent in. The set round-trips, the
+  sequence does not. So the ordering in `projects.json` is for the reader of that file only, and a
+  preferred display order is not something this seed can express.
 
 ## Idempotency
 
