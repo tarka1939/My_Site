@@ -4,6 +4,7 @@ import { of } from 'rxjs';
 import { trackImageAttributeOrder } from '../../../../testing/image-attribute-order';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
+import { CARD_EXCERPT_MAX_CHARS } from '../../../shared/description-excerpt/description-excerpt';
 import { ProjectsListComponent } from './projects-list.component';
 
 const PROJECT = {
@@ -46,6 +47,23 @@ const ONGOING_PROJECT = {
   startedOn: '2026-02-01',
   completedOn: null,
 };
+
+/** Shaped like the real drafted content: a stand-alone opening paragraph, then several more. */
+const FIRST_PARAGRAPH =
+  'A cross-platform, system-level audio equalizer built around a shared C++17 DSP core, with ' +
+  'three cooperating modules: a real-time audio daemon and a Windows Audio Processing Object in ' +
+  'C++, a 10-band visualiser and settings GUI in C#/Avalonia, and a Python curve generator.';
+
+/** Appears only after the first paragraph, so it is a marker for "the clamp let too much through". */
+const LATER_PARAGRAPH_MARKER = 'OVERFLOWING-TAIL-CONTENT';
+
+const LONG_DESCRIPTION = [
+  FIRST_PARAGRAPH,
+  `${LATER_PARAGRAPH_MARKER} the DSP core is platform-agnostic. ${'Filler prose. '.repeat(30)}`,
+  `More ${LATER_PARAGRAPH_MARKER}. ${'Further filler prose. '.repeat(30)}`,
+].join('\n\n');
+
+const LONG_DESCRIPTION_PROJECT = { ...PROJECT, id: 'p6', description: LONG_DESCRIPTION };
 
 function pageOf(content: unknown[]) {
   return of({ content, page: 0, size: 12, totalElements: content.length, totalPages: 1 });
@@ -150,6 +168,75 @@ describe('ProjectsListComponent', () => {
       const order = tracker.writesFor(image).filter((name) => name === 'loading' || name === 'src');
       expect(order).toEqual(['loading', 'src']);
     }
+  });
+
+  it('summarises a long description on the card instead of rendering all of it', () => {
+    // Issue #86: the card interpolated `project.description` whole. Real entries run 1000-2400
+    // characters (the contract allows 5000), which turns every card into a wall of text and makes
+    // the grid meaningless. Asserting on the *text in the DOM* rather than on the stylesheet is
+    // what makes this fail if the summary is removed -- a CSS-only clamp would still leave the
+    // whole description in the accessibility tree and in the markup.
+    expect(LONG_DESCRIPTION.length).toBeGreaterThan(1000);
+    listProjects.mockReturnValue(pageOf([LONG_DESCRIPTION_PROJECT]));
+
+    const fixture = TestBed.createComponent(ProjectsListComponent);
+    fixture.detectChanges();
+
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.project-card')!;
+    const summary = card.querySelector('.card-description')!.textContent!;
+
+    expect(summary.length).toBeLessThanOrEqual(CARD_EXCERPT_MAX_CHARS + 1);
+    expect(summary.startsWith('A cross-platform, system-level audio equalizer')).toBe(true);
+    expect(summary.endsWith('…')).toBe(true);
+    // Nothing past the first paragraph reaches the card at all -- not hidden elsewhere in it either.
+    expect(card.textContent).not.toContain(LATER_PARAGRAPH_MARKER);
+    expect(card.textContent!.length).toBeLessThan(LONG_DESCRIPTION.length);
+  });
+
+  it('renders a short description in full, with no ellipsis', () => {
+    // The clamp must not mark text as truncated when it is not: PROJECT's description is one line.
+    const fixture = TestBed.createComponent(ProjectsListComponent);
+    fixture.detectChanges();
+
+    const summary = (fixture.nativeElement as HTMLElement).querySelector('.card-description')!;
+    expect(summary.textContent).toBe(PROJECT.description);
+  });
+
+  it('clamps the summary by lines, not by a fixed height', () => {
+    // The character cap above bounds the payload; this bounds what is on screen. They are separate
+    // failures: a 200-character excerpt is two lines on a wide card and five on a phone, so without
+    // a line clamp the grid still has ragged cards. jsdom does no layout, so this asserts the
+    // declarations that actually cascade onto the element -- i.e. that the rule exists, matches
+    // this element, and survives Angular's style encapsulation -- not the rendered line count.
+    listProjects.mockReturnValue(pageOf([LONG_DESCRIPTION_PROJECT]));
+
+    const fixture = TestBed.createComponent(ProjectsListComponent);
+    fixture.detectChanges();
+
+    const summary = (fixture.nativeElement as HTMLElement).querySelector('.card-description')!;
+    const style = getComputedStyle(summary);
+
+    expect(style.getPropertyValue('-webkit-line-clamp')).toBe('3');
+    expect(style.display).toBe('-webkit-box');
+    expect(style.overflow).toBe('hidden');
+    // No pixel height anywhere in the clamp: one would cut mid-line as soon as the user zooms.
+    expect(style.height).not.toMatch(/px/);
+    expect(style.maxHeight).not.toMatch(/px/);
+  });
+
+  it('marks the card thumbnail decorative rather than repeating the project title', () => {
+    // The thumbnail sits inside a link whose visible text is the title, so alt text here is
+    // redundant with adjacent text and makes the link announce "Reverb Reverb". Empty alt is
+    // W3C/WAI's marking for that case. The detail gallery is a different case -- see #87 and
+    // shared/project-image-alt/project-image-alt.ts.
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
+
+    const fixture = TestBed.createComponent(ProjectsListComponent);
+    fixture.detectChanges();
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector('.project-card a')!;
+    expect(link.querySelector('img')!.getAttribute('alt')).toBe('');
+    expect(link.textContent).toContain('Reverb');
   });
 
   it('shows each card period as month/year, ongoing where there is no end date', () => {

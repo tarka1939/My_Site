@@ -57,6 +57,28 @@
     font-size: 1.1rem;
     margin: 0.5rem 0;
   }
+
+  // Clamp the summary to three lines. Deliberately a *line* limit rather than a max-height in px:
+  // the pipe that feeds this element caps characters, but characters do not map to lines -- the
+  // same excerpt is two lines on a wide card and five on a phone, and any pixel height would also
+  // cut mid-line the moment the user raises their font size or zooms. `line-clamp` measures in
+  // lines, so it holds at every width and every text size, and the browser adds its own ellipsis
+  // at whatever point it cuts.
+  //
+  // The unprefixed `line-clamp` is the standard property; the `-webkit-` pair is the long-standing
+  // syntax the same browsers have shipped for years and stays for the ones that only know that.
+  // `display: -webkit-box` is required by the prefixed form -- it is what makes the clamp apply.
+  .card-description {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+    // A description can contain a URL or a long identifier; without this a single unbroken token
+    // is laid out past the card edge instead of wrapping inside the clamped box.
+    overflow-wrap: anywhere;
+    margin: 0.5rem 0 0;
+  }
 }
 
 .tag-list {
