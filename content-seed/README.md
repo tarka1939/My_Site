@@ -32,23 +32,25 @@ Unanswered questions about the copy — which images to use, whether the repos s
 whether the coursework entries should be split — live in the draft's "Needs your input" sections,
 not here. This directory deliberately holds no opinions the draft does not.
 
-### One thing to decide that the draft did not raise: line wrapping
+### One difference from the draft: the prose is reflowed
 
-The draft hard-wraps its prose at about 90 columns, and those line breaks were transcribed
-verbatim — **78 of them across the five entries.** The detail page renders `description` with
-`white-space: pre-wrap` (`project-detail.component.scss`), and `pre-wrap` preserves *single*
-newlines as forced line breaks, not just blank lines.
+The source draft hard-wraps its prose at about 90 columns. **`projects.json` does not** — each
+paragraph is a single unbroken string that wraps to whatever width the reader has.
 
-So as it stands, the copy will render carrying the draft document's line wrapping rather than
-reflowing to the reader's width — with source lines up to 93 characters landing in a narrower
-column, that reads as alternating long and short lines. The draft says blank lines survive as
-paragraph breaks; it does not mention that its own wrapping survives too, which looks like an
-oversight rather than a decision.
+This is deliberate. The detail page renders `description` with `white-space: pre-wrap`
+(`project-detail.component.scss:42`), and `pre-wrap` preserves *single* newlines as forced line
+breaks, not just blank ones. Carrying the draft's wrapping across would have pinned every paragraph
+to a hard break every ~92 characters regardless of viewport, which on a narrow screen reads as a
+broken page. The draft notes that blank lines survive as paragraph breaks and does not mention that
+its own wrapping survives too — that looks like an oversight rather than an intention.
 
-It was left as-is because faithful transcription was the instruction and this is the owner's call.
-**To reflow instead, replace single newlines inside each paragraph with spaces** — in
-`projects.json`, so the change is visible in review. That alters no words and, since one character
-is swapped for another, no character counts either.
+**78 newlines were replaced with a single space each, and nothing else changed.** Verified per
+entry: the word sequence is identical to the draft, and every character count is unchanged, because
+one character was swapped for another. None of the 78 sat next to a hyphen or existing whitespace,
+so no word was joined wrongly and no double space was produced.
+
+Blank lines between paragraphs are still how paragraph breaks are expressed, and are still
+load-bearing — they are the separate array elements. **Do not re-wrap these strings by hand.**
 
 ---
 
@@ -221,11 +223,37 @@ Two conventions:
 - **`description` is an array of paragraphs**, joined with a blank line and given a trailing
   newline. JSON has no multi-line string literal, and a 2,536-character description escaped onto
   one line is unreviewable — which would defeat the point of a file that exists to be read and
-  corrected. The join reproduces the draft's YAML `|` block scalar byte-for-byte; the resulting
-  lengths match the draft's own compliance table (§4) exactly. The blank line matters: descriptions
-  render as plain text with `white-space: pre-wrap`, not Markdown, so a blank line *is* the
-  paragraph break.
+  corrected. The join rebuilds the structure the draft's YAML `|` block scalar expressed, and the
+  resulting lengths still match the draft's own compliance table (§4) exactly; the only difference
+  from the draft is the reflow described above. The blank line matters: descriptions render as
+  plain text with `white-space: pre-wrap`, not Markdown, so a blank line *is* the paragraph break —
+  and, for the same reason, a stray newline *inside* a paragraph would be a visible hard break.
 
 The record order matches the draft's section order (§1.1, §1.2, §1.3, §2.1, §2.2) so the two can be
 read side by side. It carries no meaning to the API — there is no ordering field on the model
 (issue #88).
+
+## Troubleshooting
+
+**"I stopped the backend, but something is still answering on 8080."**
+
+Stopping `mvn spring-boot:run` does not necessarily stop the backend. Maven forks a separate
+`java.exe` running `MySiteApplication`, and killing the Maven process can leave that fork alive and
+still serving. Observed directly while verifying this script: the Maven job was stopped, and port
+8080 was still `LISTENING` and answering requests.
+
+**Check the port, not the Maven process.**
+
+```bash
+netstat -ano -p TCP | grep 8080          # any LISTENING row means a backend is still up
+```
+
+Then confirm the PID is the one you think it is before stopping it — on Windows,
+`Get-CimInstance Win32_Process -Filter "ProcessId = <pid>"` shows the full command line, which
+should name `MySiteApplication` and its active profile.
+
+This matters beyond tidiness. A stale backend from a *different branch* will happily answer a seed
+run or a test suite, and everything will look green against code that isn't the code under test.
+That failure mode has already produced one false verification result on this project. Any time a
+run's results look surprising — or suspiciously fine — check what is actually listening before
+trusting them.
