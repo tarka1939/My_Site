@@ -6,7 +6,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 **Phases 0-4 complete.** Spec and OpenAPI contract; backend foundation; core domain features (project CRUD, tags, contact form, JWT auth, password reset); frontend foundation (Angular app, routing, generated API client, auth, admin CRUD pages); and a Playwright end-to-end suite covering four critical journeys.
 
-**Phase 6 (content & polish) is in progress** — a performance pass and a project date period have landed; content migration, SEO and this README are outstanding.
+**Phase 6 (content & polish) is in progress** — a performance pass, a project date period, and the content-rendering work that real portfolio copy depends on have landed. Content migration and SEO are outstanding.
 
 **Phase 5 (deployment) is paused** pending VPS setup, so nothing is deployed yet. Phase 6 and Phase 7 don't depend on it and are proceeding in the meantime.
 
@@ -22,11 +22,13 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 The second goal of this project, stated in `SPEC.md`, is to be a practice ground for multi-agent development. That's the part worth reading — the site itself is a portfolio site.
 
-**Contract first, and it means something here.** `docs/openapi.yaml` is written and validated *before* implementation. When the `Project` model gained a date period, the contract, data model and ADR landed as one commit; only then were the backend and frontend built against it, in separate worktrees, neither able to read the other's code. Both matched the contract field-for-field on the first attempt, with no integration round.
+**Contract first, and it means something here.** `docs/openapi.yaml` is written and validated *before* implementation. When the `Project` model gained a date period, the contract, data model and ADR landed as one commit; only then was the backend built against it, and only after the backend passed its gates was the frontend dispatched. Neither implementation session was shown the other's code — the backend agent was told to stop and report if it thought the contract was wrong rather than quietly diverging, and it confirmed the contract was implementable as written. Both halves matched on the first attempt with no integration round.
 
-**One task, one worktree, one branch, one session.** Concurrent sessions never share a working directory — each gets its own `git worktree`, which is what makes simultaneous commits safe. `PreToolUse` hooks enforce the parts that are mechanically checkable: writes outside an assigned worktree are denied, as are force-pushes and hard resets.
+Worth being precise about what that does and doesn't demonstrate: the two sessions ran sequentially in the *same* worktree, so the separation was a prompt-level instruction, not a filesystem boundary — and `docs/AGENT_WORKFLOW.md` is explicit that those are not the same thing. The frontend's client is also *generated* from the contract, so its agreement is partly mechanical rather than independent. The genuinely isolated backend-agent/frontend-agent exercise is scheduled for Phase 7 and has not run yet.
 
-**Three roles.** A coordinator session plans and dispatches but doesn't implement; a fresh session per task writes the code; and **every PR is reviewed by a separate session with no shared context** — only the diff and the standing docs. Reviewers are given the PR pointer and told nothing about why an approach was taken.
+**One task, one worktree, one branch, one session.** Concurrent sessions never share a working directory — each gets its own `git worktree`, which is what makes simultaneous commits safe. Two `PreToolUse` hooks cover the mechanically checkable parts: force-pushes, hard resets and direct checkouts of `main` are denied unconditionally, and `Edit`/`Write` calls outside a session's assigned worktree are denied when that session opts in by exporting `CLAUDE_WORKTREE_ROOT`. The second is opt-in by design, so it doesn't restrict ordinary single-session work — which means it's a guard rail, not a guarantee.
+
+**Three roles.** A coordinator session plans and dispatches but doesn't implement; a fresh session per task writes the code; and since 2026-08-02, **every PR is reviewed by a separate session with no shared context** — only the diff and the standing docs. Reviewers are given the PR pointer and told nothing about why an approach was taken.
 
 **Nothing merges on a report.** Every gate is re-run by the coordinator before review is requested, and the review layer has no "unavailable" fallback. That last rule exists because a merge gate phrased as "every *available* check passed" fails open when nothing runs.
 
@@ -34,13 +36,15 @@ The second goal of this project, stated in `SPEC.md`, is to be a practice ground
 
 The point of `AGENT_LOG.md` is that this is recorded honestly, including when the process caught its author. A representative sample:
 
-- **A 1,370-line test suite that had never been executed once.** Thoroughly commented, spec-citing, and green in the report — the browser binary was never installed. Caught only by re-running the gate rather than accepting the branch on how well-written it was.
+- **A 1,370-line test suite that had never been executed once.** Thoroughly commented and citing the plan by section — the browser binary was never installed, so nothing in it had ever run. Caught by re-running the gate rather than accepting the branch on how well-written it was.
 - **An agent that died mid-mutation-test**, leaving a deliberate defect in the working tree beneath a comment stating the opposite. Committing it would have shipped the exact bug the tests existed to prevent.
-- **A `CHECK` constraint that SQL's three-valued logic would have made permissive** in precisely the case it was written to forbid, because a `CHECK` is satisfied by `NULL`.
+- **A CSS declaration that no test asserted**, where deleting it left every test green and the feature completely inert in a real browser.
 - **A merge gate that couldn't fail** — `mvn test | tail` captures `tail`'s exit status, so it reported success regardless of the tests.
 - **Documentation citing a line number from a stale checkout**, inside a pull request whose other half was about stale-branch confusion.
 
-The recurring theme is not "agents write buggy code". It is that **tooling reports success by doing nothing** — an unfired budget, an unlinked issue, a migration that silently never ran, a suite that tested a different build than the one under review. The corresponding discipline is to verify the *effect*, not the exit code.
+The recurring theme is not "agents write buggy code". It is that **tooling reports success by doing nothing** — an unfired build budget, an issue-closing keyword that linked nothing, a migration that silently never ran. The corresponding discipline is to verify the *effect*, not the exit code.
+
+The same applies to the claims in this section. An earlier draft of it asserted that the two implementation sessions "could not read each other's code" and that the never-run test suite was "green in the report" — neither was true, and both were caught by the cold review of the pull request that added them. That is the process working, and it is also the reason this section is shorter and more hedged than it started.
 
 ### What it costs
 
