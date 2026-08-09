@@ -63,6 +63,12 @@ test('an admin can log in, publish a project, and log back out', async ({ page }
   await page.getByRole('textbox', { name: 'Title' }).fill(title);
   await page.getByRole('textbox', { name: 'Description' }).fill(description);
   await page.getByRole('textbox', { name: 'Tags' }).fill(TAG_ADMIN_CREATED);
+  // The seeded fixtures cover *reading* a period; this covers writing one, which is a different
+  // path end to end (<input type="date"> -> form value -> POST body -> date column). Left ongoing
+  // deliberately: a null completedOn is the state the admin form has to be able to produce, and
+  // an empty completion input is the only way to say it -- so leaving the field alone is the
+  // assertion, and the persisted null below is what proves it was not filled in for us.
+  await page.getByLabel('Start date').fill('2025-11-01');
 
   const [createResponse] = await Promise.all([
     page.waitForResponse(
@@ -84,9 +90,21 @@ test('an admin can log in, publish a project, and log back out', async ({ page }
   await expect(page.getByRole('link', { name: title, exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(1);
 
+  // The date the admin typed survives to the public page, at month precision and announced as
+  // ongoing rather than trailing off after the start.
+  const publishedCard = page.getByRole('listitem').filter({ hasText: title });
+  await expect(publishedCard.locator('time')).toHaveText(['November 2025']);
+  await expect(publishedCard.locator('time')).toHaveAttribute('datetime', '2025-11');
+  await expect(publishedCard).toContainText('ongoing');
+
   // ...and it really is one persisted project, not two from a double submit. Trustworthy as a
   // double-submit check only because `beforeEach` guarantees the tag started this attempt empty.
-  expect(await listProjectsByTag(TAG_ADMIN_CREATED)).toHaveLength(1);
+  const persisted = await listProjectsByTag(TAG_ADMIN_CREATED);
+  expect(persisted).toHaveLength(1);
+  // Day precision in storage, month/year in the UI -- so the stored value keeps the day the form
+  // sent, and the null completion is a real null rather than an empty string coerced somewhere.
+  expect(persisted[0].startedOn).toBe('2025-11-01');
+  expect(persisted[0].completedOn).toBeNull();
 
   await page.getByRole('button', { name: 'Log out' }).click();
   await expect(page).toHaveURL(/\/admin\/login$/);

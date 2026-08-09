@@ -18,6 +18,20 @@
   img {
     width: 100%;
     border-radius: 0.375rem;
+
+    // Images are admin-pasted external URLs (docs/DECISIONS.md, 2026-07-24), so their intrinsic
+    // dimensions are unknown at build time and no width/height attribute can be emitted. Reserving
+    // the box with an aspect-ratio instead is what keeps the gallery from collapsing to zero height
+    // and then shoving the description down once each image decodes (cumulative layout shift).
+    // `contain` because these are screenshots -- letterboxing is preferable to cropping content.
+    //
+    // The letterbox fill must be theme-aware: the site follows the OS theme (styles.scss sets
+    // `color-scheme: light dark` with system `canvas`/`canvastext` colours), so the fixed #ccc of
+    // --color-border -- fine as a 1px stroke, which is all it was used for before -- would paint
+    // light-grey bars around every non-16:10 screenshot on a dark canvas.
+    aspect-ratio: 16 / 10;
+    object-fit: contain;
+    background: var(--color-surface-muted);
   }
 }
 

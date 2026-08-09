@@ -1,16 +1,17 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
 import { Project } from '../../../core/api/model/project';
 import { Tag } from '../../../core/api/model/tag';
+import { ProjectPeriodComponent } from '../../../shared/project-period/project-period.component';
 
 const PAGE_SIZE = 12;
 
 @Component({
   selector: 'app-projects-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink],
+  imports: [RouterLink, ProjectPeriodComponent],
   templateUrl: './projects-list.component.html',
   styleUrl: './projects-list.component.scss',
 })
@@ -26,6 +27,18 @@ export class ProjectsListComponent {
   protected readonly totalElements = signal(0);
   protected readonly loading = signal(false);
   protected readonly loadError = signal<string | null>(null);
+
+  /**
+   * Id of the first project on the page that actually has an image -- i.e. the owner of the first
+   * <img> the grid renders, which is the LCP candidate that must not be lazy-loaded.
+   *
+   * Deliberately not `$first` in the template: that indexes over projects, not over projects that
+   * have images. `images` is optional content with no upload pipeline, so one imageless project at
+   * the top of a createdAt-DESC list would otherwise leave every image on the page lazy.
+   */
+  protected readonly firstImageProjectId = computed(
+    () => this.projects().find((project) => project.images.length > 0)?.id ?? null,
+  );
 
   constructor() {
     this.tagsApi.listTags().subscribe({

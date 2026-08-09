@@ -239,6 +239,211 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-08 — Project date period (#85): contract-first across two agents, and three bugs the obvious implementation would have shipped
+
+**Task given:**
+
+Close the spec/model divergence found during Phase 6 content drafting: `SPEC.md` had promised
+"dates" on project detail since Phase 0, but `Project` only ever had `created_at`/`updated_at`.
+Add a real date period, contract-first.
+
+**Agent(s) used:**
+
+Senior Dev wrote the contract (`docs/openapi.yaml`, `docs/DATA_MODEL.md`, the ADR) and validated it
+before dispatching anything. Then `backend-agent` and, once the backend was verified,
+`frontend-agent` — each building against the settled contract, neither reading the other's code.
+Sequential, per `docs/AGENT_WORKFLOW.md`'s Phase 6 default.
+
+**What went right:**
+
+Contract-first worked as advertised, for the first time on this project with a genuinely
+cross-cutting change. Both halves matched the contract field-for-field on the first attempt, with no
+integration round. The backend explicitly confirmed the contract was implementable as written rather
+than quietly diverging — a stop-and-report condition in its brief.
+
+**~~Three~~ two bugs the obvious implementation would have shipped** (the count was corrected on
+2026-08-08 — item 2 below was an overclaim by the Senior Dev and is retracted in place):
+
+1. **A `CHECK` constraint that would have permitted what it existed to forbid.** The natural
+   `CHECK (completed_on >= started_on)` evaluates to NULL for a completed-but-never-started row, and
+   a `CHECK` is *satisfied* by NULL — so it would silently allow exactly one of the two cases it was
+   written to reject. Written instead as
+   `completed_on IS NULL OR (started_on IS NOT NULL AND completed_on >= started_on)`, which can never
+   evaluate to NULL. Flagged in the dispatch brief as a known trap, reasoned through by the agent,
+   then verified by building the truth table directly in Postgres rather than reading the SQL — both
+   must-reject cases return `f`, not NULL.
+2. ~~**A timezone bug in date rendering.**~~ **Retracted 2026-08-08 — this claim was wrong, and it
+   was mine.** The original entry said `new Date('2024-03-01')` parses as UTC midnight and would
+   therefore render **February 2024** in a negative-offset timezone, and credited the frontend's
+   string-surgery conversion with preventing it. The first half is true of `new Date` in isolation;
+   the conclusion does not follow. Angular's `DatePipe` never calls `new Date(value)` for that
+   shape — `toDate` in `@angular/common` matches `/^(\d{4}(-\d{1,2}(-\d{1,2})?)?)$/` and builds a
+   **local** date via `createDate(y, m - 1, d)` (verified by reading the installed 21.2.19 source,
+   after an independent reviewer disputed the claim). So the obvious implementation,
+   `{{ startedOn | date: 'LLLL y' }}`, would have rendered correctly in every timezone. No bug was
+   prevented here.
+
+   The string-surgery util is still the right call — it is independent of pipe internals, and the
+   trap is real for anyone who reaches for `new Date()` directly — but "prevented a shipped bug" was
+   an overclaim. Left visible rather than deleted: this file is the source for Phase 7b's public
+   build-log page, and a log about unverified claims that quietly edits its own mistakes would be
+   worth nothing.
+3. **A validator that worked only inside Spring.** A package-private `ConstraintValidator` resolves
+   fine through Spring's bean factory but fails under a plain
+   `Validation.buildDefaultValidatorFactory()`, which requires a public class (HV000064). The 12
+   in-container MockMvc tests were green while the standalone unit test was 7/7 erroring. An
+   in-container-only suite would never have surfaced it.
+
+**A junior correctly refused an instruction.** The ADR records "1st of the month" as the storage
+convention, so the obvious move is to snap picked dates. The frontend agent declined: snapping would
+rewrite a stored `2024-03-17` to `2024-03-01` on any unrelated edit — a silent data change directly
+contradicting the round-trip requirement in the same brief. It stores the day as picked, never
+renders it, and flagged the decision for reversal rather than burying it. Accepted.
+
+It also **proved its own mutation testing had been undone** — grep for markers plus the committed
+diff — a direct response to the incident logged below, where an agent died mid-mutation and left a
+live defect in the working tree. The `CLAUDE.md` guidance written that day was picked up and applied
+without being restated.
+
+**What went wrong (be specific):**
+
+No implementation defect reached a branch — both halves passed their gates first time (backend 84
+tests / BUILD SUCCESS, frontend 30 → 52, build clean, E2E 7/7). What went wrong was in *this entry*:
+the Senior Dev credited the frontend with preventing a timezone bug that Angular's `DatePipe` would
+never have produced, and wrote it up as fact without checking the pipe's behaviour. See the
+retraction at item 2 above.
+
+That is the second false claim written into `AGENT_LOG.md` in two days by the same author — after
+the 2026-08-07 index shipped three, and after a "corrected" note in `AUTONOMOUS_WORKFLOW.md` claimed
+to fix a rule that document never contained. All three were caught by independent review, none by
+self-review.
+
+A second, smaller gap the same review found: **the E2E suite's `e2e/support/api.ts` declares itself
+as following `docs/openapi.yaml` but is a hand-written mirror**, and it did not gain the two new
+fields. So "E2E 7/7" was a true statement that said nothing whatsoever about this feature — no
+fixture or assertion touches a date. A green gate that cannot observe the change under test is
+exactly the failure mode this log is otherwise full of, arrived at from a new direction.
+
+**How it was caught:** independent review of PR #91, disputing a claim in the entry rather than in
+the code, and verifying against the installed `@angular/common` source.
+
+**Fix applied:** claim retracted in place rather than deleted, with the evidence. `e2e/support/api.ts`
+updated so the E2E contract mirror actually mirrors the contract.
+
+**Takeaway for next time / non-obvious judgment calls made:**
+
+0. **Writing up a *prevented* bug requires proving the bug was reachable.** A caught bug comes with
+   evidence attached — a red test, a bad response. A prevented one comes with none, so "the obvious
+   implementation would have shipped X" is a claim about a counterfactual and has to be tested like
+   one: write the obvious implementation, or at minimum read what it actually does. Both false
+   claims this author has put in this file were of this shape — asserting what *would* have happened
+   rather than reporting what did. The near-miss write-ups are the most quotable entries here and
+   therefore the ones most worth doubting.
+1. **A `CHECK` constraint involving a nullable column needs its truth table checked, not just read.**
+   Three-valued logic makes "obviously correct" constraints permissive in exactly the cases that
+   matter. Same family as every other silent-success bug in this log: the mechanism reports success
+   by doing nothing.
+2. **`ProjectWriteRequest` is also the PUT body, so omitting a field clears it.** Documented in the
+   contract deliberately, because it makes the admin edit form a data-loss hazard if it does not
+   round-trip existing values — a bug that only appears on a user's *second* edit. Covered by a test
+   specifically.
+3. **Version skew in the test stack.** Testcontainers runs `postgres:17-alpine`; the local dev
+   database is 18.4. Both accepted V4 identically, but "mvn test is green" is not the same claim as
+   "it works on the deployed version" — worth settling a production Postgres version in Phase 5
+   rather than discovering the gap there.
+4. **`ProjectWriteRequest` is a positional record**, so adding two components broke all 8 existing
+   constructor call sites in tests. Cheap at this size; worth a builder or named test factory before
+   the record grows further.
+5. **Prettier is configured (`frontend/.prettierrc`) but unenforced, and most existing files already
+   fail it.** The frontend agent formatted only its own files rather than dumping unrelated churn
+   into the diff — correct call, but the inconsistency is now visible and wants a decision.
+
+## 2026-08-08 — Senior Dev: three agents lost to session limits, all salvaged by hand when they should have been resumed
+
+**Task given:**
+
+Not a task — a process failure of the Senior Dev's own, noticed only when the user asked whether a
+terminated agent could be resumed rather than picked up from where it died. It could. It should
+have been.
+
+**Agent(s) used:**
+
+Senior Dev session (this one) as the party at fault. Three dispatched juniors terminated by API
+session limits across 2026-08-07: the Phase 4 E2E implementation, the PR #82 fix round, and the
+PR #83 fix round.
+
+**What went wrong (be specific):**
+
+A dispatched agent that dies can be continued with **`SendMessage` addressed to its agent ID, which
+the tooling states preserves its context** — a fresh `Agent` call starts cold instead. The
+completion notification for each failed agent said this explicitly, and noted the same task ID can
+fire more than once for exactly this reason. It was read three times and acted on zero times.
+
+Stated precisely, because this entry is about not overclaiming: the capability is documented in the
+tooling's own notification text and was **not** verified in this session — nobody attempted a
+resume. `CLAUDE.md` carries the same caveat. What is certain is that resuming was never *tried*,
+not that it would have worked.
+
+Instead, each death was handled by inspecting the abandoned worktree, inferring what the agent had
+been trying to do, and finishing it manually. The three cases were not equally bad. For the Phase 4
+E2E agent the salvage was harmless — its work was already committed, only verification was
+outstanding, and running the gate is the Senior Dev's job anyway (that gate is what caught the suite
+having never been executed, which is logged separately and stands on its own). The PR #82 fix agent
+left coherent uncommitted work that reviewed cleanly. The PR #83 fix agent is the one that mattered.
+
+**The near-miss, which is the reason this is worth logging at all.** The PR #83 fix agent had
+finished its fixes and moved on to *mutation-testing its own tests* — deliberately reintroducing
+each bug to confirm the test caught it. It died with a mutation still applied. Its final streamed
+words were `"Restoring, then testing the [attr.loading] collapse."`
+
+So the working tree contained a live, intentional defect: a single `<img>` using `[attr.loading]`,
+sitting directly beneath a comment its own author had written explaining why that construct must
+**not** be used (a binding lands in the update pass after `src`, silently defeating lazy loading
+while every attribute still reads correctly in the DOM). Committing that state would have shipped
+the exact bug the new tests existed to prevent, under a comment asserting the opposite.
+
+What caught it: noticing the code contradicted the comment three lines above it, then running the
+suite, which failed with `expected [ 'src', 'loading' ] to deeply equal [ 'loading', 'src' ]` — the
+mutation test working precisely as designed. Resuming the agent would have avoided the whole
+episode, because the agent knew it had a mutation applied and that restoring it was the next step.
+
+**How it was caught:** the user asked, directly, whether resuming was possible. Not by any check
+the Senior Dev ran.
+
+**Fix applied:**
+
+`CLAUDE.md` gained a "When a dispatched agent dies mid-task" section — resume rather than salvage;
+a dying agent's last message is a fragment and not a status report; if salvage is genuinely
+unavoidable, treat the working tree as an unknown intermediate state and run the tests *first*
+rather than last. `docs/AUTONOMOUS_WORKFLOW.md` cross-references it.
+
+**Takeaway for next time:**
+
+- **"Died just before committing" and "died in the middle of a deliberate experiment" are
+  indistinguishable from outside the process.** Both leave coherent-looking uncommitted work. The
+  second is dangerous precisely because the work looks finished, and the agent's own comments
+  describe the intended state rather than the actual one. Only running the tests separates them.
+- **Read the affordances the tooling hands you.** The resume instruction was in the text of all
+  three failure notifications. This is the same class of error as the rest of this log — a signal
+  present and unexamined — except the signal here was an explicit instruction, not a subtle one.
+- **Three consecutive identical failures should have prompted a process question, not a third
+  workaround.** After the second manual salvage the right response was to ask whether salvage was
+  the correct move at all. Repetition of a workaround is itself evidence worth reading.
+- **A correction has to be checked as carefully as the thing it corrects.** The first version of
+  this change shipped a note in `docs/AUTONOMOUS_WORKFLOW.md` claiming to correct a stale rule
+  ("the Senior Dev now launches reviewers itself, rather than handing a prompt to the user") — but
+  that document had said "dispatches PR review to independent sessions" in its opening paragraph
+  since its very first commit. The hand-the-prompt-over instruction came from a *session kickoff
+  prompt*, not from any doc. A false "corrected 2026-08-07" note was therefore written into the
+  permanent record, inside a PR whose whole subject is being honest about process failures, and was
+  caught by the independent review rather than by its author. Verify what a document actually says
+  before writing that you have corrected it.
+- **The same change also missed two files saying the superseded thing** (`PROJECT_TODO.md` line 69
+  and `docs/DECISIONS.md`'s 2026-08-02 ADR) — and line 69 already carried a note recording that it
+  had been missed the *previous* time this doc changed. `CLAUDE.md`'s doc-currency rule exists for
+  exactly this and still was not enough; grep for the superseded claim across the repo rather than
+  updating the file you happen to be editing.
+
 ## 2026-08-07 — Senior Dev session: Phase 4 (E2E suite + this index), first run of the dispatcher model
 
 **Task given:**

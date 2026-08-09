@@ -446,6 +446,26 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Tag'
+        startedOn:
+          type: string
+          format: date
+          nullable: true
+          description: |
+            When work on the project started. Null means unspecified.
+
+            Distinct from createdAt, which records when the row was entered. Stored at day
+            precision but only ever rendered as month/year -- the underlying source material
+            does not support day-level accuracy, so clients should not present one. The
+            convention is the 1st of the month.
+          example: '2024-03-01'
+        completedOn:
+          type: string
+          format: date
+          nullable: true
+          description: |
+            When work finished. **Null means the project is ongoing**, which is a meaningful
+            value here, not merely missing data. Must not precede startedOn.
+          example: '2025-06-01'
         createdAt:
           type: string
           format: date-time
@@ -455,7 +475,13 @@ components:
 
     ProjectWriteRequest:
       type: object
-      description: Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.
+      description: |
+        Body for both create (POST) and full update (PUT). Tags are given as names -- unknown
+        names are created (upserted), not rejected.
+
+        startedOn/completedOn are both optional and both nullable. Because this body is also used
+        for full replacement (PUT), omitting either field clears it -- it does not preserve the
+        stored value.
       required: [title, description, tags]
       properties:
         title:
@@ -487,6 +513,21 @@ components:
             minLength: 1
             maxLength: 50
           description: Tag names. Matched case-insensitively against existing tags; new names create a new Tag row.
+        startedOn:
+          type: string
+          format: date
+          nullable: true
+          description: When work started. Optional; null or omitted means unspecified. Only ever rendered as month/year -- see the Project schema.
+          example: '2024-03-01'
+        completedOn:
+          type: string
+          format: date
+          nullable: true
+          description: |
+            When work finished. Null or omitted means **ongoing**. Rejected with 400 if it
+            precedes startedOn, or if it is supplied while startedOn is not -- a project cannot
+            finish without having started.
+          example: '2025-06-01'
 
     ProjectPageResponse:
       allOf:

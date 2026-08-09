@@ -178,7 +178,7 @@ _Add new ADR-style entries below as they arise._
 
 **Alternatives considered:** Keep hand-writing a kickoff prompt per phase (rejected — real friction the user explicitly wants to move past, and doesn't scale to "run autonomously unless problems arise"). Force the original Phase 4 isolation exercise onto the current, fully-integrated codebase anyway (rejected — there's no new feature left to build blind; rebuilding an already-built site blind to itself would be theater, not a real test). Full unattended autonomy including Phase 5 infrastructure (rejected — account creation, payment, and first-deploy secrets/DNS/TLS going live together are a different risk class than pure code changes; these get explicit human checkpoints regardless of how autonomous earlier phases were).
 
-**Consequences:** `docs/AUTONOMOUS_WORKFLOW.md` is the operative spec going forward for Phase 4's tail through Phase 6. `PROJECT_TODO.md`'s Phase 4 checklist is annotated with the adaptation rather than silently reinterpreted. GitHub Copilot's review continues alongside the new independent-session review, not replaced by it — both have independently caught real defects so far.
+**Consequences:** `docs/AUTONOMOUS_WORKFLOW.md` is the operative spec going forward for Phase 4's tail through Phase 6. `PROJECT_TODO.md`'s Phase 4 checklist is annotated with the adaptation rather than silently reinterpreted. GitHub Copilot's review continues alongside the new independent-session review, not replaced by it — both have independently caught real defects so far. **Amended 2026-08-08:** Copilot is temporarily suspended from the merge gate — its quota is exhausted until 2026-08-25 and it answers review requests with a quota error. PRs #81, #82, #83 and #84 merged on the independent review alone. The intent of this ADR is unchanged: restore Copilot as a required layer when quota returns, because a quota error is not the same claim as "the reviewer found nothing."
 
 ### 2026-08-07 — Playwright E2E lives in a top-level `/e2e`, and provisions its own admin account
 
@@ -199,6 +199,29 @@ For auth, the suite provisions a **separate, test-only** admin row (`e2e-admin`)
 - *Seeding fixture projects directly via SQL too* (rejected — the suite's value is exercising the real contract; bypassing the API for convenience would test the database, not the application).
 
 **Consequences:** Running the suite needs its own `npm install` plus `npx playwright install` (~115 MB browser download) — a prerequisite documented in `e2e/README.md`, and the exact step whose omission made the suite fail on its first real run (see `AGENT_LOG.md`, 2026-08-07). Postgres is deliberately *not* managed by Playwright's `webServer`, so the runner can never drop a developer's database on exit; the two application servers are, since they're stateless. The suite spends two of `AuthService`'s five-logins-per-fifteen-minutes budget per run — the admin journey's real UI login, which can't be cached, plus setup's API login, which deliberately isn't: teardown discards the cached token, so roughly the third full run inside fifteen minutes trips the limiter. Acceptable at normal cadence, and the limiter is in-memory so restarting the backend clears it; both noted in `e2e/README.md`. When Phase 5 adds CI, this suite needs Postgres, a JDK, Node, and a browser in the runner image — a heavier job than the existing backend/frontend test steps.
+
+### 2026-08-08 — Project dates: a start/end period at day precision, rendered month/year
+
+**Context:** `SPEC.md` line 11 has listed "dates" among a project detail's fields since Phase 0, but the `Project` entity was designed with only `created_at`/`updated_at` — *record* timestamps, not dates describing the work. The gap survived the data-model design, the OpenAPI contract, and four PR review rounds, and only surfaced during Phase 6 content drafting (#49), when the drafted entries had nowhere to record when anything was built. So the choice was either to implement what the spec already promised or to correct the spec; the owner chose to implement (issue #85).
+
+Two sub-decisions, bundled because the second only matters once the first is settled: the *shape* (single date vs. a period vs. free text) and the *precision*.
+
+**Decision:** `started_on` plus a nullable `completed_on`, both `date`.
+
+- **Null `completed_on` means ongoing** — a meaningful value, not missing data. This is the case the drafted content actually needs; several entries are live work.
+- **Null `started_on` means unspecified.** Both columns are nullable so the migration is additive and non-destructive against existing rows.
+- **`completed_on` must not precede `started_on`**, and cannot be supplied without it. Enforced twice: cross-field validation at the DTO layer for a clean 400, and a table `CHECK` constraint so the invariant holds regardless of how a row is written.
+- **Stored at day precision, rendered month/year.** The convention is the 1st of the month.
+
+**Alternatives considered:**
+
+- *A single date* (rejected — cannot express an ongoing project or a span, so a multi-year piece reads the same as a weekend utility, which is exactly the signal a portfolio exists to convey).
+- *A free-text period string like "2024–2025"* (rejected — no sorting, no filtering, no validation, and guaranteed formatting drift across entries; the flexibility is not worth losing an orderable field, especially with #88 open on portfolio ordering).
+- *Year-only integers* (rejected — two projects from the same year become unorderable, and the field is meant to give a meaningful sort).
+- *Full date precision in the UI* (rejected as **false precision**: the source repos' git history does not reflect when the work happened — folder names say 2024 while first commits are Feb 2026 — so presenting a day would assert something unknowable. Day precision is retained in storage only because `date` is the natural Postgres type and month/year is a rendering concern, not because the day is trusted.)
+- *Reusing `created_at`* (rejected — it records when the row was typed in. The two diverge by years for migrated content, and conflating them would make the portfolio sort by data-entry order.)
+
+**Consequences:** A cross-cutting change touching contract, backend and frontend together: `docs/openapi.yaml` (`Project` and `ProjectWriteRequest`), a Flyway migration adding two nullable columns plus the `CHECK`, the JPA entity and DTOs with cross-field validation, the regenerated Angular client, and the admin form plus list/detail rendering. Because `ProjectWriteRequest` is also the PUT body, **omitting either field on update clears it** rather than preserving the stored value — consistent with the existing full-replacement semantics, and called out explicitly in the contract so it isn't discovered by accident. Unblocks #49 (content migration) and feeds #88 (portfolio ordering), which may be satisfied by sorting on these rather than needing a separate ordering field.
 
 ### [YYYY-MM-DD] — [Decision title]
 
