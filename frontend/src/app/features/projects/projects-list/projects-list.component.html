@@ -37,16 +37,27 @@
                  specs assert that ordering, not just the final attribute values. `decoding` is left
                  at the browser default on the eager branch on purpose -- deferring the decode of the
                  LCP image is the one thing worth not doing. -->
+            <!-- alt="" on purpose: the thumbnail sits inside a link whose visible text is already
+                 the project title (the <h2> below), so any alt text here is redundant with adjacent
+                 text and just makes the link announce the title twice. That is W3C/WAI's case for
+                 marking an image decorative. The detail page's gallery is the opposite case and
+                 does get alt text -- see shared/project-image-alt/project-image-alt.ts. -->
             @if (project.id === firstImageProjectId()) {
-              <img [src]="project.images[0]" [alt]="project.title" loading="eager" fetchpriority="high" />
+              <img [src]="project.images[0]" alt="" loading="eager" fetchpriority="high" />
             } @else {
-              <img [src]="project.images[0]" [alt]="project.title" loading="lazy" decoding="async" />
+              <img [src]="project.images[0]" alt="" loading="lazy" decoding="async" />
             }
           }
           <h2>{{ project.title }}</h2>
         </a>
         <app-project-period [startedOn]="project.startedOn" [completedOn]="project.completedOn" />
-        <p>{{ project.description }}</p>
+        <!-- Summary only, never the whole description: real entries run 1000-2400 characters and
+             the contract allows 5000. The full text lives on the detail page this card links to.
+             The pipe bounds the text in the DOM; `.card-description`'s line-clamp bounds the lines
+             on screen. Both are needed -- see shared/description-excerpt/description-excerpt.ts. -->
+        @if (project.description | descriptionExcerpt; as excerpt) {
+          <p class="card-description">{{ excerpt }}</p>
+        }
         @if (project.tags.length > 0) {
           <ul class="tag-list" aria-label="Tags">
             @for (tag of project.tags; track tag.id) {
