@@ -1,0 +1,175 @@
+{
+  "_README": "content-seed/README.md",
+  "_source": "docs/CONTENT_DRAFT.md on branch My_Site/phase6/content-draft (6c55446)",
+  "_warning": "THIS COPY HAS NOT BEEN SIGNED OFF. The owner decided scope and dates; the prose has not been approved. Edit this file - it is the source of truth for what the site says, and seed.mjs never edits copy of its own.",
+  "_signedOff": false,
+  "_descriptionFormat": "description is an array of paragraphs, one unbroken string each. seed.mjs joins them with a blank line and appends a trailing newline, which is the structure the draft's YAML literal block scalar expressed; the only difference from the draft is that its intra-paragraph line wrapping has been reflowed away - see _lineWrapping. The words are the draft's, unchanged. JSON has no multi-line string literal, and this file exists to be read and edited by a human.",
+  "_lineWrapping": "The source draft hard-wraps its prose at ~90 columns; this file is REFLOWED, so paragraphs are single unbroken strings and wrap to whatever width the reader has. That is deliberate: the detail page renders description with white-space: pre-wrap (project-detail.component.scss:42), which preserves *single* newlines as forced line breaks, not just blank lines - so transcribing the draft's wrapping verbatim would have pinned every paragraph to a hard break every ~92 characters regardless of viewport. 78 such newlines were replaced with single spaces across the five entries. No word changed and no length changed (one character swapped for another); none sat next to a hyphen or existing whitespace, so nothing joined wrongly. Blank lines between paragraphs are still meaningful and are still how paragraph breaks are expressed - keep them by keeping the array elements separate. Do not re-wrap these strings by hand.",
+  "_keyConvention": "Every key WITHOUT a leading underscore is a ProjectWriteRequest field from docs/openapi.yaml, verbatim. Keys WITH a leading underscore are provenance notes; seed.mjs builds each request body from an explicit field allowlist, so they can never reach the API.",
+  "projects": [
+    {
+      "_draft": "CONTENT_DRAFT.md sec 1.1 (copy), sec 5.1 (dates)",
+      "_dates": "The two fields have DIFFERENT provenance here - do not treat them as one answer. completedOn null = ongoing: CONFIRMED by the owner on 2026-08-09 (\"still WIP\"). startedOn 2026-01-01: NOT confirmed, and a FLOOR rather than a known date. The draft (sec 5.1) derives it from the earliest dated artifact in the repo, a report signed 29 January 2026, and says plainly: \"the work existed by 29 January 2026, so it started no later than that month. It could easily have started in 2025.\" Note the draft's sec 5 provenance table marks this whole row \"Inferred by me... Not confirmed by you\"; that table predates the owner's WIP answer, which settles completedOn only. So startedOn is still the one date on the site that nobody has vouched for.",
+      "_images": "These two files are architecture DIAGRAMS, not screenshots, and images[0] becomes the list-card thumbnail. The alt text no longer misdescribes them: issue #87 (commit c730443, already on this branch) replaced the old hardcoded \"<title> screenshot N\" with projectImageAlt(), which emits \"System Equalizer, image 1 of 2\" and cites these very diagrams as the reason it exists. Draft sec 1.1 still leaves the content choice open: keep them, drop to [], or replace with a real GUI screenshot the repo does not yet contain.",
+      "title": "System Equalizer",
+      "startedOn": "2026-01-01",
+      "completedOn": null,
+      "description": [
+        "A cross-platform, system-level audio equalizer built around a shared C++17 DSP core, with three cooperating modules: a real-time audio daemon and a Windows Audio Processing Object in C++, a 10-band visualiser and settings GUI in C#/Avalonia, and a Python room-correction curve generator.",
+        "The DSP core is platform-agnostic — RBJ peaking biquad filters cascaded into a 10-band equalizer, plus an overlap-add FFT block-convolution engine prepared for FIR filtering. Two independent hosts link that core: a Windows APO DLL that hooks the Windows Audio Engine through COM, and a cross-platform daemon that runs as a PipeWire filter node on Linux and exposes a JSON-line IPC socket. The GUI and the Python tool talk only to the daemon.",
+        "CurveGen, the Python side, takes a WAV measurement, estimates a power spectral density, applies fractional-octave smoothing, inverts the result against a Harman target blend, and writes a JSON preset. It can also emit an Equalizer APO configuration file instead, and render a four-panel validation report — recorded input, generated curve, expected output, and an optional post-correction re-measurement — in both FFT and 1/3-octave views.",
+        "What is and isn't verified is documented rather than glossed over. The repository's ARCHITECTURE.md carries a \"Known issues and discrepancies\" section, written while adding tests rather than inferred from the design: the Windows APO path almost certainly never applies the configured curve, because LockForProcess() and APOProcess() each declare their own function-local static equalizer instance, so the object that gets configured is not the object that processes audio. It is flagged high severity and, per that document, unconfirmed on real hardware. Windows IPC is a stub at both ends, and the daemon does not build on Windows or macOS. The FFT convolution engine is a live stage of the execution pipeline on the Linux daemon, but deliberately not on the Windows APO, which still runs the IIR cascade alone. The Equalizer APO export path exists precisely so the curve-generation maths can be validated offline while those gaps stand.",
+        "Tests cover the biquad and 10-band cascade maths, the overlap-add engine, the combined FIR+IIR pipeline's routing rules, the daemon's real-time/non-real-time state handoff, the IPC protocol over a real Unix socket, the APO's per-block gain and clamp maths, and the whole Python measurement and correction pipeline. The GUI has no automated tests and the PipeWire backend is untested; ARCHITECTURE.md says so, and says why."
+      ],
+      "tags": [
+        "c++",
+        "c#",
+        "python",
+        "audio",
+        "dsp",
+        "real-time",
+        "cross-platform",
+        "desktop"
+      ],
+      "links": [
+        {
+          "label": "GitHub repository",
+          "url": "https://github.com/tarka1939/Equalizer"
+        },
+        {
+          "label": "Architecture notes",
+          "url": "https://github.com/tarka1939/Equalizer/blob/main/ARCHITECTURE.md"
+        }
+      ],
+      "images": [
+        "https://raw.githubusercontent.com/tarka1939/Equalizer/main/docs/diagrams/dsp_execution_pipeline.svg",
+        "https://raw.githubusercontent.com/tarka1939/Equalizer/main/docs/diagrams/curvegen_data_flow_pipeline.svg"
+      ]
+    },
+    {
+      "_draft": "CONTENT_DRAFT.md sec 1.2 (copy), sec 5.2 (dates)",
+      "_dates": "Both CONFIRMED by the owner (draft sec 5.2). startedOn 2026-07 matches a ~29-hour build window in the commit history; completedOn null = ongoing, from the owner's words \"WIP but functional\".",
+      "_images": "Deliberately empty, not an oversight. The repo's three PNGs under assets/samples/ are bundled *input* images, so using one as the thumbnail would imply it is a simulation result (draft sec 1.2). This is the entry that most wants a real before/after screenshot.",
+      "title": "Animal Vision Simulator",
+      "startedOn": "2026-07-01",
+      "completedOn": null,
+      "description": [
+        "A desktop application that simulates how other animals — and human colour-blindness variants — might see a photograph, based on published cone photoreceptor sensitivities.",
+        "Choose a built-in preset (human trichromat baseline, protanopia, deuteranopia, tritanopia, achromatopsia, dog, cat, honeybee, or a tetrachromatic blue tit) or build a custom visual system from one to four cone types, dragging each cone's peak sensitivity along a 300–700 nm spectrum bar beneath the preview — the same direct-manipulation idea as a hue picker, but positioned by wavelength. The preview re-renders as you drag, downsampled for speed; the full-resolution PNG or JPEG is rendered on save.",
+        "The pipeline converts each sRGB pixel to an estimated reflectance spectrum, computes how strongly each selected cone type would respond to that spectrum under a daylight-like illuminant using the Govardovskii et al. (2000) visual pigment template, and maps the resulting cone responses back onto the screen's three channels by wavelength order.",
+        "It is deliberately explicit about what it cannot do. This is an illustrative tool, not a colorimetric instrument. Cameras don't record ultraviolet, so the bee and bird presets hold the estimated spectrum flat below 400 nm rather than inventing UV detail — the overall colour shifts those presets show are real, documented consequences of the cone sensitivities involved, but fine UV patterning was never in the photo to recover. Structural and iridescent colour depends on lighting and viewing geometry a single flat photo cannot capture at all. And a four-cone visual system has to be folded down to three screen channels, which is a rendering compromise, not a claim about how the animal experiences colour.",
+        "The colour-science engine has no GUI dependency and is covered by unit tests that need no display; the GUI tests run under Qt's offscreen platform plugin and skip automatically when PySide6 or a native dependency isn't available. Built with Python 3.9+, NumPy, Pillow and PySide6."
+      ],
+      "tags": [
+        "python",
+        "pyside6",
+        "numpy",
+        "image-processing",
+        "colour-science",
+        "desktop"
+      ],
+      "links": [
+        {
+          "label": "GitHub repository",
+          "url": "https://github.com/tarka1939/Colour-space-correction-for-images"
+        },
+        {
+          "label": "Architecture notes",
+          "url": "https://github.com/tarka1939/Colour-space-correction-for-images/blob/main/ARCHITECTURE.md"
+        }
+      ],
+      "images": []
+    },
+    {
+      "_draft": "CONTENT_DRAFT.md sec 1.3 (copy), sec 5.3 (dates)",
+      "_dates": "Both CONFIRMED by the owner (draft sec 5.3). Equal values are legal (the rule is that completedOn must not *precede* startedOn) and render as the single month \"June 2026\", not a range. The only entry with a closed period.",
+      "title": "Counter App",
+      "startedOn": "2026-06-01",
+      "completedOn": "2026-06-01",
+      "description": [
+        "A small desktop utility for keeping several named counters in one window — eggs in the fridge, CVs sent, books read, coffee cups.",
+        "Each counter is a card with its own name, increment step (decimals allowed), accent colour and start/reset value, plus increment, decrement, reset and undo controls. Undo keeps a per-counter history of the last 50 changes. Cards sit in a scrollable grid that reflows when the window is resized, and card header text switches between light and dark automatically so it stays readable against whichever accent colour was picked.",
+        "State is written to a local counters.json file on every change and restored at launch, so there is no database, account or network involved.",
+        "Built with Python 3.10+ and customtkinter, across five small modules. It is a single-purpose utility rather than a framework, finished and left finished at version 1.0.0."
+      ],
+      "tags": [
+        "python",
+        "desktop",
+        "gui",
+        "customtkinter"
+      ],
+      "links": [
+        {
+          "label": "GitHub repository",
+          "url": "https://github.com/tarka1939/Counter-App"
+        },
+        {
+          "label": "Changelog",
+          "url": "https://github.com/tarka1939/Counter-App/blob/master/CHANGELOG.md"
+        }
+      ],
+      "images": [
+        "https://raw.githubusercontent.com/tarka1939/Counter-App/master/docs/Screenshot.png"
+      ]
+    },
+    {
+      "_draft": "CONTENT_DRAFT.md sec 2.1 (copy), sec 5.4 (dates)",
+      "_dates": "BOTH BLANK BY DECISION, not for want of evidence (draft sec 5.4). This entry aggregates five separate projects, each built in under a month, so there is no single coherent period to report. Do not fill these in from the \"2024\" in two of the five folder names. Both null renders no period at all, which asserts nothing.",
+      "title": "Algorithms & Data Structures coursework (C++)",
+      "startedOn": null,
+      "completedOn": null,
+      "description": [
+        "Five graded C++ assignments from a university Algorithms and Data Structures course, each solved with hand-written data structures rather than the standard library.",
+        "An RPN calculator parses infix arithmetic, converts it to postfix with the shunting-yard algorithm and evaluates it, supporting min, max, if and unary negation, on top of custom Stack, Queue, Vector and string containers.",
+        "A Hex board engine parses a serialised board, validates whether the position is legal and reachable, detects whether the game is over, and determines whether a given player can force a win within N moves.",
+        "A graph and tree toolkit runs classic analyses over both adjacency-matrix and adjacency-list representations: degree sequence, connected components, bipartiteness, vertex eccentricity, three greedy vertex-colouring heuristics (greedy, largest-first, saturation-largest-first), C4-subgraph counting and complement-graph edge counting — alongside a self-balancing AVL tree with duplicate-key counting.",
+        "A parser for a CSS-like stylesheet syntax reads selector/attribute/value blocks into custom list structures and answers queries against the parsed rules, with no parsing library.",
+        "A route planner builds a weighted graph from an ASCII city map, discovers connectivity by flood fill, and answers shortest-path queries between named stops using Dijkstra's algorithm over a custom hash map.",
+        "Each is a standalone Visual Studio solution (MSVC v143, x64) and ships with the numbered input and expected-output fixtures it was graded against. This is coursework, published as evidence of fundamentals rather than as production software."
+      ],
+      "tags": [
+        "c++",
+        "algorithms",
+        "data-structures",
+        "coursework",
+        "university"
+      ],
+      "links": [
+        {
+          "label": "GitHub repository",
+          "url": "https://github.com/tarka1939/Repozytorium_Projektow_AISD"
+        }
+      ],
+      "images": []
+    },
+    {
+      "_draft": "CONTENT_DRAFT.md sec 2.2 (copy), sec 5.5 (dates)",
+      "_dates": "BOTH BLANK BY DECISION, same structural reason as the AISD entry (draft sec 5.5): three separate projects, each under a month. The draft explicitly WITHDRAWS the startedOn 2025-03-01 candidate it had floated, because that evidence dates one of the three projects and a lone startedOn would publish \"March 2025 - ongoing\" about finished coursework.",
+      "title": "Numerical Methods coursework (Python)",
+      "startedOn": null,
+      "completedOn": null,
+      "description": [
+        "Three university Numerical Methods projects, each implementing a classical algorithm from scratch rather than calling a library, then applying it to a real dataset and plotting or benchmarking the result.",
+        "The first implements the MACD indicator from a recursive exponential moving average and uses it to drive a simple buy/sell simulation over historical price data, plotting the signal and the resulting capital curve.",
+        "The second generates large banded linear systems and solves them three ways — Jacobi iteration, Gauss-Seidel iteration and LU factorisation — then benchmarks convergence behaviour, residual error and wall-clock time across problem sizes up to roughly 4000 unknowns, including log-scale comparisons.",
+        "The third reconstructs continuous elevation profiles from sparsely sampled route data using Lagrange polynomial interpolation and cubic splines, and compares uniform against Chebyshev node placement to show how node choice controls the oscillation that polynomial interpolation develops at the edges of its range.",
+        "Written in Python with NumPy, pandas and matplotlib. This is coursework: the algorithms are written out longhand to show the mechanics, not tuned for production use."
+      ],
+      "tags": [
+        "python",
+        "numerical-methods",
+        "numpy",
+        "matplotlib",
+        "coursework",
+        "university"
+      ],
+      "links": [
+        {
+          "label": "GitHub repository",
+          "url": "https://github.com/tarka1939/Repozytorium_Projektow_MN"
+        }
+      ],
+      "images": []
+    }
+  ]
+}

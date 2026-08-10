@@ -239,6 +239,88 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-10 — Content seed (#49): a stub run reported success, and hid a real defect
+
+**Task given:**
+
+Turn `docs/CONTENT_DRAFT.md`'s five drafted portfolio entries into a repeatable, reviewable seed.
+Nothing is deployed (Phase 5 paused), so the deliverable is an artifact that works locally today and
+against a real environment later, unchanged.
+
+**Agent(s) used:**
+
+One `general-purpose` junior in an isolated worktree, resumed twice — once after Docker was
+repaired, once for a follow-up fix. Senior Dev verifying and running the final gate.
+
+**What went right:**
+
+**The junior reported its verification gate as *not met*, and labelled exactly which demonstrations
+were real.** Docker was broken (three orphaned socket reparse points Docker could neither delete nor
+recreate; `File.Delete` and `fsutil reparsepoint delete` both returned OS error 1920). Rather than
+skip the gate or imply coverage, it wrote a throwaway stub implementing the contract's shapes,
+exercised the script against it, and then said plainly that the stub *"proves only that `seed.mjs`
+is internally consistent — it proves nothing about the real backend"*, listing per-demonstration
+which were real and which were stub-backed. After a session in which the Senior Dev twice invented
+explanations for real observations, that distinction was worth more than the result.
+
+**Re-running against the real stack immediately justified the caution.** The stub had hidden a real
+finding: **tag order is not preserved**. Eight tags sent in a deliberate order came back shuffled;
+the *set* round-trips intact for all five entries, the sequence never does. The stub preserved order
+and would have let the draft's careful tag ordering ship as if meaningful. It is not expressible
+through this contract.
+
+**What went wrong (be specific):**
+
+1. **The draft's hard line wrapping would have rendered as forced breaks.** `docs/CONTENT_DRAFT.md`
+   wraps prose at ~90 columns; `.description` uses `white-space: pre-wrap`
+   (`project-detail.component.scss:42`), which preserves *single* newlines, not only blank ones. All
+   **78** intra-paragraph newlines across the five entries — longest source line 92-93 characters —
+   would have broken mid-paragraph at a fixed width regardless of viewport, which on a phone reads
+   as a broken page. The draft never mentions its own wrapping, so this was an artefact of
+   transcription fidelity rather than a decision. Fixed by reflowing to single spaces: word
+   sequences and character counts verified identical against the draft, and confirmed in the
+   database afterwards with **zero** lone newlines surviving.
+2. **A Senior Dev command whose failure mode was silent.** Generating a bcrypt hash with
+   `HASH=$(node -e "require('.../bcryptjs')...")` against a worktree where the module was not
+   installed produced an *empty* string — which still formed valid SQL, inserted an unusable
+   password hash, and surfaced only as a `401` from the login endpoint two steps later. The same
+   shape as every other entry in this log: a step that fails while reporting nothing.
+3. **The tag table's baseline was never snapshotted.** The junior checked projects and admins before
+   running but not tags, and `tag` carries no timestamps. Its cleanup removed the seed's own 20
+   names by set arithmetic — which is indistinguishable from removing a pre-existing orphan of the
+   same name. Overlap is unlikely (the six survivors are stylistically distinct), but unproven, and
+   it said so rather than reporting a clean result.
+
+**How it was caught:**
+
+(1) by the junior reading `pre-wrap`'s actual semantics rather than assuming blank lines were the
+only thing preserved; (2) by the 401, then by checking `${#HASH}` and finding zero; (3) by the
+junior auditing its own cleanup.
+
+**Fix applied:**
+
+Reflow committed with per-entry verification against the draft. The bcrypt command rewritten to run
+from the directory holding the module. Both limits — tag ordering and the tag-table caveat —
+recorded in `content-seed/README.md` rather than left in a session transcript.
+
+**Takeaway for next time:**
+
+- **A stub proves the caller, never the callee.** It is a legitimate tool when the real dependency
+  is unavailable, but its result must be labelled as what it is. Here the stub was internally
+  faithful to the contract and still concealed a behaviour the real server exhibits, because a stub
+  encodes what its author *believes* the contract implies — ordering, in this case, which the
+  contract never promised.
+- **`mvn spring-boot:run` forks a `java.exe` that outlives the wrapper.** Stopping the Maven process
+  leaves the app serving on 8080. This is almost certainly the mechanism behind the false
+  verification logged on 2026-08-09, where a Playwright run silently reused a stale server from a
+  different branch and reported green against code that was not under test. **Check the port, not
+  the process** — now in `content-seed/README.md`'s troubleshooting section, and used to shut down
+  cleanly at the end of this exercise.
+- **Shell interpolation of a command substitution needs its result checked before use.** An empty
+  `$HASH` produced syntactically valid SQL and a plausible-looking success. Where a captured value
+  is load-bearing, assert it is non-empty and the expected shape before the next step consumes it.
+
+
 ## 2026-08-09 — The README overclaimed the very methodology it was describing
 
 **Task given:**

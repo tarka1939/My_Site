@@ -84,6 +84,7 @@ See `docs/DECISIONS.md` for full reasoning. All 14 foundational decisions are no
   /dspdemo        Phase 7d — live DSP/audio demo (built last)
 /frontend         Angular app (standalone components, signals, generated API client, admin CRUD)
 /e2e              Playwright end-to-end suite — its own package, deliberately not inside /frontend
+/content-seed     Portfolio content as data, plus a script that applies it through the real API
 /docs             SPEC, data model, decisions, OpenAPI contract, agent workflow
 .github/workflows Separate CI/CD: Netlify deploy (frontend), container build/deploy (backend)
 ```
