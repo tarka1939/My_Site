@@ -11,11 +11,20 @@ export const PROJECTS_ROUTES: Routes = [
     path: '',
     component: ProjectsListComponent,
     title: 'My Site - Projects',
+    data: {
+      description:
+        'Every project in the portfolio, filterable by tag — software, audio and signal-processing work, each with links, images and the period it was built.',
+    },
   },
   {
     path: 'projects/:id',
     loadComponent: () =>
       import('./project-detail/project-detail.component').then((m) => m.ProjectDetailComponent),
     title: 'My Site - Project',
+    // Placeholders, both of them. The real title and description are the project's own, and the
+    // project is not loaded until after this navigation completes -- ProjectDetailComponent
+    // replaces both once the API responds. These are what a crawler sees if that request fails,
+    // and what shows for the moment before it resolves.
+    data: { description: 'A project from the portfolio: what it does and how it was built.' },
   },
 ];
