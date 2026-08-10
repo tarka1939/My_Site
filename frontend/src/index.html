@@ -6,6 +6,51 @@
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
+
+    <!--
+      Static SEO / sharing tags -- see the 2026-08-10 SEO ADR in docs/DECISIONS.md.
+
+      This app is client-rendered, so these are the ONLY tags a non-JS crawler ever sees. Googlebot
+      renders JS and picks up the per-route values that SeoService writes over these
+      (src/app/core/seo/), but LinkedIn, Slack, Discord, X and Facebook do not execute JS: whatever
+      is written below is exactly what a shared link previews as, on every route. So this set
+      describes the *site*, not any one page.
+
+      The name/property attributes here are the selectors SeoService updates through -- `property`
+      for Open Graph (per the OGP spec), `name` for Twitter and description (per Twitter's docs).
+      Renaming an attribute here without changing the service turns a runtime update into a second,
+      duplicate tag. There is a test for that (seo.service.spec.ts).
+
+      PLACEHOLDER: the origin below is deliberately unresolvable (.invalid, RFC 2606) because the
+      canonical domain does not exist yet -- Phase 5 is paused and PROJECT_TODO.md says not to guess
+      it. Replace it here, in public/robots.txt and in public/sitemap.xml when the Netlify origin is
+      real. Until then og:url is a placeholder for scrapers; SeoService overwrites it at runtime
+      with the actual location.
+
+      No og:image yet: there is no share image asset in public/, and pointing at a 404 makes a worse
+      preview than none. twitter:card is "summary" rather than "summary_large_image" for the same
+      reason -- the large-image card renders broken without an image.
+    -->
+    <meta
+      name="description"
+      content="A portfolio of software and audio/DSP projects — what each one does, how it was built, and where to find the code."
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="My Site" />
+    <meta property="og:title" content="My Site — project portfolio" />
+    <meta
+      property="og:description"
+      content="A portfolio of software and audio/DSP projects — what each one does, how it was built, and where to find the code."
+    />
+    <meta property="og:url" content="https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="My Site — project portfolio" />
+    <meta
+      name="twitter:description"
+      content="A portfolio of software and audio/DSP projects — what each one does, how it was built, and where to find the code."
+    />
   </head>
   <body>
     <app-root></app-root>
