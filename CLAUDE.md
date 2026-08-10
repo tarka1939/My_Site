@@ -43,6 +43,21 @@ Added 2026-08-08 after three agents were lost to API/session limits in a single 
 
 **Before salvaging anything, run the tests first, not last.** They are the cheapest available check on whether a working tree is in the state its author intended.
 
+### Commit when a unit of work is done, not when the task is
+
+Added 2026-08-10, after **six** agents were lost mid-task in a single day — to session limits, and finally to a monthly spend cap. In every one of those six, the work was substantially complete and **uncommitted**.
+
+Resuming restores an agent's *context*. It does nothing for an uncommitted working tree, and a spend cap does not reset in hours the way a session limit does — so "resume later" can stop being available at all. Everything not committed then has to be verified and committed by someone who did not write it, which is slower, and which has already come within one comment of shipping a deliberate defect on this project (see PR #83 above).
+
+So, for any dispatched session:
+
+- **Commit each logically complete change as it passes its own check** — a fix plus its test, a migration plus the code that needs it. Do not batch a task's worth of work into a single commit at the end.
+- **Commit before starting anything exploratory** — a mutation test, a spike, a refactor you might abandon. That is the moment a termination is most expensive, because the tree is then deliberately wrong and only you know it.
+- **Push at natural checkpoints too.** A commit on a worktree that gets removed is still lost work.
+- **Do not withhold a commit for tidiness.** PR branches here land as merge commits rather than squashes, so intermediate commits do survive into `main` — that is a reason to write clear messages, not a reason to batch. Losing a day's work to keep a history clean is a bad trade, and the review rounds on this project have repeatedly been *helped* by being able to see the steps.
+
+The rule the Senior Dev owes in return: when dispatching, say this explicitly rather than assuming it, and when a resumed agent reports finishing a unit of work, check it actually committed.
+
 Caveat: resumption after an API-error termination is documented by the tooling but has not been verified in this project across a multi-hour gap. If a resume comes back confused or empty-handed, fall back to salvage — with the discipline above.
 
 ## Project
