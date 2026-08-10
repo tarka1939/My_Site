@@ -8,6 +8,12 @@ Never add "Co-Authored-By" lines to commits. Do not include Claude attribution i
 ## PR conventions
 Every PR needs three pieces of metadata set, not just opened against `main`:
 - **Issues closed:** reference them in the PR body with GitHub's closing keywords, **one keyword per issue on its own line** (`Closes #20`, newline, `Closes #21`, ...) — not just prose, and not a comma-separated list after a single keyword (`Closes #20, #21`), which despite GitHub's own docs only actually links/auto-closes the *first* issue in practice (confirmed via `gh api graphql` querying `closingIssuesReferences` on PR #80 — the rendered PR body looks identical either way, so this fails silently). Verify with that same GraphQL query before trusting a multi-issue PR actually linked everything, not just by eyeballing the body text.
+- **A closing keyword fires from anywhere it appears — including prose that is explaining or denying it** (learned 2026-08-10). PR #100 carried no intentional keyword and opened by stating it did not close the issue; a later sentence describing what *would* finish it used the word "closes" before the issue number, and merging closed the issue. Three things this cost a second round to discover:
+  - **Quoting does not neutralise it.** Blockquoting the offending sentence, and wrapping it in inline code, both still register — a follow-up PR *documenting this trap* re-linked the same issue twice over from its own explanation.
+  - **`closingIssuesReferences` only sees the PR description.** A keyword in a *commit message* can close an issue on merge without ever appearing in that query, so the standard check will not catch it.
+  - The keywords are `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`, `resolve`/`resolves`/`resolved`. When writing *about* an issue rather than closing it, avoid those nine words near a `#N` — "is what completes #49" is safe; so is naming the issue with no verb before it.
+
+  So: run the GraphQL query before merging a PR that is meant **not** to close something, not only one that is, and scan commit messages too.
 - **Milestone:** set to the matching phase (e.g. "Phase 2"). Milestone numbers aren't the same as phase numbers — look them up with `gh api repos/tarka1939/My_Site/milestones --jq '.[] | "\(.number): \(.title)"'` rather than guessing, then set via the issue/PR update call (PRs share the Issues API for this).
 - **Project board:** add the PR to project #1 ("My Site") and set its Status field (`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`) — `In Review` once the PR is open and ready for review.
 
@@ -43,7 +49,20 @@ Added 2026-08-08 after three agents were lost to API/session limits in a single 
 
 **Before salvaging anything, run the tests first, not last.** They are the cheapest available check on whether a working tree is in the state its author intended.
 
-Caveat: resumption after an API-error termination is documented by the tooling but has not been verified in this project across a multi-hour gap. If a resume comes back confused or empty-handed, fall back to salvage — with the discipline above.
+Resumption after an API-error termination is now **verified** in this project — used repeatedly on 2026-08-09/10, including across a multi-hour gap, with the agent continuing from its own transcript rather than starting cold. If a resume does come back confused or empty-handed, fall back to salvage, with the discipline above.
+
+### Commit when a unit of work is done, not when the task is
+
+Added 2026-08-10, after a day in which repeated agents were terminated mid-task — by session limits and finally by a monthly spend cap — with their work substantially complete and **uncommitted** each time. See `AGENT_LOG.md`'s 2026-08-10 entry for the specific losses.
+
+Resuming restores an agent's *context*. It does nothing for an uncommitted working tree, and a spend cap does not reset in hours the way a session limit does — so "resume later" can stop being available at all. Whatever is uncommitted then has to be verified and committed by someone who did not write it, which is slower and riskier: on PR #83 that path came within one noticed contradiction of committing a deliberate mutation.
+
+- **Commit each logically complete change as it passes its own check** — a fix plus its test, a migration plus the code that needs it. Do not batch a task's worth of work into one commit at the end.
+- **Commit before starting anything exploratory** — a mutation test, a spike, a refactor you might abandon. That is when a termination is most expensive, because the tree is then deliberately wrong and only you know it.
+- **Push at natural checkpoints.** Commits on a *named-branch* worktree survive `git worktree remove` — the branch still references them. Commits made in a **detached** worktree (the `--detach` form used for PR review) do not: after removal nothing references them, and they are garbage-collectable. Push if the work matters.
+- **Do not withhold a commit for tidiness.** PR branches land as merge commits rather than squashes, so intermediate commits survive into `main` — a reason to write clear messages, not to batch.
+
+The reciprocal obligation when dispatching: say this explicitly rather than assuming it, and when a resumed agent reports finishing a unit of work, check that it actually committed.
 
 ## Project
 
