@@ -95,13 +95,33 @@ non-dry run spends one. `--dry-run` spends none, because it only reads the publi
 ## What it does
 
 1. Validates `projects.json` against every constraint `ProjectWriteRequest` declares — field names,
-   lengths, item counts, URI syntax, and the two date rules (`completedOn` may not precede
-   `startedOn`, and may not be present without it). **All of it before any network call**, so a bad
-   edit cannot leave a half-applied run behind.
+   lengths, item counts, URI syntax, real calendar dates, blank-but-non-empty strings, and the two
+   date rules (`completedOn` may not precede `startedOn`, and may not be present without it).
+   **All of it before any network call**, so a bad edit cannot leave a half-applied run behind.
 2. Logs in via `POST /auth/login`.
 3. Reads every stored project from `GET /projects`.
 4. For each record: `PUT /projects/{id}` if a stored project has that exact title, otherwise
    `POST /projects`.
+
+## Tests
+
+```bash
+node --test content-seed/validate.test.mjs
+```
+
+`node:test` and `node:assert` from the standard library — nothing to install, consistent with the
+rest of this directory. The validator lives in `validate.mjs`, separate from `seed.mjs`, precisely
+so it can be exercised without standing up the locality guard, the global error handlers, or a run.
+
+The suite covers the contract limits, the date rules, the structural checks, and the locality guard
+— but it exists because of two defects that local validation *should* have caught and didn't: an
+impossible date (`2026-02-30`) and a whitespace-only description. Both reached the API and failed
+server-side mid-apply, after earlier records were already written. Those two cases are pinned, and
+both were confirmed to fail the suite when the fix is reverted.
+
+The validator mirrors Jakarta's `@NotBlank`, which the backend puts on `title`, `description`,
+every `tags` element, and both `LinkDto` fields. A plain length check does not model that: `"   "`
+is a non-empty string in JavaScript and blank to the server.
 
 ## What it does not do
 

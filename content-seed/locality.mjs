@@ -24,12 +24,21 @@
  * misses like `127.0.0.2`, `0.0.0.0`, a trailing-dot `localhost.`, or a hostname that merely
  * resolves to loopback out — an allowlist gets that for free, a denylist would not.
  *
- * Copied verbatim from `e2e/support/locality.ts`. Two files rather than one shared module because
- * `/e2e` is an npm package with its own toolchain and this directory is dependency-free
- * standard-library Node; importing across that boundary would drag one into the other. If a third
- * caller ever appears, that is the moment to extract it properly.
+ * Adapted from `e2e/support/locality.ts` rather than copied verbatim. That version also carries
+ * `'::1'` and `'0:0:0:0:0:0:0:1'`, which are right *there* because it checks a bare `E2E_DB_HOST`
+ * string as well as URLs. **Here every check goes through `new URL().hostname`, which can never
+ * return either spelling** — Node normalises `http://[::1]` and `http://[0:0:0:0:0:0:0:1]` both to
+ * `[::1]` (verified on 24.14.0). Carrying them would be harmless dead weight except that the
+ * refusal message prints this set as the allowed hosts, so someone copying `::1` out of the error
+ * would then be refused by the very list that had just offered it. The set is therefore exactly
+ * what a hostname can be, so the message and the behaviour cannot disagree.
+ *
+ * Two files rather than one shared module because `/e2e` is an npm package with its own toolchain
+ * and this directory is dependency-free standard-library Node; importing across that boundary
+ * would drag one into the other. If a third caller ever appears, that is the moment to extract it
+ * properly.
  */
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0:0:0:0:0:0:0:1']);
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
  * Deployment hosts this script is permitted to write to. **Deliberately empty, and correct as
@@ -74,7 +83,7 @@ function refuse(source, resolved, detail = '', extra = '') {
  * wrap a default inline, matching `e2e/support/env.ts`'s usage.
  *
  * `new URL(...).hostname` keeps IPv6 literals bracketed (`http://[::1]:8080` -> `[::1]`), which is
- * why the loopback allowlist carries both spellings.
+ * why the loopback allowlist carries the bracketed spelling and only that one.
  */
 export function assertSeedTarget(url, source) {
   let parsed;
