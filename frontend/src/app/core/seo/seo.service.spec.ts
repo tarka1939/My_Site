@@ -1,56 +1,13 @@
 import { TestBed } from '@angular/core/testing';
+import {
+  clearSeoTags,
+  seedStaticSeoTags as seedStaticTags,
+  seoContent as content,
+  seoTagCount,
+  seoTags as tags,
+} from '../../../testing/seo-tags';
 import { SeoService } from './seo.service';
 import { META_DESCRIPTION_MAX_CHARS, SITE_DESCRIPTION, SITE_NAME } from './site-meta';
-
-/** Every selector the service owns, in the `name=`/`property=` form `index.html` declares them. */
-const SEO_SELECTORS = [
-  'meta[name="description"]',
-  'meta[name="robots"]',
-  'meta[name="twitter:card"]',
-  'meta[name="twitter:title"]',
-  'meta[name="twitter:description"]',
-  'meta[property="og:type"]',
-  'meta[property="og:site_name"]',
-  'meta[property="og:title"]',
-  'meta[property="og:description"]',
-  'meta[property="og:url"]',
-];
-
-function clearSeoTags(): void {
-  for (const selector of SEO_SELECTORS) {
-    for (const tag of document.head.querySelectorAll(selector)) {
-      tag.remove();
-    }
-  }
-}
-
-function tags(selector: string): Element[] {
-  return [...document.head.querySelectorAll(selector)];
-}
-
-function content(selector: string): string | null {
-  const found = tags(selector);
-  expect(found).toHaveLength(1); // never two: that is the bug this whole suite exists to catch
-  return found[0].getAttribute('content');
-}
-
-/**
- * The subset of `index.html`'s static tags that the runtime overwrites, seeded into the test
- * document so replacement can be tested against the real starting state rather than an empty head.
- */
-function seedStaticTags(description = 'STATIC SITE DESCRIPTION'): void {
-  document.head.insertAdjacentHTML(
-    'beforeend',
-    `<meta name="description" content="${description}">
-     <meta property="og:type" content="website">
-     <meta property="og:title" content="My Site — project portfolio">
-     <meta property="og:description" content="${description}">
-     <meta property="og:url" content="https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/">
-     <meta name="twitter:card" content="summary">
-     <meta name="twitter:title" content="My Site — project portfolio">
-     <meta name="twitter:description" content="${description}">`,
-  );
-}
 
 describe('SeoService', () => {
   const originalTitle = document.title;
@@ -86,9 +43,9 @@ describe('SeoService', () => {
     seedStaticTags();
     createService().applyPage({ title: 'My Site - Projects', description: 'The portfolio.' });
 
-    expect(tags('meta[name="description"]')).toHaveLength(1);
-    expect(tags('meta[property="og:description"]')).toHaveLength(1);
-    expect(tags('meta[name="twitter:description"]')).toHaveLength(1);
+    expect(seoTagCount('meta[name="description"]')).toBe(1);
+    expect(seoTagCount('meta[property="og:description"]')).toBe(1);
+    expect(seoTagCount('meta[name="twitter:description"]')).toBe(1);
     expect(content('meta[name="description"]')).toBe('The portfolio.');
     expect(content('meta[property="og:title"]')).toBe('My Site - Projects');
 
@@ -105,10 +62,10 @@ describe('SeoService', () => {
     seo.applyPage({ title: 'Two', description: 'Second.' });
     seo.applyPage({ title: 'Three', description: 'Third.' });
 
-    expect(tags('meta[name="description"]')).toHaveLength(1);
-    expect(tags('meta[property="og:description"]')).toHaveLength(1);
-    expect(tags('meta[name="twitter:description"]')).toHaveLength(1);
-    expect(tags('meta[property="og:title"]')).toHaveLength(1);
+    expect(seoTagCount('meta[name="description"]')).toBe(1);
+    expect(seoTagCount('meta[property="og:description"]')).toBe(1);
+    expect(seoTagCount('meta[name="twitter:description"]')).toBe(1);
+    expect(seoTagCount('meta[property="og:title"]')).toBe(1);
     expect(content('meta[name="description"]')).toBe('Third.');
   });
 
@@ -210,7 +167,7 @@ describe('SeoService', () => {
     expect(content('meta[name="robots"]')).toBe('noindex, nofollow');
 
     seo.applyPage({ title: 'My Site - Projects' });
-    expect(tags('meta[name="robots"]')).toHaveLength(0);
+    expect(seoTagCount('meta[name="robots"]')).toBe(0);
   });
 
   it('falls back to the site name when a page declares no title', () => {

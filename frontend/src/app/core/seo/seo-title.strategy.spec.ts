@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Routes, TitleStrategy, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { clearSeoTags, seoContent as content, seoTagCount as count } from '../../../testing/seo-tags';
 import { routes as applicationRoutes } from '../../app.routes';
 import { CONTACT_ROUTES } from '../../features/contact/contact.routes';
 import { PROJECTS_ROUTES } from '../../features/projects/projects.routes';
@@ -38,34 +39,6 @@ const TEST_ROUTES: Routes = [
     ],
   },
 ];
-
-const SEO_SELECTORS = [
-  'meta[name="description"]',
-  'meta[name="robots"]',
-  'meta[name="twitter:title"]',
-  'meta[name="twitter:description"]',
-  'meta[property="og:title"]',
-  'meta[property="og:description"]',
-  'meta[property="og:url"]',
-];
-
-function clearSeoTags(): void {
-  for (const selector of SEO_SELECTORS) {
-    for (const tag of document.head.querySelectorAll(selector)) {
-      tag.remove();
-    }
-  }
-}
-
-function content(selector: string): string | null {
-  const found = [...document.head.querySelectorAll(selector)];
-  expect(found).toHaveLength(1);
-  return found[0].getAttribute('content');
-}
-
-function count(selector: string): number {
-  return document.head.querySelectorAll(selector).length;
-}
 
 describe('SeoTitleStrategy', () => {
   const originalTitle = document.title;
