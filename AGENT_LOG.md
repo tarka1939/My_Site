@@ -239,7 +239,7 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
-## 2026-08-10 — Six agents lost mid-task, and a PR that re-committed the bug it documented
+## 2026-08-10 — Six agents lost mid-task over four days, and a PR that re-committed the bug it documented
 
 **Task given:**
 
@@ -252,7 +252,7 @@ Senior Dev as author; a fresh session as reviewer of the resulting PR (#101).
 
 **What went wrong (be specific):**
 
-**1. Six agents terminated mid-task in one day, every one with complete-but-uncommitted work.**
+**1. Six agents terminated mid-task between 2026-08-07 and 2026-08-10, every one with complete-but-uncommitted work.**
 Five to session limits — the Phase 4 E2E implementation, the PR #82 fix round, the PR #83 fix round,
 the PR #96 review, and the PR #96 fix round — and the sixth, the content-seed session, to a **monthly
 spend cap**. That last one matters because a spend cap does not reset in hours the way a session
@@ -266,8 +266,9 @@ what *would* finish the work — "Applying this to a live site is what closes #4
 `closes #49` there. The issue closed on merge and was reopened.
 
 **3. The PR documenting that bug re-committed it, twice.** PR #101's own body quoted the offending
-sentence in a blockquote *and* again in inline code, and its commit message repeated it in prose.
-`closingIssuesReferences` on that PR returned `49`. So the fix-PR would have taken the same issue
+sentence in a blockquote, and its commit message repeated it in prose. `closingIssuesReferences` on that
+PR returned `49`. (A *second* occurrence, in inline code, turned out **not** to link — see the
+correction below.) So the fix-PR would have taken the same issue
 down a second time on merge — caught by the independent review, not by its author, despite its author
 having written the rule hours earlier.
 
@@ -290,13 +291,31 @@ close an issue without ever appearing in the standard check. The worktree ration
 distinguish named-branch from detached. The resumption caveat is upgraded from "documented but
 unverified" to verified, having been exercised repeatedly across this session.
 
+**A correction, found by the review of the fix:**
+
+The rewrite claimed that neither blockquoting nor inline code neutralises a keyword. **Half of that was
+wrong, and the wrong half mattered most.** PR #101 was an unnoticed controlled experiment — one
+occurrence in a blockquote, one in a code span, same PR, same issue. Its rendered body carries exactly
+**one** `issue-keyword` marker, for the blockquoted occurrence; the backticked one renders as a plain
+`<code>` element with no reference. Verified twice: the `body_html` markers, and the fact that PR #102's
+own body contains a backticked keyword beside an issue number while its `closingIssuesReferences` is
+empty — with the query confirmed to list already-closed issues, so empty is meaningful rather than
+vacuous.
+
+The claim was also **self-refuting**: had it been true, the PR asserting it would have been unmergeable
+for the reason it was documenting. And it discarded the one safe way to write about keywords, which is
+the technique that PR was itself relying on.
+
 **Takeaway for next time:**
 
+- **A rule that forbids the technique it depends on is refuting itself in front of you.** The check is
+  cheap: apply the rule to the document stating it. Here that would have surfaced immediately, because
+  the document could not have been written under its own rule.
 - **Writing a rule does not confer immunity from it.** The author documented the closing-keyword trap
-  and then triggered it twice in the document doing the documenting — once in a blockquote, once in
-  backticks — because the fix was conceived as "avoid writing a closing keyword" rather than "avoid
-  the *word* anywhere near a `#N`". A rule stated as a principle gets applied to the case that
-  inspired it; a rule stated as a mechanical check gets applied everywhere.
+  and then triggered it in the document doing the documenting — by blockquoting the offending
+  sentence, because the fix was conceived as "avoid writing a closing keyword" rather than "a keyword
+  beside a `#N` links unless it is in code". A rule stated as a principle gets applied to the case
+  that inspired it; a rule stated as a mechanical check gets applied everywhere.
 - **Verify the artifact against its own rule before shipping it.** One GraphQL query against PR #101
   would have caught this. The check already existed in `CLAUDE.md` — it was simply never run on a PR
   that was not *trying* to close anything, which is exactly the case the new wording now covers.

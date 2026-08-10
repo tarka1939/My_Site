@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Never add "Co-Authored-By" lines to commits. Do not include Claude attribution in commit messages, PR descriptions, or any git metadata.
 
 ## PR conventions
-Every PR needs three pieces of metadata set, not just opened against `main`:
+Every PR needs the metadata below set, not just opened against `main` — plus one rule about closing keywords that is not metadata but belongs beside them:
 - **Issues closed:** reference them in the PR body with GitHub's closing keywords, **one keyword per issue on its own line** (`Closes #20`, newline, `Closes #21`, ...) — not just prose, and not a comma-separated list after a single keyword (`Closes #20, #21`), which despite GitHub's own docs only actually links/auto-closes the *first* issue in practice (confirmed via `gh api graphql` querying `closingIssuesReferences` on PR #80 — the rendered PR body looks identical either way, so this fails silently). Verify with that same GraphQL query before trusting a multi-issue PR actually linked everything, not just by eyeballing the body text.
 - **A closing keyword fires from anywhere it appears — including prose that is explaining or denying it** (learned 2026-08-10). PR #100 carried no intentional keyword and opened by stating it did not close the issue; a later sentence describing what *would* finish it used the word "closes" before the issue number, and merging closed the issue. Three things this cost a second round to discover:
-  - **Quoting does not neutralise it.** Blockquoting the offending sentence, and wrapping it in inline code, both still register — a follow-up PR *documenting this trap* re-linked the same issue twice over from its own explanation.
-  - **`closingIssuesReferences` only sees the PR description.** A keyword in a *commit message* can close an issue on merge without ever appearing in that query, so the standard check will not catch it.
+  - **Inline code neutralises it; blockquoting does not.** Verified on PR #101, which contained one of each: the rendered body carries exactly one `issue-keyword` marker, for the blockquoted occurrence. A backticked keyword produces a plain `<code>` element and no reference — this PR's own body relies on that. So when you must write a keyword next to an issue number, put it in backticks.
+  - **`closingIssuesReferences` only sees the PR description.** GitHub documents commit messages as a closing route too, and this repo has no natural experiment separating the two — every keyword-bearing commit on `main` landed in a PR whose body carried the same link. So treat a keyword in a commit message as capable of closing an issue *and* invisible to the standard check: scan messages as well as the body.
   - The keywords are `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`, `resolve`/`resolves`/`resolved`. When writing *about* an issue rather than closing it, avoid those nine words near a `#N` — "is what completes #49" is safe; so is naming the issue with no verb before it.
 
   So: run the GraphQL query before merging a PR that is meant **not** to close something, not only one that is, and scan commit messages too.
@@ -49,11 +49,11 @@ Added 2026-08-08 after three agents were lost to API/session limits in a single 
 
 **Before salvaging anything, run the tests first, not last.** They are the cheapest available check on whether a working tree is in the state its author intended.
 
-Resumption after an API-error termination is now **verified** in this project — used repeatedly on 2026-08-09/10, including across a multi-hour gap, with the agent continuing from its own transcript rather than starting cold. If a resume does come back confused or empty-handed, fall back to salvage, with the discipline above.
+Resumption after an API-error termination is now **verified** in this project: the PR #96 review session and the PR #91 fix session were each terminated by a session limit and each resumed successfully from their own transcripts, one of them after a multi-hour gap. If a resume does come back confused or empty-handed, fall back to salvage, with the discipline above.
 
 ### Commit when a unit of work is done, not when the task is
 
-Added 2026-08-10, after **six** agents were terminated mid-task in a single day — five by session limits, the sixth by a monthly spend cap — with their work substantially complete and **uncommitted** every time. All six are named in `AGENT_LOG.md`'s 2026-08-10 entry.
+Added 2026-08-10, after **six** agents were terminated mid-task across 2026-08-07 to 2026-08-10 — five by session limits, the sixth by a monthly spend cap — with their work substantially complete and **uncommitted** every time. All six are named in `AGENT_LOG.md`'s 2026-08-10 entry.
 
 Resuming restores an agent's *context*. It does nothing for an uncommitted working tree, and a spend cap does not reset in hours the way a session limit does — so "resume later" can stop being available at all. Whatever is uncommitted then has to be verified and committed by someone who did not write it, which is slower and riskier: on PR #83 that path came within one noticed contradiction of committing a deliberate mutation.
 
