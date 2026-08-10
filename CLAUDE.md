@@ -53,7 +53,7 @@ Resumption after an API-error termination is now **verified** in this project �
 
 ### Commit when a unit of work is done, not when the task is
 
-Added 2026-08-10, after a day in which repeated agents were terminated mid-task — by session limits and finally by a monthly spend cap — with their work substantially complete and **uncommitted** each time. See `AGENT_LOG.md`'s 2026-08-10 entry for the specific losses.
+Added 2026-08-10, after **six** agents were terminated mid-task in a single day — five by session limits, the sixth by a monthly spend cap — with their work substantially complete and **uncommitted** every time. All six are named in `AGENT_LOG.md`'s 2026-08-10 entry.
 
 Resuming restores an agent's *context*. It does nothing for an uncommitted working tree, and a spend cap does not reset in hours the way a session limit does — so "resume later" can stop being available at all. Whatever is uncommitted then has to be verified and committed by someone who did not write it, which is slower and riskier: on PR #83 that path came within one noticed contradiction of committing a deliberate mutation.
 
