@@ -1,8 +1,15 @@
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { ActivatedRoute, ParamMap, convertToParamMap, provideRouter } from '@angular/router';
+import { BehaviorSubject, of, throwError } from 'rxjs';
 import { trackImageAttributeOrder } from '../../../../testing/image-attribute-order';
+import {
+  clearSeoTags,
+  seoContent,
+  seoTagCount,
+  seoTags,
+} from '../../../../testing/seo-tags';
 import { ProjectsService } from '../../../core/api/api/projects.service';
+import { META_DESCRIPTION_MAX_CHARS, NOINDEX, SITE_DESCRIPTION } from '../../../core/seo/site-meta';
 import { ProjectDetailComponent } from './project-detail.component';
 
 const PROJECT = {
@@ -28,18 +35,27 @@ const LONG_DESCRIPTION = [
 describe('ProjectDetailComponent', () => {
   let getProject: ReturnType<typeof vi.fn>;
   let tracker: ReturnType<typeof trackImageAttributeOrder>;
+  /** Route params, as a subject so a test can drive a second navigation to another project. */
+  let paramMap: BehaviorSubject<ParamMap>;
+  const originalTitle = document.title;
 
-  afterEach(() => tracker?.restore());
+  afterEach(() => {
+    tracker?.restore();
+    clearSeoTags();
+    document.title = originalTitle;
+  });
 
   beforeEach(async () => {
+    clearSeoTags();
     getProject = vi.fn().mockReturnValue(of(PROJECT));
+    paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({ id: 'p1' }));
 
     await TestBed.configureTestingModule({
       imports: [ProjectDetailComponent],
       providers: [
         provideRouter([]),
         { provide: ProjectsService, useValue: { getProject } },
-        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'p1' })) } },
+        { provide: ActivatedRoute, useValue: { paramMap } },
       ],
     }).compileComponents();
   });
@@ -154,6 +170,106 @@ describe('ProjectDetailComponent', () => {
     expect(images[0].getAttribute('fetchpriority')).toBe('high');
     expect(images[1].getAttribute('loading')).toBe('lazy');
     expect(images[1].getAttribute('fetchpriority')).toBeNull();
+  });
+
+  it('describes the loaded project in the title and meta tags', () => {
+    // The route only carries a placeholder ("A project from the portfolio..."), because the project
+    // is unknown until this request answers. If this stops running, every project page advertises
+    // the same title and description -- which is the duplicate-content case SEO basics exist to fix.
+    getProject.mockReturnValue(of({ ...PROJECT, description: LONG_DESCRIPTION }));
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    expect(document.title).toBe('My Site - Equalizer');
+    expect(seoContent('meta[property="og:title"]')).toBe('My Site - Equalizer');
+    expect(seoContent('meta[name="description"]')).toContain('A cross-platform, system-level audio');
+    expect(seoContent('meta[property="og:description"]')).toBe(
+      seoContent('meta[name="description"]'),
+    );
+  });
+
+  it('truncates a long description to the meta budget rather than emitting all of it', () => {
+    getProject.mockReturnValue(of({ ...PROJECT, description: LONG_DESCRIPTION }));
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const description = seoContent('meta[name="description"]')!;
+    // +1 for the appended ellipsis, which sits outside the character budget by design.
+    expect(description.length).toBeLessThanOrEqual(META_DESCRIPTION_MAX_CHARS + 1);
+    expect(description.endsWith('…')).toBe(true);
+    // Only the opening paragraph, never the filler prose from the ones after it.
+    expect(description).not.toContain('Filler prose');
+  });
+
+  it('replaces the tags when moving to another project instead of adding a second set', () => {
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+    expect(seoContent('meta[name="description"]')).toBe('A DSP project');
+
+    getProject.mockReturnValue(
+      of({ ...PROJECT, id: 'p2', title: 'CurveGen', description: 'A curve generator' }),
+    );
+    paramMap.next(convertToParamMap({ id: 'p2' }));
+    fixture.detectChanges();
+
+    expect(seoTagCount('meta[name="description"]')).toBe(1);
+    expect(seoTagCount('meta[property="og:description"]')).toBe(1);
+    expect(seoTagCount('meta[property="og:title"]')).toBe(1);
+    expect(seoContent('meta[name="description"]')).toBe('A curve generator');
+    expect(document.title).toBe('My Site - CurveGen');
+  });
+
+  it('falls back to the site description for a project with no description', () => {
+    // The contract requires minLength 1, so this should be unreachable -- but an empty tag is a
+    // worse answer than the site-level sentence, and "should be unreachable" is not "is".
+    getProject.mockReturnValue(of({ ...PROJECT, description: '   ' }));
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    expect(seoContent('meta[name="description"]')).toBe(SITE_DESCRIPTION);
+    expect(document.title).toBe('My Site - Equalizer');
+  });
+
+  it('does not produce broken markup for a description full of quotes and angle brackets', () => {
+    // Descriptions are admin-authored free text, so they can contain exactly the characters that
+    // terminate an HTML attribute. The tag is written with setAttribute, so the value round-trips
+    // and the browser escapes it on serialisation; nothing is injected into the document.
+    const nasty = 'Reads "config.xml" & <b>renders</b> it — a <script>alert(1)</script> test';
+    getProject.mockReturnValue(of({ ...PROJECT, title: 'A "quoted" & <angled> title', description: nasty }));
+    const scriptsBefore = document.querySelectorAll('script').length;
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    expect(seoContent('meta[name="description"]')).toBe(nasty);
+    expect(document.title).toBe('My Site - A "quoted" & <angled> title');
+    expect(document.querySelectorAll('script').length).toBe(scriptsBefore);
+
+    const markup = seoTags('meta[name="description"]')[0].outerHTML;
+    expect(markup).toContain('&quot;');
+    expect(markup).toContain('&amp;');
+    expect(markup).not.toContain('content="Reads "config.xml"');
+  });
+
+  it('marks a project that could not be loaded noindex', () => {
+    // Netlify serves an unknown /projects/<id> as 200 with the app shell, so a deleted project's
+    // URL would otherwise stay indexable under the route's generic placeholder description.
+    getProject.mockReturnValue(throwError(() => new Error('404')));
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    expect(seoContent('meta[name="robots"]')).toBe(NOINDEX);
+  });
+
+  it('leaves a successfully loaded project indexable', () => {
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    expect(seoTagCount('meta[name="robots"]')).toBe(0);
   });
 
   it('sets loading on gallery images before src, not after it', () => {

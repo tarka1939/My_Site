@@ -130,8 +130,12 @@ export class SeoService {
    * behind after navigating from `/admin/projects` back to `/` would tell a crawler the public
    * landing page is `noindex`, silently de-indexing the site. There is no static `robots` tag in
    * `index.html`, so "absent" is the correct resting state.
+   *
+   * Public for the same reason {@link setDescription} is: a page can only discover that it has
+   * nothing to show after its API call fails, which is long after the navigation that could have
+   * declared it. The next navigation clears it, so callers need no cleanup.
    */
-  private setRobots(robots: string | undefined): void {
+  setRobots(robots: string | undefined): void {
     if (robots) {
       this.meta.updateTag({ name: 'robots', content: robots });
     } else {
