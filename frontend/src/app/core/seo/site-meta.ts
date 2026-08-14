@@ -29,12 +29,30 @@ export const SITE_DESCRIPTION =
  * `content` for `<meta name="robots">` on pages that must never be indexed: the admin area, the
  * password-reset form, and the 404 view.
  *
- * `robots.txt` already disallows `/admin`, but the two guard different things and neither is
- * redundant. `robots.txt` asks a crawler not to *fetch*; a page that is linked from elsewhere can
- * still be indexed without being fetched, and `robots.txt` is advisory. This tag is what a crawler
- * that has the page in hand reads. It matters more than usual here because Netlify rewrites every
- * unknown path to `index.html` with **HTTP 200** (`public/_redirects`), so a 404 view is not a 404
- * response and would otherwise be indexable like any other page.
+ * **This tag and `robots.txt` do not stack**, and on two of those three paths `robots.txt` is the
+ * mechanism actually doing the work. `public/robots.txt` disallows `/admin` and `/reset-password`;
+ * a crawler that obeys a `Disallow` never fetches those pages, so it never renders them and never
+ * reads this tag. Google is explicit that `noindex` is only honoured on a page it is allowed to
+ * crawl. The 404 view is the one route where this tag is the operative mechanism: `**` is not
+ * disallowed, so it is fetched, rendered and read normally -- and it needs to be, because Netlify
+ * rewrites every unknown path to `index.html` with **HTTP 200** (`public/_redirects`), so a 404
+ * view is not a 404 response and would otherwise be indexable like any other page.
+ *
+ * Both are kept for `/admin` and `/reset-password` anyway, deliberately:
+ *
+ * - The `Disallow` is the only half a non-JS crawler can act on at all. This app is client-rendered
+ *   and every path returns the same `index.html`, so a scraper that does not execute JS fetching
+ *   `/admin` sees the site-level tags and *no* robots tag -- an apparent duplicate of the landing
+ *   page. Dropping it and relying on this constant alone would leave that case uncovered.
+ * - This tag is the belt-and-braces half: a JS-executing crawler that arrives on a direct link and
+ *   does not honour `robots.txt`, or a deploy where `robots.txt` is missing or unreachable. It is
+ *   also the only answer to `Disallow`'s own gap -- a blocked URL can still be listed URL-only from
+ *   external links -- though blocking the fetch is precisely what stops that answer being read.
+ *   Nothing links to `/admin`, so in practice that residual is theoretical.
+ *
+ * (An earlier version of this comment claimed the reverse: that this tag is "what a crawler that
+ * has the page in hand reads" for `/admin`. A compliant crawler never has it in hand. Corrected
+ * after the PR #103 review.)
  */
 export const NOINDEX = 'noindex, nofollow';
 
