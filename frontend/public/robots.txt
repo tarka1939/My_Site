@@ -1,0 +1,20 @@
+# robots.txt — PLACEHOLDER ORIGIN, not yet valid for production.
+#
+# The Sitemap line below points at REPLACE-WITH-CANONICAL-ORIGIN.invalid because the
+# canonical domain does not exist yet: the Netlify site is created in Phase 5, which is
+# paused. `.invalid` is reserved by RFC 2606 and can never resolve, so this fails visibly
+# rather than silently pointing somewhere wrong.
+#
+# Before the first production deploy, replace that origin here and in sitemap.xml.
+# PROJECT_TODO.md's Phase 6 checklist keeps this item flagged incomplete until then.
+
+User-agent: *
+
+# The admin area is behind a JWT guard and has nothing useful to index.
+# This is a crawling hint, not a security control — the guard is what protects it.
+Disallow: /admin
+Disallow: /reset-password
+
+Allow: /
+
+Sitemap: https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/sitemap.xml
