@@ -8,7 +8,7 @@ import {
   seoTags as tags,
 } from '../../../testing/seo-tags';
 import { SeoService } from './seo.service';
-import { META_DESCRIPTION_MAX_CHARS, SITE_DESCRIPTION, SITE_NAME } from './site-meta';
+import { META_DESCRIPTION_MAX_CHARS, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE } from './site-meta';
 
 describe('SeoService', () => {
   const originalTitle = document.title;
@@ -205,13 +205,17 @@ describe('SeoService', () => {
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
   });
 
-  it('falls back to the site name when a page declares no title', () => {
+  it('falls back to the site’s own title when a page declares no title', () => {
     const seo = createService();
 
     seo.applyPage({ title: 'My Site - Contact' });
     seo.applyPage({});
 
-    expect(document.title).toBe(SITE_NAME);
-    expect(content('meta[property="og:title"]')).toBe(SITE_NAME);
+    // The same string index.html ships in <title>, og:title and twitter:title -- so a page that
+    // names nothing more specific reads as the site, not as the page before it and not as a
+    // bare brand word that disagrees with what a shared link previews as.
+    expect(document.title).toBe(SITE_TITLE);
+    expect(content('meta[property="og:title"]')).toBe(SITE_TITLE);
+    expect(SITE_TITLE.startsWith(SITE_NAME)).toBe(true);
   });
 });

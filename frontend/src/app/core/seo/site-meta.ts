@@ -9,8 +9,23 @@ import { toCardExcerpt } from '../../shared/description-excerpt/description-exce
  * accuracy on top).
  */
 
-/** The site's name, as used in `og:site_name` and as the bare `<title>` fallback. */
+/** The site's name: `og:site_name`, and the prefix every route title carries. Not a full title. */
 export const SITE_NAME = 'My Site';
+
+/**
+ * The site's own document title -- what a page that names nothing more specific is called.
+ *
+ * **Must match `index.html`'s `<title>`, `og:title` and `twitter:title`, which are all this
+ * string.** They used to disagree: the static `<title>` was the bare {@link SITE_NAME} while the
+ * share tags carried this longer form, so a non-JS consumer got two different names for one
+ * document -- the `<title>` a search result prints, and the `og:title` a shared link previews as.
+ *
+ * Unlike {@link SITE_DESCRIPTION}, this cannot be read back out of the document: by the time any
+ * route needs the fallback, the title strategy has already overwritten `document.title` on an
+ * earlier navigation, so there is nothing original left to read. Hence a constant, and hence the
+ * instruction above.
+ */
+export const SITE_TITLE = `${SITE_NAME} — project portfolio`;
 
 /**
  * Fallback site description.

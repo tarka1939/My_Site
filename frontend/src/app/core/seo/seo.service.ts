@@ -1,10 +1,10 @@
 import { DOCUMENT, Injectable, inject } from '@angular/core';
 import { Meta, Title } from '@angular/platform-browser';
-import { NOINDEX, SITE_DESCRIPTION, SITE_NAME, toMetaDescription } from './site-meta';
+import { NOINDEX, SITE_DESCRIPTION, SITE_TITLE, toMetaDescription } from './site-meta';
 
 /** What a route (or a loaded page) declares about itself. Every field is optional. */
 export interface PageMeta {
-  /** Full document title, e.g. `'My Site - Contact'`. Falls back to {@link SITE_NAME}. */
+  /** Full document title, e.g. `'My Site - Contact'`. Falls back to {@link SITE_TITLE}. */
   readonly title?: string;
   /** Raw description text -- truncated and whitespace-collapsed here, not by the caller. */
   readonly description?: string | null;
@@ -77,8 +77,9 @@ export class SeoService {
    */
   setTitle(title: string | null | undefined): void {
     // Falls back rather than leaving the previous page's title in place: a route with no `title`
-    // is not a route that wants the last one. `index.html`'s <title> is the same value.
-    const resolved = title?.trim() || SITE_NAME;
+    // is not a route that wants the last one. SITE_TITLE is exactly what `index.html`'s <title>,
+    // og:title and twitter:title say, so the fallback lands the document back where it started.
+    const resolved = title?.trim() || SITE_TITLE;
     this.title.setTitle(resolved);
     this.meta.updateTag({ property: 'og:title', content: resolved });
     this.meta.updateTag({ name: 'twitter:title', content: resolved });
