@@ -39,23 +39,25 @@ Worth fixing at the root too: if you own the machine, get the main checkout back
 
 ## Choosing a model when dispatching
 
-Added 2026-08-10, after a day in which every dispatch inherited the session model (Opus) because no `model` was ever passed — including whitespace transforms and "apply these six listed fixes" rounds, several of which ran 200k-285k tokens each. Pass `model` explicitly; the default is not a decision.
+Added 2026-08-10, after a day in which no dispatch ever passed `model`, so every agent silently inherited the Senior Dev's own — including whitespace transforms and rounds that applied an already-written list of fixes. The defaults now live in `.claude/agents/*.md` frontmatter, which is the durable fix; a `model` argument on the dispatch overrides them.
 
-| Task class | Model |
+**The question that picks the model is not how hard the work looks — it is whether you can write the acceptance criteria out in advance.**
+
+| If… | Model |
 |---|---|
-| Cold PR review | **Opus** |
-| Implementation where the design is still open | **Opus** |
-| Implementation against a settled contract or ADR | **Sonnet** |
-| Fix round applying a list of review findings | **Sonnet** |
-| Research or content drafting | **Sonnet** |
-| Mechanical transform (reformatting, transcription, renames) | **Haiku** |
-| Verification run (execute the gate, report real output) | **Haiku** |
+| You could not write the acceptance criteria in advance — the work requires judgement the brief cannot pre-specify | **Opus** |
+| Reviewing a PR cold | **Opus** |
+| The brief fully specifies what "done" looks like, and the design is already settled | **Sonnet** |
+| Touching auth, concurrency, shared mutable state, or a migration — regardless of how specified the task is | **Opus** (see the Backend correctness checklist) |
+| Purely mechanical: reformatting, transcription, a rename with a known target | **Haiku** |
 
-Contract and ADR design is not dispatched at all — that is the Senior Dev's own work, and settling it first is what makes the Sonnet row viable.
+That test matters because "settled contract" alone does not work. The most valuable pushback on this project — a frontend agent refusing to snap picked dates to a storage convention, because doing so would silently rewrite stored data — happened *against a settled ADR*. What made it Opus-shaped was that nobody had written "and don't corrupt existing rows" into the brief.
 
-**Escalate rather than push.** If a Sonnet or Haiku agent reports that the approach looks wrong, or fails the same thing three times, re-dispatch on Opus instead of insisting. The pushbacks worth having on this project — rejecting `NgOptimizedImage` after reading its source, refusing a CSS-only clamp on accessibility-tree grounds, declining to snap dates to a convention — all came from implementation agents contradicting their brief. Keeping that channel open is the point of the escalation rule.
+**Escalate on doubt, stop on repetition.** If a cheaper agent reports the approach looks wrong, re-dispatch on Opus rather than restating the brief — that channel is the point. Repeated failure is different: `docs/AUTONOMOUS_WORKFLOW.md`'s escalation triggers already say 3+ failed attempts at the same thing stop and go to the user, and that rule is unchanged. A third failure is a signal about the task, not about the model.
 
-**Brief scope is the other half of the cost, and it is not free.** `AGENT_LOG.md` alone is well over a thousand lines. "Read `CLAUDE.md`, `SPEC.md`, `PROJECT_TODO.md` and `docs/DECISIONS.md` in full" is a large fixed charge paid before any work starts, on every dispatch. Name the sections that actually bear on the task, and scope a review to the diff's risk rather than a standing-doc sweep. Reasoning effort is not settable on an `Agent` dispatch — only in `Workflow` scripts — so brief scope is the control that exists here.
+**A resume cannot be made cheaper.** `SendMessage` has no model parameter, so continuing a terminated agent keeps whatever it started on. When those rules conflict, resuming wins: restarting cheaply throws away the context the resume rule exists to preserve.
+
+**Scope the brief, and mean it.** Reasoning effort and model both come from the agent definition; brief scope is the part you control per dispatch, and it is not free. Name the sections that bear on the task instead of instructing a full read of files that now run to thousands of lines, and scope a review to the diff's risk rather than a standing-doc sweep. The `.claude/agents/*.md` definitions carry this instruction so it applies whether or not a brief repeats it.
 
 ## When a dispatched agent dies mid-task
 

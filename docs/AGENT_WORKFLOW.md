@@ -68,32 +68,26 @@ This is the mechanical counterpart to `docs/AUTONOMOUS_WORKFLOW.md`'s Senior Dev
 
 ## Dispatch cost: model choice and brief scope (added 2026-08-10)
 
-`CLAUDE.md`'s "Choosing a model when dispatching" holds the operative table. This is the reasoning behind it, and the evidence, which belongs here rather than in a file loaded into every session.
+`CLAUDE.md`'s "Choosing a model when dispatching" holds the operative rule. This is the evidence behind it, kept here rather than in a file loaded into every session.
 
-**What prompted it.** On 2026-08-10 the owner noticed unusually high usage. The cause was that **no dispatch had ever passed `model`**, so all ~25 agents that day inherited the session model (Opus). The completion notifications reported per-agent totals mostly between 100k and 285k tokens. The largest were not the hardest:
+**What prompted it.** The owner noticed unusually high usage. The cause was that **no dispatch had ever passed `model`**, so every agent inherited the Senior Dev's own. Per-agent totals reported in completion notifications ran mostly between 100k and 285k tokens, and the largest were not the hardest — a prose reflow that replaced newlines with spaces, and a round applying a list of six already-specified fixes, were both near the top.
 
-| Agent | Reported tokens | Nature of the work |
-|---|---|---|
-| Content-seed review fixes | ~285k | apply a list of six specified fixes |
-| Content-seed prose reflow | ~220k | replace intra-paragraph newlines with spaces |
-| Content-seed verification | ~195k | start a stack, run a script, report output |
-| Cold review of PR #91 | ~217k | adversarial review — worth it |
+**Be precise about what model choice does and does not fix.** It changes price per token, not the number of tokens. The measurable share of the fixed overhead — instructing every agent to read `CLAUDE.md`, `SPEC.md`, `PROJECT_TODO.md` and `docs/DECISIONS.md` in full — is on the order of 30k tokens against a 220k run, so roughly 15%. The rest is the work itself. Both levers are worth pulling; neither alone explains the total.
 
-**Why reviews stay on the expensive model.** Every independent review round on this project has found real defects, including in the Senior Dev's own writing: a credential leak where `fetch` followed a redirect and forwarded an admin password past the locality guard; a `CHECK` constraint that SQL's three-valued logic would have made permissive in exactly the case it forbade; a `-webkit-box-orient` declaration no test asserted, whose removal left every test green and the feature inert; and three false claims in documentation. That is the layer to protect.
+**Why cold reviews stay expensive.** Independent review has repeatedly found defects that self-review and green suites did not: a credential leak where `fetch` followed a redirect and forwarded an admin password past the locality guard (reproduced on Node 24.14.0); a `-webkit-box-orient` declaration no test asserted, whose deletion left every test passing and the feature completely inert in a browser; and, more than once, false claims in the Senior Dev's own documentation. That is the layer to protect, and this policy leans harder on it.
 
-**Why implementation is split rather than demoted wholesale.** Three of the best outcomes here came from implementation agents *contradicting their brief* — rejecting `NgOptimizedImage` after reading the directive's source, refusing a CSS-only clamp because `overflow: hidden` leaves text in the accessibility tree, and declining to snap picked dates to a storage convention because it would silently rewrite stored data. Those are judgement, not execution. The split is between work where the design is still open (keep the reasoning) and work against a settled contract (execution, and the date-field halves matching first time is the evidence that settling first makes this safe).
+**Note what is *not* in that list.** An earlier draft cited a `CHECK` constraint that three-valued logic would have made permissive. That was a *prevented* defect — flagged in the dispatch brief and reasoned through by the implementer — not a review catch, and this project had already retracted it from a near-identical list on PR #98 for exactly that reason. It went back in anyway. Near-miss stories are the most quotable material here and the easiest to misattribute; check who actually caught a thing before crediting a layer with it.
 
-**Brief scope is the other half, and it is self-inflicted.** Most briefs written before this date opened with "read `CLAUDE.md`, `SPEC.md`, `PROJECT_TODO.md`, `docs/DECISIONS.md`, `docs/openapi.yaml` in full". Those files grow continuously — `AGENT_LOG.md` passed a thousand lines during Phase 6 — so that instruction is a large fixed charge paid on every dispatch before any work begins, multiplied by every agent. Name the sections that bear on the task instead.
+**Where the cheaper rows carry real risk, and it is not hypothetical.**
 
-Reasoning effort is **not** settable on an `Agent` dispatch — the tool exposes `model` only; per-agent `effort` exists in `Workflow` scripts. So brief scope is the only effort-shaped control available when dispatching this way.
+- *Fix rounds.* `CLAUDE.md`'s "Review-fix scrutiny" bullet exists because this project shipped a defect **in a review response** — adding login rate limiting reused a shared limiter with an unnamespaced key and broke password reset. A fix round is not automatically mechanical, which is why the security/concurrency/migration row overrides the specification test.
+- *Verification runs.* The whole thesis of `AGENT_LOG.md` is that tooling reports success without having performed the check. The seed-verification agent refused to claim an unmet gate when Docker was broken, labelled which demonstrations were stub-backed, and audited its own cleanup for a gap it could not close. That is judgement. Verification is deliberately **not** on the cheapest row.
 
-**Known risk, stated rather than discovered later.** A cheaper fix round will sometimes miss what an expensive one would have caught, which then lands on the cold review or ships. That is a deliberate trade: it leans harder on the layer with the best demonstrated hit rate. Revisit if review rounds start finding defects that the fix round plainly should have.
+**Why the boundary is "can you write the acceptance criteria in advance" rather than "is the contract settled".** The first version of this policy used the latter and it does not hold: the frontend agent's refusal to snap picked dates to a storage convention happened against a *settled ADR*, and it was right because nobody had thought to write "and do not silently rewrite stored rows" into the brief. Settledness describes the design; the test that matters describes the brief.
 
-## When a dispatched agent dies mid-task (added 2026-08-08)
+**The resume interaction.** `SendMessage` takes no model parameter, so a resumed agent keeps whatever it started on and in-flight work cannot be made cheaper. Where the cost policy and the resume rule conflict, resume wins — a cheap restart discards the context that rule exists to preserve.
 
-The operative rule lives in `CLAUDE.md` ("When a dispatched agent dies mid-task"): **resume the agent via `SendMessage` with its ID rather than salvaging its work by hand**, and treat a dying agent's final message as a fragment rather than a status report. `AGENT_LOG.md`'s 2026-08-08 entry has the full account of why.
-
-The part that belongs here, because it interacts with the worktree rules above: **a dead agent's worktree is not automatically free.** Do not remove or reassign it while a resume is still possible — resuming a session whose working directory has been deleted or checked out to a different branch defeats the point. If you do decide to salvage instead, the worktree stays assigned to that task until its branch merges, and the deletion-before-prune ordering in the cleanup guidance above still applies (a half-removed worktree leaves a directory whose git commands silently resolve to the main checkout).
+**Known risk, stated rather than discovered later.** A cheaper fix round will sometimes miss what an expensive one would have caught, which then lands on the cold review or ships. Revisit if review rounds start finding defects a fix round plainly should have.
 
 ## Git worktree pattern (Phase 7 isolation exercise)
 
