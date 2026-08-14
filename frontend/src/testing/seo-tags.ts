@@ -10,8 +10,13 @@
  * asserts in its own voice, rather than hiding a failure inside a shared helper.
  */
 
-/** Every selector the runtime writes, in the `name=`/`property=` form `index.html` declares them. */
+/**
+ * Every selector the runtime writes -- the meta tags in the `name=`/`property=` form `index.html`
+ * declares them, plus the canonical link, which `SeoService` creates at runtime and `index.html`
+ * deliberately does not carry.
+ */
 export const SEO_SELECTORS = [
+  'link[rel="canonical"]',
   'meta[name="description"]',
   'meta[name="robots"]',
   'meta[name="twitter:card"]',
@@ -51,6 +56,16 @@ export function seoTagCount(selector: string): number {
  */
 export function seoContent(selector: string): string | null {
   return document.head.querySelector(selector)?.getAttribute('content') ?? null;
+}
+
+/**
+ * The `href` of the canonical link, or `null` if there is none.
+ *
+ * Separate from {@link seoContent} because a `<link>` carries its value in `href`, not `content` --
+ * reading it with the wrong attribute returns `null`, which looks exactly like "no canonical".
+ */
+export function canonicalHref(): string | null {
+  return document.head.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? null;
 }
 
 /**

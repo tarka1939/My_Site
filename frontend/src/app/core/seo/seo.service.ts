@@ -99,7 +99,15 @@ export class SeoService {
   }
 
   /**
-   * Points `og:url` at the page actually being viewed.
+   * Points `<link rel="canonical">` and `og:url` at the page actually being viewed.
+   *
+   * The canonical link is the one that earns this method its name, and it is worth having on a site
+   * served like this one: Netlify answers **every** path with HTTP 200 and the same app shell
+   * (`public/_redirects`), so any invented or decorated URL -- a typo, a tracking parameter, a stray
+   * trailing path -- is a distinct 200-response "page" as far as a crawler is concerned. A
+   * self-referencing canonical is the standard answer, and Googlebot reads it out of the rendered
+   * DOM. It reaches only JS-executing crawlers, which is the same limitation every runtime tag here
+   * has, and the same one prerendering would lift (see the 2026-08-10 SEO ADR).
    *
    * `index.html`'s static `og:url` is an unresolvable placeholder, because the canonical domain does
    * not exist yet (Phase 5 is paused, and `PROJECT_TODO.md` says not to guess it). At runtime the
@@ -115,12 +123,35 @@ export class SeoService {
     const origin = this.document.location?.origin;
     // `origin` is the string "null" for an opaque origin (a `file://` document, a sandboxed
     // iframe). Composing a URL from it produces "null/projects/x", which is worse than the honest
-    // placeholder already in the markup -- so leave the static tag alone in that case.
+    // placeholder already in the markup -- so leave the static tag alone in that case, and write no
+    // canonical at all: a wrong canonical is a far more damaging instruction than a missing one.
     if (!url || !origin || origin === 'null') {
       return;
     }
     const resolved = new URL(url, origin);
-    this.meta.updateTag({ property: 'og:url', content: `${resolved.origin}${resolved.pathname}` });
+    const canonical = `${resolved.origin}${resolved.pathname}`;
+    this.meta.updateTag({ property: 'og:url', content: canonical });
+    this.updateCanonicalLink(canonical);
+  }
+
+  /**
+   * Writes, or rewrites, the single `<link rel="canonical">` in the head.
+   *
+   * By hand because `Meta` only manages `<meta>` elements -- but with the same
+   * update-never-append discipline the rest of this class is built on, and for a sharper reason:
+   * Google ignores the lot when a page presents more than one canonical, so appending one per
+   * navigation would not merely be untidy, it would silently disable the tag.
+   *
+   * Deliberately absent from `index.html`, unlike every other tag here. A static one could only
+   * name the placeholder origin, and a canonical pointing at an unresolvable host on every route is
+   * worse than none: `og:url` degrades to a bad share-card link, a canonical degrades to a bad
+   * indexing instruction. This only ever writes the origin that actually served the app.
+   */
+  private updateCanonicalLink(href: string): void {
+    const existing = this.document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    const link = existing ?? this.document.head.appendChild(this.document.createElement('link'));
+    link.setAttribute('rel', 'canonical');
+    link.setAttribute('href', href);
   }
 
   /**

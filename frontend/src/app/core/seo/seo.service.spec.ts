@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import {
+  canonicalHref,
   clearSeoTags,
   seedStaticSeoTags as seedStaticTags,
   seoContent as content,
@@ -156,6 +157,40 @@ describe('SeoService', () => {
     createService().applyPage({ description: 'No url supplied.' });
 
     expect(content('meta[property="og:url"]')).toBe('https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/');
+  });
+
+  it('writes a self-referencing canonical link for the page being viewed', () => {
+    // Netlify answers every path with 200 and the same shell, so without this a crawler can treat
+    // any decorated or invented URL as its own page. Same origin+path as og:url, query and fragment
+    // dropped -- a canonical that differs from og:url would be two answers to the same question.
+    createService().applyPage({ url: '/projects/abc?tag=dsp&page=2#gallery' });
+
+    expect(canonicalHref()).toBe(`${location.origin}/projects/abc`);
+    expect(canonicalHref()).toBe(content('meta[property="og:url"]'));
+  });
+
+  it('rewrites the canonical link across navigations instead of adding a second one', () => {
+    // Google discards *all* canonicals on a page that declares more than one, so an appended
+    // duplicate does not merely point somewhere stale -- it turns the tag off entirely.
+    const seo = createService();
+
+    seo.applyPage({ url: '/' });
+    seo.applyPage({ url: '/contact' });
+    seo.applyPage({ url: '/projects/abc' });
+
+    expect(seoTagCount('link[rel="canonical"]')).toBe(1);
+    expect(canonicalHref()).toBe(`${location.origin}/projects/abc`);
+  });
+
+  it('writes no canonical at all for a page with no url', () => {
+    // index.html carries no canonical on purpose -- the only origin it could name is the
+    // unresolvable placeholder, and a canonical pointing at a host that does not exist is a worse
+    // instruction than none. So "no url" must leave the document without one, not invent one.
+    seedStaticTags();
+    createService().applyPage({ description: 'No url supplied.' });
+
+    expect(canonicalHref()).toBeNull();
+    expect(seoTagCount('link[rel="canonical"]')).toBe(0);
   });
 
   it('adds a robots tag on request and removes it again on the next page', () => {
