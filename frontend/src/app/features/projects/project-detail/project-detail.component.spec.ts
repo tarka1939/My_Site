@@ -1,6 +1,13 @@
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, ParamMap, convertToParamMap, provideRouter } from '@angular/router';
-import { BehaviorSubject, of, throwError } from 'rxjs';
+import {
+  ActivatedRoute,
+  ParamMap,
+  TitleStrategy,
+  convertToParamMap,
+  provideRouter,
+} from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { trackImageAttributeOrder } from '../../../../testing/image-attribute-order';
 import {
   clearSeoTags,
@@ -9,7 +16,11 @@ import {
   seoTags,
 } from '../../../../testing/seo-tags';
 import { ProjectsService } from '../../../core/api/api/projects.service';
+import { TagsService } from '../../../core/api/api/tags.service';
+import { Project } from '../../../core/api/model/project';
+import { SeoTitleStrategy } from '../../../core/seo/seo-title.strategy';
 import { META_DESCRIPTION_MAX_CHARS, NOINDEX, SITE_DESCRIPTION } from '../../../core/seo/site-meta';
+import { PROJECTS_ROUTES } from '../projects.routes';
 import { ProjectDetailComponent } from './project-detail.component';
 
 const PROJECT = {
@@ -289,5 +300,116 @@ describe('ProjectDetailComponent', () => {
       const order = tracker.writesFor(image).filter((name) => name === 'loading' || name === 'src');
       expect(order).toEqual(['loading', 'src']);
     }
+  });
+});
+
+/**
+ * The tags this component writes land in `document.head`, which outlives it, so the interesting
+ * cases are the ones where a response arrives after the page has moved on. Those need the real
+ * router (a stub `ActivatedRoute` never destroys anything and never runs the title strategy), so
+ * this block wires the real route table, the real `SeoTitleStrategy` and the real component
+ * together, and controls response timing with one `Subject` per request.
+ */
+describe('ProjectDetailComponent, when the page moves on before a response lands', () => {
+  /** One controllable response per requested id -- a test decides when, and whether, it resolves. */
+  let requests: Map<string, Subject<Project>>;
+  const originalTitle = document.title;
+
+  /** Read off the real route table rather than copied, so editing the prose cannot break this. */
+  const LANDING_DESCRIPTION = PROJECTS_ROUTES.find((route) => route.path === '')?.data?.[
+    'description'
+  ] as string;
+
+  const EMPTY_PAGE = { content: [], page: 0, size: 12, totalElements: 0, totalPages: 0 };
+
+  beforeEach(() => {
+    clearSeoTags();
+    requests = new Map();
+    const getProject = vi.fn(({ id }: { id: string }) => {
+      const response = new Subject<Project>();
+      requests.set(id, response);
+      return response.asObservable();
+    });
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(PROJECTS_ROUTES),
+        { provide: TitleStrategy, useClass: SeoTitleStrategy },
+        { provide: ProjectsService, useValue: { getProject, listProjects: () => of(EMPTY_PAGE) } },
+        // The landing route renders the real list component, which asks for the tag filter.
+        { provide: TagsService, useValue: { listTags: () => of([]) } },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    clearSeoTags();
+    document.title = originalTitle;
+  });
+
+  function requestFor(id: string): Subject<Project> {
+    const response = requests.get(id);
+    expect(response, `no request was made for '${id}'`).toBeDefined();
+    return response!;
+  }
+
+  function resolve(id: string, project: Partial<Project>): void {
+    const response = requestFor(id);
+    response.next({ ...PROJECT, ...project });
+    response.complete();
+  }
+
+  it('leaves no noindex behind on the landing page when the abandoned request then fails', async () => {
+    // The de-indexing case, end to end: /projects/<gone> is still in flight when the visitor goes
+    // back to the site root, and only then 404s. Before switchMap/takeUntilDestroyed the destroyed
+    // component still received that error and ran setRobots(NOINDEX), stamping "noindex, nofollow"
+    // onto the public landing page -- invisible in the UI, and nothing else ever removes it,
+    // because the tag is only cleared by a *later* navigation.
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/projects/gone');
+    expect(requestFor('gone').observed).toBe(true);
+
+    await harness.navigateByUrl('/');
+    // The subscription is gone with the component, so the error below cannot be delivered.
+    expect(requestFor('gone').observed).toBe(false);
+
+    requestFor('gone').error(new Error('404'));
+
+    expect(seoContent('meta[name="robots"]')).toBeNull();
+    expect(seoTagCount('meta[name="robots"]')).toBe(0);
+    // Still unambiguously the landing page, not a half-updated one.
+    expect(document.title).toBe('My Site - Projects');
+    expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
+  });
+
+  it('leaves the landing page’s own title and description alone when a late request succeeds', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/projects/p1');
+    await harness.navigateByUrl('/');
+
+    resolve('p1', { title: 'Equalizer', description: 'A DSP project' });
+
+    expect(document.title).toBe('My Site - Projects');
+    expect(seoContent('meta[property="og:title"]')).toBe('My Site - Projects');
+    expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
+    expect(seoContent('meta[property="og:description"]')).toBe(LANDING_DESCRIPTION);
+  });
+
+  it('describes the project being viewed when an earlier one answers out of order', async () => {
+    // Same component instance across the two ids, so the escape here is switchMap rather than
+    // destruction: B is requested second and answers first, then A answers. Without cancellation
+    // A wins by arriving last and /projects/b advertises project A.
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/projects/a');
+    await harness.navigateByUrl('/projects/b');
+    expect(requestFor('a').observed).toBe(false);
+
+    resolve('b', { id: 'b', title: 'Bee', description: 'B description.' });
+    resolve('a', { id: 'a', title: 'Ay', description: 'A description.' });
+
+    expect(document.title).toBe('My Site - Bee');
+    expect(seoContent('meta[name="description"]')).toBe('B description.');
+    expect(seoTagCount('meta[name="description"]')).toBe(1);
   });
 });
