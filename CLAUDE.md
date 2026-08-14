@@ -37,6 +37,26 @@ Not hypothetical: PR #94 cited a line number as evidence for a factual claim, ta
 
 Worth fixing at the root too: if you own the machine, get the main checkout back onto `main`, or stop treating it as a place to read from.
 
+## Choosing a model when dispatching
+
+Added 2026-08-10, after a day in which every dispatch inherited the session model (Opus) because no `model` was ever passed — including whitespace transforms and "apply these six listed fixes" rounds, several of which ran 200k-285k tokens each. Pass `model` explicitly; the default is not a decision.
+
+| Task class | Model |
+|---|---|
+| Cold PR review | **Opus** |
+| Implementation where the design is still open | **Opus** |
+| Implementation against a settled contract or ADR | **Sonnet** |
+| Fix round applying a list of review findings | **Sonnet** |
+| Research or content drafting | **Sonnet** |
+| Mechanical transform (reformatting, transcription, renames) | **Haiku** |
+| Verification run (execute the gate, report real output) | **Haiku** |
+
+Contract and ADR design is not dispatched at all — that is the Senior Dev's own work, and settling it first is what makes the Sonnet row viable.
+
+**Escalate rather than push.** If a Sonnet or Haiku agent reports that the approach looks wrong, or fails the same thing three times, re-dispatch on Opus instead of insisting. The pushbacks worth having on this project — rejecting `NgOptimizedImage` after reading its source, refusing a CSS-only clamp on accessibility-tree grounds, declining to snap dates to a convention — all came from implementation agents contradicting their brief. Keeping that channel open is the point of the escalation rule.
+
+**Brief scope is the other half of the cost, and it is not free.** `AGENT_LOG.md` alone is well over a thousand lines. "Read `CLAUDE.md`, `SPEC.md`, `PROJECT_TODO.md` and `docs/DECISIONS.md` in full" is a large fixed charge paid before any work starts, on every dispatch. Name the sections that actually bear on the task, and scope a review to the diff's risk rather than a standing-doc sweep. Reasoning effort is not settable on an `Agent` dispatch — only in `Workflow` scripts — so brief scope is the control that exists here.
+
 ## When a dispatched agent dies mid-task
 
 Added 2026-08-08 after three agents were lost to API/session limits in a single session, and were each salvaged by hand when they should simply have been resumed.

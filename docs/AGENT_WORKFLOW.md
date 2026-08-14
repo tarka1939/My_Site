@@ -66,6 +66,29 @@ Both hooks return a structured `permissionDecision: "deny"` with a human-readabl
 
 This is the mechanical counterpart to `docs/AUTONOMOUS_WORKFLOW.md`'s Senior Dev / junior / independent-reviewer model: the Senior Dev session uses the native `TaskCreate`/`TaskList`/`TaskUpdate` tools as the shared task board, breaking phase work from `PROJECT_TODO.md` into discrete tasks with real `addBlockedBy`/`addBlocks` dependencies (not a flat list), then for each independently-startable task creates a worktree and dispatches a fresh session scoped to just that one task. Once that task's branch is pushed and a PR opened, review happens in a genuinely separate session with no shared context (a new session/process, not a continuation of the implementing one) — per `docs/AUTONOMOUS_WORKFLOW.md`'s PR review protocol — with the automated gate (`mvn test`, including the Modulith `ApplicationModules.verify()` check) run first as a cheap filter before spending a fresh session's attention on it.
 
+## Dispatch cost: model choice and brief scope (added 2026-08-10)
+
+`CLAUDE.md`'s "Choosing a model when dispatching" holds the operative table. This is the reasoning behind it, and the evidence, which belongs here rather than in a file loaded into every session.
+
+**What prompted it.** On 2026-08-10 the owner noticed unusually high usage. The cause was that **no dispatch had ever passed `model`**, so all ~25 agents that day inherited the session model (Opus). The completion notifications reported per-agent totals mostly between 100k and 285k tokens. The largest were not the hardest:
+
+| Agent | Reported tokens | Nature of the work |
+|---|---|---|
+| Content-seed review fixes | ~285k | apply a list of six specified fixes |
+| Content-seed prose reflow | ~220k | replace intra-paragraph newlines with spaces |
+| Content-seed verification | ~195k | start a stack, run a script, report output |
+| Cold review of PR #91 | ~217k | adversarial review — worth it |
+
+**Why reviews stay on the expensive model.** Every independent review round on this project has found real defects, including in the Senior Dev's own writing: a credential leak where `fetch` followed a redirect and forwarded an admin password past the locality guard; a `CHECK` constraint that SQL's three-valued logic would have made permissive in exactly the case it forbade; a `-webkit-box-orient` declaration no test asserted, whose removal left every test green and the feature inert; and three false claims in documentation. That is the layer to protect.
+
+**Why implementation is split rather than demoted wholesale.** Three of the best outcomes here came from implementation agents *contradicting their brief* — rejecting `NgOptimizedImage` after reading the directive's source, refusing a CSS-only clamp because `overflow: hidden` leaves text in the accessibility tree, and declining to snap picked dates to a storage convention because it would silently rewrite stored data. Those are judgement, not execution. The split is between work where the design is still open (keep the reasoning) and work against a settled contract (execution, and the date-field halves matching first time is the evidence that settling first makes this safe).
+
+**Brief scope is the other half, and it is self-inflicted.** Most briefs written before this date opened with "read `CLAUDE.md`, `SPEC.md`, `PROJECT_TODO.md`, `docs/DECISIONS.md`, `docs/openapi.yaml` in full". Those files grow continuously — `AGENT_LOG.md` passed a thousand lines during Phase 6 — so that instruction is a large fixed charge paid on every dispatch before any work begins, multiplied by every agent. Name the sections that bear on the task instead.
+
+Reasoning effort is **not** settable on an `Agent` dispatch — the tool exposes `model` only; per-agent `effort` exists in `Workflow` scripts. So brief scope is the only effort-shaped control available when dispatching this way.
+
+**Known risk, stated rather than discovered later.** A cheaper fix round will sometimes miss what an expensive one would have caught, which then lands on the cold review or ships. That is a deliberate trade: it leans harder on the layer with the best demonstrated hit rate. Revisit if review rounds start finding defects that the fix round plainly should have.
+
 ## When a dispatched agent dies mid-task (added 2026-08-08)
 
 The operative rule lives in `CLAUDE.md` ("When a dispatched agent dies mid-task"): **resume the agent via `SendMessage` with its ID rather than salvaging its work by hand**, and treat a dying agent's final message as a fragment rather than a status report. `AGENT_LOG.md`'s 2026-08-08 entry has the full account of why.

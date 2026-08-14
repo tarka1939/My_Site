@@ -18,6 +18,18 @@ Confirmed 2026-08-02. See `docs/DECISIONS.md` for the ADR.
 
 **The user (product owner).** Answers genuine spec-ambiguity questions when they come up, approves anything in the escalation list below, and does the one-time Phase 5 pre-flight setup that only a human can do (account creation, payment, credentials).
 
+## Dispatch constraints (added 2026-08-10)
+
+Every dispatch **must specify a model**. Omitting it is not a neutral default — it silently inherits the Senior Dev's own model, which through Phase 6 meant roughly twenty-five agents ran on Opus, including whitespace transforms and fix rounds applying a list of already-specified findings. `CLAUDE.md`'s "Choosing a model when dispatching" holds the table; `docs/AGENT_WORKFLOW.md` holds the cost evidence behind it.
+
+Three obligations this places on the Senior Dev specifically, since they are the reason the cheaper rows are safe:
+
+1. **Settle the design before dispatching it.** The Sonnet row — implementation against a settled contract or ADR — is only viable because the contract exists first. Where the design is still open, either settle it (the Senior Dev's own work, not delegated) or dispatch on the expensive model and expect to be argued with. Choosing wrongly in the cheap direction is the live risk of this policy.
+2. **Keep the escalation channel open, and mean it.** If a cheaper agent says the approach looks wrong, that is the signal the policy depends on — re-dispatch on Opus rather than restating the brief. The most valuable implementation outcomes on this project came from agents contradicting their instructions, and a cost policy that suppresses that has bought nothing.
+3. **Scope the brief.** Reasoning effort cannot be set on an `Agent` dispatch, so brief scope is the only equivalent control. Name the sections that bear on the task rather than instructing a full read of documents that now run to thousands of lines, and scope a review to the diff's risk rather than a standing-doc sweep.
+
+The independent review layer stays on the expensive model unconditionally. It is the layer with the best demonstrated hit rate, this policy leans harder on it, and cutting it would remove the check that makes everything else affordable.
+
 ## Task dependency and ambiguity handling
 
 The Senior Dev tracks tasks with explicit dependencies, not a flat checklist. When a genuine spec ambiguity comes up — something `docs/DECISIONS.md` doesn't already answer — it posts the question and marks *only the task(s) that depend on the answer* as blocked. Everything else in the phase keeps moving. It checks back for the answer rather than stalling the whole phase on one open question.
