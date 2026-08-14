@@ -85,6 +85,26 @@ describe('SeoService', () => {
     expect(content('meta[property="og:description"]')).toBe('STATIC SITE DESCRIPTION');
   });
 
+  it('captures a static description full of quotes and markup as its fallback, intact', () => {
+    // index.html's description is admin-authored prose and can legitimately contain the characters
+    // that terminate an HTML attribute. This asserts the capture survives them -- and doubles as
+    // the guard on seedStaticSeoTags, which builds the seeded tags with setAttribute: interpolated
+    // into markup instead, the first quote here would end the attribute and the seeded head would
+    // quietly be something other than what this test asked for.
+    const nasty = 'He said "hi" & <script>alert(1)</script> — 5 < 6';
+    const scriptsBefore = document.querySelectorAll('script').length;
+    seedStaticTags(nasty);
+    const seo = createService();
+
+    expect(content('meta[name="description"]')).toBe(nasty);
+    expect(document.querySelectorAll('script').length).toBe(scriptsBefore);
+
+    seo.applyPage({ description: 'A specific project.' });
+    seo.applyPage({ title: 'My Site - Contact' });
+
+    expect(content('meta[name="description"]')).toBe(nasty);
+  });
+
   it('falls back to the built-in description only when the document declares none', () => {
     // No seeded tags: the harness page has no description, which is the only case the constant is
     // for. It exists so tests and any non-index.html host still get a sentence rather than ''.

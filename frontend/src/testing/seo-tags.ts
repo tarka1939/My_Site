@@ -1,3 +1,5 @@
+import { SITE_NAME, SITE_TITLE } from '../app/core/seo/site-meta';
+
 /**
  * Test-only helpers for reading and resetting the SEO meta tags in the document head.
  *
@@ -72,17 +74,32 @@ export function canonicalHref(): string | null {
  * Seeds the subset of `index.html`'s static tags that the runtime overwrites, so replacement can be
  * tested against the real starting state rather than an empty head. The unit-test harness page is
  * not `index.html`, so nothing else puts them there.
+ *
+ * Built with `createElement`/`setAttribute` rather than a template string and `insertAdjacentHTML`.
+ * Two reasons, and the first is not hypothetical here: `description` is a parameter, and these same
+ * suites deliberately exercise a description containing `"`, `<` and `<script>`. Interpolated into
+ * markup, the first quote ends the attribute and the rest becomes elements -- so the seeded state
+ * would silently be something other than what the test asked for, and the failure would surface
+ * somewhere else entirely. Second, `setAttribute` is exactly how `Meta` writes these tags, so what
+ * is seeded matches what the code under test produces instead of merely resembling it.
  */
 export function seedStaticSeoTags(description = 'STATIC SITE DESCRIPTION'): void {
-  document.head.insertAdjacentHTML(
-    'beforeend',
-    `<meta name="description" content="${description}">
-     <meta property="og:type" content="website">
-     <meta property="og:title" content="My Site — project portfolio">
-     <meta property="og:description" content="${description}">
-     <meta property="og:url" content="https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/">
-     <meta name="twitter:card" content="summary">
-     <meta name="twitter:title" content="My Site — project portfolio">
-     <meta name="twitter:description" content="${description}">`,
-  );
+  const staticTags: ReadonlyArray<readonly [key: 'name' | 'property', value: string, content: string]> = [
+    ['name', 'description', description],
+    ['property', 'og:type', 'website'],
+    ['property', 'og:site_name', SITE_NAME],
+    ['property', 'og:title', SITE_TITLE],
+    ['property', 'og:description', description],
+    ['property', 'og:url', 'https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/'],
+    ['name', 'twitter:card', 'summary'],
+    ['name', 'twitter:title', SITE_TITLE],
+    ['name', 'twitter:description', description],
+  ];
+
+  for (const [key, value, content] of staticTags) {
+    const tag = document.createElement('meta');
+    tag.setAttribute(key, value);
+    tag.setAttribute('content', content);
+    document.head.appendChild(tag);
+  }
 }
