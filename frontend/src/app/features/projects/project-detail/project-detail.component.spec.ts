@@ -276,12 +276,10 @@ describe('ProjectDetailComponent', () => {
     expect(seoContent('meta[name="robots"]')).toBe(NOINDEX);
   });
 
-  it('leaves a successfully loaded project indexable', () => {
-    const fixture = TestBed.createComponent(ProjectDetailComponent);
-    fixture.detectChanges();
-
-    expect(seoTagCount('meta[name="robots"]')).toBe(0);
-  });
+  // ('leaves a successfully loaded project indexable' used to sit here, asserting that no robots
+  // tag existed after a load that never writes one -- it passed with the whole success path
+  // deleted. The transition it was reaching for needs the real router, so it now lives in the
+  // block below as 'clears the noindex ... when the next project loads'.)
 
   it('sets loading on gallery images before src, not after it', () => {
     // Asserting the final attribute values is not enough: `[attr.loading]="..."` placed after
@@ -411,5 +409,25 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     expect(document.title).toBe('My Site - Bee');
     expect(seoContent('meta[name="description"]')).toBe('B description.');
     expect(seoTagCount('meta[name="description"]')).toBe(1);
+  });
+
+  it('clears the noindex from a project that failed to load when the next project loads', async () => {
+    // Replaces a test that asserted a robots tag was absent on a path that never set one, so it
+    // passed with the success path deleted. This drives the transition the component's own comment
+    // relies on: the failed load marks the page noindex, and the next navigation must undo it --
+    // and the project that does load must actually describe itself, or the first two assertions
+    // would pass on a component that did nothing at all.
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/projects/gone');
+    requestFor('gone').error(new Error('404'));
+    expect(seoContent('meta[name="robots"]')).toBe(NOINDEX);
+
+    await harness.navigateByUrl('/projects/p1');
+    resolve('p1', { title: 'Equalizer', description: 'A DSP project' });
+
+    expect(seoTagCount('meta[name="robots"]')).toBe(0);
+    expect(document.title).toBe('My Site - Equalizer');
+    expect(seoContent('meta[name="description"]')).toBe('A DSP project');
   });
 });
