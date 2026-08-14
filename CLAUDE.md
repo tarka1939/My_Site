@@ -39,25 +39,28 @@ Worth fixing at the root too: if you own the machine, get the main checkout back
 
 ## Choosing a model when dispatching
 
-Added 2026-08-10, after a day in which no dispatch ever passed `model`, so every agent silently inherited the Senior Dev's own — including whitespace transforms and rounds that applied an already-written list of fixes. The defaults now live in `.claude/agents/*.md` frontmatter, which is the durable fix; a `model` argument on the dispatch overrides them.
+Added 2026-08-10, after a day in which no dispatch ever passed `model`, so every agent silently inherited the Senior Dev's own — including a whitespace transform and a round that applied an already-written list of fixes. Defaults live in `.claude/agents/*.md` frontmatter; a `model` argument on the dispatch overrides them.
 
-**The question that picks the model is not how hard the work looks — it is whether you can write the acceptance criteria out in advance.**
+**The boundary is genuinely hard, and two attempts at a clean test have already failed.** "Is the contract settled" failed because the best pushback on this project happened *against* a settled ADR. "Can you write the acceptance criteria in advance" failed for the same case — the criteria *were* written; the agent refused because snapping dates contradicted the round-trip requirement in that same brief. Issue #86 named a mechanism (`line-clamp`) that turned out to be half a fix; the `NgOptimizedImage` rejection came from reading library source nobody had asked to be read.
 
-| If… | Model |
+The common thread in all three is an agent judging whether **doing what was asked would achieve what was wanted** — and that is not predictable from the brief, because if you could predict it you would have written a better brief.
+
+So the rule is a narrow allowlist rather than a test, and it errs expensive:
+
+| Work | Model |
 |---|---|
-| You could not write the acceptance criteria in advance — the work requires judgement the brief cannot pre-specify | **Opus** |
-| Reviewing a PR cold | **Opus** |
-| The brief fully specifies what "done" looks like, and the design is already settled | **Sonnet** |
-| Touching auth, concurrency, shared mutable state, or a migration — regardless of how specified the task is | **Opus** (see the Backend correctness checklist) |
-| Purely mechanical: reformatting, transcription, a rename with a known target | **Haiku** |
+| Reviewing a PR cold | **Opus** — never cheapen this |
+| Anything touching auth, concurrency, shared mutable state, or a migration | **Opus**, regardless of how specified it looks |
+| Writing or changing application code, by default | **Opus** |
+| Applying a fix list where every item names the file and the change | **Sonnet** |
+| Running a gate and reporting real output | **Sonnet** — not cheaper; the seed-verification agent's value was refusing to claim an unmet gate |
+| Purely mechanical with a known target: reformatting, transcription, a rename | **Haiku** |
 
-That test matters because "settled contract" alone does not work. The most valuable pushback on this project — a frontend agent refusing to snap picked dates to a storage convention, because doing so would silently rewrite stored data — happened *against a settled ADR*. What made it Opus-shaped was that nobody had written "and don't corrupt existing rows" into the brief.
-
-**Escalate on doubt, stop on repetition.** If a cheaper agent reports the approach looks wrong, re-dispatch on Opus rather than restating the brief — that channel is the point. Repeated failure is different: `docs/AUTONOMOUS_WORKFLOW.md`'s escalation triggers already say 3+ failed attempts at the same thing stop and go to the user, and that rule is unchanged. A third failure is a signal about the task, not about the model.
+**Escalate on doubt, stop on repetition.** If a cheaper agent reports the approach looks wrong, re-dispatch on Opus rather than restating the brief — that channel is the point of the allowlist being narrow. Repeated failure is different: `docs/AUTONOMOUS_WORKFLOW.md`'s escalation triggers already say 3+ failed attempts at the same thing stop and go to the user, and that rule is unchanged. A third failure is a signal about the task, not the model.
 
 **A resume cannot be made cheaper.** `SendMessage` has no model parameter, so continuing a terminated agent keeps whatever it started on. When those rules conflict, resuming wins: restarting cheaply throws away the context the resume rule exists to preserve.
 
-**Scope the brief, and mean it.** Reasoning effort and model both come from the agent definition; brief scope is the part you control per dispatch, and it is not free. Name the sections that bear on the task instead of instructing a full read of files that now run to thousands of lines, and scope a review to the diff's risk rather than a standing-doc sweep. The `.claude/agents/*.md` definitions carry this instruction so it applies whether or not a brief repeats it.
+**Scope the brief, and mean it.** Model comes from the agent definition, so it is set once rather than remembered. Brief scope is the part that is genuinely per-task, and it is not free — name the sections that bear on the work instead of instructing a full read of files that now run to thousands of lines, and scope a review to the diff's risk rather than a standing-doc sweep. Note `CLAUDE.md` itself is injected into every dispatch regardless, so its own length is a cost paid on every agent and not something a brief can opt out of.
 
 ## When a dispatched agent dies mid-task
 
