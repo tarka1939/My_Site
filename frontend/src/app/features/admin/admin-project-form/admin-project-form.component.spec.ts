@@ -318,7 +318,9 @@ describe('AdminProjectFormComponent', () => {
       // project's data is a wipe waiting to be saved, so it is not offered at all.
       expect(host.querySelector('#project-title')).toBeNull();
       expect(host.querySelector('form')).toBeNull();
-      expect(host.querySelector('[role="alert"]')?.textContent?.trim()).toBeTruthy();
+      expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+        'Could not load this project',
+      );
       // The two ways out stay available: retry, and the back link that is always on the page.
       expect(host.querySelector('.load-error button')).not.toBeNull();
       expect(host.querySelector('a[href="/admin/projects"]')).not.toBeNull();
@@ -339,6 +341,27 @@ describe('AdminProjectFormComponent', () => {
 
       expect(updateProject).not.toHaveBeenCalled();
       expect(createProject).not.toHaveBeenCalled();
+    });
+
+    it('tells the admin to log in again when the load fails with a 401', () => {
+      // errorInterceptor only logs out and redirects while auth.isLoggedIn() is still true, and
+      // that is a wall-clock check on expiresAt. A token that expired while this page sat open --
+      // one of the triggers issue #92 names -- fails that check before the 401 arrives, so nothing
+      // redirects and "Try again" would fail identically for as long as the admin keeps pressing.
+      getProject.mockReturnValueOnce(throwError(() => ({ ...LOAD_FAILURE, status: 401 })));
+      editExistingProject();
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const message = host.querySelector('.load-error [role="alert"]')?.textContent ?? '';
+      expect(message).toContain('Log in again');
+      expect(message).not.toContain('Could not load this project');
+      // The escape route the message points at has to exist.
+      expect(host.querySelector('a[href="/admin/projects"]')?.textContent).toContain(
+        'Back to projects',
+      );
     });
 
     it('ignores a second retry while the first is still in flight', () => {

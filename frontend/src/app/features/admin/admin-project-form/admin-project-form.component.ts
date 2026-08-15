@@ -170,13 +170,19 @@ export class AdminProjectFormComponent {
         this.loadError.set(null);
         this.loading.set(false);
       },
-      error: () => {
-        // No notifications.error() here on purpose: errorInterceptor already toasts every
-        // non-field error, and on a 401 it also logs out and redirects to the login page. The
-        // missing piece was never the banner -- it was that the form stayed rendered and saveable
-        // over data it never loaded.
+      error: (problem: ApiProblem) => {
+        // No notifications.error() here on purpose: errorInterceptor already toasts every non-field
+        // error. It also logs out and redirects on a 401 -- but only while auth.isLoggedIn() is
+        // still true, and that is a wall-clock check on the token's expiresAt. A token that simply
+        // expired while this page sat open, one of the triggers this guard exists for, makes
+        // isLoggedIn() false before the 401 ever arrives: nothing redirects, and every retry fails
+        // identically. Say that instead of offering the admin the same dead end again. Leaving is
+        // what recovers, because navigating re-runs authGuard. The interceptor's side of this is
+        // issue #108, not this component's business.
         this.loadError.set(
-          'Could not load this project. Nothing has been changed -- try again, or go back to the project list.',
+          problem?.status === 401
+            ? 'Your admin session has expired. Log in again to edit this project -- "Back to projects" above will take you there.'
+            : 'Could not load this project. Nothing has been changed -- try again, or go back to the project list.',
         );
         this.loading.set(false);
       },
