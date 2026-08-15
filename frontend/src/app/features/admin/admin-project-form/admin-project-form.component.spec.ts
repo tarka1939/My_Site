@@ -756,6 +756,9 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('#link-url-1')?.getAttribute('aria-invalid')).toBe('true');
       expect(host.querySelector('#link-url-0-error')).toBeNull();
       expect(host.querySelector('#link-url-0')?.getAttribute('aria-invalid')).toBeNull();
+      // Row 1 claimed the key, so the catch-all must not say it a second time. The scalar half of
+      // this is covered above; without the row half, every row message appears twice.
+      expect(host.querySelector('.form-error')).toBeNull();
     });
 
     it("prefers this form's own message over the server's for the same row control", async () => {
