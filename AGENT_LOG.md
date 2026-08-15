@@ -306,6 +306,44 @@ placeholder origin, and both listed routes were verified against `app.routes.ts`
   require a build-time API call, which is the same coupling the ADR defers alongside prerendering. A
   reader finding a two-entry sitemap should be able to see it was a decision.
 
+**Review round (added after the cold review of PR #103):**
+
+The review found a real defect, and its shape is the interesting part: **a latent bug made harmful by
+an unrelated change.** `project-detail.component.ts` subscribed to `paramMap` and nested a
+`getProject(...)` subscription inside it, with no `switchMap` and no teardown. That leak predated this
+work and was harmless, because the callbacks wrote to component-local signals that were simply
+discarded on destroy. This change made those same callbacks write to `document.head`, which outlives
+the component. Nothing in the change was wrong in isolation, and nothing in the old code was visibly
+broken — the defect existed only in the combination.
+
+The reviewer proved it against the real component and the real router rather than reasoning from the
+code: navigating away from an in-flight request that then fails leaves `robots: noindex, nofollow` on
+the **public landing page**, and an out-of-order response leaves an abandoned project's title and
+description on the current one. Fixed with `switchMap` plus `takeUntilDestroyed`, and confirmed by
+reverting the fix and watching the three new assertions fail with exactly that output.
+
+Two smaller findings worth keeping:
+
+1. **A `Disallow` in `robots.txt` defeats a `noindex` on the same path.** Both `/admin` and
+   `/reset-password` were disallowed *and* set `robots: noindex` at runtime, with a comment claiming
+   the tag was what protected them. A compliant crawler that is blocked never fetches the page, so it
+   never reads the tag — the two do not stack. Kept both, but the comment now says which one does the
+   work and why: the app is client-rendered, so every path returns the same `index.html`, and the
+   `Disallow` is the only half a non-JS crawler can act on. The tag earns its place for a JS-executing
+   crawler arriving by direct link that ignores `robots.txt`, and for the 404 view, which is not
+   disallowed and so is fetched and read normally.
+2. **A test asserting a tag count of zero on a path that never set one.** It passed with the entire
+   success path deleted. Replaced with a version that fails a project load, asserts the `noindex`,
+   then navigates to a project that loads and asserts both that the tag cleared *and* that the new
+   project's title and description applied — mutation-checked by deleting the describe call.
+
+**Takeaway to add to the ones above:**
+
+- **A latent defect can be activated by a change that is correct on its own terms.** The question to
+  ask when moving state from a component-scoped store to a global one is not "is this write correct"
+  but "what already writes here late, and where does it land now". Nothing in the diff looked wrong;
+  the combination did.
+
 ## 2026-08-10 — Six agents lost mid-task over four days, and a PR that re-committed the bug it documented
 
 **Task given:**
