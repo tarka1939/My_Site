@@ -6,16 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Never add "Co-Authored-By" lines to commits. Do not include Claude attribution in commit messages, PR descriptions, or any git metadata.
 
 ## PR conventions
-Every PR needs the metadata below set, not just opened against `main` — plus one rule about closing keywords that is not metadata but belongs beside them:
-- **Issues closed:** reference them in the PR body with GitHub's closing keywords, **one keyword per issue on its own line** (`Closes #20`, newline, `Closes #21`, ...) — not just prose, and not a comma-separated list after a single keyword (`Closes #20, #21`), which despite GitHub's own docs only actually links/auto-closes the *first* issue in practice (confirmed via `gh api graphql` querying `closingIssuesReferences` on PR #80 — the rendered PR body looks identical either way, so this fails silently). Verify with that same GraphQL query before trusting a multi-issue PR actually linked everything, not just by eyeballing the body text.
-- **A closing keyword fires from anywhere it appears — including prose that is explaining or denying it** (learned 2026-08-10). PR #100 carried no intentional keyword and opened by stating it did not close the issue; a later sentence describing what *would* finish it used the word "closes" before the issue number, and merging closed the issue. Three things this cost a second round to discover:
-  - **Inline code neutralises it; blockquoting does not.** Verified on PR #101, which contained one of each: the rendered body carries exactly one `issue-keyword` marker, for the blockquoted occurrence. A backticked keyword produces a plain `<code>` element and no reference — this PR's own body relies on that. So when you must write a keyword next to an issue number, put it in backticks.
-  - **`closingIssuesReferences` only sees the PR description.** GitHub documents commit messages as a closing route too, and this repo has no natural experiment separating the two — every keyword-bearing commit on `main` landed in a PR whose body carried the same link. So treat a keyword in a commit message as capable of closing an issue *and* invisible to the standard check: scan messages as well as the body.
-  - The keywords are `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`, `resolve`/`resolves`/`resolved`. When writing *about* an issue rather than closing it, avoid those nine words near a `#N` — "is what completes #49" is safe; so is naming the issue with no verb before it.
 
-  So: run the GraphQL query before merging a PR that is meant **not** to close something, not only one that is, and scan commit messages too.
-- **Milestone:** set to the matching phase (e.g. "Phase 2"). Milestone numbers aren't the same as phase numbers — look them up with `gh api repos/tarka1939/My_Site/milestones --jq '.[] | "\(.number): \(.title)"'` rather than guessing, then set via the issue/PR update call (PRs share the Issues API for this).
-- **Project board:** add the PR to project #1 ("My Site") and set its Status field (`Todo`/`In Progress`/`In Review`/`Done`/`Canceled`) — `In Review` once the PR is open and ready for review.
+Every PR needs: **issues linked** (one `Closes #N` per line — a comma-separated list silently links only the first), **milestone** (look the number up; it does not match the phase number), and **project board** entry with Status.
+
+Closing keywords fire from *anywhere* in the body, including prose explaining or denying them. Backticks neutralise a keyword; blockquotes do not. `closingIssuesReferences` reads only the PR description, so scan commit messages separately. The keywords are `close`/`fix`/`resolve` and their inflections.
+
+Run `gh api graphql` for `closingIssuesReferences` before merging — including on PRs meant **not** to close anything. See `docs/AGENT_WORKFLOW.md` for the three incidents behind this.
 
 ## Keeping docs current
 Three files need updating together whenever a phase's state changes, not just `AGENT_LOG.md` alone — a repeat mistake in this project specifically, where a fix would get logged in `AGENT_LOG.md` but the other two would go stale:
@@ -26,68 +22,50 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 ## Never quote a working tree without naming its branch
 
-**A path alone is not a reference to anything.** This repo is worked through many checkouts at once — the main checkout plus a worktree per task, several of them detached. `AGENT_LOG.md` means a different file in each, and none of them is reliably `main`. Files from a stale checkout parse fine, grep fine, and are wrong.
+This repo is worked through many checkouts at once and none is reliably `main`. A path alone is not a reference.
 
-- **Resolve content through an explicit ref, never through whatever a directory happens to hold:** `git show <ref>:<path>` — e.g. `git show origin/main:AGENT_LOG.md`, or the branch actually under discussion. Do this for anything that leaves the session: a PR body, a review reply, a doc, a claim to the user. (This repo's remote is named `My_Site`, not `origin` — check with `git remote` rather than assuming either.)
-- **State provenance as a commit, not a branch name.** Use `git rev-parse --short HEAD` **plus** `git status --porcelain`, and report both. A branch name is not enough for two reasons, each of which has already produced a false claim here: `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in a detached worktree (and the PR-review worktrees this project mandates are detached), and a clean-looking branch name says nothing about uncommitted edits sitting on top of it.
-- **Don't cite line numbers in fast-moving files.** `AGENT_LOG.md` has grown by hundreds of lines in a day; a line number is stale before the PR merges. Quote enough text to be searchable instead.
-- **`git fetch` before comparing against any remote-tracking ref**, and don't assume a local branch matches its remote — including `main`. A local `main` here was 85 commits behind the remote while an unrelated branch was only 58 behind, so "just switch to `main`" made things *worse*, not better.
+- Resolve content through an explicit ref: `git show <ref>:<path>`. The remote here is `My_Site`, not `origin`.
+- State provenance as `git rev-parse --short HEAD` **plus** `git status --porcelain`. A branch name is not enough — `--abbrev-ref` returns `HEAD` in the detached worktrees used for review, and says nothing about uncommitted edits.
+- Quote searchable text, not line numbers, in fast-moving files.
+- `git fetch` before comparing against any remote ref, and never assume a local branch matches its remote — including `main`.
 
-Not hypothetical: PR #94 cited a line number as evidence for a factual claim, taken from a checkout sitting on a stale branch — inside a PR whose other half was about stale-branch confusion. PR #95 then shipped guidance whose own prescribed command fails in exactly the worktrees where it matters. Both in `AGENT_LOG.md`'s 2026-08-09 entries. Current per-checkout state and the recommended cleanup live in `docs/AGENT_WORKFLOW.md`, which is the right place for facts that expire.
-
-Worth fixing at the root too: if you own the machine, get the main checkout back onto `main`, or stop treating it as a place to read from.
+Current checkout state and the incidents behind this: `docs/AGENT_WORKFLOW.md`.
 
 ## Choosing a model when dispatching
 
-Added 2026-08-10, after a day in which no dispatch ever passed `model`, so every agent silently inherited the Senior Dev's own — including a whitespace transform and a round that applied an already-written list of fixes. Defaults live in `.claude/agents/*.md` frontmatter; a `model` argument on the dispatch overrides them.
-
-**The boundary is genuinely hard, and two attempts at a clean test have already failed.** "Is the contract settled" failed because the best pushback on this project happened *against* a settled ADR. "Can you write the acceptance criteria in advance" failed for the same case — the criteria *were* written; the agent refused because snapping dates contradicted the round-trip requirement in that same brief. Issue #86 named a mechanism (`line-clamp`) that turned out to be half a fix; the `NgOptimizedImage` rejection came from reading library source nobody had asked to be read.
-
-The common thread in all three is an agent judging whether **doing what was asked would achieve what was wanted** — and that is not predictable from the brief, because if you could predict it you would have written a better brief.
-
-So the rule is a narrow allowlist rather than a test, and it errs expensive:
+Defaults live in `.claude/agents/*.md` frontmatter; a `model` argument overrides them. Two attempts at a clean selection *test* failed against this project's own examples, so this is an allowlist that errs expensive:
 
 | Work | Model |
 |---|---|
-| Reviewing a PR cold | **Opus** — never cheapen this |
-| Anything touching auth, concurrency, shared mutable state, or a migration | **Opus**, regardless of how specified it looks |
+| Cold PR review | **Opus** — never cheapen |
+| Auth, concurrency, shared mutable state, migrations | **Opus**, however specified it looks |
 | Writing or changing application code, by default | **Opus** |
-| Applying a fix list where every item names the file and the change | **Sonnet** |
-| Running a gate and reporting real output | **Sonnet** — not cheaper; the seed-verification agent's value was refusing to claim an unmet gate |
-| Purely mechanical with a known target: reformatting, transcription, a rename | **Haiku** |
+| Applying a fix list naming each file and change | **Sonnet** |
+| Running a gate and reporting real output | **Sonnet** |
+| Mechanical with a known target | **Haiku** |
 
-**Escalate on doubt, stop on repetition.** If a cheaper agent reports the approach looks wrong, re-dispatch on Opus rather than restating the brief — that channel is the point of the allowlist being narrow. Repeated failure is different: `docs/AUTONOMOUS_WORKFLOW.md`'s escalation triggers already say 3+ failed attempts at the same thing stop and go to the user, and that rule is unchanged. A third failure is a signal about the task, not the model.
+**Escalate on doubt, stop on repetition.** A cheaper agent saying the approach looks wrong means re-dispatch on Opus. Three failures at the same thing stops for the user instead — see `docs/AUTONOMOUS_WORKFLOW.md`'s escalation triggers.
 
-**A resume cannot be made cheaper.** `SendMessage` has no model parameter, so continuing a terminated agent keeps whatever it started on. When those rules conflict, resuming wins: restarting cheaply throws away the context the resume rule exists to preserve.
+**A resume keeps its original model** (`SendMessage` has no model parameter), so resuming beats a cheap restart.
 
-**Scope the brief, and mean it.** Model comes from the agent definition, so it is set once rather than remembered. Brief scope is the part that is genuinely per-task, and it is not free — name the sections that bear on the work instead of instructing a full read of files that now run to thousands of lines, and scope a review to the diff's risk rather than a standing-doc sweep. Note `CLAUDE.md` itself is injected into every dispatch regardless, so its own length is a cost paid on every agent and not something a brief can opt out of.
+**Scope briefs.** This file is injected into every dispatch, so its length is charged per agent. Reasoning: `docs/AGENT_WORKFLOW.md`.
 
 ## When a dispatched agent dies mid-task
 
-Added 2026-08-08 after three agents were lost to API/session limits in a single session, and were each salvaged by hand when they should simply have been resumed.
+**Resume it; do not reconstruct its work.** `SendMessage` to the agent's ID continues it with context intact — a fresh `Agent` call starts cold. Verified working after API-error terminations, including across a multi-hour gap.
 
-**Resume the agent; do not reconstruct its work.** `SendMessage` addressed to the agent's ID continues it **with its context intact** — a fresh `Agent` call starts cold and loses everything it knew. The completion notification for a failed agent says so explicitly, and the same task ID can notify more than once for this reason. Waiting for the limit to reset and sending one message beats reverse-engineering intent from a working tree, every time.
+**A dying agent's last message is not a status report** — it is whatever it was mid-sentence on. Treat it as a fragment.
 
-**A dying agent's last message is not a status report.** It is whatever it happened to be saying when the process stopped. Treat it as a fragment, never as a summary of what was completed.
-
-**If you genuinely must salvage, treat the working tree as an unknown intermediate state, not a finished one.** "Died just before committing" and "died in the middle of an experiment" look identical from outside. A real example from 2026-08-07, on PR #83: an agent finished its fixes, then began mutation-testing its own tests — deliberately reintroducing each bug to prove the tests caught it. It died with a mutation still applied. The working tree contained a live, intentional defect sitting directly beneath a comment stating the opposite. Committing that would have shipped the exact bug the tests existed to prevent. What caught it was noticing the code contradicted its own comment and then running the suite; a resume would have avoided the situation entirely, because the agent knew it had a mutation applied and that restoring it was the next step.
-
-**Before salvaging anything, run the tests first, not last.** They are the cheapest available check on whether a working tree is in the state its author intended.
-
-Resumption after an API-error termination is now **verified** in this project: the PR #96 review session and the PR #91 fix session were each terminated by a session limit and each resumed successfully from their own transcripts, one of them after a multi-hour gap. If a resume does come back confused or empty-handed, fall back to salvage, with the discipline above.
+**If you must salvage, treat the tree as an unknown intermediate state and run the tests first.** "Died before committing" and "died mid-experiment" look identical from outside; one salvage here came within a noticed comment-contradiction of committing a deliberate mutation.
 
 ### Commit when a unit of work is done, not when the task is
 
-Added 2026-08-10, after **six** agents were terminated mid-task across 2026-08-07 to 2026-08-10 — five by session limits, the sixth by a monthly spend cap — with their work substantially complete and **uncommitted** every time. All six are named in `AGENT_LOG.md`'s 2026-08-10 entry.
+Six agents were terminated mid-task over 2026-08-07 to 08-10, every one with complete-but-uncommitted work. Resuming restores context, not the working tree — and a spend cap does not reset in hours.
 
-Resuming restores an agent's *context*. It does nothing for an uncommitted working tree, and a spend cap does not reset in hours the way a session limit does — so "resume later" can stop being available at all. Whatever is uncommitted then has to be verified and committed by someone who did not write it, which is slower and riskier: on PR #83 that path came within one noticed contradiction of committing a deliberate mutation.
-
-- **Commit each logically complete change as it passes its own check** — a fix plus its test, a migration plus the code that needs it. Do not batch a task's worth of work into one commit at the end.
-- **Commit before starting anything exploratory** — a mutation test, a spike, a refactor you might abandon. That is when a termination is most expensive, because the tree is then deliberately wrong and only you know it.
-- **Push at natural checkpoints.** Commits on a *named-branch* worktree survive `git worktree remove` — the branch still references them. Commits made in a **detached** worktree (the `--detach` form used for PR review) do not: after removal nothing references them, and they are garbage-collectable. Push if the work matters.
-- **Do not withhold a commit for tidiness.** PR branches land as merge commits rather than squashes, so intermediate commits survive into `main` — a reason to write clear messages, not to batch.
-
-The reciprocal obligation when dispatching: say this explicitly rather than assuming it, and when a resumed agent reports finishing a unit of work, check that it actually committed.
+- Commit each logically complete change as it passes its own check.
+- Commit **before** anything exploratory — a mutation test is when a termination is most expensive.
+- Push at checkpoints: commits survive `git worktree remove` on a named branch, but not in a detached worktree.
+- Do not withhold a commit for tidiness.
 
 ## Project
 
@@ -171,7 +149,7 @@ _Expand this once backend/frontend exist. Skeleton reflects the plan in `PROJECT
 - **SPA routing:** Netlify handles this natively via a `frontend/public/_redirects` file (`/* /index.html 200`) — no GitHub-Pages-style `404.html` copy trick needed. `--base-href` uses the Angular default (`/`), since Netlify serves from root rather than a repo-name subpath.
 - **Contract-first:** `docs/openapi.yaml` is the source of truth for the API and is written before backend or frontend code. The Angular client is generated from it (`openapi-generator-cli`) rather than hand-written — don't add HTTP calls that bypass the generated client.
 - **Backend layering:** package-by-feature, enforced with **Spring Modulith** — not a single layered controller/service/repository split. Initial packages: `project/`, `contact/`. Phase 7 adds `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/` as isolated packages, each self-contained. A Spring Modulith verification test (`ApplicationModules.verify()`) enforces that packages only interact through public APIs or events, not internal classes. Within each package, still keep DTOs at the controller boundary — never return JPA entities directly from controllers.
-- **Error handling:** the centralized exception handler extends Spring's `ResponseEntityExceptionHandler`, not a bare `@RestControllerAdvice` with a broad `@ExceptionHandler(Exception.class)` catch-all. The latter intercepts standard Spring MVC exceptions (malformed request body, wrong HTTP method, unsupported media type) *before* Spring's own correct 4xx mapping ever runs, silently turning all of them into 500s — a real regression shipped and caught during Phase 1 review, see `AGENT_LOG.md` 2026-08-01. A generic catch-all should only ever match what neither the base class nor a more specific handler already covers.
+- **Error handling:** the centralized exception handler extends Spring's `ResponseEntityExceptionHandler`, never a bare `@RestControllerAdvice` with a broad `@ExceptionHandler(Exception.class)`. A catch-all intercepts standard MVC exceptions before Spring's own 4xx mapping runs and silently turns them into 500s. Generic handlers match only what nothing more specific covers.
 - **Cross-feature communication:** Spring `ApplicationEventPublisher` for internal events (e.g. `ProjectCreatedEvent`) — this is what lets Phase 7 extensions (analytics, GitHub sync) react to core CMS actions without being directly coupled to it. Consider `spring-modulith-events` for durable/transactional event publication once this is built (not yet decided).
 - **Async/background jobs:** a dedicated `@Async` task executor bean, provisioned in Phase 1 before anything uses it — the DSP demo (Phase 7d) needs this for non-blocking audio processing.
 - **Feature rollout:** config-based feature flags per extension, so the core CMS can ship live while Phase 7 extensions are still half-built.
@@ -179,7 +157,7 @@ _Expand this once backend/frontend exist. Skeleton reflects the plan in `PROJECT
 - **Frontend:** standalone Angular components, signals for state. No NgRx — confirmed 2026-07-25, this site's state is simple and mostly server-derived (see `docs/DECISIONS.md`). The typed API client (`frontend/src/app/core/api`, generated via `npm run generate:api`) is committed rather than gitignored-and-regenerated-in-CI, so the Netlify build never needs a JVM. A functional `authInterceptor` attaches the admin JWT (from `AuthService`'s signals, not the generated client's own unused `Configuration.credentials.bearerAuth`) and a separate `errorInterceptor` normalizes every failed response into an `ApiProblem` — components branch on `fieldErrors`/`rateLimited` instead of re-parsing RFC 7807 bodies themselves, and non-field errors surface via a global `NotificationService` banner rather than per-component ad hoc handling.
 - **Local dev CORS:** the backend has no CORS config yet (Phase 5 adds it, for the deployed Netlify origin only) — `ng serve` works around this with a dev-server proxy (`frontend/proxy.conf.json` forwards `/api/*` to `localhost:8080`) rather than requiring a backend change just for local dev. `environment.development.ts`'s `apiBaseUrl` is deliberately a relative path (`/api/v1`) for this to work; `environment.ts` (prod) stays an absolute URL.
 - **Auth:** JWT admin login guarding write endpoints, 1 hour token expiry, password reset via a transactional email API (Resend) — confirmed in scope, see the "Auth scope decision" in `SPEC.md` and `docs/DECISIONS.md`.
-- **Security defaults:** any interim or placeholder security config (before Phase 2's real JWT auth lands) must fail closed, never open — deny by default, permit only under an explicitly-named allow case (e.g. an active `dev` profile), not the reverse. Learned the hard way in Phase 1: an inverted `@Profile("!prod")` predicate meant "permit everything" was the default for *any* profile that wasn't literally `prod`, including no profile set at all — see `AGENT_LOG.md`'s 2026-08-01 "`SecurityConfig` failed open by default, not closed" entry for the full incident and fix.
+- **Security defaults:** security config fails closed, never open — deny by default, permit only under an explicitly-named allow case, never the reverse. An inverted `@Profile("!prod")` predicate once made permit-all the default for every profile including none; see `AGENT_LOG.md` 2026-08-01.
 
 ## Backend correctness checklist
 
