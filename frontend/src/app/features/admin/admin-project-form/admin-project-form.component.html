@@ -120,8 +120,8 @@
            the model holds the survivor's -- which is what a PUT would then send. Tracking the
            FormGroup identity makes the removed row's DOM go with it. -->
       @for (link of form.controls.links.controls; track link) {
-        @let labelError = rowError(link.controls.label, 'Link label', 'links[' + $index + '].label');
-        @let urlError = rowError(link.controls.url, 'Link URL', 'links[' + $index + '].url');
+        @let labelError = rowError(link.controls.label, 'Link label', linkFieldKey($index, 'label'));
+        @let urlError = rowError(link.controls.url, 'Link URL', linkFieldKey($index, 'url'));
         <div class="repeatable-group" [formGroupName]="$index">
           <div class="repeatable-row">
             <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
@@ -162,7 +162,7 @@
       <!-- track image, for the same reason as the links above: [formControlName]="$index" is
            positional, so an index-tracked row survives a removal still bound to its old value. -->
       @for (image of form.controls.images.controls; track image) {
-        @let imageError = rowError(image, 'Image URL', 'images[' + $index + ']');
+        @let imageError = rowError(image, 'Image URL', imageFieldKey($index));
         <div class="repeatable-group">
           <div class="repeatable-row">
             <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
@@ -185,6 +185,22 @@
       }
       <button type="button" (click)="addImage()">+ Add image</button>
     </fieldset>
+
+    <!-- Anything the server rejected that no field slot above claimed. Without this a key the form
+         does not enumerate -- `links` and `images` carry collection-level limits reported under the
+         bare name -- is dropped silently, because errorInterceptor stays quiet for a 400 that
+         carries field errors. The set is computed by subtracting the slots from the response, so it
+         cannot fall behind the fields that exist. -->
+    @if (unclaimedErrors().length > 0) {
+      <div class="form-error" role="alert">
+        <p>The server rejected this save:</p>
+        <ul>
+          @for (error of unclaimedErrors(); track error.field) {
+            <li><span class="form-error-field">{{ error.field }}</span> {{ error.message }}</li>
+          }
+        </ul>
+      </div>
+    }
 
     <button type="submit" [disabled]="submitting()">
       {{ submitting() ? 'Saving…' : 'Save project' }}

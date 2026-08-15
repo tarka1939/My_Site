@@ -96,6 +96,54 @@ function removeRow(fixture: ComponentFixture<AdminProjectFormComponent>, index: 
   fixture.detectChanges();
 }
 
+// Async variants for the tests added after this point: real DOM events plus whenStable(), rather
+// than detectChanges(), which force-refreshes a view whether or not anything marked it dirty.
+async function clickAddRow(
+  fixture: ComponentFixture<AdminProjectFormComponent>,
+  array: 'links' | 'images',
+): Promise<void> {
+  const host = fixture.nativeElement as HTMLElement;
+  host.querySelector<HTMLButtonElement>(`fieldset[formarrayname="${array}"] > button`)?.click();
+  await fixture.whenStable();
+}
+
+async function clickRemoveRow(
+  fixture: ComponentFixture<AdminProjectFormComponent>,
+  array: 'links' | 'images',
+  index: number,
+): Promise<void> {
+  const host = fixture.nativeElement as HTMLElement;
+  host
+    .querySelectorAll<HTMLButtonElement>(
+      `fieldset[formarrayname="${array}"] .repeatable-row button`,
+    )
+    [index]?.click();
+  await fixture.whenStable();
+}
+
+async function type(
+  fixture: ComponentFixture<AdminProjectFormComponent>,
+  selector: string,
+  value: string,
+): Promise<void> {
+  const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(selector);
+  if (!input) {
+    throw new Error(`no input matching ${selector}`);
+  }
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
+  await fixture.whenStable();
+}
+
+/** Save the way the admin does -- submit the form, rather than calling submit() directly. */
+async function save(fixture: ComponentFixture<AdminProjectFormComponent>): Promise<void> {
+  const host = fixture.nativeElement as HTMLElement;
+  host
+    .querySelector('form')
+    ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await fixture.whenStable();
+}
+
 function errorTextFor(host: HTMLElement, inputId: string): string | null {
   const field = host.querySelector(`#${inputId}`)?.closest('.field');
   return field?.querySelector('.field-error')?.textContent?.trim() ?? null;
@@ -649,23 +697,94 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('#project-tags')?.getAttribute('aria-invalid')).toBe('true');
     });
 
-    it('keeps an indexed row key off an unrelated field', () => {
-      // links[0].label is a row's own key. The tags fallback matches indexed leaf keys only, so a
-      // link violation must not be dragged into the tags slot.
+    it('keeps an indexed key off every field but the one it names', async () => {
+      // The fixture has to be a key that survives the leaf test, or the field-prefix half of the
+      // rule is never reached: an earlier version of this test used links[0].label, which fails
+      // endsWith(']') first, so deleting the prefix scoping altogether left it green. images[0]
+      // ends in ']' exactly as tags[2] does, and without scoping it lands in tags, title,
+      // description and both dates at once.
       createProject.mockReturnValue(
-        throwError(() => validationProblem('links[0].label', 'label must be at most 50 characters')),
+        throwError(() => validationProblem('images[0]', 'must be at most 500 characters')),
       );
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
-      fillValidProjectWithRows(fixture);
-      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
-      expect(errorTextFor(host, 'project-tags')).toBeNull();
+      expect(host.querySelector('#image-0-error')?.textContent?.trim()).toBe(
+        'must be at most 500 characters',
+      );
+      for (const id of [
+        'project-tags',
+        'project-title',
+        'project-description',
+        'project-started-on',
+        'project-completed-on',
+      ]) {
+        expect(errorTextFor(host, id)).toBeNull();
+      }
+    });
+
+    it('maps each row to the index it renders at', async () => {
+      // Every other row test uses a single row, where links[0] and "the row's key" are the same
+      // string -- hardcoding both lookups to index 0 passed all of them.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('links[1].url', 'must be a valid URL')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://a.example/one');
+      await type(fixture, '#link-label-1', 'Docs');
+      await type(fixture, '#link-url-1', 'https://b.example/two');
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#link-url-1-error')?.textContent?.trim()).toBe(
+        'must be a valid URL',
+      );
+      expect(host.querySelector('#link-url-1')?.getAttribute('aria-invalid')).toBe('true');
+      expect(host.querySelector('#link-url-0-error')).toBeNull();
+      expect(host.querySelector('#link-url-0')?.getAttribute('aria-invalid')).toBeNull();
+    });
+
+    it("prefers this form's own message over the server's for the same row control", async () => {
+      // rowError documents client-first precedence, and nothing pinned it: no test had both
+      // messages available on one control at once. Inverting the two passed everything.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('links[0].label', 'must be at most 50 characters')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://a.example/one');
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#link-label-0-error')?.textContent?.trim()).toBe(
+        'must be at most 50 characters',
+      );
+
+      // Now empty the label. The server's complaint about the old value is still in fieldErrors,
+      // and the admin needs to be told the thing that is true *now*.
+      await type(fixture, '#link-label-0', '');
+
+      expect(host.querySelector('#link-label-0-error')?.textContent?.trim()).toBe(
+        'Link label is required',
+      );
     });
 
     it('gives startedOn the same message wiring as completedOn', () => {
@@ -690,6 +809,138 @@ describe('AdminProjectFormComponent', () => {
       const described = describedBy.map((ref) => host.querySelector(`#${ref}`)?.textContent?.trim());
       expect(described.every((text) => !!text)).toBe(true);
       expect(described.join(' ')).toContain('must not be in the future');
+    });
+  });
+
+  describe('server errors that no field slot claims', () => {
+    it('shows an unclaimed key next to Save rather than dropping it', async () => {
+      // links and images carry collection-level limits (at most 10 and 20), reported under the bare
+      // name rather than an indexed one -- eleven clicks on "+ Add link" reaches that from the UI.
+      // No slot matches it, and errorInterceptor stays quiet for any 400 carrying field errors, so
+      // before this the save was rejected and the form said nothing at all.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('links', 'size must be between 0 and 10')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      const region = host.querySelector('.form-error[role="alert"]');
+      expect(region?.textContent).toContain('size must be between 0 and 10');
+      expect(region?.textContent).toContain('links');
+    });
+
+    it('does not repeat a message that a field slot already shows inline', async () => {
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('title', 'must not be blank')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('must not be blank');
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('sends an element sub-property to the catch-all, not to the collection slot', async () => {
+      // tags[0] belongs to the tags slot, because the form edits tags as one comma-separated
+      // control. A key naming a *property* of an element does not -- it would be rendered against a
+      // control that is not the one at fault -- which is what the trailing ] in claims() decides.
+      // It still has to surface, and the catch-all is what makes that true without a slot for it.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('tags[0].name', 'must not be blank')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-tags')).toBeNull();
+      expect(host.querySelector('.form-error')?.textContent).toContain('must not be blank');
+    });
+  });
+
+  describe('server errors once the rows move', () => {
+    /** Two filled link rows and a rejection keyed at `field`. */
+    async function twoRowsRejectedAt(
+      fixture: ComponentFixture<AdminProjectFormComponent>,
+      field: string,
+    ): Promise<void> {
+      createProject.mockReturnValue(
+        throwError(() => validationProblem(field, 'must be a valid URL')),
+      );
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://a.example/one');
+      await type(fixture, '#link-label-1', 'Docs');
+      await type(fixture, '#link-url-1', 'https://b.example/two');
+      await save(fixture);
+    }
+
+    it('does not migrate a row message onto the row that takes its place', async () => {
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      await twoRowsRejectedAt(fixture, 'links[0].url');
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#link-url-0-error')).not.toBeNull();
+
+      await clickRemoveRow(fixture, 'links', 0);
+
+      // Row B is now index 0. The verdict was about row A, which no longer exists, so row B must
+      // not inherit it -- it would be flagged for a URL it never had.
+      expect(host.querySelector<HTMLInputElement>('#link-url-0')?.value).toBe(
+        'https://b.example/two',
+      );
+      expect(host.querySelector('#link-url-0-error')).toBeNull();
+      expect(host.querySelector('#link-url-0')?.getAttribute('aria-invalid')).toBeNull();
+    });
+
+    it('does not keep a verdict about a row index that no longer exists', async () => {
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      await twoRowsRejectedAt(fixture, 'links[1].url');
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#link-url-1-error')).not.toBeNull();
+
+      await clickRemoveRow(fixture, 'links', 0);
+
+      // links[1] now names nothing. Left in place it stops matching any row and resurfaces in the
+      // catch-all as a complaint about a row the admin cannot see or fix.
+      expect(host.querySelector('.form-error')).toBeNull();
+      expect(host.querySelectorAll('.field-error')).toHaveLength(0);
+    });
+
+    it('drops a collection-level verdict once the collection changes', async () => {
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('links', 'size must be between 0 and 10')),
+      );
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.form-error')).not.toBeNull();
+
+      await clickAddRow(fixture, 'links');
+
+      // A size verdict about the old list is not about the new one.
+      expect(host.querySelector('.form-error')).toBeNull();
     });
   });
 

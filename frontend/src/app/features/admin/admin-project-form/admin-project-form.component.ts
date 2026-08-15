@@ -38,6 +38,21 @@ const TAGS_MESSAGES: Record<string, string> = {
   required: 'At least one tag is required',
 };
 
+/**
+ * Whether a server field key belongs to the slot for `field`. One rule, used twice: serverError()
+ * finds a slot's message with it, and unclaimedErrors() subtracts with it -- so a key can never be
+ * both rendered inline and repeated in the catch-all, and can never be claimed by a slot that does
+ * not render it.
+ *
+ * `tags[2]` belongs to the tags slot, because this form edits tags as one comma-separated control
+ * and that is the only place such a message can go. `links[0].label` does not belong to any scalar
+ * slot -- it names an element's property, which the row renders itself -- and that is what the
+ * trailing `]` check distinguishes.
+ */
+function claims(field: string, key: string): boolean {
+  return key === field || (key.startsWith(`${field}[`) && key.endsWith(']'));
+}
+
 function messageFor(errors: ValidationErrors | null, messages: Record<string, string>): string | null {
   for (const key of Object.keys(errors ?? {})) {
     if (messages[key]) {
@@ -99,19 +114,56 @@ export class AdminProjectFormComponent {
     const violation = validateProjectPeriod(this.startedOnValue(), this.completedOnValue());
     return violation === null ? null : PROJECT_PERIOD_MESSAGES[violation];
   });
-  protected readonly completedOnError = computed(
-    () => this.periodError() ?? this.serverError('completedOn') ?? null,
-  );
-  /** No client validators of its own -- this slot exists so a server 400 on startedOn has a home. */
-  protected readonly startedOnError = computed(() => this.serverError('startedOn'));
+  /**
+   * Every scalar field with a slot of its own, and the message that slot shows. Declared once and
+   * used twice: the template renders these, and unclaimedErrors() subtracts exactly these keys. A
+   * field therefore cannot be given a slot without also being taken out of the catch-all, which is
+   * what keeps the catch-all honest as the form grows -- a hand-copied second list would not.
+   */
+  private readonly scalarSlots = {
+    title: this.controlError(this.form.controls.title, 'title', TITLE_MESSAGES),
+    description: this.controlError(
+      this.form.controls.description,
+      'description',
+      DESCRIPTION_MESSAGES,
+    ),
+    tags: this.controlError(this.form.controls.tags, 'tags', TAGS_MESSAGES),
+    // No client validators of its own -- this slot exists so a server 400 on startedOn has a home.
+    startedOn: computed(() => this.serverError('startedOn')),
+    completedOn: computed(() => this.periodError() ?? this.serverError('completedOn')),
+  } satisfies Record<string, Signal<string | null>>;
 
-  protected readonly titleError = this.controlError(this.form.controls.title, 'title', TITLE_MESSAGES);
-  protected readonly descriptionError = this.controlError(
-    this.form.controls.description,
-    'description',
-    DESCRIPTION_MESSAGES,
-  );
-  protected readonly tagsError = this.controlError(this.form.controls.tags, 'tags', TAGS_MESSAGES);
+  protected readonly titleError = this.scalarSlots.title;
+  protected readonly descriptionError = this.scalarSlots.description;
+  protected readonly tagsError = this.scalarSlots.tags;
+  protected readonly startedOnError = this.scalarSlots.startedOn;
+  protected readonly completedOnError = this.scalarSlots.completedOn;
+
+  /**
+   * Server field errors that no slot on this form claimed, shown together next to Save.
+   *
+   * Each round of this fix enumerated one more key and was caught out by the next: `links` and
+   * `images` carry collection-level constraints (at most 10 and 20) whose violations are reported
+   * under the bare name, and eleven clicks on "+ Add link" reaches that through the UI. Since
+   * errorInterceptor deliberately stays quiet for any 400 that carries field errors, an unmatched
+   * key means a save that was rejected and said nothing. This is the backstop that makes that
+   * unreachable whatever the server decides to call a field.
+   *
+   * Claimed-ness comes from the same claims() rule the slots look up with and the same key builders
+   * the rows render with, so this cannot drift out of step with what is on screen. The read of the
+   * FormArrays is not reactive (their `controls` array is not a signal), which is sound only because
+   * adding or removing a row also rewrites fieldErrors -- see forgetErrorsFor().
+   */
+  protected readonly unclaimedErrors = computed(() => {
+    const rowKeys = new Set(this.rowFieldKeys());
+    const scalarFields = Object.keys(this.scalarSlots);
+
+    return Object.entries(this.fieldErrors())
+      .filter(
+        ([key]) => !rowKeys.has(key) && !scalarFields.some((field) => claims(field, key)),
+      )
+      .map(([field, message]) => ({ field, message }));
+  });
 
   constructor() {
     this.loadProject();
@@ -187,18 +239,22 @@ export class AdminProjectFormComponent {
 
   protected addLink(): void {
     this.form.controls.links.push(this.buildLinkGroup());
+    this.forgetErrorsFor('links');
   }
 
   protected removeLink(index: number): void {
     this.form.controls.links.removeAt(index);
+    this.forgetErrorsFor('links');
   }
 
   protected addImage(): void {
     this.form.controls.images.push(this.buildImageControl());
+    this.forgetErrorsFor('images');
   }
 
   protected removeImage(index: number): void {
     this.form.controls.images.removeAt(index);
+    this.forgetErrorsFor('images');
   }
 
   protected submit(): void {
@@ -298,10 +354,45 @@ export class AdminProjectFormComponent {
     if (errors[field]) {
       return errors[field];
     }
-    const indexedKey = Object.keys(errors).find(
-      (key) => key.startsWith(`${field}[`) && key.endsWith(']'),
-    );
+    const indexedKey = Object.keys(errors).find((key) => claims(field, key));
     return indexedKey ? errors[indexedKey] : null;
+  }
+
+  /** The key the API reports a link element's violation under. Built here, used by both callers. */
+  protected linkFieldKey(index: number, part: 'label' | 'url'): string {
+    return `links[${index}].${part}`;
+  }
+
+  /** Likewise for an image element, whose whole value is the constrained thing. */
+  protected imageFieldKey(index: number): string {
+    return `images[${index}]`;
+  }
+
+  /** Exactly the keys the rendered rows look themselves up by, from the same builders. */
+  private rowFieldKeys(): string[] {
+    return [
+      ...this.form.controls.links.controls.flatMap((_, index) => [
+        this.linkFieldKey(index, 'label'),
+        this.linkFieldKey(index, 'url'),
+      ]),
+      ...this.form.controls.images.controls.map((_, index) => this.imageFieldKey(index)),
+    ];
+  }
+
+  /**
+   * Drop every server verdict about one collection, because the payload it judged no longer exists.
+   * These keys are positional: remove link row 0 and the message the server sent about `links[1]`
+   * now points at a different link, so it would either paint onto the wrong row or vanish along
+   * with an index that no longer exists. A stale verdict is worse than no verdict -- the admin
+   * cannot tell it apart from a fresh one -- and the next save produces a current set anyway.
+   *
+   * The bare collection key goes too: a size verdict about ten links is not about eleven.
+   */
+  private forgetErrorsFor(collection: 'links' | 'images'): void {
+    const remaining = Object.entries(this.fieldErrors()).filter(
+      ([key]) => key !== collection && !key.startsWith(`${collection}[`),
+    );
+    this.fieldErrors.set(Object.fromEntries(remaining));
   }
 
   /**
