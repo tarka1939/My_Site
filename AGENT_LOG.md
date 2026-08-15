@@ -183,6 +183,17 @@ The most dangerous class, because the feedback signal is actively misleading:
   *(2026-08-01, "Two deprecation gaps found by actually running `-Dmaven.compiler.showDeprecation=true`
   and reading test output" — PR #77.)*
 
+- **A server validation error was reported, received, stored, and displayed nowhere.** The API reports
+  a violation inside a collection under the element's key (`links[0].label`, `images[0]`, `tags[2]`);
+  the admin form matched only flat keys; and `errorInterceptor`'s three branches (401-while-logged-in,
+  rate-limited, *no* field errors) mean a 400 **carrying** field errors takes none of them, so no
+  toast fires either. A link label past the server's `@Size(max = 50)` — a limit the client control
+  does not check — made **Save do nothing and say nothing**. Every layer behaved as written; the
+  message fell through the seams between them. **Fixed** by looking rejections up under the indexed
+  key the server actually sends, with a leaf-key fallback so a `tags[i]` violation lands on the single
+  comma-separated tags control. Found by cold review of the PR that existed to eliminate exactly this
+  appearance. *(2026-08-15, "Admin form (#92)" — PR #105.)*
+
 **Lesson:** "it ran and didn't complain" is not evidence it did anything. For anything whose success
 is invisible (issue linking, migrations, merges), verify the *effect* directly, not the exit code.
 The last bullet is the near-miss variant and is worth separating out: sometimes the tool *did*
@@ -238,6 +249,111 @@ Copy this block per entry:
 ## Entries
 
 <!-- Add entries below, most recent first -->
+
+## 2026-08-15 — Admin form (#92): the fix for a silent failure shipped another one, and a test the brief itself specified could not fail
+
+**Task given:**
+
+Issue #92 — an admin edit form whose `getProject` failed rendered anyway: empty, editable, saveable.
+Saving issued a PUT, which is full replacement, so every field of a real project was overwritten with
+blanks. Destruction by an action that looked like a no-op.
+
+**Agent(s) used:**
+
+Senior Dev dispatched `frontend-agent` on Opus, then a cold `general-purpose` reviewer on Opus, then
+resumed the original implementer with the fix list. The implementer was terminated by a **monthly
+spend cap** mid-mutation-test and resumed after the reset.
+
+**What went right:**
+
+**The reviewer verified a framework claim against installed source instead of accepting the author's
+framing.** The implementation rested on an unusual assertion: that `AbstractControl` exposes
+`touched`/`dirty`/`errors` through `untracked()`, so a `computed` over them alone caches its first
+answer forever. The reviewer opened `node_modules/@angular/forms` and read
+`get touched() { return untracked(this.touchedReactive); }` rather than taking the comment's word,
+confirmed the app is genuinely zoneless, and then drove the message paths using **only real DOM
+events** — blur, click, dispatched submit — never `detectChanges()`. That last choice mattered: it
+also established that under zoneless, `ComponentFixture.detectChanges()` forces every test view to
+refresh regardless of dirty state, so a spec that calls a method directly and then calls
+`detectChanges()` **cannot** detect a missing dirty-mark. A harness that hides the bug class the
+component was being fixed for.
+
+**Incremental commits converted a spend-cap loss into an inconvenience, for the second time.** The
+implementer died mid-sentence on "M18 kills F3's test. Restoring…" — mid-mutation, the single most
+expensive moment to be terminated, because the tree is then deliberately wrong and only the dying
+agent knows it. The tree was checked before anything else: clean, no mutation applied, four findings
+committed. Nothing was reconstructed.
+
+**The 08-10 deviation was not repeated.** That entry flagged the Senior Dev writing deliverables
+directly when an agent died on a spend cap. This time the work waited for the reset and the original
+agent was resumed, keeping its context and its model.
+
+**What went wrong (be specific):**
+
+1. **The brief specified a test that was structurally incapable of failing.** The Senior Dev asked for
+   "fail the load → retry → assert the row counts" as the regression test for a duplicate-append
+   guard. It cannot work: the failed load never runs the `next` handler, so the FormArrays are empty
+   when retry runs. Deleting **both** `clear()` calls left the test green. The implementer found this
+   while mutation-testing its own work, kept the original test for the reachable path, and added a
+   second one that loads twice successfully — which does fail without the guard. The cold reviewer
+   independently reproduced all three cases and confirmed the account.
+2. **The fix for a silent failure left another silent failure in the same component.** The API reports
+   a violation inside a collection under the element's key — `links[0].label`, `images[0]`, `tags[2]`
+   — and the form matched only flat keys. `errorInterceptor` is silent here too: its three branches
+   are 401-while-logged-in, rate-limited, and *no* field errors, so a 400 **carrying** field errors
+   takes none of them. The client control for a link label checks `required` only; the server also
+   enforces `@Size(max = 50)`. So a 51-character label produced no inline message, no toast, and no
+   saved change — **Save did nothing and said nothing**, which is verbatim the failure mode the PR
+   existed to eliminate. Found by the cold review, not by the author or the Senior Dev.
+3. **A latent display bug was made visible by a change that was correct on its own terms.** Rows were
+   `track $index` with positional `formGroupName`/`formControlName`, so removing the first of two
+   links left the DOM showing the deleted row while the model held the survivor — and the model is
+   what the next PUT sends. That was already true on `main`. Adding validator messages made the
+   contradiction *render*: "Link label is required" under an input visibly containing text. The
+   reviewer proved it by running it, not by reading it.
+4. **A code comment asserted interceptor behaviour that does not occur in the common case.** The
+   comment said a 401 makes the interceptor log out and redirect. The interceptor gates that on
+   `auth.isLoggedIn()`, which is already false once a token has expired by wall clock — the exact
+   trigger #92 names. So ordinary expiry produces a generic "Request failed (401)" toast and no
+   redirect.
+
+**How it was caught:** the cold review, run against a detached worktree at the PR head, with findings
+confirmed by executing them rather than reasoning about them. Mutation spot-check killed 9 of 10; the
+survivor was a genuine unpinned gate the author had not tested. The Senior Dev re-ran the suite
+independently rather than accepting the reported count, and verified the two out-of-scope defects the
+implementer reported before filing them — one of which was reported as live and turned out to be
+unreachable through the UI.
+
+**Fix applied:** indexed-key lookup for row and flat fields, control-identity tracking, the missing
+gate test, and the missing accessibility wiring on `startedOn`. The retry race and the false comment
+followed after the spend-cap reset. Filed separately: #106 (the public contact form has the identical
+silent-validator defect, and matters more because the person hitting it is a visitor with no idea what
+the constraints are), #107 (`route.snapshot` read once — latent, filed with the reachability analysis
+that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app-wide).
+
+**Takeaway for next time:**
+
+- **A brief that prescribes a test also prescribes its blind spot, and the author cannot see it from
+  the brief.** The only reason this one was caught is that the brief *also* required mutation-testing
+  every new test. Specifying the assertion is worth doing; specifying it without requiring proof that
+  it can fail is worse than not specifying it, because a named test reads as a covered case.
+- **Ask where a fix's own error path goes silent.** This component was being fixed precisely because a
+  failure looked like an idle state, and the fix shipped a second route to the same appearance. The
+  question is not "does the handler run" but "does anything the user can see change" — and that
+  requires reading the interceptor's branches, not just the component's.
+- **A silent failure can require three correct-looking pieces to conspire.** The client validator, the
+  server constraint, and the interceptor were each defensible alone. The gap was in the seams: a
+  constraint only the server enforces, reported under a key only the server's format knows, on a
+  response shape the interceptor deliberately stays quiet about. Cross-boundary silence is not
+  visible from inside any one file.
+- **`ProjectWriteRequestValidationTest` — written in Phase 2 to cover an invalid `LinkDto`, and logged
+  above under class 5 — is what made this findable.** It is the committed proof that the backend emits
+  `links[0].field`. A test written for one layer supplied the evidence that a different layer was
+  dropping its output two phases later.
+- **Latent-made-visible now has two instances** (this one and the `project-detail` subscription leak
+  on 2026-08-10). Both were harmless until an unrelated correct change gave the old behaviour a new
+  consequence. When touching every line of a construct, the question is not only "is my change right"
+  but "what was already wrong here that my change gives teeth to".
 
 ## 2026-08-10 — SEO (#50): the incremental-commit rule proved itself the day it merged
 
