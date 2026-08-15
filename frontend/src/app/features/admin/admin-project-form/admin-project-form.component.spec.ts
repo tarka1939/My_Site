@@ -6,7 +6,7 @@ import {
   provideRouter,
   Router,
 } from '@angular/router';
-import { of, Subject, throwError } from 'rxjs';
+import { config, of, Subject, throwError } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ApiProblem } from '../../../core/http/api-problem';
 import { AdminProjectFormComponent } from './admin-project-form.component';
@@ -834,21 +834,31 @@ describe('AdminProjectFormComponent', () => {
       expect(region?.textContent).toContain('links');
     });
 
-    it('survives a rejection that is not an ApiProblem at all', async () => {
-      // errorInterceptor normalizes every HttpErrorResponse, but rethrows anything else unchanged --
-      // so this handler cannot assume the shape. A throw here would lose submitting(), leaving the
-      // button stuck on "Saving...".
-      createProject.mockReturnValue(throwError(() => new TypeError('boom')));
+    it('survives a rejection that is not an ApiProblem at all', () => {
+      // errorInterceptor normalizes every HttpErrorResponse, but rethrows anything else unchanged,
+      // so this handler cannot assume the shape. Reading .fieldErrors off a bare Error throws
+      // *inside* the subscriber, which surfaces as an unhandled error rather than as a visibly
+      // failed save -- the DOM looks identical either way, so asserting on the DOM here proves
+      // nothing. Hence the listener: the property under test is that nothing escapes.
+      // RxJS swallows a throw from a subscriber callback and reports it out of band, where neither
+      // the DOM nor an assertion can see it -- vitest counts it under "Errors", which leaves the
+      // "Tests N passed" line green. This flag makes the throw propagate out of subscribe() instead,
+      // which is the only way to assert on it. It is also why this one test calls submit() directly
+      // rather than dispatching a submit event: jsdom would swallow the exception again.
+      config.useDeprecatedSynchronousErrorHandling = true;
 
-      const fixture = TestBed.createComponent(AdminProjectFormComponent);
-      fixture.detectChanges();
-      fillRequiredFields(fixture);
+      try {
+        createProject.mockReturnValue(throwError(() => new TypeError('boom')));
 
-      await save(fixture);
+        const fixture = TestBed.createComponent(AdminProjectFormComponent);
+        fixture.detectChanges();
+        fillRequiredFields(fixture);
 
-      const host = fixture.nativeElement as HTMLElement;
-      expect(fixture.componentInstance['submitting']()).toBe(false);
-      expect(host.querySelector('button[type="submit"]')?.textContent?.trim()).toBe('Save project');
+        expect(() => fixture.componentInstance['submit']()).not.toThrow();
+        expect(fixture.componentInstance['submitting']()).toBe(false);
+      } finally {
+        config.useDeprecatedSynchronousErrorHandling = false;
+      }
     });
 
     it('does not repeat a message that a field slot already shows inline', async () => {
@@ -936,8 +946,12 @@ describe('AdminProjectFormComponent', () => {
 
       await clickRemoveRow(fixture, 'links', 0);
 
-      // links[1] now names nothing. Left in place it stops matching any row and resurfaces in the
-      // catch-all as a complaint about a row the admin cannot see or fix.
+      // Asserted on the state, not only the DOM, and deliberately: a stale links[1].url left in
+      // fieldErrors is *invisible* at this moment, because no row claims it and unclaimedErrors()
+      // is a computed that a FormArray mutation does not invalidate. It becomes visible on the next
+      // render that has an index 1 again. Absence from the DOM is therefore not evidence that the
+      // verdict is gone -- this is.
+      expect(fixture.componentInstance['fieldErrors']()).toEqual({});
       expect(host.querySelector('.form-error')).toBeNull();
       expect(host.querySelectorAll('.field-error')).toHaveLength(0);
     });
