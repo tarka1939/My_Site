@@ -288,6 +288,23 @@ committed. Nothing was reconstructed.
 directly when an agent died on a spend cap. This time the work waited for the reset and the original
 agent was resumed, keeping its context and its model.
 
+**An agent measured an instruction instead of obeying it, and the instruction was wrong.** The fix
+brief asked for `loadError` to be cleared both on the way into `loadProject()` and in the success
+handler. The implementer did both, then reported that the pair was mutually redundant and showed the
+mutations: removing either clear alone left all 31 tests passing; only removing both failed anything.
+The reasoning was correct — with the single-flight guard in place no two loads overlap, so `loadError`
+is always already null by the time `next` runs. The guard fixes the ordering; the second clear only
+restates it. The redundant line was dropped, and the mutation was re-run to confirm the survivor is
+load-bearing rather than the better-tested half of a redundant pair. The agent also flagged the shape
+by name: an unfalsifiable line is what the inert `-webkit-box-orient` was.
+
+**Its own bad test was reported rather than quietly fixed.** The first stale-failure ordering test
+used `throwError`, which emits at *subscribe* time — so the failure landed before the success, testing
+the opposite ordering to the one filed, and passing with the guard removed. The agent found this while
+mutating, rewrote it with deferred `Subject`s, and said so. Likewise, asked what its mutation coverage
+had actually been when the spend cap killed it, it named two mutations it had never run instead of
+presenting a complete-looking table.
+
 **What went wrong (be specific):**
 
 1. **The brief specified a test that was structurally incapable of failing.** The Senior Dev asked for
@@ -311,7 +328,14 @@ agent was resumed, keeping its context and its model.
    what the next PUT sends. That was already true on `main`. Adding validator messages made the
    contradiction *render*: "Link label is required" under an input visibly containing text. The
    reviewer proved it by running it, not by reading it.
-4. **A code comment asserted interceptor behaviour that does not occur in the common case.** The
+4. **A dispatch instruction asked for a second guard that nothing could falsify.** The Senior Dev's
+   F5 fix list said to clear `loadError` on the way in *and* in the success handler, *and* to guard
+   against a retry while loading — phrased as though the clears addressed the stale-failure ordering.
+   They do not; only the guard does. Two of the three were the same fix stated twice, and the agent
+   had to measure that rather than being told it. Conflating "defence in depth" with "two lines that
+   both look protective" is how an untestable line gets into a codebase with a written rule against
+   exactly that.
+5. **A code comment asserted interceptor behaviour that does not occur in the common case.** The
    comment said a 401 makes the interceptor log out and redirect. The interceptor gates that on
    `auth.isLoggedIn()`, which is already false once a token has expired by wall clock — the exact
    trigger #92 names. So ordinary expiry produces a generic "Request failed (401)" toast and no
@@ -337,6 +361,11 @@ that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app
   the brief.** The only reason this one was caught is that the brief *also* required mutation-testing
   every new test. Specifying the assertion is worth doing; specifying it without requiring proof that
   it can fail is worse than not specifying it, because a named test reads as a covered case.
+- **Before asking for defence in depth, say what would falsify each layer.** If the answer is "nothing
+  — the other layer already guarantees it", the second layer is not depth, it is an untestable line
+  whose presence implies coverage it does not have. The useful form of the instruction is not "do both"
+  but "do both, and show me a mutation that kills each one independently" — which is what turned this
+  into a one-line deletion instead of a permanent fixture.
 - **Ask where a fix's own error path goes silent.** This component was being fixed precisely because a
   failure looked like an idle state, and the fix shipped a second route to the same appearance. The
   question is not "does the handler run" but "does anything the user can see change" — and that
