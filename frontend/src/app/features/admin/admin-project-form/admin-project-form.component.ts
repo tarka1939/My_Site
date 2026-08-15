@@ -164,10 +164,6 @@ export class AdminProjectFormComponent {
         project.images.forEach((image) =>
           this.form.controls.images.push(this.buildImageControl(image)),
         );
-        // Also cleared here, not only on the way in: "there is no error" is a statement a completed
-        // load is entitled to make about itself, and this way the form and the error state can
-        // never both be showing the results of different attempts.
-        this.loadError.set(null);
         this.loading.set(false);
       },
       error: (problem: ApiProblem) => {
