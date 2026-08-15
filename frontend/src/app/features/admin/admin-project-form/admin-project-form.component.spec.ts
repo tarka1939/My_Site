@@ -62,6 +62,40 @@ function fillRequiredFields(fixture: ComponentFixture<AdminProjectFormComponent>
   });
 }
 
+/** Click the "+ Add link" / "+ Add image" button, i.e. the fieldset's own direct-child button. */
+function addRow(
+  fixture: ComponentFixture<AdminProjectFormComponent>,
+  array: 'links' | 'images',
+): void {
+  const host = fixture.nativeElement as HTMLElement;
+  host.querySelector<HTMLButtonElement>(`fieldset[formarrayname="${array}"] > button`)?.click();
+  fixture.detectChanges();
+}
+
+/** Type into a rendered input the way a user does, so the control and the view both see it. */
+function typeInto(
+  fixture: ComponentFixture<AdminProjectFormComponent>,
+  selector: string,
+  value: string,
+): void {
+  const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(selector);
+  if (!input) {
+    throw new Error(`no input matching ${selector}`);
+  }
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
+  fixture.detectChanges();
+}
+
+/** Click the Remove button of link row `index`. */
+function removeRow(fixture: ComponentFixture<AdminProjectFormComponent>, index: number): void {
+  const host = fixture.nativeElement as HTMLElement;
+  host
+    .querySelectorAll<HTMLButtonElement>('fieldset[formarrayname="links"] .repeatable-row button')
+    [index]?.click();
+  fixture.detectChanges();
+}
+
 function errorTextFor(host: HTMLElement, inputId: string): string | null {
   const field = host.querySelector(`#${inputId}`)?.closest('.field');
   return field?.querySelector('.field-error')?.textContent?.trim() ?? null;
@@ -445,6 +479,200 @@ describe('AdminProjectFormComponent', () => {
 
       const host = fixture.nativeElement as HTMLElement;
       expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
+    });
+
+    it('says nothing about a row the admin has only just added', () => {
+      // "+ Add link" creates a row that is empty by definition. Painting "Link label is required"
+      // on it before anyone has typed scolds the admin for clicking the button. Added by clicking,
+      // not by calling addLink(): a programmatic push does not re-render the row, so this would
+      // otherwise assert "no message" against a DOM with no row in it.
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      addRow(fixture, 'links');
+      addRow(fixture, 'images');
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#link-label-0')).not.toBeNull();
+      expect(host.querySelector('#image-0')).not.toBeNull();
+      expect(host.querySelectorAll('.field-error')).toHaveLength(0);
+      expect(host.querySelector('#link-label-0')?.getAttribute('aria-invalid')).toBeNull();
+      expect(host.querySelector('#image-0')?.getAttribute('aria-invalid')).toBeNull();
+    });
+  });
+
+  describe('server field errors on collection elements', () => {
+    /** Fill the form with something the client validators accept, so the request reaches the API. */
+    function fillValidProjectWithRows(fixture: ComponentFixture<AdminProjectFormComponent>): void {
+      fillRequiredFields(fixture);
+      const form = fixture.componentInstance['form'];
+      fixture.componentInstance['addLink']();
+      fixture.componentInstance['addImage']();
+      form.controls.links.at(0).setValue({ label: 'GitHub', url: 'https://github.example/x' });
+      form.controls.images.at(0).setValue('https://images.example.com/one.png');
+    }
+
+    it('shows a links[i] violation on that row, not nowhere', () => {
+      // The client control only checks `required`; the API also bounds the length. A 51-character
+      // label is therefore rejected by the server alone, and errorInterceptor stays silent for a
+      // 400 carrying fieldErrors -- so if the indexed key matches no slot, Save does nothing and
+      // says nothing.
+      createProject.mockReturnValue(
+        throwError(() =>
+          validationProblem('links[0].label', 'label must be at most 50 characters'),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillValidProjectWithRows(fixture);
+      fixture.detectChanges();
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      expect(createProject).toHaveBeenCalledTimes(1);
+      const host = fixture.nativeElement as HTMLElement;
+      const message = host.querySelector('#link-label-0-error');
+      expect(message?.textContent?.trim()).toBe('label must be at most 50 characters');
+      expect(message?.getAttribute('role')).toBe('alert');
+      const input = host.querySelector('#link-label-0');
+      expect(input?.getAttribute('aria-invalid')).toBe('true');
+      expect(input?.getAttribute('aria-describedby')).toBe('link-label-0-error');
+    });
+
+    it('shows an images[i] violation on that row', () => {
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('images[0]', 'must be at most 500 characters')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillValidProjectWithRows(fixture);
+      fixture.detectChanges();
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#image-0-error')?.textContent?.trim()).toBe(
+        'must be at most 500 characters',
+      );
+      expect(host.querySelector('#image-0')?.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('shows a tags[i] violation in the tags field, which has no per-index slot', () => {
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('tags[0]', 'tag name must be at most 50 characters')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-tags')).toBe('tag name must be at most 50 characters');
+      expect(host.querySelector('#project-tags')?.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('keeps an indexed row key off an unrelated field', () => {
+      // links[0].label is a row's own key. The tags fallback matches indexed leaf keys only, so a
+      // link violation must not be dragged into the tags slot.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('links[0].label', 'label must be at most 50 characters')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillValidProjectWithRows(fixture);
+      fixture.detectChanges();
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-tags')).toBeNull();
+    });
+
+    it('gives startedOn the same message wiring as completedOn', () => {
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('startedOn', 'startedOn must not be in the future')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      fixture.componentInstance['form'].patchValue({ startedOn: '2999-01-01' });
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const input = host.querySelector('#project-started-on');
+      expect(input?.getAttribute('aria-invalid')).toBe('true');
+      const describedBy = input?.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+      expect(describedBy).toContain('project-started-on-error');
+      expect(describedBy).toContain('project-started-on-hint');
+      const described = describedBy.map((ref) => host.querySelector(`#${ref}`)?.textContent?.trim());
+      expect(described.every((text) => !!text)).toBe(true);
+      expect(described.join(' ')).toContain('must not be in the future');
+    });
+  });
+
+  describe('removing a row', () => {
+    // Driven through real clicks and input events rather than addLink()/removeLink(). The rendered
+    // rows come from form.controls.links.controls, a plain array and not a signal, so nothing marks
+    // this OnPush view dirty when the array is mutated from outside a template listener -- in the
+    // app the "+ Add link" click does that, and a programmatic call in a test does not.
+    it('drops the removed link from the DOM rather than the last one', () => {
+      // formGroupName is positional, so tracking rows by $index leaves the surviving group bound to
+      // the removed row's DOM: the admin sees the link they just deleted, deletes it again, and
+      // loses the other one -- and whatever those inputs hold is what the next PUT sends.
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+
+      addRow(fixture, 'links');
+      addRow(fixture, 'links');
+      typeInto(fixture, '#link-label-0', 'GitHub');
+      typeInto(fixture, '#link-url-0', 'https://a.example/one');
+      typeInto(fixture, '#link-label-1', 'Docs');
+      typeInto(fixture, '#link-url-1', 'https://b.example/two');
+
+      removeRow(fixture, 0);
+
+      expect(host.querySelectorAll('[id^="link-label-"]')).toHaveLength(1);
+      expect(host.querySelector<HTMLInputElement>('#link-label-0')?.value).toBe('Docs');
+      expect(host.querySelector<HTMLInputElement>('#link-url-0')?.value).toBe(
+        'https://b.example/two',
+      );
+      expect(fixture.componentInstance['form'].controls.links.at(0).getRawValue()).toEqual({
+        label: 'Docs',
+        url: 'https://b.example/two',
+      });
+    });
+
+    it('drops the removed image from the DOM rather than the last one', () => {
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+
+      addRow(fixture, 'images');
+      addRow(fixture, 'images');
+      typeInto(fixture, '#image-0', 'https://images.example.com/one.png');
+      typeInto(fixture, '#image-1', 'https://images.example.com/two.png');
+
+      host
+        .querySelectorAll('fieldset[formarrayname="images"] .repeatable-row button')[0]
+        ?.dispatchEvent(new Event('click', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(host.querySelectorAll('[id^="image-"]')).toHaveLength(1);
+      expect(host.querySelector<HTMLInputElement>('#image-0')?.value).toBe(
+        'https://images.example.com/two.png',
+      );
     });
   });
 

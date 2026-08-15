@@ -71,13 +71,18 @@
           id="project-started-on"
           type="date"
           formControlName="startedOn"
-          aria-describedby="project-started-on-hint"
+          [attr.aria-describedby]="
+            startedOnError()
+              ? 'project-started-on-hint project-started-on-error'
+              : 'project-started-on-hint'
+          "
+          [attr.aria-invalid]="startedOnError() ? 'true' : null"
         />
         <p id="project-started-on-hint" class="field-hint">
           Only the month and year are shown on the site.
         </p>
-        @if (fieldErrors()['startedOn']) {
-          <p class="field-error" role="alert">{{ fieldErrors()['startedOn'] }}</p>
+        @if (startedOnError(); as message) {
+          <p id="project-started-on-error" class="field-error" role="alert">{{ message }}</p>
         }
       </div>
 
@@ -109,7 +114,14 @@
 
     <fieldset formArrayName="links">
       <legend>Links</legend>
-      @for (link of form.controls.links.controls; track $index) {
+      <!-- track link, not $index. [formGroupName]="$index" is positional, so tracking by index
+           reuses the row that was at position i for the group now at position i without rebinding
+           it: remove the first of two links and the DOM keeps showing the removed one's text while
+           the model holds the survivor's -- which is what a PUT would then send. Tracking the
+           FormGroup identity makes the removed row's DOM go with it. -->
+      @for (link of form.controls.links.controls; track link) {
+        @let labelError = rowError(link.controls.label, 'Link label', 'links[' + $index + '].label');
+        @let urlError = rowError(link.controls.url, 'Link URL', 'links[' + $index + '].url');
         <div class="repeatable-group" [formGroupName]="$index">
           <div class="repeatable-row">
             <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
@@ -118,10 +130,8 @@
               type="text"
               formControlName="label"
               placeholder="Label"
-              [attr.aria-describedby]="
-                rowError(link.controls.label, 'Link label') ? 'link-label-' + $index + '-error' : null
-              "
-              [attr.aria-invalid]="rowError(link.controls.label, 'Link label') ? 'true' : null"
+              [attr.aria-describedby]="labelError ? 'link-label-' + $index + '-error' : null"
+              [attr.aria-invalid]="labelError ? 'true' : null"
             />
             <label [attr.for]="'link-url-' + $index" class="visually-hidden">Link URL</label>
             <input
@@ -129,20 +139,18 @@
               type="url"
               formControlName="url"
               placeholder="https://…"
-              [attr.aria-describedby]="
-                rowError(link.controls.url, 'Link URL') ? 'link-url-' + $index + '-error' : null
-              "
-              [attr.aria-invalid]="rowError(link.controls.url, 'Link URL') ? 'true' : null"
+              [attr.aria-describedby]="urlError ? 'link-url-' + $index + '-error' : null"
+              [attr.aria-invalid]="urlError ? 'true' : null"
             />
             <button type="button" (click)="removeLink($index)" [attr.aria-label]="'Remove link ' + ($index + 1)">
               Remove
             </button>
           </div>
-          @if (rowError(link.controls.label, 'Link label'); as message) {
-            <p [id]="'link-label-' + $index + '-error'" class="field-error" role="alert">{{ message }}</p>
+          @if (labelError) {
+            <p [id]="'link-label-' + $index + '-error'" class="field-error" role="alert">{{ labelError }}</p>
           }
-          @if (rowError(link.controls.url, 'Link URL'); as message) {
-            <p [id]="'link-url-' + $index + '-error'" class="field-error" role="alert">{{ message }}</p>
+          @if (urlError) {
+            <p [id]="'link-url-' + $index + '-error'" class="field-error" role="alert">{{ urlError }}</p>
           }
         </div>
       }
@@ -151,7 +159,10 @@
 
     <fieldset formArrayName="images">
       <legend>Image URLs</legend>
-      @for (image of form.controls.images.controls; track $index) {
+      <!-- track image, for the same reason as the links above: [formControlName]="$index" is
+           positional, so an index-tracked row survives a removal still bound to its old value. -->
+      @for (image of form.controls.images.controls; track image) {
+        @let imageError = rowError(image, 'Image URL', 'images[' + $index + ']');
         <div class="repeatable-group">
           <div class="repeatable-row">
             <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
@@ -160,17 +171,15 @@
               type="url"
               [formControlName]="$index"
               placeholder="https://…"
-              [attr.aria-describedby]="
-                rowError(image, 'Image URL') ? 'image-' + $index + '-error' : null
-              "
-              [attr.aria-invalid]="rowError(image, 'Image URL') ? 'true' : null"
+              [attr.aria-describedby]="imageError ? 'image-' + $index + '-error' : null"
+              [attr.aria-invalid]="imageError ? 'true' : null"
             />
             <button type="button" (click)="removeImage($index)" [attr.aria-label]="'Remove image ' + ($index + 1)">
               Remove
             </button>
           </div>
-          @if (rowError(image, 'Image URL'); as message) {
-            <p [id]="'image-' + $index + '-error'" class="field-error" role="alert">{{ message }}</p>
+          @if (imageError) {
+            <p [id]="'image-' + $index + '-error'" class="field-error" role="alert">{{ imageError }}</p>
           }
         </div>
       }

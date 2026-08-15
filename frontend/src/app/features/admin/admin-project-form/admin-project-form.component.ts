@@ -100,8 +100,10 @@ export class AdminProjectFormComponent {
     return violation === null ? null : PROJECT_PERIOD_MESSAGES[violation];
   });
   protected readonly completedOnError = computed(
-    () => this.periodError() ?? this.fieldErrors()['completedOn'] ?? null,
+    () => this.periodError() ?? this.serverError('completedOn') ?? null,
   );
+  /** No client validators of its own -- this slot exists so a server 400 on startedOn has a home. */
+  protected readonly startedOnError = computed(() => this.serverError('startedOn'));
 
   protected readonly titleError = this.controlError(this.form.controls.title, 'title', TITLE_MESSAGES);
   protected readonly descriptionError = this.controlError(
@@ -258,22 +260,54 @@ export class AdminProjectFormComponent {
       events();
       const clientMessage =
         control.touched || control.dirty ? messageFor(control.errors, messages) : null;
-      return clientMessage ?? this.fieldErrors()[field] ?? null;
+      return clientMessage ?? this.serverError(field);
     });
   }
 
   /**
-   * Same idea for a link or image row, which is required and nothing else. Rows are added and
-   * removed at runtime, so there is no stable computed to hang each one on; the template calls
-   * this instead and it is re-evaluated on every check of the view. That is sound for the reason a
-   * computed would not be: the checks are driven by the ng-touched/ng-invalid host bindings Angular
-   * puts on every formControlName element, which read those same control signals.
+   * The server's message for `field`, including the indexed key it uses for a violation inside a
+   * collection: a tag name over the limit comes back as `tags[2]`, not `tags`. This form edits tags
+   * as one comma-separated control, so there is no per-index slot to render that in -- without the
+   * fallback the message matches nothing and is dropped on the floor, and errorInterceptor stays
+   * quiet too (a 400 carrying fieldErrors takes none of its three branches). Silence on save is the
+   * failure mode this whole component is being fixed for.
+   *
+   * The `]` check keeps this to leaf keys: `links[0].label` belongs to a row control, which looks
+   * itself up by that exact key via rowError(), and must not be dragged onto another field.
    */
-  protected rowError(control: AbstractControl, label: string): string | null {
-    if (!control.touched && !control.dirty) {
-      return null;
+  private serverError(field: string): string | null {
+    const errors = this.fieldErrors();
+    if (errors[field]) {
+      return errors[field];
     }
-    return control.hasError('required') ? `${label} is required` : null;
+    const indexedKey = Object.keys(errors).find(
+      (key) => key.startsWith(`${field}[`) && key.endsWith(']'),
+    );
+    return indexedKey ? errors[indexedKey] : null;
+  }
+
+  /**
+   * Same idea for a link or image row: this form's own message first, then the server's for the
+   * same element. `field` is the indexed key the API reports collection violations under --
+   * `links[0].label`, `links[0].url`, `images[0]` -- and it is not optional. The client side of a
+   * row control only checks `required`, while the server also bounds lengths (a 51-character link
+   * label, a 501-character URL), so without this lookup those rejections produce no inline message
+   * and no toast, and Save silently does nothing.
+   *
+   * Rows are added and removed at runtime, so there is no stable computed to hang each one on; the
+   * template calls this instead and it is re-evaluated on every check of the view. That is sound
+   * for the reason a computed would not be: the checks are driven by the ng-touched/ng-invalid host
+   * bindings Angular puts on every formControlName element, which read those same control signals.
+   */
+  protected rowError(control: AbstractControl, label: string, field: string): string | null {
+    // The client message waits for the admin to reach the control -- a just-added row is empty by
+    // definition and should not open pre-scolded. A server message has no such gate: it is about a
+    // value that was actually submitted, whether or not this control was ever focused.
+    const clientMessage =
+      (control.touched || control.dirty) && control.hasError('required')
+        ? `${label} is required`
+        : null;
+    return clientMessage ?? this.fieldErrors()[field] ?? null;
   }
 
   private buildLinkGroup(label = '', url = ''): LinkGroup {
