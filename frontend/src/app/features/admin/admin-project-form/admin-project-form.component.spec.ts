@@ -834,6 +834,23 @@ describe('AdminProjectFormComponent', () => {
       expect(region?.textContent).toContain('links');
     });
 
+    it('survives a rejection that is not an ApiProblem at all', async () => {
+      // errorInterceptor normalizes every HttpErrorResponse, but rethrows anything else unchanged --
+      // so this handler cannot assume the shape. A throw here would lose submitting(), leaving the
+      // button stuck on "Saving...".
+      createProject.mockReturnValue(throwError(() => new TypeError('boom')));
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance['submitting']()).toBe(false);
+      expect(host.querySelector('button[type="submit"]')?.textContent?.trim()).toBe('Save project');
+    });
+
     it('does not repeat a message that a field slot already shows inline', async () => {
       createProject.mockReturnValue(
         throwError(() => validationProblem('title', 'must not be blank')),

@@ -302,8 +302,12 @@ export class AdminProjectFormComponent {
       },
       error: (problem: ApiProblem) => {
         this.submitting.set(false);
-        if (problem.fieldErrors.length > 0) {
-          this.fieldErrors.set(Object.fromEntries(problem.fieldErrors.map((e) => [e.field, e.message])));
+        // Optional-chained like the load handler's status check: errorInterceptor normalizes every
+        // HttpErrorResponse into an ApiProblem, but rethrows anything that is not one unchanged, so
+        // the shape here is only almost guaranteed.
+        const fieldErrors = problem?.fieldErrors ?? [];
+        if (fieldErrors.length > 0) {
+          this.fieldErrors.set(Object.fromEntries(fieldErrors.map((e) => [e.field, e.message])));
         }
         // Non-field errors are surfaced globally by errorInterceptor.
       },
