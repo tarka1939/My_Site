@@ -194,6 +194,15 @@ The most dangerous class, because the feedback signal is actively misleading:
   comma-separated tags control. Found by cold review of the PR that existed to eliminate exactly this
   appearance. *(2026-08-15, "Admin form (#92)" — PR #105.)*
 
+- **A test runner printed a passing summary and an error count on the same run, and the grep reading
+  it showed only the first.** Vitest emitted `Tests 41 passed` alongside `Errors 1 error` (an
+  unhandled RxJS error). The filter in use — `grep -E "Test Files|Tests |FAIL"` — matches neither
+  `Errors` nor `Unhandled`, and being applied to a *pipe* it also discarded npm's exit status. A
+  mutation that had actually been caught read as a survivor. **Fixed** by redirecting the run to a
+  file, grepping that for `Errors` and `Unhandled` as well, and reading the real exit code. Found by
+  a dispatched agent checking its own mutation result, and the same hole was live in the Senior Dev's
+  command for the whole session. *(2026-08-15, "Admin form (#92)" — PR #105.)*
+
 **Lesson:** "it ran and didn't complain" is not evidence it did anything. For anything whose success
 is invisible (issue linking, migrations, merges), verify the *effect* directly, not the exit code.
 The last bullet is the near-miss variant and is worth separating out: sometimes the tool *did*
@@ -298,6 +307,21 @@ restates it. The redundant line was dropped, and the mutation was re-run to conf
 load-bearing rather than the better-tested half of a redundant pair. The agent also flagged the shape
 by name: an unfalsifiable line is what the inert `-webkit-box-orient` was.
 
+**The green summary line was caught lying, by the agent reading it.** Running a mutation, vitest
+printed `Tests 41 passed` **and** `Errors 1 error` — an unhandled RxJS error — on the same run. The
+agent's grep matched `Test Files|Tests |FAIL` and so filtered the `Errors` line out entirely, and it
+came within one step of recording that mutation as a survivor, i.e. of concluding a guard was
+untested when the test had in fact failed. It noticed, widened the grep to include `Errors`, added the
+exit code, and re-ran.
+
+**The Senior Dev's own verification command had the identical hole for this entire session.** Every
+gate run reported here used `grep -E "Test Files|Tests |FAIL"` against a *pipe*, which both drops the
+`Errors` line and discards npm's exit status. Those runs happened to be clean — re-verified afterwards
+by redirecting to a file, grepping that, and reading `EXIT=0` — but the command could not have told
+the difference. This is the third appearance of the structurally-cannot-fail gate on this project,
+after `mvn test | tail -35; echo "EXIT=$?"` and its repeat with `gh pr edit ... | tail -1 && echo`,
+and the first one found by a dispatched agent rather than by the dispatcher.
+
 **Its own bad test was reported rather than quietly fixed.** The first stale-failure ordering test
 used `throwError`, which emits at *subscribe* time — so the failure landed before the success, testing
 the opposite ordering to the one filed, and passing with the guard removed. The agent found this while
@@ -361,6 +385,11 @@ that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app
   the brief.** The only reason this one was caught is that the brief *also* required mutation-testing
   every new test. Specifying the assertion is worth doing; specifying it without requiring proof that
   it can fail is worse than not specifying it, because a named test reads as a covered case.
+- **A grep over a test run is a gate, and it inherits every rule about gates.** Three times now the
+  failure has been the same: the command could not report red. Twice it was `$?` captured from the
+  wrong end of a pipe; this time it was a filter narrow enough to hide a line the runner did print.
+  The standing form for this repo is redirect to a file, grep the file for `Errors` and `Unhandled`
+  as well as the summary, and read the process's own exit code — never `cmd | grep ...; echo $?`.
 - **Before asking for defence in depth, say what would falsify each layer.** If the answer is "nothing
   — the other layer already guarantees it", the second layer is not depth, it is an untestable line
   whose presence implies coverage it does not have. The useful form of the instruction is not "do both"
