@@ -336,6 +336,118 @@ describe('AdminProjectFormComponent', () => {
     });
   });
 
+  describe('client-side validator messages', () => {
+    it('says nothing about fields the admin has not reached yet', () => {
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelectorAll('.field-error')).toHaveLength(0);
+      expect(host.querySelector('#project-title')?.getAttribute('aria-invalid')).toBeNull();
+    });
+
+    it('names every empty required field when a blank form is submitted', () => {
+      // The old failure mode: markAllAsTouched() and a silent return, indistinguishable from the
+      // Save button not working. fieldErrors() only ever holds server messages, and an invalid
+      // form never reaches the server, so nothing was rendered at all.
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      expect(createProject).not.toHaveBeenCalled();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('Title is required');
+      expect(errorTextFor(host, 'project-description')).toBe('Description is required');
+      expect(errorTextFor(host, 'project-tags')).toBe('At least one tag is required');
+      for (const id of ['project-title-error', 'project-description-error', 'project-tags-error']) {
+        const message = host.querySelector(`#${id}`);
+        expect(message?.getAttribute('role')).toBe('alert');
+        expect(message?.textContent?.trim()).toBeTruthy();
+      }
+    });
+
+    it('points each invalid input at a message that resolves to real text', () => {
+      // Same reasoning as the completion-date case: aria-invalid says the field is wrong without
+      // saying why, and a dangling aria-describedby id is announced as nothing at all.
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      for (const id of ['project-title', 'project-description', 'project-tags']) {
+        const input = host.querySelector(`#${id}`);
+        expect(input?.getAttribute('aria-invalid')).toBe('true');
+        const describedBy = input?.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+        expect(describedBy.length).toBeGreaterThan(0);
+        const described = describedBy.map((ref) => host.querySelector(`#${ref}`)?.textContent?.trim());
+        expect(described.every((text) => !!text)).toBe(true);
+      }
+    });
+
+    it('reports a title over the contract limit', () => {
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      fixture.componentInstance['form'].patchValue({ title: 'x'.repeat(201) });
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      expect(createProject).not.toHaveBeenCalled();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('Title cannot exceed 200 characters');
+    });
+
+    it('names an empty link row and image row on submit', () => {
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      fixture.componentInstance['addLink']();
+      fixture.componentInstance['addImage']();
+      fixture.detectChanges();
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      expect(createProject).not.toHaveBeenCalled();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#link-label-0-error')?.textContent?.trim()).toBe(
+        'Link label is required',
+      );
+      expect(host.querySelector('#link-url-0-error')?.textContent?.trim()).toBe(
+        'Link URL is required',
+      );
+      expect(host.querySelector('#image-0-error')?.textContent?.trim()).toBe(
+        'Image URL is required',
+      );
+      expect(host.querySelector('#link-label-0')?.getAttribute('aria-describedby')).toBe(
+        'link-label-0-error',
+      );
+      expect(host.querySelector('#image-0')?.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('still shows a server field error for a field its own validators accept', () => {
+      // The two halves share one slot, so the client message must not crowd out the server's.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('title', 'A project with this title already exists')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
+    });
+  });
+
   it('does not duplicate links and images when the project is loaded twice', () => {
     // The duplicate-append guard, exercised where it actually bites. A retry after a failure finds
     // the FormArrays empty, so only a second *successful* load can double the rows -- without the

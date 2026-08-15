@@ -70,6 +70,13 @@ fieldset {
   align-self: flex-start;
 }
 
+// One row of inputs plus, underneath it, whatever that row has to say for itself.
+.repeatable-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .repeatable-row {
   display: flex;
   gap: 0.5rem;

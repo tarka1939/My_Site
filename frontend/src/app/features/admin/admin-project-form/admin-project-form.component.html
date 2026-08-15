@@ -15,27 +15,50 @@
   </div>
 } @else {
   <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <!-- Each of these renders one message slot holding either this form's own validator message or
+         the server's for the same field -- see controlError(). The id is what aria-describedby
+         points at: role="alert" announces the message once as it appears, and the description is
+         what carries the reason on every later visit to the field. -->
     <div class="field">
       <label for="project-title">Title</label>
-      <input id="project-title" type="text" formControlName="title" />
-      @if (fieldErrors()['title']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['title'] }}</p>
+      <input
+        id="project-title"
+        type="text"
+        formControlName="title"
+        [attr.aria-describedby]="titleError() ? 'project-title-error' : null"
+        [attr.aria-invalid]="titleError() ? 'true' : null"
+      />
+      @if (titleError(); as message) {
+        <p id="project-title-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
     <div class="field">
       <label for="project-description">Description</label>
-      <textarea id="project-description" rows="6" formControlName="description"></textarea>
-      @if (fieldErrors()['description']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['description'] }}</p>
+      <textarea
+        id="project-description"
+        rows="6"
+        formControlName="description"
+        [attr.aria-describedby]="descriptionError() ? 'project-description-error' : null"
+        [attr.aria-invalid]="descriptionError() ? 'true' : null"
+      ></textarea>
+      @if (descriptionError(); as message) {
+        <p id="project-description-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
     <div class="field">
       <label for="project-tags">Tags (comma-separated)</label>
-      <input id="project-tags" type="text" formControlName="tags" placeholder="angular, dsp, portfolio" />
-      @if (fieldErrors()['tags']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['tags'] }}</p>
+      <input
+        id="project-tags"
+        type="text"
+        formControlName="tags"
+        placeholder="angular, dsp, portfolio"
+        [attr.aria-describedby]="tagsError() ? 'project-tags-error' : null"
+        [attr.aria-invalid]="tagsError() ? 'true' : null"
+      />
+      @if (tagsError(); as message) {
+        <p id="project-tags-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
@@ -87,14 +110,40 @@
     <fieldset formArrayName="links">
       <legend>Links</legend>
       @for (link of form.controls.links.controls; track $index) {
-        <div class="repeatable-row" [formGroupName]="$index">
-          <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
-          <input [id]="'link-label-' + $index" type="text" formControlName="label" placeholder="Label" />
-          <label [attr.for]="'link-url-' + $index" class="visually-hidden">Link URL</label>
-          <input [id]="'link-url-' + $index" type="url" formControlName="url" placeholder="https://…" />
-          <button type="button" (click)="removeLink($index)" [attr.aria-label]="'Remove link ' + ($index + 1)">
-            Remove
-          </button>
+        <div class="repeatable-group" [formGroupName]="$index">
+          <div class="repeatable-row">
+            <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
+            <input
+              [id]="'link-label-' + $index"
+              type="text"
+              formControlName="label"
+              placeholder="Label"
+              [attr.aria-describedby]="
+                rowError(link.controls.label, 'Link label') ? 'link-label-' + $index + '-error' : null
+              "
+              [attr.aria-invalid]="rowError(link.controls.label, 'Link label') ? 'true' : null"
+            />
+            <label [attr.for]="'link-url-' + $index" class="visually-hidden">Link URL</label>
+            <input
+              [id]="'link-url-' + $index"
+              type="url"
+              formControlName="url"
+              placeholder="https://…"
+              [attr.aria-describedby]="
+                rowError(link.controls.url, 'Link URL') ? 'link-url-' + $index + '-error' : null
+              "
+              [attr.aria-invalid]="rowError(link.controls.url, 'Link URL') ? 'true' : null"
+            />
+            <button type="button" (click)="removeLink($index)" [attr.aria-label]="'Remove link ' + ($index + 1)">
+              Remove
+            </button>
+          </div>
+          @if (rowError(link.controls.label, 'Link label'); as message) {
+            <p [id]="'link-label-' + $index + '-error'" class="field-error" role="alert">{{ message }}</p>
+          }
+          @if (rowError(link.controls.url, 'Link URL'); as message) {
+            <p [id]="'link-url-' + $index + '-error'" class="field-error" role="alert">{{ message }}</p>
+          }
         </div>
       }
       <button type="button" (click)="addLink()">+ Add link</button>
@@ -103,12 +152,26 @@
     <fieldset formArrayName="images">
       <legend>Image URLs</legend>
       @for (image of form.controls.images.controls; track $index) {
-        <div class="repeatable-row">
-          <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
-          <input [id]="'image-' + $index" type="url" [formControlName]="$index" placeholder="https://…" />
-          <button type="button" (click)="removeImage($index)" [attr.aria-label]="'Remove image ' + ($index + 1)">
-            Remove
-          </button>
+        <div class="repeatable-group">
+          <div class="repeatable-row">
+            <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
+            <input
+              [id]="'image-' + $index"
+              type="url"
+              [formControlName]="$index"
+              placeholder="https://…"
+              [attr.aria-describedby]="
+                rowError(image, 'Image URL') ? 'image-' + $index + '-error' : null
+              "
+              [attr.aria-invalid]="rowError(image, 'Image URL') ? 'true' : null"
+            />
+            <button type="button" (click)="removeImage($index)" [attr.aria-label]="'Remove image ' + ($index + 1)">
+              Remove
+            </button>
+          </div>
+          @if (rowError(image, 'Image URL'); as message) {
+            <p [id]="'image-' + $index + '-error'" class="field-error" role="alert">{{ message }}</p>
+          }
         </div>
       }
       <button type="button" (click)="addImage()">+ Add image</button>

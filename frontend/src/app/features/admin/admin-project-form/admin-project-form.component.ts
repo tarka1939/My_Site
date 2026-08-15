@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { FormArray, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  AbstractControl,
+  FormArray,
+  FormBuilder,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ProjectWriteRequest } from '../../../core/api/model/projectWriteRequest';
@@ -11,6 +20,32 @@ import {
 } from '../../../shared/project-period/project-period';
 
 type LinkGroup = FormGroup<{ label: FormControl<string>; url: FormControl<string> }>;
+
+/**
+ * Wording for this form's own validators, keyed by the error key Validators.* produces. The limits
+ * repeat the ones on the controls below, which in turn come from ProjectWriteRequest in
+ * docs/openapi.yaml -- change one and change all three.
+ */
+const TITLE_MESSAGES: Record<string, string> = {
+  required: 'Title is required',
+  maxlength: 'Title cannot exceed 200 characters',
+};
+const DESCRIPTION_MESSAGES: Record<string, string> = {
+  required: 'Description is required',
+  maxlength: 'Description cannot exceed 5000 characters',
+};
+const TAGS_MESSAGES: Record<string, string> = {
+  required: 'At least one tag is required',
+};
+
+function messageFor(errors: ValidationErrors | null, messages: Record<string, string>): string | null {
+  for (const key of Object.keys(errors ?? {})) {
+    if (messages[key]) {
+      return messages[key];
+    }
+  }
+  return null;
+}
 
 @Component({
   selector: 'app-admin-project-form',
@@ -67,6 +102,14 @@ export class AdminProjectFormComponent {
   protected readonly completedOnError = computed(
     () => this.periodError() ?? this.fieldErrors()['completedOn'] ?? null,
   );
+
+  protected readonly titleError = this.controlError(this.form.controls.title, 'title', TITLE_MESSAGES);
+  protected readonly descriptionError = this.controlError(
+    this.form.controls.description,
+    'description',
+    DESCRIPTION_MESSAGES,
+  );
+  protected readonly tagsError = this.controlError(this.form.controls.tags, 'tags', TAGS_MESSAGES);
 
   constructor() {
     this.loadProject();
@@ -189,6 +232,48 @@ export class AdminProjectFormComponent {
         // Non-field errors are surfaced globally by errorInterceptor.
       },
     });
+  }
+
+  /**
+   * One message slot per field, on the completedOnError() model: this form's own validator message
+   * while the control is in violation, otherwise whatever the server said about the same field.
+   * Held back until the control is touched or edited, so a blank new form does not open covered in
+   * complaints -- submit() calls markAllAsTouched(), which is what makes them appear on a rejected
+   * save instead of the old silent return.
+   *
+   * The events() read is what keeps this reactive, and is not optional: AbstractControl exposes
+   * `touched`, `dirty` and `errors` through untracked() (Angular 21), so a computed reading only
+   * those would cache its first answer and never update -- a failure state that renders as an idle
+   * one, which is the same bug this component is being fixed for. `events` emits on every value,
+   * status and touched change, so the computed is invalidated exactly when one of them moves.
+   */
+  private controlError(
+    control: AbstractControl,
+    field: string,
+    messages: Record<string, string>,
+  ): Signal<string | null> {
+    const events = toSignal(control.events, { initialValue: null });
+
+    return computed(() => {
+      events();
+      const clientMessage =
+        control.touched || control.dirty ? messageFor(control.errors, messages) : null;
+      return clientMessage ?? this.fieldErrors()[field] ?? null;
+    });
+  }
+
+  /**
+   * Same idea for a link or image row, which is required and nothing else. Rows are added and
+   * removed at runtime, so there is no stable computed to hang each one on; the template calls
+   * this instead and it is re-evaluated on every check of the view. That is sound for the reason a
+   * computed would not be: the checks are driven by the ng-touched/ng-invalid host bindings Angular
+   * puts on every formControlName element, which read those same control signals.
+   */
+  protected rowError(control: AbstractControl, label: string): string | null {
+    if (!control.touched && !control.dirty) {
+      return null;
+    }
+    return control.hasError('required') ? `${label} is required` : null;
   }
 
   private buildLinkGroup(label = '', url = ''): LinkGroup {
