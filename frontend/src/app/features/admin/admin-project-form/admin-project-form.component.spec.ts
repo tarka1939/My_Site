@@ -362,11 +362,15 @@ describe('AdminProjectFormComponent', () => {
       // The ordering the guard exists to prevent: retry A succeeds and populates the form, retry B
       // fails afterwards and paints the error state back over it. With one load at a time, B never
       // starts, so the admin ends up looking at the project rather than at an error about it.
+      // Both retries are deferred Subjects so the test controls when each lands. throwError would
+      // not do: it fires at subscribe time, which puts the failure *before* the success and tests
+      // the opposite ordering to the one at issue.
       const firstRetry = new Subject<unknown>();
+      const secondRetry = new Subject<unknown>();
       getProject
         .mockReturnValueOnce(throwError(() => LOAD_FAILURE))
         .mockReturnValueOnce(firstRetry)
-        .mockReturnValue(throwError(() => LOAD_FAILURE));
+        .mockReturnValue(secondRetry);
       editExistingProject();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -376,6 +380,9 @@ describe('AdminProjectFormComponent', () => {
       fixture.componentInstance['retryLoad']();
       firstRetry.next(EXISTING_PROJECT);
       firstRetry.complete();
+      // The straggler, landing after the form is already populated. If it was ever allowed to
+      // start, its failure is what the admin ends up looking at.
+      secondRetry.error(LOAD_FAILURE);
       fixture.detectChanges();
 
       const host = fixture.nativeElement as HTMLElement;
