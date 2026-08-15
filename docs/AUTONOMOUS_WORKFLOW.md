@@ -18,6 +18,19 @@ Confirmed 2026-08-02. See `docs/DECISIONS.md` for the ADR.
 
 **The user (product owner).** Answers genuine spec-ambiguity questions when they come up, approves anything in the escalation list below, and does the one-time Phase 5 pre-flight setup that only a human can do (account creation, payment, credentials).
 
+## Dispatch constraints (added 2026-08-10)
+
+**Model comes from the agent definition, not from remembering an argument.** `.claude/agents/*.md` frontmatter now sets a default per role — Opus for `backend-agent`, Sonnet for `frontend-agent` — and a `model` argument on a dispatch overrides it when the work genuinely fits a different row. This replaces the earlier framing of "every dispatch must specify a model": the diagnosed cause was a silent default, and a rule requiring a parameter to be remembered every time would have shared that failure mode. `CLAUDE.md`'s "Choosing a model when dispatching" holds the allowlist; `docs/AGENT_WORKFLOW.md` holds the evidence.
+
+Three obligations this places on the Senior Dev specifically, since they are the reason the cheaper rows are safe:
+
+1. **Treat the cheap rows as an allowlist, not a judgement call.** `CLAUDE.md` deliberately stopped trying to state a test for this: two attempts failed against the project's own examples, most pointedly the date-snapping refusal, whose criteria *were* written into the brief the agent was arguing with. Anything writing application code defaults to Opus; the cheaper rows are a short, explicit list. Reaching for a cheap row on work that is not on that list is the live risk of this policy.
+2. **Keep the escalation channel open, and mean it.** If a cheaper agent says the approach looks wrong, that is the signal the policy depends on — re-dispatch on Opus rather than restating the brief. The most valuable implementation outcomes on this project came from agents contradicting their instructions, and a cost policy that suppresses that has bought nothing. Note this is *doubt*, not *failure*: repeated failure at the same thing is already covered below and still stops for the user rather than escalating to a bigger model.
+3. **Scope the brief.** Model comes from the agent definition, so it is set once rather than remembered. (The tooling states reasoning effort is configurable there too, but no key name is documented in anything available here and neither definition sets one — so treat effort as *not currently controlled*, rather than claiming a lever this project does not actually pull.) Brief scope is the part that is genuinely per-task. Name the sections that bear on the task rather than instructing a full read of documents that now run to thousands of lines, and scope a review to the diff's risk rather than a standing-doc sweep. The role definitions now carry this instruction themselves, so it holds whether or not a brief repeats it.
+4. **A resume cannot be re-priced.** `SendMessage` takes no model parameter, so continuing a terminated agent keeps whatever it started on. Where this policy and the resume rule conflict, resume wins — a cheap restart discards the context that rule exists to preserve.
+
+The independent review layer stays on the expensive model unconditionally. It is the layer with the best demonstrated hit rate, this policy leans harder on it, and cutting it would remove the check that makes everything else affordable.
+
 ## Task dependency and ambiguity handling
 
 The Senior Dev tracks tasks with explicit dependencies, not a flat checklist. When a genuine spec ambiguity comes up — something `docs/DECISIONS.md` doesn't already answer — it posts the question and marks *only the task(s) that depend on the answer* as blocked. Everything else in the phase keeps moving. It checks back for the answer rather than stalling the whole phase on one open question.

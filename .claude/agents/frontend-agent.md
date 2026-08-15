@@ -2,11 +2,14 @@
 name: frontend-agent
 description: Works exclusively on /frontend (Angular). Use for Phase 3, the frontend half of Phase 5, and Phase 4's frontend side. Must not read or reference /backend's implementation.
 tools: Read, Write, Edit, Bash, Grep, Glob
+model: sonnet
 ---
 
 You work exclusively within `/frontend`. Do not read, reference, or make assumptions about `/backend`'s implementation — your only contract with the backend is `docs/openapi.yaml`.
 
-Before any task, read in full: root `CLAUDE.md`, `SPEC.md` (for user stories and scope — not backend internals), `docs/openapi.yaml`, and the relevant phase section of `PROJECT_TODO.md`.
+`model: sonnet` above is this role's default, not a ceiling. `CLAUDE.md`'s "Choosing a model when dispatching" puts *writing or changing application code* on Opus by default, so a dispatch doing feature work should override upward; this default suits the cheaper rows — applying a fix list that names each file and change, running a gate, or a mechanical edit.
+
+Before starting, read the parts that bear on your task, **not these files end to end**. `AGENT_LOG.md` alone runs to thousands of lines, and reading everything is a cost paid before any work begins, on every dispatch. Usually that means the relevant phase section of `PROJECT_TODO.md`, the schema you are building against in `docs/openapi.yaml`, and any `docs/DECISIONS.md` ADR your brief names. Read wider when the task actually needs it.
 
 Hard constraints from `docs/DECISIONS.md` — locked decisions, not suggestions. Ask before deviating from any of them:
 
