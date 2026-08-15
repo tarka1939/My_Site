@@ -336,6 +336,25 @@ describe('AdminProjectFormComponent', () => {
     });
   });
 
+  it('does not duplicate links and images when the project is loaded twice', () => {
+    // The duplicate-append guard, exercised where it actually bites. A retry after a failure finds
+    // the FormArrays empty, so only a second *successful* load can double the rows -- without the
+    // clear() in the load handler, this project comes back with two links and two images.
+    editExistingProject();
+    const fixture = TestBed.createComponent(AdminProjectFormComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance['retryLoad']();
+    fixture.detectChanges();
+
+    expect(getProject).toHaveBeenCalledTimes(2);
+    const form = fixture.componentInstance['form'];
+    expect(form.controls.links.length).toBe(1);
+    expect(form.controls.images.length).toBe(1);
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelectorAll('input[type="url"]').length).toBe(2);
+  });
+
   it('shows the server field error for completedOn when the client check passes', () => {
     // The client check is an early warning, not the authority -- e.g. a stale tab whose rules
     // predate a backend change still has to surface whatever the 400 says.

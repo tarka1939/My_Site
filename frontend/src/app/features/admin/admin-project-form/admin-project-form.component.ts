@@ -97,8 +97,10 @@ export class AdminProjectFormComponent {
           startedOn: project.startedOn ?? '',
           completedOn: project.completedOn ?? '',
         });
-        // Clear before repopulating: a retry runs this handler a second time, and pushing onto
-        // arrays that still hold the first attempt's rows would duplicate every link and image.
+        // Clear before repopulating. Retry makes this handler runnable more than once, and push
+        // without clear gives a second successful load two of every row. (A retry that follows a
+        // failure finds the arrays empty, so that is not the case that bites -- which is exactly
+        // why the loader is made idempotent here rather than left to depend on how it got here.)
         this.form.controls.links.clear();
         this.form.controls.images.clear();
         project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
