@@ -43,6 +43,17 @@ function validationProblem(field: string, message: string): ApiProblem {
   };
 }
 
+/**
+ * What a failed getProject looks like to the component: errorInterceptor has already normalized the
+ * response, toasted it and (on a 401) logged out, so all the component ever sees is this.
+ */
+const LOAD_FAILURE: ApiProblem = {
+  status: 500,
+  title: 'Request failed (500).',
+  fieldErrors: [],
+  rateLimited: false,
+};
+
 function fillRequiredFields(fixture: ComponentFixture<AdminProjectFormComponent>): void {
   fixture.componentInstance['form'].patchValue({
     title: 'Equalizer',
@@ -254,6 +265,75 @@ describe('AdminProjectFormComponent', () => {
     expect(errorTextFor(host, 'project-completed-on')).toContain(
       'cannot finish without having started',
     );
+  });
+
+  describe('when the project fails to load', () => {
+    function failFirstLoad(): void {
+      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
+      editExistingProject();
+    }
+
+    it('renders an error state instead of an editable form', () => {
+      failFirstLoad();
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      // Not "the fields are empty" -- there must be no fields. An edit form with none of the
+      // project's data is a wipe waiting to be saved, so it is not offered at all.
+      expect(host.querySelector('#project-title')).toBeNull();
+      expect(host.querySelector('form')).toBeNull();
+      expect(host.querySelector('[role="alert"]')?.textContent?.trim()).toBeTruthy();
+      // The two ways out stay available: retry, and the back link that is always on the page.
+      expect(host.querySelector('.load-error button')).not.toBeNull();
+      expect(host.querySelector('a[href="/admin/projects"]')).not.toBeNull();
+    });
+
+    it('issues no request when submit() is called after a failed load', () => {
+      // The data-loss regression. updateProject is a PUT, i.e. a full replacement, so a submit of
+      // the blank form the old error handler left behind would overwrite every stored field.
+      // The form is filled first on purpose: an empty form is blocked by its own validators, which
+      // would let this pass even with the guard removed.
+      failFirstLoad();
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      fixture.componentInstance['submit']();
+
+      expect(updateProject).not.toHaveBeenCalled();
+      expect(createProject).not.toHaveBeenCalled();
+    });
+
+    it('loads the project on retry, populating links and images exactly once', () => {
+      failFirstLoad();
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+
+      host.querySelector<HTMLButtonElement>('.load-error button')?.click();
+      fixture.detectChanges();
+
+      expect(getProject).toHaveBeenCalledTimes(2);
+      expect(host.querySelector('.load-error')).toBeNull();
+      expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Equalizer');
+      // The duplicate-append guard: the first load's rows have to be cleared before the second
+      // load pushes its own, or the retried project comes back with two of everything.
+      const form = fixture.componentInstance['form'];
+      expect(form.controls.links.length).toBe(1);
+      expect(form.controls.images.length).toBe(1);
+      expect(host.querySelectorAll('input[type="url"]').length).toBe(2);
+
+      fixture.componentInstance['submit']();
+
+      expect(updateProject).toHaveBeenCalledTimes(1);
+      const body = updateProject.mock.calls[0][0].projectWriteRequest;
+      expect(body.links).toHaveLength(1);
+      expect(body.images).toHaveLength(1);
+    });
   });
 
   it('shows the server field error for completedOn when the client check passes', () => {

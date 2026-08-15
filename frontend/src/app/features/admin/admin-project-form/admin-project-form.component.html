@@ -4,6 +4,15 @@
 
 @if (loading()) {
   <p role="status">Loading&hellip;</p>
+} @else if (loadError(); as message) {
+  <!-- The form is deliberately not rendered here. An edit form holding none of the project's data
+       still saves with a PUT, which replaces the whole record -- so an empty-looking form is a
+       one-click wipe. The banner errorInterceptor already showed says what went wrong; this says
+       what the page is doing about it. -->
+  <div class="load-error">
+    <p role="alert">{{ message }}</p>
+    <button type="button" (click)="retryLoad()">Try again</button>
+  </div>
 } @else {
   <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
     <div class="field">

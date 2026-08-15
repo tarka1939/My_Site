@@ -30,6 +30,13 @@ export class AdminProjectFormComponent {
   protected readonly loading = signal(this.isEditMode);
   protected readonly submitting = signal(false);
   protected readonly fieldErrors = signal<Record<string, string>>({});
+  /**
+   * Set when the project this form is editing could not be fetched. It gates both the template
+   * (error state instead of the form) and submit(), because an edit form with no loaded data is
+   * not merely empty -- saving it PUTs, and PUT is a full replacement, so it would overwrite the
+   * stored title, description, tags, links, images and dates with blanks.
+   */
+  protected readonly loadError = signal<string | null>(null);
 
   protected readonly form = this.formBuilder.nonNullable.group({
     title: ['', [Validators.required, Validators.maxLength(200)]],
@@ -62,27 +69,55 @@ export class AdminProjectFormComponent {
   );
 
   constructor() {
-    if (this.projectId) {
-      this.projectsApi.getProject({ id: this.projectId }).subscribe({
-        next: (project) => {
-          this.form.patchValue({
-            title: project.title,
-            description: project.description,
-            tags: project.tags.map((t) => t.name).join(', '),
-            // Round-tripping these matters more than it looks: PUT takes the same body as POST, so
-            // a field left out of the payload clears the stored value rather than preserving it.
-            startedOn: project.startedOn ?? '',
-            completedOn: project.completedOn ?? '',
-          });
-          project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
-          project.images.forEach((image) =>
-            this.form.controls.images.push(this.buildImageControl(image)),
-          );
-          this.loading.set(false);
-        },
-        error: () => this.loading.set(false),
-      });
+    this.loadProject();
+  }
+
+  /** Re-runs the load after a failure. Clears the error state on the way in, via loadProject(). */
+  protected retryLoad(): void {
+    this.loadProject();
+  }
+
+  private loadProject(): void {
+    const id = this.projectId;
+    if (!id) {
+      return;
     }
+
+    this.loading.set(true);
+    this.loadError.set(null);
+
+    this.projectsApi.getProject({ id }).subscribe({
+      next: (project) => {
+        this.form.patchValue({
+          title: project.title,
+          description: project.description,
+          tags: project.tags.map((t) => t.name).join(', '),
+          // Round-tripping these matters more than it looks: PUT takes the same body as POST, so
+          // a field left out of the payload clears the stored value rather than preserving it.
+          startedOn: project.startedOn ?? '',
+          completedOn: project.completedOn ?? '',
+        });
+        // Clear before repopulating: a retry runs this handler a second time, and pushing onto
+        // arrays that still hold the first attempt's rows would duplicate every link and image.
+        this.form.controls.links.clear();
+        this.form.controls.images.clear();
+        project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
+        project.images.forEach((image) =>
+          this.form.controls.images.push(this.buildImageControl(image)),
+        );
+        this.loading.set(false);
+      },
+      error: () => {
+        // No notifications.error() here on purpose: errorInterceptor already toasts every
+        // non-field error, and on a 401 it also logs out and redirects to the login page. The
+        // missing piece was never the banner -- it was that the form stayed rendered and saveable
+        // over data it never loaded.
+        this.loadError.set(
+          'Could not load this project. Nothing has been changed -- try again, or go back to the project list.',
+        );
+        this.loading.set(false);
+      },
+    });
   }
 
   protected addLink(): void {
@@ -102,6 +137,13 @@ export class AdminProjectFormComponent {
   }
 
   protected submit(): void {
+    // Deliberately redundant with the template, which renders the error state instead of the form.
+    // The template guard is the UX; this one is what makes the data-loss path unreachable, since a
+    // PUT built from a form that never received its project would blank every field of the record.
+    if (this.loadError()) {
+      return;
+    }
+
     const raw = this.form.getRawValue();
 
     if (this.form.invalid || validateProjectPeriod(raw.startedOn, raw.completedOn) || this.submitting()) {
