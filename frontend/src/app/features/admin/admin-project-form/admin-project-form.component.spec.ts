@@ -6,7 +6,7 @@ import {
   provideRouter,
   Router,
 } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ApiProblem } from '../../../core/http/api-problem';
 import { AdminProjectFormComponent } from './admin-project-form.component';
@@ -339,6 +339,48 @@ describe('AdminProjectFormComponent', () => {
 
       expect(updateProject).not.toHaveBeenCalled();
       expect(createProject).not.toHaveBeenCalled();
+    });
+
+    it('ignores a second retry while the first is still in flight', () => {
+      // Check-then-act. Two clicks on "Try again" otherwise leave two responses racing, and nothing
+      // orders them -- see the ordering test below for what the loser does to the winner's state.
+      const inFlight = new Subject<unknown>();
+      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE)).mockReturnValue(inFlight);
+      editExistingProject();
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      fixture.componentInstance['retryLoad']();
+      fixture.componentInstance['retryLoad']();
+
+      // The failed initial load plus exactly one retry -- not two, and not three subscriptions.
+      expect(getProject).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not leave a stale failure showing over a form that has since loaded', () => {
+      // The ordering the guard exists to prevent: retry A succeeds and populates the form, retry B
+      // fails afterwards and paints the error state back over it. With one load at a time, B never
+      // starts, so the admin ends up looking at the project rather than at an error about it.
+      const firstRetry = new Subject<unknown>();
+      getProject
+        .mockReturnValueOnce(throwError(() => LOAD_FAILURE))
+        .mockReturnValueOnce(firstRetry)
+        .mockReturnValue(throwError(() => LOAD_FAILURE));
+      editExistingProject();
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      fixture.componentInstance['retryLoad']();
+      fixture.componentInstance['retryLoad']();
+      firstRetry.next(EXISTING_PROJECT);
+      firstRetry.complete();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.load-error')).toBeNull();
+      expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Equalizer');
     });
 
     it('loads the project on retry, populating links and images exactly once', () => {

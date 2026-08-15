@@ -117,8 +117,20 @@ export class AdminProjectFormComponent {
     this.loadProject();
   }
 
-  /** Re-runs the load after a failure. Clears the error state on the way in, via loadProject(). */
+  /**
+   * Re-runs the load after a failure, one at a time. Without the guard two quick clicks on "Try
+   * again" leave two responses in flight whose order nothing controls, and the last one to land
+   * writes its outcome over the other's -- a stale failure arriving after a success would put the
+   * error state back over a form that has just been populated. Refusing the second start removes
+   * the ordering question rather than trying to resolve it afterwards.
+   *
+   * The guard belongs here rather than in loadProject(), because loading() is already true when the
+   * constructor calls that for the first time in edit mode.
+   */
   protected retryLoad(): void {
+    if (this.loading()) {
+      return;
+    }
     this.loadProject();
   }
 
@@ -152,6 +164,10 @@ export class AdminProjectFormComponent {
         project.images.forEach((image) =>
           this.form.controls.images.push(this.buildImageControl(image)),
         );
+        // Also cleared here, not only on the way in: "there is no error" is a statement a completed
+        // load is entitled to make about itself, and this way the form and the error state can
+        // never both be showing the results of different attempts.
+        this.loadError.set(null);
         this.loading.set(false);
       },
       error: () => {
