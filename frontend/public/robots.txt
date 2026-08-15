@@ -1,0 +1,27 @@
+# robots.txt — PLACEHOLDER ORIGIN, not yet valid for production.
+#
+# The Sitemap line below points at REPLACE-WITH-CANONICAL-ORIGIN.invalid because the
+# canonical domain does not exist yet: the Netlify site is created in Phase 5, which is
+# paused. `.invalid` is reserved by RFC 2606 and can never resolve, so this fails visibly
+# rather than silently pointing somewhere wrong.
+#
+# Before the first production deploy, replace that origin here and in sitemap.xml.
+# PROJECT_TODO.md's Phase 6 checklist keeps this item flagged incomplete until then.
+
+User-agent: *
+
+# The admin area is behind a JWT guard and has nothing useful to index.
+# This is a crawling hint, not a security control — the guard is what protects it.
+#
+# Both paths also set <meta name="robots"> at runtime, and the two do NOT stack: a crawler
+# that obeys the Disallow never fetches the page, so it never reads that tag. The Disallow
+# is what does the work here, and it is also the only half a non-JS crawler can act on —
+# this app is client-rendered, so every path returns the same index.html. The runtime tag
+# covers what this cannot: a JS-executing crawler arriving on a direct link that ignores
+# robots.txt. See the NOINDEX comment in frontend/src/app/core/seo/site-meta.ts.
+Disallow: /admin
+Disallow: /reset-password
+
+Allow: /
+
+Sitemap: https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/sitemap.xml
