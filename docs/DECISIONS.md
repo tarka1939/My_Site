@@ -223,6 +223,37 @@ Two sub-decisions, bundled because the second only matters once the first is set
 
 **Consequences:** A cross-cutting change touching contract, backend and frontend together: `docs/openapi.yaml` (`Project` and `ProjectWriteRequest`), a Flyway migration adding two nullable columns plus the `CHECK`, the JPA entity and DTOs with cross-field validation, the regenerated Angular client, and the admin form plus list/detail rendering. Because `ProjectWriteRequest` is also the PUT body, **omitting either field on update clears it** rather than preserving the stored value — consistent with the existing full-replacement semantics, and called out explicitly in the contract so it isn't discovered by accident. Unblocks #49 (content migration) and feeds #88 (portfolio ordering), which may be satisfied by sorting on these rather than needing a separate ordering field.
 
+### 2026-08-10 — SEO: static tags plus runtime per-route tags; prerendering deferred
+
+**Context:** Phase 6's SEO item (#50) needs meta tags, `sitemap.xml` and `robots.txt`. The frontend is a **client-rendered** Angular SPA served as a static build from Netlify, which constrains what is actually achievable. Per-route `title`s already work via Angular's built-in title strategy; `index.html` carries only `charset` and `viewport` — no description, no Open Graph, no Twitter card. There are no SSR dependencies.
+
+The decisive fact: **Googlebot executes JavaScript, but the social scrapers do not.** LinkedIn, Twitter/X, Slack, Discord and Facebook fetch the HTML and read what is in it. For a portfolio, those are the sharing surfaces that matter — a link posted to LinkedIn is the realistic distribution path, not a search result.
+
+**Decision:** Do both of the cheap things, and defer the expensive one.
+
+1. **Static tags in `index.html`** — description, Open Graph and Twitter card, one set describing the site. These are in the served HTML, so *every* crawler sees them without exception.
+2. **Runtime per-route tags** via Angular's `Meta` service, alongside the existing title strategy. Googlebot renders JS, so search indexing gets per-route accuracy, and it costs almost nothing on top of a mechanism already in place.
+
+`sitemap.xml` and `robots.txt` are drafted with a placeholder origin and the checklist item stays **flagged incomplete** until the canonical domain exists — per `PROJECT_TODO.md`'s explicit instruction not to guess it.
+
+**Alternatives considered:**
+
+- *Runtime tags only* (rejected). It optimises for the one crawler that already works. Social scrapers would keep showing whatever is in `index.html`, so the previews people actually see would be empty — the exact case this item exists to fix.
+- *Static tags only* (rejected as insufficient, kept as the foundation). Correct everywhere but identical on every route, and it forgoes per-route accuracy that is nearly free given the title strategy already exists.
+- *Prerendering / SSR via `@angular/ssr`* (**deferred, not rejected** — see below).
+
+**Why prerendering is deferred rather than dismissed.** It is the technically best answer: real HTML per route, correct for every crawler, faster first paint, and the only way per-project link previews genuinely work. Three things make it the wrong trade *today*:
+
+1. **It contradicts a standing decision.** `/projects/:id` needs the project list at build time, so the Netlify build would have to reach the VPS API. The generated API client was committed to the repo specifically so the Netlify build never depends on the backend (2026-08-02, Phase 3). Prerendering reintroduces that coupling and makes a backend outage a frontend build failure.
+2. **Content staleness needs more machinery.** Previews would not update until a rebuild, so it wants a deploy webhook — which overlaps Phase 7a's GitHub sync work rather than standing alone.
+3. **It buys per-project previews for projects that are not live.** The five drafted entries (#49) are not applied anywhere, and Phase 5 is paused. This would be the largest complexity increase in the frontend so far, bought before there is anything to preview.
+
+**Revisit when** real content is live *and* per-project link previews are actually wanted. At that point the sequence is: add `@angular/ssr`, prerender the static routes, and decide separately how `/projects/:id` gets its route list — a build-time API call, a committed manifest, or on-demand rendering at the edge. Until then, a shared link to a project page shows the site-level preview, which is a known and accepted limitation rather than a bug.
+
+**Consequences:** Frontend-only; no contract, backend or data-model change. `index.html` gains static tags, and route components set their own description/OG at runtime. Two of the three checklist deliverables complete; `sitemap.xml`/`robots.txt` remain open on the domain. If prerendering later lands, the runtime tags become redundant for crawlers but stay correct for in-app navigation, so nothing here needs unwinding.
+
+**One further consequence, to settle when the real origin lands** (added 2026-08-14 from the PR #103 review — the decision above is unchanged, this is a knock-on effect it did not spell out). The static `og:url` is a single site-level value, and because Netlify returns the same `index.html` for every path, a non-JS scraper sees it on `/projects/<id>` too. Facebook and LinkedIn do not treat `og:url` as decoration: it is the shared object's *identity*, so they key their share cache and engagement counts on it and point the preview card's link at it. The ADR already accepts that a shared project link previews with the site-level **content**; the part not stated is that its **identity and destination** are the site root as well, so two different project links can collapse into one cached object and the card sends the reader to the landing page rather than the project. This is inert today — `.invalid` cannot resolve, so nothing is being cached — and becomes live the moment the placeholder is replaced. It is called out at the placeholder in `frontend/src/index.html` for whoever does that. Three options at that point, cheapest first: accept it (a portfolio's realistic share is the site itself, and the runtime `SeoService` already rewrites `og:url` per route for anything that executes JS); drop the static `og:url` so scrapers fall back to the URL they actually fetched, which is per-page correct but forgoes a stable identity for the root; or land prerendering, which fixes this and the preview content together, and whose deferral conditions are set out above.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**

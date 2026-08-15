@@ -239,6 +239,111 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-10 — SEO (#50): the incremental-commit rule proved itself the day it merged
+
+**Task given:**
+
+Phase 6's SEO item — meta tags, `robots.txt`, `sitemap.xml` — after a decision round on how much is
+achievable for a client-rendered SPA served statically.
+
+**Agent(s) used:**
+
+Senior Dev wrote the ADR first and dispatched `frontend-agent` to build against it. That session was
+terminated by a **monthly spend cap** mid-task; the Senior Dev verified and committed its work and
+completed the one deliverable it had not reached.
+
+**What went right:**
+
+**The rule merged that morning changed a loss into an inconvenience.** `CLAUDE.md` had just gained
+"commit when a unit of work is done, not when the task is", written after six agents died with
+complete-but-uncommitted work. This agent committed **three** units before termination — static tags,
+per-route tags, shared test helpers — and left only in-progress test work uncommitted. That work was
+green when checked: 108 tests passing, up from 79. Under the previous pattern all of it would have
+been a single pending commit.
+
+**Deciding before dispatching worked again.** The ADR settled the approach, so the implementation had
+no scope to relitigate it. This is the second time (after the project date period) that writing the
+decision first produced an implementation that needed no rework.
+
+**The judgment call the decision rests on.** The obvious implementation is Angular's `Meta` service
+per route, and it is close to useless for the actual use case: **Googlebot executes JavaScript, but
+LinkedIn, Slack, Discord, Twitter/X and Facebook do not.** They fetch the HTML and read what is in
+it. For a portfolio, those are the sharing surfaces that matter — a link posted to LinkedIn is the
+realistic distribution path. Runtime-only tags would have optimised for the one crawler that already
+worked, and the failure would have been invisible in every test, because a browser-based test renders
+the JavaScript that a scraper never runs.
+
+**What went wrong (be specific):**
+
+Nothing reached a branch. Two things worth recording about the handoff:
+
+1. **`robots.txt` and `sitemap.xml` were never created** — the agent died before that deliverable, and
+   its last streamed line was about component tests, which would have read as further-along than it
+   was. The files' absence was found by listing `frontend/public/` rather than by trusting the
+   fragment.
+2. **The Senior Dev wrote those two files directly** rather than dispatching, because the block was a
+   spend cap rather than a resettable limit and both files were fully specified by the ADR. That is a
+   deviation from the coordinator role and is flagged as such rather than quietly folded in.
+
+**How it was caught:** listing the build output and the `public/` directory rather than reading the
+agent's final message as a status report — the discipline the 2026-08-08 entry established.
+
+**Fix applied:** N/A for defects. The missing deliverable was written with an RFC 2606 `.invalid`
+placeholder origin, and both listed routes were verified against `app.routes.ts` rather than assumed.
+
+**Takeaway for next time:**
+
+- **A rule is worth writing when it converts a category of loss into a category of inconvenience.**
+  This one did so within hours of merging, which is unusually fast feedback on a process change. The
+  measure was not "did agents follow it" but "what did a termination cost this time".
+- **Test coverage cannot see a crawler that does not run your tests.** Every meta-tag test passes in a
+  JSDOM or browser environment, because both execute the JavaScript that sets the tags. The one
+  consumer that matters for social previews executes none of it, and no amount of frontend testing
+  will ever reveal that. The check is to inspect the *built* `index.html` — what is in the file, not
+  what the app produces after boot.
+- **`sitemap.xml` deliberately omits project pages, and that is worth stating rather than looking like
+  an oversight.** Their URLs are runtime UUIDs; listing them from a static file in `public/` would
+  require a build-time API call, which is the same coupling the ADR defers alongside prerendering. A
+  reader finding a two-entry sitemap should be able to see it was a decision.
+
+**Review round (added after the cold review of PR #103):**
+
+The review found a real defect, and its shape is the interesting part: **a latent bug made harmful by
+an unrelated change.** `project-detail.component.ts` subscribed to `paramMap` and nested a
+`getProject(...)` subscription inside it, with no `switchMap` and no teardown. That leak predated this
+work and was harmless, because the callbacks wrote to component-local signals that were simply
+discarded on destroy. This change made those same callbacks write to `document.head`, which outlives
+the component. Nothing in the change was wrong in isolation, and nothing in the old code was visibly
+broken — the defect existed only in the combination.
+
+The reviewer proved it against the real component and the real router rather than reasoning from the
+code: navigating away from an in-flight request that then fails leaves `robots: noindex, nofollow` on
+the **public landing page**, and an out-of-order response leaves an abandoned project's title and
+description on the current one. Fixed with `switchMap` plus `takeUntilDestroyed`, and confirmed by
+reverting the fix and watching the three new assertions fail with exactly that output.
+
+Two smaller findings worth keeping:
+
+1. **A `Disallow` in `robots.txt` defeats a `noindex` on the same path.** Both `/admin` and
+   `/reset-password` were disallowed *and* set `robots: noindex` at runtime, with a comment claiming
+   the tag was what protected them. A compliant crawler that is blocked never fetches the page, so it
+   never reads the tag — the two do not stack. Kept both, but the comment now says which one does the
+   work and why: the app is client-rendered, so every path returns the same `index.html`, and the
+   `Disallow` is the only half a non-JS crawler can act on. The tag earns its place for a JS-executing
+   crawler arriving by direct link that ignores `robots.txt`, and for the 404 view, which is not
+   disallowed and so is fetched and read normally.
+2. **A test asserting a tag count of zero on a path that never set one.** It passed with the entire
+   success path deleted. Replaced with a version that fails a project load, asserts the `noindex`,
+   then navigates to a project that loads and asserts both that the tag cleared *and* that the new
+   project's title and description applied — mutation-checked by deleting the describe call.
+
+**Takeaway to add to the ones above:**
+
+- **A latent defect can be activated by a change that is correct on its own terms.** The question to
+  ask when moving state from a component-scoped store to a global one is not "is this write correct"
+  but "what already writes here late, and where does it land now". Nothing in the diff looked wrong;
+  the combination did.
+
 ## 2026-08-10 — Six agents lost mid-task over four days, and a PR that re-committed the bug it documented
 
 **Task given:**

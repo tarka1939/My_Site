@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PLACEHOLDER ORIGIN — not yet valid for production.
+
+  Every <loc> below uses REPLACE-WITH-CANONICAL-ORIGIN.invalid because the canonical domain
+  does not exist yet (the Netlify site is created in Phase 5, which is paused). `.invalid` is
+  reserved by RFC 2606 and can never resolve, so submitting this as-is fails visibly rather
+  than quietly advertising the wrong host. Replace the origin here and in robots.txt before
+  the first production deploy.
+
+  Scope: static public routes only. Project detail pages (/projects/:id) are deliberately
+  absent — their URLs are UUIDs known only at runtime, and this is a build-time artifact in
+  `frontend/public/`, which Netlify copies verbatim. Listing them needs either a build-time
+  API call or a generation step, and the 2026-08-10 SEO ADR in docs/DECISIONS.md defers that
+  alongside prerendering, for the same reason: it would make the Netlify build depend on the
+  VPS backend, which the committed API client exists to avoid.
+
+  Admin routes are omitted on purpose; robots.txt disallows them.
+
+  No <lastmod>: a hardcoded date would be wrong the moment anything changes, and there is no
+  build step here to generate a real one. An absent lastmod is honest; a stale one is a lie
+  crawlers act on.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/contact</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+</urlset>
