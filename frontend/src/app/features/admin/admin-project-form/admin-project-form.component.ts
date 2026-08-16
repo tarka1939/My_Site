@@ -57,6 +57,32 @@ function claims(field: string, key: string): boolean {
   return key === field || (key.startsWith(`${field}[`) && key.endsWith(']'));
 }
 
+/**
+ * What a slot says when the server named a field but gave nothing to say about it. The contract
+ * everywhere here is that a rejection reaches a destination; a key whose message is null, undefined
+ * or blank would otherwise be subtracted from the catch-all as claimed and then render as nothing,
+ * which is a save rejected in silence again.
+ */
+const UNEXPLAINED_REJECTION = 'Rejected by the server, which gave no reason.';
+
+/**
+ * Join what the server said, skipping entries with no text. Both parts matter: `[null, 'the real
+ * complaint'].join('; ')` is `"; the real complaint"`, a leading separator leaking into the UI, and
+ * a set of entries that are all blank must still say *something* -- there was a rejection.
+ *
+ * Types say these are strings. The wire does not: this is a JSON body, and the one function whose
+ * whole job is that nothing reaches no destination is the wrong place to trust that.
+ */
+function joinMessages(messages: string[]): string | null {
+  const usable = messages.filter(
+    (message) => typeof message === 'string' && message.trim().length > 0,
+  );
+  if (usable.length > 0) {
+    return usable.join('; ');
+  }
+  return messages.length > 0 ? UNEXPLAINED_REJECTION : null;
+}
+
 function messageFor(errors: ValidationErrors | null, messages: Record<string, string>): string | null {
   for (const key of Object.keys(errors ?? {})) {
     if (messages[key]) {
@@ -407,7 +433,7 @@ export class AdminProjectFormComponent {
       .map((key) => errors[key]);
     // Joined rather than deduped: two identical messages mean two elements are wrong, and this form
     // has one control for all of them, so the repetition is the only surviving trace of the count.
-    return claimed.length > 0 ? claimed.join('; ') : null;
+    return joinMessages(claimed);
   }
 
   /** The key the API reports a link element's violation under. Built here, used by both callers. */
@@ -476,7 +502,11 @@ export class AdminProjectFormComponent {
       (control.touched || control.dirty) && control.hasError('required')
         ? `${label} is required`
         : null;
-    return clientMessage ?? this.fieldErrors()[field] ?? null;
+    // Same blank-message handling as the scalar slots: `?? null` would let a key that exists with
+    // an empty message render as nothing while unclaimedErrors() has already counted it as shown.
+    const errors = this.fieldErrors();
+    const serverMessage = field in errors ? joinMessages([errors[field]]) : null;
+    return clientMessage ?? serverMessage;
   }
 
   private buildLinkGroup(label = '', url = ''): LinkGroup {

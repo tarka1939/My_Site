@@ -903,6 +903,64 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('.form-error')).toBeNull();
     });
 
+    it('still says something when the server names a field but gives no message', async () => {
+      // Not reachable from this backend today -- every field error comes from Bean Validation with
+      // a message -- but this is the one path whose entire contract is that a rejection reaches a
+      // destination. A null message stringifies to "" through the join, which is falsy, so the slot
+      // rendered nothing while the catch-all had already counted the key as claimed and shown.
+      createProject.mockReturnValue(
+        throwError(() => problemWith([{ field: 'title', message: null as unknown as string }])),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBeTruthy();
+      expect(host.querySelector('#project-title')?.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('does not leak a separator when a slot has one blank message and one real one', async () => {
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'title', message: null as unknown as string },
+            { field: 'title[0]', message: 'the real complaint' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('the real complaint');
+    });
+
+    it('still flags a row whose server message is blank', async () => {
+      createProject.mockReturnValue(
+        throwError(() => problemWith([{ field: 'images[0]', message: '   ' }])),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#image-0-error')?.textContent?.trim()).toBeTruthy();
+      expect(host.querySelector('#image-0')?.getAttribute('aria-invalid')).toBe('true');
+    });
+
     it('does not repeat a message that a field slot already shows inline', async () => {
       createProject.mockReturnValue(
         throwError(() => validationProblem('title', 'must not be blank')),
