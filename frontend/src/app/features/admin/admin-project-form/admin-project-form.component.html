@@ -142,7 +142,12 @@
               [attr.aria-describedby]="urlError ? 'link-url-' + $index + '-error' : null"
               [attr.aria-invalid]="urlError ? 'true' : null"
             />
-            <button type="button" (click)="removeLink($index)" [attr.aria-label]="'Remove link ' + ($index + 1)">
+            <button
+              type="button"
+              (click)="removeLink($index)"
+              [disabled]="submitting()"
+              [attr.aria-label]="'Remove link ' + ($index + 1)"
+            >
               Remove
             </button>
           </div>
@@ -154,7 +159,7 @@
           }
         </div>
       }
-      <button type="button" (click)="addLink()">+ Add link</button>
+      <button type="button" (click)="addLink()" [disabled]="submitting()">+ Add link</button>
     </fieldset>
 
     <fieldset formArrayName="images">
@@ -174,7 +179,12 @@
               [attr.aria-describedby]="imageError ? 'image-' + $index + '-error' : null"
               [attr.aria-invalid]="imageError ? 'true' : null"
             />
-            <button type="button" (click)="removeImage($index)" [attr.aria-label]="'Remove image ' + ($index + 1)">
+            <button
+              type="button"
+              (click)="removeImage($index)"
+              [disabled]="submitting()"
+              [attr.aria-label]="'Remove image ' + ($index + 1)"
+            >
               Remove
             </button>
           </div>
@@ -183,7 +193,7 @@
           }
         </div>
       }
-      <button type="button" (click)="addImage()">+ Add image</button>
+      <button type="button" (click)="addImage()" [disabled]="submitting()">+ Add image</button>
     </fieldset>
 
     <!-- Anything the server rejected that no field slot above claimed. Without this a key the form

@@ -991,6 +991,55 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelectorAll('.field-error')).toHaveLength(0);
     });
 
+    it('freezes the rows while a save is in flight', async () => {
+      // The window forgetErrorsFor() cannot cover: it purges when the rows change, but a 400's
+      // indices are computed against the payload already sent and arrive afterwards. Remove row 0
+      // mid-flight and links[0].url lands on the row that took its place.
+      const pending = new Subject<unknown>();
+      createProject.mockReturnValue(pending);
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://a.example/one');
+      await type(fixture, '#link-label-1', 'Docs');
+      await type(fixture, '#link-url-1', 'https://b.example/two');
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      const removeFirst = host.querySelector<HTMLButtonElement>(
+        'fieldset[formarrayname="links"] .repeatable-row button',
+      );
+      expect(removeFirst?.disabled).toBe(true);
+      expect(
+        host.querySelector<HTMLButtonElement>('fieldset[formarrayname="links"] > button')?.disabled,
+      ).toBe(true);
+
+      await clickRemoveRow(fixture, 'links', 0);
+      // A disabled button is UX, not a guarantee -- the handler has to refuse on its own too.
+      fixture.componentInstance['removeLink'](0);
+      fixture.componentInstance['addLink']();
+      await fixture.whenStable();
+
+      expect(fixture.componentInstance['form'].controls.links.length).toBe(2);
+
+      pending.error(validationProblem('links[0].url', 'must be a valid URL'));
+      await fixture.whenStable();
+
+      // The verdict describes the payload that was sent, and the rows still match it.
+      expect(host.querySelector<HTMLInputElement>('#link-url-0')?.value).toBe(
+        'https://a.example/one',
+      );
+      expect(host.querySelector('#link-url-0-error')?.textContent?.trim()).toBe(
+        'must be a valid URL',
+      );
+      expect(host.querySelector('#link-url-1-error')).toBeNull();
+    });
+
     it('drops a collection-level verdict once the collection changes', async () => {
       createProject.mockReturnValue(
         throwError(() => validationProblem('links', 'size must be between 0 and 10')),

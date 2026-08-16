@@ -241,22 +241,48 @@ export class AdminProjectFormComponent {
     });
   }
 
+  /**
+   * Row structure is frozen while a save is in flight, and the buttons are disabled to match.
+   *
+   * forgetErrorsFor() drops stale verdicts at the moment the rows change, which cannot help against
+   * a change made *during* a request: the 400's indices are computed against the payload already
+   * sent, and they arrive after the purge has run, so they land unfiltered on a row set that has
+   * moved underneath them. Removing row 0 mid-flight and then receiving `links[0].url` flags the
+   * surviving row with the removed one's verdict -- the exact defect the purge exists to prevent,
+   * through a window it cannot see.
+   *
+   * Gating rather than stamping each submit with a generation: the response is only meaningful
+   * against the payload that produced it, and Save is already unavailable for the same reason.
+   * A disabled button is UX, so each handler refuses as well -- the guard is the guarantee.
+   */
   protected addLink(): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.links.push(this.buildLinkGroup());
     this.forgetErrorsFor('links');
   }
 
   protected removeLink(index: number): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.links.removeAt(index);
     this.forgetErrorsFor('links');
   }
 
   protected addImage(): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.images.push(this.buildImageControl());
     this.forgetErrorsFor('images');
   }
 
   protected removeImage(index: number): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.images.removeAt(index);
     this.forgetErrorsFor('images');
   }
