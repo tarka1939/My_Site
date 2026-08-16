@@ -205,8 +205,10 @@ The most dangerous class, because the feedback signal is actively misleading:
 
 **Lesson:** "it ran and didn't complain" is not evidence it did anything. For anything whose success
 is invisible (issue linking, migrations, merges), verify the *effect* directly, not the exit code.
-The last bullet is the near-miss variant and is worth separating out: sometimes the tool *did*
-complain, into output nobody was reading because the summary line said green.
+The **deprecation-warnings** bullet is the near-miss variant and is worth separating out: sometimes
+the tool *did* complain, into output nobody was reading because the summary line said green. The
+**vitest-grep** bullet is that variant's sharper form — the tool complained on the same line the
+reader was already looking at, and the filter dropped it.
 
 ### 6. What the review process itself taught
 
@@ -276,16 +278,24 @@ spend cap** mid-mutation-test and resumed after the reset.
 **What went right:**
 
 **The reviewer verified a framework claim against installed source instead of accepting the author's
-framing.** The implementation rested on an unusual assertion: that `AbstractControl` exposes
-`touched`/`dirty`/`errors` through `untracked()`, so a `computed` over them alone caches its first
-answer forever. The reviewer opened `node_modules/@angular/forms` and read
-`get touched() { return untracked(this.touchedReactive); }` rather than taking the comment's word,
+framing.** The implementation rested on an unusual assertion: that a `computed` reading only
+`AbstractControl`'s `touched`, `dirty` and `errors` caches its first answer forever. The reviewer
+opened `node_modules/@angular/forms` and read `get touched() { return untracked(this.touchedReactive); }`
+rather than taking the comment's word,
 confirmed the app is genuinely zoneless, and then drove the message paths using **only real DOM
 events** — blur, click, dispatched submit — never `detectChanges()`. That last choice mattered: it
 also established that under zoneless, `ComponentFixture.detectChanges()` forces every test view to
 refresh regardless of dirty state, so a spec that calls a method directly and then calls
 `detectChanges()` **cannot** detect a missing dirty-mark. A harness that hides the bug class the
 component was being fixed for.
+
+One detail in that framing was itself wrong, and the docs fact-check caught it after this entry was
+first written: `touched` and `pristine` really do go through `untracked()`, but **`errors` is a plain
+class field on `AbstractControl` — not signal-backed at all.** The conclusion is unaffected; the
+reason differs per property, and "all three are untracked" was a tidy generalisation over two
+mechanisms. The same wrong sentence went into issue #106's body and was corrected there too. Worth
+noting because it is the third time on this project that a plausible single mechanism has been
+generalised from a partial reading — see the 2026-08-09 entry on three invented mechanisms.
 
 **Incremental commits converted a spend-cap loss into an inconvenience, for the second time.** The
 implementer died mid-sentence on "M18 kills F3's test. Restoring…" — mid-mutation, the single most
@@ -318,9 +328,14 @@ exit code, and re-ran.
 gate run reported here used `grep -E "Test Files|Tests |FAIL"` against a *pipe*, which both drops the
 `Errors` line and discards npm's exit status. Those runs happened to be clean — re-verified afterwards
 by redirecting to a file, grepping that, and reading `EXIT=0` — but the command could not have told
-the difference. This is the third appearance of the structurally-cannot-fail gate on this project,
-after `mvn test | tail -35; echo "EXIT=$?"` and its repeat with `gh pr edit ... | tail -1 && echo`,
-and the first one found by a dispatched agent rather than by the dispatcher.
+the difference. This is the first instance found by a dispatched agent rather than by the dispatcher.
+
+It is the third *occurrence* but only the second on record, and the gap is worth closing here: the
+first is `(cd backend && mvn -q test 2>&1 | tail -35); echo "BACKEND_EXIT=$?"`, still in the repo. The
+second happened in session on 2026-08-15 — `gh pr edit ... | tail -1 && echo "corrected"`, the same
+`$?`-from-the-wrong-end-of-a-pipe mistake, made minutes after writing up the first — and was never
+logged, so nothing in the repository records it. Recorded now, because an unlogged instance makes a
+recurrence count unverifiable to the next reader, which is most of what these entries are for.
 
 **Its own bad test was reported rather than quietly fixed.** The first stale-failure ordering test
 used `throwError`, which emits at *subscribe* time — so the failure landed before the success, testing
@@ -425,21 +440,30 @@ that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app
 
 **Round-by-round tail (added on merge, 2026-08-16):**
 
-The entry above was written after the first fix round. Three more followed, and the shape they made is
-the most useful thing here: **every round's defect was inside the code written to fix the previous
-round's defect, and every one was the same class.** Server validation errors render into slots keyed
-by field name, and `errorInterceptor` deliberately stays silent when a 400 carries field errors, so
-any key reaching no slot means Save does nothing and says nothing.
+The entry above was written after the first fix round. Three more followed. **The first draft of this
+paragraph claimed every round's defect was introduced by the previous round's fix; a fact-check of the
+docs PR walked the commits and showed that is only true of half of them.** The corrected account, and
+the tidier version is the one to distrust:
 
-1. Row keys (`links[0].label`) matched against flat keys only.
-2. Collection-level keys — bare `links`/`images` from `@Size(max = 10)` on the property rather than
-   its elements — reachable with eleven clicks on "+ Add link".
-3. The catch-all built to end (2), plus a **regression it introduced**: the template passed a live
-   `$index`, so removing a row left the survivor flagged with the removed row's verdict. The round
-   traded "silent" for "wrong", which is not an improvement.
-4. An asymmetry inside the catch-all itself: `serverError()` found **one** matching key while
-   `unclaimedErrors()` subtracted **every** one, so a slot claiming two indexed keys rendered the
-   first and swallowed the rest. Two over-long tags reach it.
+1. Row keys (`links[0].label`) matched against flat keys only — **pre-existing**, inherited from the
+   Phase 3 form. `09df2c2`, the #92 fix, touched no field-error code at all.
+2. Collection-level keys — the bare `links` key from `@Size(max = 10)` sitting on the property rather
+   than its elements (`images` carries `@Size(max = 20)`) — **also pre-existing**; no such slot had
+   ever existed.
+3. **Introduced by round 2's fix** (`2efbc99`): its row lookup passed a live `$index`, so removing a
+   row left the survivor flagged with the removed row's verdict. Round 3's catch-all (`ccb5a0a`) did
+   not cause this — it shipped `forgetErrorsFor()`, the mitigation. This one is also not the same
+   class as the others: it renders a **wrong** verdict rather than dropping one, which is why the
+   round traded "silent" for "wrong" instead of improving on it.
+4. **Introduced by round 3's fix**: `serverError()` found **one** matching key while the
+   `unclaimedErrors()` added alongside it subtracted **every** one, so a slot claiming two indexed
+   keys rendered the first and swallowed the rest. Two over-long tags reach it.
+
+So the accurate shape is narrower than the first telling: two long-standing gaps that nothing had
+exercised, then two genuine self-inflicted regressions once the code started reaching into keys it had
+never parsed before. Three of the four are the silent-drop class — server errors render into slots
+keyed by field name, and `errorInterceptor` deliberately stays quiet when a 400 carries field errors,
+so any key reaching no slot means Save does nothing and says nothing.
 
 Instance 3 is where the approach changed. Up to then each round had enumerated one more key, which is
 whack-a-mole with a backend that can always add a constraint. The user was asked to choose, and chose
@@ -450,11 +474,13 @@ each asserting the message renders exactly once.
 
 Two process observations from the tail:
 
-**Writing the lesson down did not prevent repeating it.** The spec file carries a comment recording
-that mutations survived on the images side "purely because the links tests were never duplicated for
-it" — and the commit containing that sentence reproduced the same gap one commit later, for a
-different guard. Four images-side mutations survived. What closed it was mutating each new guard on
-both collections, not the note.
+**Writing the lesson down did not prevent repeating it, in the same commit.** The spec file carries a
+comment recording that mutations survived on the images side "purely because the links tests were
+never duplicated for it" — and `cf59d00`, the commit that added that sentence, left exactly that gap
+for a *different* guard: the in-flight freeze added one commit earlier (`1ab45b3`) was mirrored onto
+images for the purge but not for the freeze. Four images-side mutations survived, and it took a review
+two commits later (`8c83045`) to find them. What closed it was mutating each new guard on both
+collections, not the note.
 
 **A reviewer overturned a comment the Senior Dev had asked for.** The agent was told to document that
 short-circuiting `forgetErrorsFor()`'s `set()` when nothing was filtered would break the catch-all
