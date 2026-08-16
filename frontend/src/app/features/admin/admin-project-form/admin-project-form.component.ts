@@ -182,15 +182,20 @@ export class AdminProjectFormComponent {
    * Claimed-ness comes from the same claims() rule the slots look up with and the same key builders
    * the rows render with, so this cannot drift out of step with what is on screen.
    *
-   * The fragile part, spelled out because nothing about it is visible at the call site:
-   * rowFieldKeys() reads the FormArrays, whose `controls` array is not a signal, so adding or
-   * removing a row invalidates nothing here. What saves it is that both of those paths go through
-   * forgetErrorsFor(), which always calls fieldErrors.set() with a freshly constructed object --
-   * under the signal's default Object.is equality that notifies every time, including when the
-   * filter removed nothing, and that notification is what makes this recompute and re-read the
-   * arrays. Giving fieldErrors an `equal:` option, or skipping the set() when nothing was filtered,
-   * would leave the catch-all describing a previous row set with no test failing. Both are the
-   * obvious tidy-up. Neither is safe.
+   * The part worth knowing, since none of it is visible at the call site: rowFieldKeys() reads the
+   * FormArrays, whose `controls` array is not a signal, so adding or removing a row invalidates
+   * nothing here. What saves it is that both of those paths go through forgetErrorsFor(), whose
+   * fieldErrors.set() notifies and makes this recompute against the row set that now exists.
+   *
+   * That is load-bearing when the purge removes keys. When it removes none, it is not: nothing
+   * filtered means no key of that collection was present, and the only row keys whose membership
+   * moved belong to that collection, so no key here can change its verdict and the cached answer is
+   * already the right one. Scalar claims never depend on the rows at all. Skipping the set() in
+   * that case, or giving fieldErrors an `equal:` option, is safe as this stands.
+   *
+   * The hazard to actually watch for is a new path that changes a row count without purging -- a
+   * duplicate-row button, say. That would leave this describing a row set that is gone, and no
+   * existing test would fail.
    *
    * loadProject()'s success handler is the other FormArray mutation, and it does not rewrite
    * fieldErrors. It is safe by reachability rather than by a check: retryLoad() is its only re-entry
@@ -468,11 +473,10 @@ export class AdminProjectFormComponent {
    * the collection that moved, though -- a title rejection the admin has not dealt with yet is
    * still true, and clearing it would hide work they still owe.
    *
-   * The unconditional set() is load-bearing beyond this method: a fresh object every call is what
-   * makes the signal notify under Object.is, and that notification is the only thing that
-   * invalidates unclaimedErrors(), which reads the non-reactive FormArrays. Do not add an `equal:`
-   * option to fieldErrors and do not skip this set() when `remaining` is unchanged -- see the
-   * comment on unclaimedErrors().
+   * The set() reaches beyond this method: it is what notifies unclaimedErrors(), which reads the
+   * FormArrays without being reactive in them, so a purge that removes keys is also what tells the
+   * catch-all the rows have moved. A purge that removes nothing has nothing to tell it -- see the
+   * reasoning on unclaimedErrors() before assuming either half of that is free to change.
    */
   private forgetErrorsFor(collection: 'links' | 'images'): void {
     const remaining = Object.entries(this.fieldErrors()).filter(
