@@ -4,29 +4,61 @@
 
 @if (loading()) {
   <p role="status">Loading&hellip;</p>
+} @else if (loadError(); as message) {
+  <!-- The form is deliberately not rendered here. An edit form holding none of the project's data
+       still saves with a PUT, which replaces the whole record -- so an empty-looking form is a
+       one-click wipe. The banner errorInterceptor already showed says what went wrong; this says
+       what the page is doing about it. -->
+  <div class="load-error">
+    <p role="alert">{{ message }}</p>
+    <button type="button" (click)="retryLoad()">Try again</button>
+  </div>
 } @else {
   <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <!-- Each of these renders one message slot holding either this form's own validator message or
+         the server's for the same field -- see controlError(). The id is what aria-describedby
+         points at: role="alert" announces the message once as it appears, and the description is
+         what carries the reason on every later visit to the field. -->
     <div class="field">
       <label for="project-title">Title</label>
-      <input id="project-title" type="text" formControlName="title" />
-      @if (fieldErrors()['title']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['title'] }}</p>
+      <input
+        id="project-title"
+        type="text"
+        formControlName="title"
+        [attr.aria-describedby]="titleError() ? 'project-title-error' : null"
+        [attr.aria-invalid]="titleError() ? 'true' : null"
+      />
+      @if (titleError(); as message) {
+        <p id="project-title-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
     <div class="field">
       <label for="project-description">Description</label>
-      <textarea id="project-description" rows="6" formControlName="description"></textarea>
-      @if (fieldErrors()['description']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['description'] }}</p>
+      <textarea
+        id="project-description"
+        rows="6"
+        formControlName="description"
+        [attr.aria-describedby]="descriptionError() ? 'project-description-error' : null"
+        [attr.aria-invalid]="descriptionError() ? 'true' : null"
+      ></textarea>
+      @if (descriptionError(); as message) {
+        <p id="project-description-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
     <div class="field">
       <label for="project-tags">Tags (comma-separated)</label>
-      <input id="project-tags" type="text" formControlName="tags" placeholder="angular, dsp, portfolio" />
-      @if (fieldErrors()['tags']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['tags'] }}</p>
+      <input
+        id="project-tags"
+        type="text"
+        formControlName="tags"
+        placeholder="angular, dsp, portfolio"
+        [attr.aria-describedby]="tagsError() ? 'project-tags-error' : null"
+        [attr.aria-invalid]="tagsError() ? 'true' : null"
+      />
+      @if (tagsError(); as message) {
+        <p id="project-tags-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
@@ -39,13 +71,18 @@
           id="project-started-on"
           type="date"
           formControlName="startedOn"
-          aria-describedby="project-started-on-hint"
+          [attr.aria-describedby]="
+            startedOnError()
+              ? 'project-started-on-hint project-started-on-error'
+              : 'project-started-on-hint'
+          "
+          [attr.aria-invalid]="startedOnError() ? 'true' : null"
         />
         <p id="project-started-on-hint" class="field-hint">
           Only the month and year are shown on the site.
         </p>
-        @if (fieldErrors()['startedOn']) {
-          <p class="field-error" role="alert">{{ fieldErrors()['startedOn'] }}</p>
+        @if (startedOnError(); as message) {
+          <p id="project-started-on-error" class="field-error" role="alert">{{ message }}</p>
         }
       </div>
 
@@ -77,35 +114,109 @@
 
     <fieldset formArrayName="links">
       <legend>Links</legend>
-      @for (link of form.controls.links.controls; track $index) {
-        <div class="repeatable-row" [formGroupName]="$index">
-          <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
-          <input [id]="'link-label-' + $index" type="text" formControlName="label" placeholder="Label" />
-          <label [attr.for]="'link-url-' + $index" class="visually-hidden">Link URL</label>
-          <input [id]="'link-url-' + $index" type="url" formControlName="url" placeholder="https://…" />
-          <button type="button" (click)="removeLink($index)" [attr.aria-label]="'Remove link ' + ($index + 1)">
-            Remove
-          </button>
+      <!-- track link, not $index. [formGroupName]="$index" is positional, so tracking by index
+           reuses the row that was at position i for the group now at position i without rebinding
+           it: remove the first of two links and the DOM keeps showing the removed one's text while
+           the model holds the survivor's -- which is what a PUT would then send. Tracking the
+           FormGroup identity makes the removed row's DOM go with it. -->
+      @for (link of form.controls.links.controls; track link) {
+        @let labelError = rowError(link.controls.label, 'Link label', linkFieldKey($index, 'label'));
+        @let urlError = rowError(link.controls.url, 'Link URL', linkFieldKey($index, 'url'));
+        <div class="repeatable-group" [formGroupName]="$index">
+          <div class="repeatable-row">
+            <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
+            <input
+              [id]="'link-label-' + $index"
+              type="text"
+              formControlName="label"
+              placeholder="Label"
+              [attr.aria-describedby]="labelError ? 'link-label-' + $index + '-error' : null"
+              [attr.aria-invalid]="labelError ? 'true' : null"
+            />
+            <label [attr.for]="'link-url-' + $index" class="visually-hidden">Link URL</label>
+            <input
+              [id]="'link-url-' + $index"
+              type="url"
+              formControlName="url"
+              placeholder="https://…"
+              [attr.aria-describedby]="urlError ? 'link-url-' + $index + '-error' : null"
+              [attr.aria-invalid]="urlError ? 'true' : null"
+            />
+            <button
+              type="button"
+              (click)="removeLink($index)"
+              [disabled]="submitting()"
+              [attr.aria-label]="'Remove link ' + ($index + 1)"
+            >
+              Remove
+            </button>
+          </div>
+          @if (labelError) {
+            <p [id]="'link-label-' + $index + '-error'" class="field-error" role="alert">{{ labelError }}</p>
+          }
+          @if (urlError) {
+            <p [id]="'link-url-' + $index + '-error'" class="field-error" role="alert">{{ urlError }}</p>
+          }
         </div>
       }
-      <button type="button" (click)="addLink()">+ Add link</button>
+      <button type="button" (click)="addLink()" [disabled]="submitting()">+ Add link</button>
     </fieldset>
 
     <fieldset formArrayName="images">
       <legend>Image URLs</legend>
-      @for (image of form.controls.images.controls; track $index) {
-        <div class="repeatable-row">
-          <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
-          <input [id]="'image-' + $index" type="url" [formControlName]="$index" placeholder="https://…" />
-          <button type="button" (click)="removeImage($index)" [attr.aria-label]="'Remove image ' + ($index + 1)">
-            Remove
-          </button>
+      <!-- track image, for the same reason as the links above: [formControlName]="$index" is
+           positional, so an index-tracked row survives a removal still bound to its old value. -->
+      @for (image of form.controls.images.controls; track image) {
+        @let imageError = rowError(image, 'Image URL', imageFieldKey($index));
+        <div class="repeatable-group">
+          <div class="repeatable-row">
+            <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
+            <input
+              [id]="'image-' + $index"
+              type="url"
+              [formControlName]="$index"
+              placeholder="https://…"
+              [attr.aria-describedby]="imageError ? 'image-' + $index + '-error' : null"
+              [attr.aria-invalid]="imageError ? 'true' : null"
+            />
+            <button
+              type="button"
+              (click)="removeImage($index)"
+              [disabled]="submitting()"
+              [attr.aria-label]="'Remove image ' + ($index + 1)"
+            >
+              Remove
+            </button>
+          </div>
+          @if (imageError) {
+            <p [id]="'image-' + $index + '-error'" class="field-error" role="alert">{{ imageError }}</p>
+          }
         </div>
       }
-      <button type="button" (click)="addImage()">+ Add image</button>
+      <button type="button" (click)="addImage()" [disabled]="submitting()">+ Add image</button>
     </fieldset>
 
-    <button type="submit" [disabled]="submitting()">
+    <!-- Anything the server rejected that no field slot above claimed. Without this a key the form
+         does not enumerate -- `links` and `images` carry collection-level limits reported under the
+         bare name -- is dropped silently, because errorInterceptor stays quiet for a 400 that
+         carries field errors. The set is computed by subtracting the slots from the response, so it
+         cannot fall behind the fields that exist. -->
+    @if (unclaimedErrors().length > 0) {
+      <div id="project-form-error" class="form-error" role="alert">
+        <p>The server rejected this save:</p>
+        <ul>
+          @for (error of unclaimedErrors(); track error.field) {
+            <li><span class="form-error-field">{{ error.field }}</span> {{ error.message }}</li>
+          }
+        </ul>
+      </div>
+    }
+
+    <button
+      type="submit"
+      [disabled]="submitting()"
+      [attr.aria-describedby]="unclaimedErrors().length > 0 ? 'project-form-error' : null"
+    >
       {{ submitting() ? 'Saving…' : 'Save project' }}
     </button>
   </form>

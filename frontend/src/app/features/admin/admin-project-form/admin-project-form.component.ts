@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { FormArray, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  AbstractControl,
+  FormArray,
+  FormBuilder,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ProjectWriteRequest } from '../../../core/api/model/projectWriteRequest';
@@ -11,6 +20,77 @@ import {
 } from '../../../shared/project-period/project-period';
 
 type LinkGroup = FormGroup<{ label: FormControl<string>; url: FormControl<string> }>;
+
+/**
+ * Wording for this form's own validators, keyed by the error key Validators.* produces. The limits
+ * repeat the ones on the controls below, which in turn come from ProjectWriteRequest in
+ * docs/openapi.yaml -- change one and change all three.
+ */
+const TITLE_MESSAGES: Record<string, string> = {
+  required: 'Title is required',
+  maxlength: 'Title cannot exceed 200 characters',
+};
+const DESCRIPTION_MESSAGES: Record<string, string> = {
+  required: 'Description is required',
+  maxlength: 'Description cannot exceed 5000 characters',
+};
+const TAGS_MESSAGES: Record<string, string> = {
+  required: 'At least one tag is required',
+};
+
+/**
+ * Whether a server field key belongs to the slot for `field`. One rule, used twice: serverError()
+ * collects a slot's messages with it, and unclaimedErrors() subtracts with it -- so a key can never
+ * be both rendered inline and repeated in the catch-all, and never subtracted by a slot that does
+ * not go on to render it.
+ *
+ * That second half holds only because serverError() renders *every* key it claims. Claiming all and
+ * rendering the first is not a smaller version of the same thing: it is the silent drop again, one
+ * level in.
+ *
+ * `tags[2]` belongs to the tags slot, because this form edits tags as one comma-separated control
+ * and that is the only place such a message can go. `links[0].label` does not belong to any scalar
+ * slot -- it names an element's property, which the row renders itself -- and that is what the
+ * trailing `]` check distinguishes.
+ */
+function claims(field: string, key: string): boolean {
+  return key === field || (key.startsWith(`${field}[`) && key.endsWith(']'));
+}
+
+/**
+ * What a slot says when the server named a field but gave nothing to say about it. The contract
+ * everywhere here is that a rejection reaches a destination; a key whose message is null, undefined
+ * or blank would otherwise be subtracted from the catch-all as claimed and then render as nothing,
+ * which is a save rejected in silence again.
+ */
+const UNEXPLAINED_REJECTION = 'Rejected by the server, which gave no reason.';
+
+/**
+ * Join what the server said, skipping entries with no text. Both parts matter: `[null, 'the real
+ * complaint'].join('; ')` is `"; the real complaint"`, a leading separator leaking into the UI, and
+ * a set of entries that are all blank must still say *something* -- there was a rejection.
+ *
+ * Types say these are strings. The wire does not: this is a JSON body, and the one function whose
+ * whole job is that nothing reaches no destination is the wrong place to trust that.
+ */
+function joinMessages(messages: string[]): string | null {
+  const usable = messages.filter(
+    (message) => typeof message === 'string' && message.trim().length > 0,
+  );
+  if (usable.length > 0) {
+    return usable.join('; ');
+  }
+  return messages.length > 0 ? UNEXPLAINED_REJECTION : null;
+}
+
+function messageFor(errors: ValidationErrors | null, messages: Record<string, string>): string | null {
+  for (const key of Object.keys(errors ?? {})) {
+    if (messages[key]) {
+      return messages[key];
+    }
+  }
+  return null;
+}
 
 @Component({
   selector: 'app-admin-project-form',
@@ -30,6 +110,13 @@ export class AdminProjectFormComponent {
   protected readonly loading = signal(this.isEditMode);
   protected readonly submitting = signal(false);
   protected readonly fieldErrors = signal<Record<string, string>>({});
+  /**
+   * Set when the project this form is editing could not be fetched. It gates both the template
+   * (error state instead of the form) and submit(), because an edit form with no loaded data is
+   * not merely empty -- saving it PUTs, and PUT is a full replacement, so it would overwrite the
+   * stored title, description, tags, links, images and dates with blanks.
+   */
+  protected readonly loadError = signal<string | null>(null);
 
   protected readonly form = this.formBuilder.nonNullable.group({
     title: ['', [Validators.required, Validators.maxLength(200)]],
@@ -57,51 +144,201 @@ export class AdminProjectFormComponent {
     const violation = validateProjectPeriod(this.startedOnValue(), this.completedOnValue());
     return violation === null ? null : PROJECT_PERIOD_MESSAGES[violation];
   });
-  protected readonly completedOnError = computed(
-    () => this.periodError() ?? this.fieldErrors()['completedOn'] ?? null,
-  );
+  /**
+   * Every scalar field with a slot of its own, and the message that slot shows. Declared once and
+   * used twice: the template renders these, and unclaimedErrors() subtracts exactly these keys. A
+   * field therefore cannot be given a slot without also being taken out of the catch-all, which is
+   * what keeps the catch-all honest as the form grows -- a hand-copied second list would not.
+   */
+  private readonly scalarSlots = {
+    title: this.controlError(this.form.controls.title, 'title', TITLE_MESSAGES),
+    description: this.controlError(
+      this.form.controls.description,
+      'description',
+      DESCRIPTION_MESSAGES,
+    ),
+    tags: this.controlError(this.form.controls.tags, 'tags', TAGS_MESSAGES),
+    // No client validators of its own -- this slot exists so a server 400 on startedOn has a home.
+    startedOn: computed(() => this.serverError('startedOn')),
+    completedOn: computed(() => this.periodError() ?? this.serverError('completedOn')),
+  } satisfies Record<string, Signal<string | null>>;
+
+  protected readonly titleError = this.scalarSlots.title;
+  protected readonly descriptionError = this.scalarSlots.description;
+  protected readonly tagsError = this.scalarSlots.tags;
+  protected readonly startedOnError = this.scalarSlots.startedOn;
+  protected readonly completedOnError = this.scalarSlots.completedOn;
+
+  /**
+   * Server field errors that no slot on this form claimed, shown together next to Save.
+   *
+   * Each round of this fix enumerated one more key and was caught out by the next: `links` and
+   * `images` carry collection-level constraints (at most 10 and 20) whose violations are reported
+   * under the bare name, and eleven clicks on "+ Add link" reaches that through the UI. Since
+   * errorInterceptor deliberately stays quiet for any 400 that carries field errors, an unmatched
+   * key means a save that was rejected and said nothing. This is the backstop that makes that
+   * unreachable whatever the server decides to call a field.
+   *
+   * Claimed-ness comes from the same claims() rule the slots look up with and the same key builders
+   * the rows render with, so this cannot drift out of step with what is on screen.
+   *
+   * The part worth knowing, since none of it is visible at the call site: rowFieldKeys() reads the
+   * FormArrays, whose `controls` array is not a signal, so adding or removing a row invalidates
+   * nothing here. What saves it is that both of those paths go through forgetErrorsFor(), whose
+   * fieldErrors.set() notifies and makes this recompute against the row set that now exists.
+   *
+   * That is load-bearing when the purge removes keys. When it removes none, it is not: nothing
+   * filtered means no key of that collection was present, and the only row keys whose membership
+   * moved belong to that collection, so no key here can change its verdict and the cached answer is
+   * already the right one. Scalar claims never depend on the rows at all. Skipping the set() in
+   * that case, or giving fieldErrors an `equal:` option, is safe as this stands.
+   *
+   * The hazard to actually watch for is a new path that changes a row count without purging -- a
+   * duplicate-row button, say. That would leave this describing a row set that is gone, and no
+   * existing test would fail.
+   *
+   * loadProject()'s success handler is the other FormArray mutation, and it does not rewrite
+   * fieldErrors. It is safe by reachability rather than by a check: retryLoad() is its only re-entry
+   * point, it is called from inside the loadError() branch, and that branch renders neither the form
+   * nor Save -- so fieldErrors is empty whenever those arrays are rebuilt.
+   */
+  protected readonly unclaimedErrors = computed(() => {
+    const rowKeys = new Set(this.rowFieldKeys());
+    const scalarFields = Object.keys(this.scalarSlots);
+
+    return Object.entries(this.fieldErrors())
+      .filter(
+        ([key]) => !rowKeys.has(key) && !scalarFields.some((field) => claims(field, key)),
+      )
+      .map(([field, message]) => ({ field, message }));
+  });
 
   constructor() {
-    if (this.projectId) {
-      this.projectsApi.getProject({ id: this.projectId }).subscribe({
-        next: (project) => {
-          this.form.patchValue({
-            title: project.title,
-            description: project.description,
-            tags: project.tags.map((t) => t.name).join(', '),
-            // Round-tripping these matters more than it looks: PUT takes the same body as POST, so
-            // a field left out of the payload clears the stored value rather than preserving it.
-            startedOn: project.startedOn ?? '',
-            completedOn: project.completedOn ?? '',
-          });
-          project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
-          project.images.forEach((image) =>
-            this.form.controls.images.push(this.buildImageControl(image)),
-          );
-          this.loading.set(false);
-        },
-        error: () => this.loading.set(false),
-      });
-    }
+    this.loadProject();
   }
 
+  /**
+   * Re-runs the load after a failure, one at a time. Without the guard two quick clicks on "Try
+   * again" leave two responses in flight whose order nothing controls, and the last one to land
+   * writes its outcome over the other's -- a stale failure arriving after a success would put the
+   * error state back over a form that has just been populated. Refusing the second start removes
+   * the ordering question rather than trying to resolve it afterwards.
+   *
+   * The guard belongs here rather than in loadProject(), because loading() is already true when the
+   * constructor calls that for the first time in edit mode.
+   */
+  protected retryLoad(): void {
+    if (this.loading()) {
+      return;
+    }
+    this.loadProject();
+  }
+
+  private loadProject(): void {
+    const id = this.projectId;
+    if (!id) {
+      return;
+    }
+
+    this.loading.set(true);
+    this.loadError.set(null);
+
+    this.projectsApi.getProject({ id }).subscribe({
+      next: (project) => {
+        this.form.patchValue({
+          title: project.title,
+          description: project.description,
+          tags: project.tags.map((t) => t.name).join(', '),
+          // Round-tripping these matters more than it looks: PUT takes the same body as POST, so
+          // a field left out of the payload clears the stored value rather than preserving it.
+          startedOn: project.startedOn ?? '',
+          completedOn: project.completedOn ?? '',
+        });
+        // Clear before repopulating. Retry makes this handler runnable more than once, and push
+        // without clear gives a second successful load two of every row. (A retry that follows a
+        // failure finds the arrays empty, so that is not the case that bites -- which is exactly
+        // why the loader is made idempotent here rather than left to depend on how it got here.)
+        this.form.controls.links.clear();
+        this.form.controls.images.clear();
+        project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
+        project.images.forEach((image) =>
+          this.form.controls.images.push(this.buildImageControl(image)),
+        );
+        this.loading.set(false);
+      },
+      error: (problem: ApiProblem) => {
+        // No notifications.error() here on purpose: errorInterceptor already toasts every non-field
+        // error. It also logs out and redirects on a 401 -- but only while auth.isLoggedIn() is
+        // still true, and that is a wall-clock check on the token's expiresAt. A token that simply
+        // expired while this page sat open, one of the triggers this guard exists for, makes
+        // isLoggedIn() false before the 401 ever arrives: nothing redirects, and every retry fails
+        // identically. Say that instead of offering the admin the same dead end again. Leaving is
+        // what recovers, because navigating re-runs authGuard. The interceptor's side of this is
+        // issue #108, not this component's business.
+        this.loadError.set(
+          problem?.status === 401
+            ? 'Your admin session has expired. Log in again to edit this project -- "Back to projects" above will take you there.'
+            : 'Could not load this project. Nothing has been changed -- try again, or go back to the project list.',
+        );
+        this.loading.set(false);
+      },
+    });
+  }
+
+  /**
+   * Row structure is frozen while a save is in flight, and the buttons are disabled to match.
+   *
+   * forgetErrorsFor() drops stale verdicts at the moment the rows change, which cannot help against
+   * a change made *during* a request: the 400's indices are computed against the payload already
+   * sent, and they arrive after the purge has run, so they land unfiltered on a row set that has
+   * moved underneath them. Removing row 0 mid-flight and then receiving `links[0].url` flags the
+   * surviving row with the removed one's verdict -- the exact defect the purge exists to prevent,
+   * through a window it cannot see.
+   *
+   * Gating rather than stamping each submit with a generation: the response is only meaningful
+   * against the payload that produced it, and Save is already unavailable for the same reason.
+   * A disabled button is UX, so each handler refuses as well -- the guard is the guarantee.
+   */
   protected addLink(): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.links.push(this.buildLinkGroup());
+    this.forgetErrorsFor('links');
   }
 
   protected removeLink(index: number): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.links.removeAt(index);
+    this.forgetErrorsFor('links');
   }
 
   protected addImage(): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.images.push(this.buildImageControl());
+    this.forgetErrorsFor('images');
   }
 
   protected removeImage(index: number): void {
+    if (this.submitting()) {
+      return;
+    }
     this.form.controls.images.removeAt(index);
+    this.forgetErrorsFor('images');
   }
 
   protected submit(): void {
+    // Deliberately redundant with the template, which renders the error state instead of the form.
+    // The template guard is the UX; this one is what makes the data-loss path unreachable, since a
+    // PUT built from a form that never received its project would blank every field of the record.
+    if (this.loadError()) {
+      return;
+    }
+
     const raw = this.form.getRawValue();
 
     if (this.form.invalid || validateProjectPeriod(raw.startedOn, raw.completedOn) || this.submitting()) {
@@ -139,12 +376,141 @@ export class AdminProjectFormComponent {
       },
       error: (problem: ApiProblem) => {
         this.submitting.set(false);
-        if (problem.fieldErrors.length > 0) {
-          this.fieldErrors.set(Object.fromEntries(problem.fieldErrors.map((e) => [e.field, e.message])));
+        // Optional-chained like the load handler's status check: errorInterceptor normalizes every
+        // HttpErrorResponse into an ApiProblem, but rethrows anything that is not one unchanged, so
+        // the shape here is only almost guaranteed.
+        const fieldErrors = problem?.fieldErrors ?? [];
+        if (fieldErrors.length > 0) {
+          this.fieldErrors.set(Object.fromEntries(fieldErrors.map((e) => [e.field, e.message])));
         }
         // Non-field errors are surfaced globally by errorInterceptor.
       },
     });
+  }
+
+  /**
+   * One message slot per field, on the completedOnError() model: this form's own validator message
+   * while the control is in violation, otherwise whatever the server said about the same field.
+   * Held back until the control is touched or edited, so a blank new form does not open covered in
+   * complaints -- submit() calls markAllAsTouched(), which is what makes them appear on a rejected
+   * save instead of the old silent return.
+   *
+   * The events() read is what keeps this reactive, and is not optional: AbstractControl exposes
+   * `touched`, `dirty` and `errors` through untracked() (Angular 21), so a computed reading only
+   * those would cache its first answer and never update -- a failure state that renders as an idle
+   * one, which is the same bug this component is being fixed for. `events` emits on every value,
+   * status and touched change, so the computed is invalidated exactly when one of them moves.
+   */
+  private controlError(
+    control: AbstractControl,
+    field: string,
+    messages: Record<string, string>,
+  ): Signal<string | null> {
+    const events = toSignal(control.events, { initialValue: null });
+
+    return computed(() => {
+      events();
+      const clientMessage =
+        control.touched || control.dirty ? messageFor(control.errors, messages) : null;
+      return clientMessage ?? this.serverError(field);
+    });
+  }
+
+  /**
+   * Everything the server said about `field`, including the indexed keys it uses for violations
+   * inside a collection: a tag name over the limit comes back as `tags[2]`, not `tags`. This form
+   * edits tags as one comma-separated control, so a per-element message has no other slot to go to.
+   *
+   * Every match, not the first. The API reports one entry per violation with no dedup, so two
+   * over-long tags arrive together as `tags[0]` and `tags[1]`, and unclaimedErrors() subtracts both
+   * -- it shares claims() with this. Returning only the first would leave the second rendered
+   * nowhere at all, which is the same silent drop this component keeps being fixed for, one level
+   * further in. Two complaints about tags also belong in the tags slot together rather than split
+   * across two regions of the page.
+   *
+   * The `]` check inside claims() keeps this to leaf keys: `links[0].label` belongs to a row
+   * control, which looks itself up by that exact key via rowError().
+   */
+  private serverError(field: string): string | null {
+    const errors = this.fieldErrors();
+    const claimed = Object.keys(errors)
+      .filter((key) => claims(field, key))
+      .map((key) => errors[key]);
+    // Joined rather than deduped: two identical messages mean two elements are wrong, and this form
+    // has one control for all of them, so the repetition is the only surviving trace of the count.
+    return joinMessages(claimed);
+  }
+
+  /** The key the API reports a link element's violation under. Built here, used by both callers. */
+  protected linkFieldKey(index: number, part: 'label' | 'url'): string {
+    return `links[${index}].${part}`;
+  }
+
+  /** Likewise for an image element, whose whole value is the constrained thing. */
+  protected imageFieldKey(index: number): string {
+    return `images[${index}]`;
+  }
+
+  /** Exactly the keys the rendered rows look themselves up by, from the same builders. */
+  private rowFieldKeys(): string[] {
+    return [
+      ...this.form.controls.links.controls.flatMap((_, index) => [
+        this.linkFieldKey(index, 'label'),
+        this.linkFieldKey(index, 'url'),
+      ]),
+      ...this.form.controls.images.controls.map((_, index) => this.imageFieldKey(index)),
+    ];
+  }
+
+  /**
+   * Drop every server verdict about one collection, because the payload it judged no longer exists.
+   * These keys are positional: remove link row 0 and the message the server sent about `links[1]`
+   * now points at a different link, so it would either paint onto the wrong row or vanish along
+   * with an index that no longer exists. A stale verdict is worse than no verdict -- the admin
+   * cannot tell it apart from a fresh one -- and the next save produces a current set anyway.
+   *
+   * The bare collection key goes too: a size verdict about ten links is not about eleven. Scoped to
+   * the collection that moved, though -- a title rejection the admin has not dealt with yet is
+   * still true, and clearing it would hide work they still owe.
+   *
+   * The set() reaches beyond this method: it is what notifies unclaimedErrors(), which reads the
+   * FormArrays without being reactive in them, so a purge that removes keys is also what tells the
+   * catch-all the rows have moved. A purge that removes nothing has nothing to tell it -- see the
+   * reasoning on unclaimedErrors() before assuming either half of that is free to change.
+   */
+  private forgetErrorsFor(collection: 'links' | 'images'): void {
+    const remaining = Object.entries(this.fieldErrors()).filter(
+      ([key]) => key !== collection && !key.startsWith(`${collection}[`),
+    );
+    this.fieldErrors.set(Object.fromEntries(remaining));
+  }
+
+  /**
+   * Same idea for a link or image row: this form's own message first, then the server's for the
+   * same element. `field` is the indexed key the API reports collection violations under --
+   * `links[0].label`, `links[0].url`, `images[0]` -- and it is not optional. The client side of a
+   * row control only checks `required`, while the server also bounds lengths (a 51-character link
+   * label, a 501-character URL), so without this lookup those rejections produce no inline message
+   * and no toast, and Save silently does nothing.
+   *
+   * Rows are added and removed at runtime, so there is no stable computed to hang each one on; the
+   * template calls this instead and it is re-evaluated on every check of the view. That is sound
+   * for the reason a computed would not be: the checks are driven by the ng-touched/ng-invalid host
+   * bindings Angular puts on every formControlName element, which read those same control signals.
+   */
+  protected rowError(control: AbstractControl, label: string, field: string): string | null {
+    // The client message waits for the admin to reach the control -- a just-added row is empty by
+    // definition and should not open pre-scolded. A server message has no such gate: it is about a
+    // value that was actually submitted, whether or not this control was ever focused.
+    const clientMessage =
+      (control.touched || control.dirty) && control.hasError('required')
+        ? `${label} is required`
+        : null;
+    // Same blank-message handling as the scalar slots: `?? null` would let a key that exists with
+    // an empty message render as nothing while unclaimedErrors() has already counted it as shown.
+    const errors = this.fieldErrors();
+    const serverMessage = field in errors ? joinMessages([errors[field]]) : null;
+    return clientMessage ?? serverMessage;
   }
 
   private buildLinkGroup(label = '', url = ''): LinkGroup {
