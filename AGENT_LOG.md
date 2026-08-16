@@ -385,6 +385,16 @@ that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app
   the brief.** The only reason this one was caught is that the brief *also* required mutation-testing
   every new test. Specifying the assertion is worth doing; specifying it without requiring proof that
   it can fail is worse than not specifying it, because a named test reads as a covered case.
+- **When a defect class recurs inside its own fix, change the approach, not the coverage.** Three
+  rounds enumerated one more key each and were caught out by the next, because enumeration cannot
+  outrun a backend that can add a constraint. The structural version — render anything no slot
+  claimed, deriving claimed-ness from the same predicate the slots use — ended it in one round and
+  survived a 35-key adversarial sweep. The signal to stop enumerating was the second recurrence, not
+  the third.
+- **A comment recording a lesson is not a control.** The commit that wrote "mutations survived on this
+  side purely because the links tests were never duplicated for it" reproduced that exact gap one
+  commit later for a different guard. Notes inform a reader who is already looking; only a mutation
+  run makes the omission fail.
 - **A grep over a test run is a gate, and it inherits every rule about gates.** Three times now the
   failure has been the same: the command could not report red. Twice it was `$?` captured from the
   wrong end of a pipe; this time it was a filter narrow enough to hide a line the runner did print.
@@ -412,6 +422,47 @@ that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app
   on 2026-08-10). Both were harmless until an unrelated correct change gave the old behaviour a new
   consequence. When touching every line of a construct, the question is not only "is my change right"
   but "what was already wrong here that my change gives teeth to".
+
+**Round-by-round tail (added on merge, 2026-08-16):**
+
+The entry above was written after the first fix round. Three more followed, and the shape they made is
+the most useful thing here: **every round's defect was inside the code written to fix the previous
+round's defect, and every one was the same class.** Server validation errors render into slots keyed
+by field name, and `errorInterceptor` deliberately stays silent when a 400 carries field errors, so
+any key reaching no slot means Save does nothing and says nothing.
+
+1. Row keys (`links[0].label`) matched against flat keys only.
+2. Collection-level keys — bare `links`/`images` from `@Size(max = 10)` on the property rather than
+   its elements — reachable with eleven clicks on "+ Add link".
+3. The catch-all built to end (2), plus a **regression it introduced**: the template passed a live
+   `$index`, so removing a row left the survivor flagged with the removed row's verdict. The round
+   traded "silent" for "wrong", which is not an improvement.
+4. An asymmetry inside the catch-all itself: `serverError()` found **one** matching key while
+   `unclaimedErrors()` subtracted **every** one, so a slot claiming two indexed keys rendered the
+   first and swallowed the rest. Two over-long tags reach it.
+
+Instance 3 is where the approach changed. Up to then each round had enumerated one more key, which is
+whack-a-mole with a backend that can always add a constraint. The user was asked to choose, and chose
+the structural fix: render **any** key no slot claimed, with claimed-ness derived from the same
+predicate the slots look up with, so the catch-all cannot drift from what is on screen. The final
+review confirmed no fifth instance across a 35-key adversarial sweep plus five multi-key combinations,
+each asserting the message renders exactly once.
+
+Two process observations from the tail:
+
+**Writing the lesson down did not prevent repeating it.** The spec file carries a comment recording
+that mutations survived on the images side "purely because the links tests were never duplicated for
+it" — and the commit containing that sentence reproduced the same gap one commit later, for a
+different guard. Four images-side mutations survived. What closed it was mutating each new guard on
+both collections, not the note.
+
+**A reviewer overturned a comment the Senior Dev had asked for.** The agent was told to document that
+short-circuiting `forgetErrorsFor()`'s `set()` when nothing was filtered would break the catch-all
+silently. The next reviewer mutated exactly that, found it survives, and argued it is an *equivalent*
+mutant: if nothing was filtered then no key of that collection was present, and `unclaimedErrors()`
+decides membership per key, so no key present can change its verdict. The agent checked the derivation
+independently and agreed. The comment now names the hazard that does exist — a new path changing a row
+count without purging — rather than one that does not.
 
 ## 2026-08-10 — SEO (#50): the incremental-commit rule proved itself the day it merged
 

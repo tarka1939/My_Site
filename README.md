@@ -6,7 +6,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 **Phases 0-4 complete.** Spec and OpenAPI contract; backend foundation; core domain features (project CRUD, tags, contact form, JWT auth, password reset); frontend foundation (Angular app, routing, generated API client, auth, admin CRUD pages); and a Playwright end-to-end suite covering four critical journeys.
 
-**Phase 6 (content & polish) is in progress** — a performance pass, a project date period, and the content-rendering work that real portfolio copy depends on have landed. Content migration and SEO are outstanding.
+**Phase 6 (content & polish) is in progress** — a performance pass, a project date period, the content-rendering work that real portfolio copy depends on, and a round of admin-form hardening have landed. Content migration and SEO are outstanding.
 
 **Phase 5 (deployment) is paused** pending VPS setup, so nothing is deployed yet. Phase 6 and Phase 7 don't depend on it and are proceeding in the meantime.
 
