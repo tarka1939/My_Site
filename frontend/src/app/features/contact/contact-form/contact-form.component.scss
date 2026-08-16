@@ -29,6 +29,27 @@ textarea {
   margin: 0;
 }
 
+.form-error {
+  border: 1px solid #b3261e;
+  border-radius: 0.25rem;
+  padding: 0.75rem 1rem;
+  color: #b3261e;
+
+  p {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.25rem;
+  }
+}
+
+.form-error-field {
+  font-family: monospace;
+}
+
 button {
   align-self: flex-start;
   padding: 0.5rem 1.25rem;

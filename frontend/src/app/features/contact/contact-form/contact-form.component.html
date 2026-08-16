@@ -4,31 +4,75 @@
   <p role="status">Thanks for reaching out &mdash; I'll get back to you soon.</p>
 } @else {
   <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <!-- Each field renders one message slot holding either this form's own validator message or the
+         server's for the same field -- see controlError(). The id is what aria-describedby points
+         at: role="alert" announces the message once as it appears, and the description is what
+         carries the reason on every later visit to the field. -->
     <div class="field">
       <label for="contact-name">Name</label>
-      <input id="contact-name" type="text" formControlName="name" autocomplete="name" />
-      @if (fieldErrors()['name']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['name'] }}</p>
+      <input
+        id="contact-name"
+        type="text"
+        formControlName="name"
+        autocomplete="name"
+        [attr.aria-describedby]="nameError() ? 'contact-name-error' : null"
+        [attr.aria-invalid]="nameError() ? 'true' : null"
+      />
+      @if (nameError(); as message) {
+        <p id="contact-name-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
     <div class="field">
       <label for="contact-email">Email</label>
-      <input id="contact-email" type="email" formControlName="email" autocomplete="email" />
-      @if (fieldErrors()['email']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['email'] }}</p>
+      <input
+        id="contact-email"
+        type="email"
+        formControlName="email"
+        autocomplete="email"
+        [attr.aria-describedby]="emailError() ? 'contact-email-error' : null"
+        [attr.aria-invalid]="emailError() ? 'true' : null"
+      />
+      @if (emailError(); as message) {
+        <p id="contact-email-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
     <div class="field">
       <label for="contact-message">Message</label>
-      <textarea id="contact-message" rows="6" formControlName="message"></textarea>
-      @if (fieldErrors()['message']) {
-        <p class="field-error" role="alert">{{ fieldErrors()['message'] }}</p>
+      <textarea
+        id="contact-message"
+        rows="6"
+        formControlName="message"
+        [attr.aria-describedby]="messageError() ? 'contact-message-error' : null"
+        [attr.aria-invalid]="messageError() ? 'true' : null"
+      ></textarea>
+      @if (messageError(); as message) {
+        <p id="contact-message-error" class="field-error" role="alert">{{ message }}</p>
       }
     </div>
 
-    <button type="submit" [disabled]="submitting()">
+    <!-- Anything the server rejected that no field slot above claimed. Without this a key the form
+         does not enumerate is dropped silently, because errorInterceptor stays quiet for a 400 that
+         carries field errors -- and the person losing the message is a visitor, not the admin. The
+         set is computed by subtracting the slots from the response, so it cannot fall behind the
+         fields that exist. -->
+    @if (unclaimedErrors().length > 0) {
+      <div id="contact-form-error" class="form-error" role="alert">
+        <p>Your message was not sent:</p>
+        <ul>
+          @for (error of unclaimedErrors(); track error.field) {
+            <li><span class="form-error-field">{{ error.field }}</span> {{ error.message }}</li>
+          }
+        </ul>
+      </div>
+    }
+
+    <button
+      type="submit"
+      [disabled]="submitting()"
+      [attr.aria-describedby]="unclaimedErrors().length > 0 ? 'contact-form-error' : null"
+    >
       {{ submitting() ? 'Sending…' : 'Send message' }}
     </button>
   </form>
