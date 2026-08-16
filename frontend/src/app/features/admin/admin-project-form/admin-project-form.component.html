@@ -202,7 +202,7 @@
          carries field errors. The set is computed by subtracting the slots from the response, so it
          cannot fall behind the fields that exist. -->
     @if (unclaimedErrors().length > 0) {
-      <div class="form-error" role="alert">
+      <div id="project-form-error" class="form-error" role="alert">
         <p>The server rejected this save:</p>
         <ul>
           @for (error of unclaimedErrors(); track error.field) {
@@ -212,7 +212,11 @@
       </div>
     }
 
-    <button type="submit" [disabled]="submitting()">
+    <button
+      type="submit"
+      [disabled]="submitting()"
+      [attr.aria-describedby]="unclaimedErrors().length > 0 ? 'project-form-error' : null"
+    >
       {{ submitting() ? 'Saving…' : 'Save project' }}
     </button>
   </form>

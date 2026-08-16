@@ -154,9 +154,22 @@ export class AdminProjectFormComponent {
    * unreachable whatever the server decides to call a field.
    *
    * Claimed-ness comes from the same claims() rule the slots look up with and the same key builders
-   * the rows render with, so this cannot drift out of step with what is on screen. The read of the
-   * FormArrays is not reactive (their `controls` array is not a signal), which is sound only because
-   * adding or removing a row also rewrites fieldErrors -- see forgetErrorsFor().
+   * the rows render with, so this cannot drift out of step with what is on screen.
+   *
+   * The fragile part, spelled out because nothing about it is visible at the call site:
+   * rowFieldKeys() reads the FormArrays, whose `controls` array is not a signal, so adding or
+   * removing a row invalidates nothing here. What saves it is that both of those paths go through
+   * forgetErrorsFor(), which always calls fieldErrors.set() with a freshly constructed object --
+   * under the signal's default Object.is equality that notifies every time, including when the
+   * filter removed nothing, and that notification is what makes this recompute and re-read the
+   * arrays. Giving fieldErrors an `equal:` option, or skipping the set() when nothing was filtered,
+   * would leave the catch-all describing a previous row set with no test failing. Both are the
+   * obvious tidy-up. Neither is safe.
+   *
+   * loadProject()'s success handler is the other FormArray mutation, and it does not rewrite
+   * fieldErrors. It is safe by reachability rather than by a check: retryLoad() is its only re-entry
+   * point, it is called from inside the loadError() branch, and that branch renders neither the form
+   * nor Save -- so fieldErrors is empty whenever those arrays are rebuilt.
    */
   protected readonly unclaimedErrors = computed(() => {
     const rowKeys = new Set(this.rowFieldKeys());
@@ -425,7 +438,15 @@ export class AdminProjectFormComponent {
    * with an index that no longer exists. A stale verdict is worse than no verdict -- the admin
    * cannot tell it apart from a fresh one -- and the next save produces a current set anyway.
    *
-   * The bare collection key goes too: a size verdict about ten links is not about eleven.
+   * The bare collection key goes too: a size verdict about ten links is not about eleven. Scoped to
+   * the collection that moved, though -- a title rejection the admin has not dealt with yet is
+   * still true, and clearing it would hide work they still owe.
+   *
+   * The unconditional set() is load-bearing beyond this method: a fresh object every call is what
+   * makes the signal notify under Object.is, and that notification is the only thing that
+   * invalidates unclaimedErrors(), which reads the non-reactive FormArrays. Do not add an `equal:`
+   * option to fieldErrors and do not skip this set() when `remaining` is unchanged -- see the
+   * comment on unclaimedErrors().
    */
   private forgetErrorsFor(collection: 'links' | 'images'): void {
     const remaining = Object.entries(this.fieldErrors()).filter(

@@ -840,6 +840,13 @@ describe('AdminProjectFormComponent', () => {
       const region = host.querySelector('.form-error[role="alert"]');
       expect(region?.textContent).toContain('size must be between 0 and 10');
       expect(region?.textContent).toContain('links');
+      // role="alert" announces it once on insertion; the description is what carries the reason to
+      // anyone who arrives at Save afterwards, which is the same wiring every field slot has.
+      const describedBy = host
+        .querySelector('button[type="submit"]')
+        ?.getAttribute('aria-describedby');
+      expect(describedBy).toBe('project-form-error');
+      expect(host.querySelector(`#${describedBy}`)?.textContent?.trim()).toBeTruthy();
     });
 
     it('survives a rejection that is not an ApiProblem at all', () => {
@@ -1038,6 +1045,118 @@ describe('AdminProjectFormComponent', () => {
         'must be a valid URL',
       );
       expect(host.querySelector('#link-url-1-error')).toBeNull();
+    });
+
+    it('does not migrate an image message onto the row that takes its place', async () => {
+      // The images mirror of the links case above. Three mutations survived on this side purely
+      // because the links tests were never duplicated for it.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('images[0]', 'must be at most 500 characters')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'images');
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
+      await type(fixture, '#image-1', 'https://images.example.com/two.png');
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#image-0-error')).not.toBeNull();
+      // The image row claimed the key, so the catch-all must not repeat it -- the links half of
+      // this is asserted above, and leaving it unasserted here let the images spread be deleted
+      // from rowFieldKeys() with the suite still green.
+      expect(host.querySelector('.form-error')).toBeNull();
+
+      await clickRemoveRow(fixture, 'images', 0);
+
+      expect(fixture.componentInstance['fieldErrors']()).toEqual({});
+      expect(host.querySelector<HTMLInputElement>('#image-0')?.value).toBe(
+        'https://images.example.com/two.png',
+      );
+      expect(host.querySelector('#image-0-error')).toBeNull();
+      expect(host.querySelector('#image-0')?.getAttribute('aria-invalid')).toBeNull();
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('drops an images verdict when an image row is added', async () => {
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('images', 'size must be between 0 and 20')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.form-error')).not.toBeNull();
+
+      await clickAddRow(fixture, 'images');
+
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('leaves verdicts about everything else alone when one collection changes', async () => {
+      // The purge is scoped to the collection that moved. Widening it to drop everything passed the
+      // whole suite, and would quietly clear a title rejection the admin has not addressed yet.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'title', message: 'must not be blank' },
+            { field: 'images[0]', message: 'must be at most 500 characters' },
+            { field: 'links[0].url', message: 'must be a valid URL' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://a.example/one');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('must not be blank');
+
+      // Adding a link says nothing about the title or about the images.
+      await clickAddRow(fixture, 'links');
+
+      expect(errorTextFor(host, 'project-title')).toBe('must not be blank');
+      expect(host.querySelector('#image-0-error')?.textContent?.trim()).toBe(
+        'must be at most 500 characters',
+      );
+      expect(fixture.componentInstance['fieldErrors']()['links[0].url']).toBeUndefined();
+    });
+
+    it('clears the previous rejection when the next save fails without field errors', async () => {
+      // A 500 or a 429 carries no field errors, so nothing overwrites the map. Without the reset in
+      // submit() the first rejection's messages stay on screen, describing a save that is over.
+      createProject.mockReturnValueOnce(
+        throwError(() => validationProblem('title', 'must not be blank')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('must not be blank');
+
+      createProject.mockReturnValue(
+        throwError(() => ({ ...LOAD_FAILURE, status: 500, fieldErrors: [] })),
+      );
+      await save(fixture);
+
+      expect(errorTextFor(host, 'project-title')).toBeNull();
+      expect(host.querySelector('.form-error')).toBeNull();
     });
 
     it('drops a collection-level verdict once the collection changes', async () => {
