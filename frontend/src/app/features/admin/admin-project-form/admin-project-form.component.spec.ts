@@ -34,11 +34,16 @@ interface RouteStub {
 }
 
 function validationProblem(field: string, message: string): ApiProblem {
+  return problemWith([{ field, message }]);
+}
+
+/** A 400 carrying several violations at once, which is what the API sends -- it does not dedup. */
+function problemWith(fieldErrors: { field: string; message: string }[]): ApiProblem {
   return {
     status: 400,
     title: 'Bad Request',
     detail: 'Request failed validation',
-    fieldErrors: [{ field, message }],
+    fieldErrors,
     rateLimited: false,
   };
 }
@@ -862,6 +867,33 @@ describe('AdminProjectFormComponent', () => {
       } finally {
         config.useDeprecatedSynchronousErrorHandling = false;
       }
+    });
+
+    it('shows every message a single slot claims, not just the first', async () => {
+      // Two over-long tags arrive as tags[0] and tags[1] in one 400, since the API emits one entry
+      // per violation. Both are claimed by the tags slot, so both are subtracted from the catch-all
+      // -- rendering only the first left the second with nowhere at all to appear.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'tags[0]', message: 'first tag is too long' },
+            { field: 'tags[1]', message: 'second tag is too long' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      const message = errorTextFor(host, 'project-tags') ?? '';
+      expect(message).toContain('first tag is too long');
+      expect(message).toContain('second tag is too long');
+      // Claimed by a slot means claimed for good: neither may reappear in the catch-all either.
+      expect(host.querySelector('.form-error')).toBeNull();
     });
 
     it('does not repeat a message that a field slot already shows inline', async () => {

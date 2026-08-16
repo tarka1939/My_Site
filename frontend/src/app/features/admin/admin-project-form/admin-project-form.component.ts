@@ -40,9 +40,13 @@ const TAGS_MESSAGES: Record<string, string> = {
 
 /**
  * Whether a server field key belongs to the slot for `field`. One rule, used twice: serverError()
- * finds a slot's message with it, and unclaimedErrors() subtracts with it -- so a key can never be
- * both rendered inline and repeated in the catch-all, and can never be claimed by a slot that does
- * not render it.
+ * collects a slot's messages with it, and unclaimedErrors() subtracts with it -- so a key can never
+ * be both rendered inline and repeated in the catch-all, and never subtracted by a slot that does
+ * not go on to render it.
+ *
+ * That second half holds only because serverError() renders *every* key it claims. Claiming all and
+ * rendering the first is not a smaller version of the same thing: it is the silent drop again, one
+ * level in.
  *
  * `tags[2]` belongs to the tags slot, because this form edits tags as one comma-separated control
  * and that is the only place such a message can go. `links[0].label` does not belong to any scalar
@@ -343,23 +347,28 @@ export class AdminProjectFormComponent {
   }
 
   /**
-   * The server's message for `field`, including the indexed key it uses for a violation inside a
-   * collection: a tag name over the limit comes back as `tags[2]`, not `tags`. This form edits tags
-   * as one comma-separated control, so there is no per-index slot to render that in -- without the
-   * fallback the message matches nothing and is dropped on the floor, and errorInterceptor stays
-   * quiet too (a 400 carrying fieldErrors takes none of its three branches). Silence on save is the
-   * failure mode this whole component is being fixed for.
+   * Everything the server said about `field`, including the indexed keys it uses for violations
+   * inside a collection: a tag name over the limit comes back as `tags[2]`, not `tags`. This form
+   * edits tags as one comma-separated control, so a per-element message has no other slot to go to.
    *
-   * The `]` check keeps this to leaf keys: `links[0].label` belongs to a row control, which looks
-   * itself up by that exact key via rowError(), and must not be dragged onto another field.
+   * Every match, not the first. The API reports one entry per violation with no dedup, so two
+   * over-long tags arrive together as `tags[0]` and `tags[1]`, and unclaimedErrors() subtracts both
+   * -- it shares claims() with this. Returning only the first would leave the second rendered
+   * nowhere at all, which is the same silent drop this component keeps being fixed for, one level
+   * further in. Two complaints about tags also belong in the tags slot together rather than split
+   * across two regions of the page.
+   *
+   * The `]` check inside claims() keeps this to leaf keys: `links[0].label` belongs to a row
+   * control, which looks itself up by that exact key via rowError().
    */
   private serverError(field: string): string | null {
     const errors = this.fieldErrors();
-    if (errors[field]) {
-      return errors[field];
-    }
-    const indexedKey = Object.keys(errors).find((key) => claims(field, key));
-    return indexedKey ? errors[indexedKey] : null;
+    const claimed = Object.keys(errors)
+      .filter((key) => claims(field, key))
+      .map((key) => errors[key]);
+    // Joined rather than deduped: two identical messages mean two elements are wrong, and this form
+    // has one control for all of them, so the repetition is the only surviving trace of the count.
+    return claimed.length > 0 ? claimed.join('; ') : null;
   }
 
   /** The key the API reports a link element's violation under. Built here, used by both callers. */
