@@ -39,6 +39,15 @@ const TAGS_MESSAGES: Record<string, string> = {
 };
 
 /**
+ * What a destination says when the server named a field but gave nothing to say about it.
+ *
+ * Deliberately not shared with the contact form even though the mechanism around it is: this names
+ * the server and assumes a reader who knows what `links[0].label` means. That is right here and
+ * wrong on a public page -- and it was shared once, which is how it came to be shown to visitors.
+ */
+const UNEXPLAINED_REJECTION = 'Rejected by the server, which gave no reason.';
+
+/**
  * Whether a server field key belongs to the slot for `field`. One rule, used twice: serverError()
  * collects a slot's messages with it, and unclaimedErrors() subtracts with it -- so a key can never
  * be both rendered inline and repeated in the catch-all, and never subtracted by a slot that does
@@ -175,7 +184,10 @@ export class AdminProjectFormComponent {
       .filter(
         ([key]) => !rowKeys.has(key) && !scalarFields.some((field) => claims(field, key)),
       )
-      .map(([field, message]) => ({ field, message }));
+      // Through joinMessages() for the same reason the field slots are: a key that arrives with a
+      // blank message would otherwise render as a bare field name and nothing else, which is the
+      // rejection-with-no-content case landing in the one destination that was still missing it.
+      .map(([field, message]) => ({ field, message: joinMessages([message], UNEXPLAINED_REJECTION) }));
   });
 
   constructor() {
@@ -393,7 +405,8 @@ export class AdminProjectFormComponent {
       .map((key) => errors[key]);
     // Joined rather than deduped: two identical messages mean two elements are wrong, and this form
     // has one control for all of them, so the repetition is the only surviving trace of the count.
-    return joinMessages(claimed);
+    // The presence check is this method's own -- joinMessages() answers what to show, not whether.
+    return claimed.length > 0 ? joinMessages(claimed, UNEXPLAINED_REJECTION) : null;
   }
 
   /** The key the API reports a link element's violation under. Built here, used by both callers. */
@@ -461,10 +474,11 @@ export class AdminProjectFormComponent {
       (control.touched || control.dirty) && control.hasError('required')
         ? `${label} is required`
         : null;
-    // Same blank-message handling as the scalar slots: `?? null` would let a key that exists with
-    // an empty message render as nothing while unclaimedErrors() has already counted it as shown.
+    // Same blank-message handling as the scalar slots: reading errors[field] straight out would let
+    // a key that exists with an empty message render as nothing while unclaimedErrors() has already
+    // counted it as shown.
     const errors = this.fieldErrors();
-    const serverMessage = field in errors ? joinMessages([errors[field]]) : null;
+    const serverMessage = field in errors ? joinMessages([errors[field]], UNEXPLAINED_REJECTION) : null;
     return clientMessage ?? serverMessage;
   }
 

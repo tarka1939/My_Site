@@ -1021,6 +1021,27 @@ describe('AdminProjectFormComponent', () => {
       expect(errorTextFor(host, 'project-tags')).toBeNull();
       expect(host.querySelector('.form-error')?.textContent).toContain('must not be blank');
     });
+
+    it('still says something when an unclaimed key arrives with no message', async () => {
+      // The field slots have routed blank messages through joinMessages() from the start and the
+      // catch-all did not, so an unclaimed key with an empty message rendered as a bare field name
+      // and nothing else. Same contract, same fix: a rejection reaches a destination with content.
+      createProject.mockReturnValue(
+        throwError(() => problemWith([{ field: 'links', message: null as unknown as string }])),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      const item = host.querySelector('.form-error li');
+      expect(item?.textContent).toContain('links');
+      // A field name on its own is not a reason. Something beyond it has to be on screen.
+      expect(item?.textContent?.replace('links', '').trim()).toBeTruthy();
+    });
   });
 
   describe('server errors once the rows move', () => {

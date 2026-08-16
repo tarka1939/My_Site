@@ -13,29 +13,31 @@ import { AbstractControl, ValidationErrors } from '@angular/forms';
  */
 
 /**
- * What a slot says when the server named a field but gave nothing to say about it. The contract
- * everywhere is that a rejection reaches a destination; a key whose message is null, undefined or
- * blank would otherwise be subtracted from a form's catch-all as claimed and then render as
- * nothing, which is a submission rejected in silence again.
- */
-export const UNEXPLAINED_REJECTION = 'Rejected by the server, which gave no reason.';
-
-/**
- * Join what the server said, skipping entries with no text. Both parts matter: `[null, 'the real
- * complaint'].join('; ')` is `"; the real complaint"`, a leading separator leaking into the UI, and
- * a set of entries that are all blank must still say *something* -- there was a rejection.
+ * Join what the server said about one field, skipping entries with no text. Both parts matter:
+ * `[null, 'the real complaint'].join('; ')` is `"; the real complaint"`, a leading separator
+ * leaking into the UI, and a set of entries that are all blank must still say *something* -- there
+ * was a rejection, and the contract everywhere is that a rejection reaches a destination. A key
+ * that is present with a blank message would otherwise be subtracted from a form's catch-all as
+ * claimed and then render as nothing, which is a submission rejected in silence again.
  *
  * Types say these are strings. The wire does not: this is a JSON body, and the one function whose
  * whole job is that nothing reaches no destination is the wrong place to trust that.
+ *
+ * Total by construction. "Did the server name this field at all" is the caller's question, and
+ * every caller already has a lookup that answers it; asking it here as well only added an
+ * empty-input branch that no call site could reach.
+ *
+ * `fallback` is a required argument rather than a default because the wording has an audience. The
+ * admin form's names the server, which is right for a reader who knows what `links[0].label` means
+ * and wrong for a visitor who has just lost their message. A default here would hand the next form
+ * the previous form's audience -- which is how an admin-voiced string reached the public contact
+ * page once already.
  */
-export function joinMessages(messages: string[]): string | null {
+export function joinMessages(messages: string[], fallback: string): string {
   const usable = messages.filter(
     (message) => typeof message === 'string' && message.trim().length > 0,
   );
-  if (usable.length > 0) {
-    return usable.join('; ');
-  }
-  return messages.length > 0 ? UNEXPLAINED_REJECTION : null;
+  return usable.length > 0 ? usable.join('; ') : fallback;
 }
 
 function messageFor(
@@ -56,12 +58,16 @@ function messageFor(
  * covered in complaints. `markAllAsTouched()` in a submit handler is what makes them appear on a
  * rejected send instead of the silent return this exists to end.
  *
- * The events() read is what keeps this reactive, and is not optional: AbstractControl exposes
- * `touched`, `dirty` and `errors` through untracked() (Angular 21), so a computed reading only
- * those would cache its first answer and never update. This app is zoneless, so a message that
- * never repaints is a failure state that renders as an idle one -- the exact bug both forms have
- * been fixed for. `events` emits on every value, status and touched change, so the computed is
- * invalidated exactly when one of them moves.
+ * The events() read is what keeps this reactive, and is not optional: none of `touched`, `dirty`
+ * or `errors` registers a dependency when a computed reads it, though for two different reasons.
+ * Verified against @angular/forms@21.2.19: `touched` returns `untracked(this.touchedReactive)` and
+ * `dirty` is `!pristine`, which does the same -- signals deliberately read outside the reactive
+ * graph -- while `errors` is a plain instance field with no signal behind it at all, assigned
+ * directly by updateValueAndValidity(). Either way a computed reading only those caches its first
+ * answer and never updates. This app is zoneless, so a message that never repaints is a failure
+ * state that renders as an idle one -- the exact bug both forms have been fixed for. `events`
+ * emits on every value, status and touched change, so the computed is invalidated exactly when one
+ * of them moves.
  *
  * Callers compose the server's half themselves, since the lookup rule differs per form:
  * `computed(() => clientMessage() ?? this.serverError(field))`.
