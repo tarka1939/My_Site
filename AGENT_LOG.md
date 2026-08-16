@@ -412,7 +412,7 @@ that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app
   rounds enumerated one more key each and were caught out by the next, because enumeration cannot
   outrun a backend that can add a constraint. The structural version — render anything no slot
   claimed, deriving claimed-ness from the same predicate the slots use — ended it in one round and
-  survived a 35-key adversarial sweep. The signal to stop enumerating was the second recurrence, not
+  survived an adversarial key sweep. The signal to stop enumerating was the second recurrence, not
   the third.
 - **A comment recording a lesson is not a control.** The commit that wrote "mutations survived on this
   side purely because the links tests were never duplicated for it" reproduced that exact gap one
@@ -477,8 +477,11 @@ Instance 3 is where the approach changed. Up to then each round had enumerated o
 whack-a-mole with a backend that can always add a constraint. The user was asked to choose, and chose
 the structural fix: render **any** key no slot claimed, with claimed-ness derived from the same
 predicate the slots look up with, so the catch-all cannot drift from what is on screen. The final
-review confirmed no fifth instance across a 35-key adversarial sweep plus five multi-key combinations,
-each asserting the message renders exactly once.
+review confirmed no fifth instance by sweeping an adversarial key set — unknown keys, indexed keys,
+keys prefixing other keys, the empty string, keys with surrounding whitespace, wrong case — plus
+multi-key combinations, each asserting the message renders exactly once. That sweep was a review-time
+run and its keys were never committed, so this paragraph is the only record of it; the *shape* of what
+it covered is reproducible from the description, the exact count is not.
 
 Two process observations from the tail:
 
