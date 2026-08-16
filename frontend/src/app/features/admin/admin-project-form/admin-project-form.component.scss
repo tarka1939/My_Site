@@ -29,6 +29,50 @@ textarea {
   margin: 0;
 }
 
+.load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+
+  p {
+    color: #b3261e;
+    margin: 0;
+  }
+
+  button {
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+}
+
+// The catch-all for server errors no field slot claimed. Sits next to Save, since that is where
+// the admin is looking when the save it describes has just failed.
+.form-error {
+  border: 1px solid #b3261e;
+  border-radius: 0.25rem;
+  padding: 0.75rem 1rem;
+  color: #b3261e;
+
+  p {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.25rem;
+  }
+}
+
+.form-error-field {
+  font-family: monospace;
+}
+
 .field-hint {
   color: var(--color-text-muted);
   font-size: 0.85rem;
@@ -47,6 +91,13 @@ fieldset {
 // Date inputs have a fixed intrinsic width; stretching them across the fieldset just looks broken.
 .period .field input {
   align-self: flex-start;
+}
+
+// One row of inputs plus, underneath it, whatever that row has to say for itself.
+.repeatable-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .repeatable-row {
