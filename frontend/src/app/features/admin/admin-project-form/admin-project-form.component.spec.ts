@@ -903,6 +903,31 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('.form-error')).toBeNull();
     });
 
+    it('leaves Save undescribed when there is no catch-all to point at', async () => {
+      // A dangling aria-describedby is announced as nothing at all, so the id has to come and go
+      // with the element. Hardcoding it passed the whole suite: the positive case was asserted and
+      // the negative one never was. Checked on a clean form and on a rejection a row slot claims,
+      // where the catch-all is legitimately absent.
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const saveButton = () => host.querySelector('button[type="submit"]');
+
+      expect(saveButton()?.getAttribute('aria-describedby')).toBeNull();
+
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('images[0]', 'must be at most 500 characters')),
+      );
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
+      await save(fixture);
+
+      expect(host.querySelector('#image-0-error')).not.toBeNull();
+      expect(host.querySelector('.form-error')).toBeNull();
+      expect(saveButton()?.getAttribute('aria-describedby')).toBeNull();
+    });
+
     it('still says something when the server names a field but gives no message', async () => {
       // Not reachable from this backend today -- every field error comes from Bean Validation with
       // a message -- but this is the one path whose entire contract is that a rejection reaches a
@@ -1103,6 +1128,54 @@ describe('AdminProjectFormComponent', () => {
         'must be a valid URL',
       );
       expect(host.querySelector('#link-url-1-error')).toBeNull();
+    });
+
+    it('freezes the image rows while a save is in flight', async () => {
+      // The links version of this exists directly above. Not duplicating it left four mutants
+      // alive -- the guard in addImage, the guard in removeImage, and the disabled binding on each
+      // of the two images buttons -- in the same round whose commit message claimed to be
+      // mirroring the links-side guards onto images.
+      const pending = new Subject<unknown>();
+      createProject.mockReturnValue(pending);
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'images');
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
+      await type(fixture, '#image-1', 'https://images.example.com/two.png');
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(
+        host.querySelector<HTMLButtonElement>(
+          'fieldset[formarrayname="images"] .repeatable-row button',
+        )?.disabled,
+      ).toBe(true);
+      expect(
+        host.querySelector<HTMLButtonElement>('fieldset[formarrayname="images"] > button')?.disabled,
+      ).toBe(true);
+
+      await clickRemoveRow(fixture, 'images', 0);
+      // A disabled button is UX; each handler has to refuse on its own as well.
+      fixture.componentInstance['removeImage'](0);
+      fixture.componentInstance['addImage']();
+      await fixture.whenStable();
+
+      expect(fixture.componentInstance['form'].controls.images.length).toBe(2);
+
+      pending.error(validationProblem('images[0]', 'must be at most 500 characters'));
+      await fixture.whenStable();
+
+      expect(host.querySelector<HTMLInputElement>('#image-0')?.value).toBe(
+        'https://images.example.com/one.png',
+      );
+      expect(host.querySelector('#image-0-error')?.textContent?.trim()).toBe(
+        'must be at most 500 characters',
+      );
+      expect(host.querySelector('#image-1-error')).toBeNull();
     });
 
     it('does not migrate an image message onto the row that takes its place', async () => {
