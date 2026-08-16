@@ -52,26 +52,30 @@
       }
     </div>
 
-    <!-- Anything the server rejected that no field slot above claimed. Without this a key the form
-         does not enumerate is dropped silently, because errorInterceptor stays quiet for a 400 that
-         carries field errors -- and the person losing the message is a visitor, not the admin. The
-         set is computed by subtracting the slots from the response, so it cannot fall behind the
-         fields that exist. -->
-    @if (unclaimedErrors().length > 0) {
+    <!-- Shown when the server rejected something no field slot above claimed. Without it that
+         rejection is dropped in silence, because errorInterceptor stays quiet for a 400 carrying
+         field errors -- and the person losing the message is a visitor, not the admin. Whether it
+         appears is computed by subtracting the slots from the response, so it cannot fall behind
+         the fields that exist.
+
+         Deliberately none of the server's own words: the key names a field this form does not
+         show, and the message beside it is a Bean Validation default written for a developer.
+         Either one, put in front of someone who has just lost what they wrote, reads as a leaked
+         stack trace. The full argument is on hasUnclaimedRejection(). -->
+    @if (hasUnclaimedRejection()) {
       <div id="contact-form-error" class="form-error" role="alert">
-        <p>Your message was not sent:</p>
-        <ul>
-          @for (error of unclaimedErrors(); track error.field) {
-            <li><span class="form-error-field">{{ error.field }}</span> {{ error.message }}</li>
-          }
-        </ul>
+        <p class="form-error-heading">Your message was not sent.</p>
+        <p>
+          Something in it was not accepted, and the site could not say which part. Check what you
+          entered above and send it again &mdash; if that does not work, please try again later.
+        </p>
       </div>
     }
 
     <button
       type="submit"
       [disabled]="submitting()"
-      [attr.aria-describedby]="unclaimedErrors().length > 0 ? 'contact-form-error' : null"
+      [attr.aria-describedby]="hasUnclaimedRejection() ? 'contact-form-error' : null"
     >
       {{ submitting() ? 'Sending…' : 'Send message' }}
     </button>

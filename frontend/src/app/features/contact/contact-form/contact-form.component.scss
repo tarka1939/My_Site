@@ -29,6 +29,10 @@ textarea {
   margin: 0;
 }
 
+// Deliberately not extracted into a partial shared with the admin form. What the two blocks still
+// have in common is a border and a colour: this one stopped rendering field keys and a list, so
+// the monospace-key and list rules are gone and the paragraphs differ. A shared file would carry
+// two declarations plus a comment explaining why the rest could not move.
 .form-error {
   border: 1px solid #b3261e;
   border-radius: 0.25rem;
@@ -36,18 +40,13 @@ textarea {
   color: #b3261e;
 
   p {
-    margin: 0 0 0.5rem;
+    margin: 0;
+  }
+
+  .form-error-heading {
+    margin-bottom: 0.5rem;
     font-weight: 600;
   }
-
-  ul {
-    margin: 0;
-    padding-left: 1.25rem;
-  }
-}
-
-.form-error-field {
-  font-family: monospace;
 }
 
 button {

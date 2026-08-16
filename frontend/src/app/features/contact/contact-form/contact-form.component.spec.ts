@@ -294,8 +294,8 @@ describe('ContactFormComponent', () => {
 
       const host = fixture.nativeElement as HTMLElement;
       const region = host.querySelector('.form-error[role="alert"]');
-      expect(region?.textContent).toContain('must not be blank');
-      expect(region?.textContent).toContain('body');
+      expect(region?.textContent).toContain('Your message was not sent');
+      expect(region?.textContent).toContain('send it again');
       // No field slot may show it, or it would be painted on a control that is not at fault.
       for (const id of FIELD_IDS) {
         expect(errorTextFor(host, id)).toBeNull();
@@ -309,11 +309,76 @@ describe('ContactFormComponent', () => {
       expect(host.querySelector(`#${describedBy}`)?.textContent?.trim()).toBeTruthy();
     });
 
+    it('keeps the server’s field key and its wording off a public page', async () => {
+      // This shipped: the catch-all rendered the raw key in monospace followed by the Bean
+      // Validation default, so a bot tripping a honeypot showed a visitor "honeypot must not be
+      // blank". Right on the admin form, where the reader knows what `links[0].label` means; here
+      // it reads as a leaked stack trace to someone who has just lost what they wrote. Neither
+      // half may reach the DOM -- stripping only the key leaves "must not be blank" about a field
+      // they cannot see, which is no better.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('honeypot', 'must not be blank')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.form-error')).not.toBeNull();
+      expect(host.textContent).not.toContain('honeypot');
+      expect(host.textContent).not.toContain('must not be blank');
+    });
+
+    it('treats a server key named after a prototype member as unclaimed', async () => {
+      // The reachable half of the prototype hazard, where the key does come off the wire: asking
+      // `'toString' in scalarSlots` answers true, which would count the rejection as claimed by a
+      // slot that then renders nothing for it -- the silent drop, back via Object.prototype.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('toString', 'must not be blank')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.form-error')?.textContent).toContain('Your message was not sent');
+      for (const id of FIELD_IDS) {
+        expect(errorTextFor(host, id)).toBeNull();
+      }
+    });
+
+    it('surfaces an unclaimed key that arrives with no message', async () => {
+      // The catch-all used to render the key and the server's text and nothing else, so a blank
+      // message there produced a bare field name where a field slot would have said something.
+      // Answering in this form's own words settles that asymmetry rather than patching it: there
+      // is no longer a server message whose emptiness the visible outcome can depend on.
+      submitContactMessage.mockReturnValue(
+        throwError(() => problemWith([{ field: 'body', message: null as unknown as string }])),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      const region = host.querySelector('.form-error');
+      expect(region?.textContent).toContain('Your message was not sent');
+      expect(region?.textContent).toContain('send it again');
+    });
+
     it('still says something when the server names a field but gives no message', async () => {
       // Not reachable from this backend today -- every field error comes from Bean Validation with
       // a message -- but this is the one path whose entire contract is that a rejection reaches a
       // destination. A blank message is falsy, so the slot would render nothing while the catch-all
       // had already counted the key as claimed and shown: a rejection with nowhere left to appear.
+      // Asserted verbatim because the wording is the point: "Rejected by the server, which gave no
+      // reason" is the admin form's line, and it was this one's too until it was noticed that a
+      // visitor can do nothing with it.
       submitContactMessage.mockReturnValue(
         throwError(() => problemWith([{ field: 'email', message: '   ' }])),
       );
@@ -324,7 +389,9 @@ describe('ContactFormComponent', () => {
       await send(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
-      expect(errorTextFor(host, 'contact-email')).toBeTruthy();
+      expect(errorTextFor(host, 'contact-email')).toBe(
+        'This was not accepted, but the site did not say why — try changing it.',
+      );
       expect(host.querySelector('#contact-email')?.getAttribute('aria-invalid')).toBe('true');
       expect(host.querySelector('.form-error')).toBeNull();
     });
@@ -360,12 +427,19 @@ describe('ContactFormComponent', () => {
 
     it('survives a rejection that is not an ApiProblem at all', () => {
       // errorInterceptor normalizes every HttpErrorResponse but rethrows anything else unchanged,
-      // so this handler cannot assume the shape. Reading .fieldErrors off a bare Error throws
-      // *inside* the subscriber, which RxJS reports out of band -- vitest counts it under "Errors"
-      // while the "Tests N passed" line stays green, and the form sits on "Sending…" forever. The
-      // DOM looks the same either way, so this flag is the only way to assert nothing escapes; it
-      // is also why this one test calls submit() directly rather than dispatching a submit event,
-      // since jsdom would swallow the exception again.
+      // so this handler cannot assume the shape. Reading `.fieldErrors` off a bare Error does not
+      // throw -- it is undefined; reading `.length` off that is what threw, which is why `?? []` is
+      // the fix and an optional chain on `problem` is not. The throw escapes *inside* the
+      // subscriber, where RxJS reports it out of band: vitest counts it under "Errors" while the
+      // "Tests N passed" line stays green, and in a browser the visitor gets no field messages, no
+      // toast (the interceptor passed a non-HttpErrorResponse along without one) and a Send that
+      // appears to do nothing.
+      //
+      // One assertion on purpose. `submitting` is false here whether or not the fix is present,
+      // because submitting.set(false) runs before the throw -- asserting it looked like coverage
+      // and was worth nothing. The DOM is likewise identical either way. This flag makes the throw
+      // propagate out of subscribe() so it can be seen at all, and is why this test calls submit()
+      // directly instead of dispatching a submit event, which jsdom would swallow again.
       config.useDeprecatedSynchronousErrorHandling = true;
 
       try {
@@ -379,7 +453,6 @@ describe('ContactFormComponent', () => {
         });
 
         expect(() => fixture.componentInstance['submit']()).not.toThrow();
-        expect(fixture.componentInstance['submitting']()).toBe(false);
       } finally {
         config.useDeprecatedSynchronousErrorHandling = false;
       }
