@@ -207,8 +207,9 @@ The most dangerous class, because the feedback signal is actively misleading:
 is invisible (issue linking, migrations, merges), verify the *effect* directly, not the exit code.
 The **deprecation-warnings** bullet is the near-miss variant and is worth separating out: sometimes
 the tool *did* complain, into output nobody was reading because the summary line said green. The
-**vitest-grep** bullet is that variant's sharper form — the tool complained on the same line the
-reader was already looking at, and the filter dropped it.
+**vitest-grep** bullet is that variant's sharper form — the tool complained in the same summary block
+the reader was already reading, a line or two from the count they were checking, and the filter
+dropped it.
 
 ### 6. What the review process itself taught
 
@@ -293,9 +294,14 @@ One detail in that framing was itself wrong, and the docs fact-check caught it a
 first written: `touched` and `pristine` really do go through `untracked()`, but **`errors` is a plain
 class field on `AbstractControl` — not signal-backed at all.** The conclusion is unaffected; the
 reason differs per property, and "all three are untracked" was a tidy generalisation over two
-mechanisms. The same wrong sentence went into issue #106's body and was corrected there too. Worth
-noting because it is the third time on this project that a plausible single mechanism has been
-generalised from a partial reading — see the 2026-08-09 entry on three invented mechanisms.
+mechanisms. It propagated: the same sentence is in the component's own code comment and went from
+there into issue #106's body. The issue was corrected on 2026-08-16; the code comment moves into
+`shared/form-errors/` in PR #113 and is corrected there, since a docs-only PR cannot reach it.
+
+Worth noting because generalising a plausible single mechanism from a partial reading is now the
+best-attested recurring mistake in this log — the 2026-08-09 entry alone is titled "three invented
+mechanisms in one docs PR", and its first defect is explicitly a rule written from one observed case
+and presented as general. This makes at least the fourth.
 
 **Incremental commits converted a spend-cap loss into an inconvenience, for the second time.** The
 implementer died mid-sentence on "M18 kills F3's test. Restoring…" — mid-mutation, the single most
@@ -330,12 +336,14 @@ gate run reported here used `grep -E "Test Files|Tests |FAIL"` against a *pipe*,
 by redirecting to a file, grepping that, and reading `EXIT=0` — but the command could not have told
 the difference. This is the first instance found by a dispatched agent rather than by the dispatcher.
 
-It is the third *occurrence* but only the second on record, and the gap is worth closing here: the
-first is `(cd backend && mvn -q test 2>&1 | tail -35); echo "BACKEND_EXIT=$?"`, still in the repo. The
-second happened in session on 2026-08-15 — `gh pr edit ... | tail -1 && echo "corrected"`, the same
-`$?`-from-the-wrong-end-of-a-pipe mistake, made minutes after writing up the first — and was never
-logged, so nothing in the repository records it. Recorded now, because an unlogged instance makes a
-recurrence count unverifiable to the next reader, which is most of what these entries are for.
+It is the third occurrence, and logging it here is what makes it the third on record. The first is
+`(cd backend && mvn -q test 2>&1 | tail -35); echo "BACKEND_EXIT=$?"`, written up in the 2026-08-07
+entry. The second happened in session on 2026-08-15 — `gh pr edit ... | tail -1 && echo "corrected"`,
+the same `$?`-from-the-wrong-end-of-a-pipe mistake — and was never logged, so nothing in the
+repository records it; it is written down here only because a fact-check of this PR pointed out that
+an unlogged instance makes a recurrence count unverifiable to the next reader, which is most of what
+these entries are for. Note that the 2026-08-07 entry already recorded the same mistake being repeated
+an hour after being written up; eight days later it recurred again, twice.
 
 **Its own bad test was reported rather than quietly fixed.** The first stale-failure ordering test
 used `throwError`, which emits at *subscribe* time — so the failure landed before the success, testing
