@@ -7,13 +7,13 @@ import {
   FormControl,
   FormGroup,
   ReactiveFormsModule,
-  ValidationErrors,
   Validators,
 } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ProjectWriteRequest } from '../../../core/api/model/projectWriteRequest';
 import { ApiProblem } from '../../../core/http/api-problem';
+import { clientErrorSignal, joinMessages } from '../../../shared/form-errors/form-errors';
 import {
   PROJECT_PERIOD_MESSAGES,
   validateProjectPeriod,
@@ -55,41 +55,6 @@ const TAGS_MESSAGES: Record<string, string> = {
  */
 function claims(field: string, key: string): boolean {
   return key === field || (key.startsWith(`${field}[`) && key.endsWith(']'));
-}
-
-/**
- * What a slot says when the server named a field but gave nothing to say about it. The contract
- * everywhere here is that a rejection reaches a destination; a key whose message is null, undefined
- * or blank would otherwise be subtracted from the catch-all as claimed and then render as nothing,
- * which is a save rejected in silence again.
- */
-const UNEXPLAINED_REJECTION = 'Rejected by the server, which gave no reason.';
-
-/**
- * Join what the server said, skipping entries with no text. Both parts matter: `[null, 'the real
- * complaint'].join('; ')` is `"; the real complaint"`, a leading separator leaking into the UI, and
- * a set of entries that are all blank must still say *something* -- there was a rejection.
- *
- * Types say these are strings. The wire does not: this is a JSON body, and the one function whose
- * whole job is that nothing reaches no destination is the wrong place to trust that.
- */
-function joinMessages(messages: string[]): string | null {
-  const usable = messages.filter(
-    (message) => typeof message === 'string' && message.trim().length > 0,
-  );
-  if (usable.length > 0) {
-    return usable.join('; ');
-  }
-  return messages.length > 0 ? UNEXPLAINED_REJECTION : null;
-}
-
-function messageFor(errors: ValidationErrors | null, messages: Record<string, string>): string | null {
-  for (const key of Object.keys(errors ?? {})) {
-    if (messages[key]) {
-      return messages[key];
-    }
-  }
-  return null;
 }
 
 @Component({
@@ -391,29 +356,19 @@ export class AdminProjectFormComponent {
   /**
    * One message slot per field, on the completedOnError() model: this form's own validator message
    * while the control is in violation, otherwise whatever the server said about the same field.
-   * Held back until the control is touched or edited, so a blank new form does not open covered in
-   * complaints -- submit() calls markAllAsTouched(), which is what makes them appear on a rejected
-   * save instead of the old silent return.
    *
-   * The events() read is what keeps this reactive, and is not optional: AbstractControl exposes
-   * `touched`, `dirty` and `errors` through untracked() (Angular 21), so a computed reading only
-   * those would cache its first answer and never update -- a failure state that renders as an idle
-   * one, which is the same bug this component is being fixed for. `events` emits on every value,
-   * status and touched change, so the computed is invalidated exactly when one of them moves.
+   * The client half -- including the touched/dirty gate and the events() subscription that keeps it
+   * reactive at all -- lives in shared/form-errors, because the contact form needs exactly the same
+   * thing and the reactivity requirement is invisible at the call site. The server half stays here:
+   * serverError()'s claims() rule is this form's, and is paired with unclaimedErrors()' subtraction.
    */
   private controlError(
     control: AbstractControl,
     field: string,
     messages: Record<string, string>,
   ): Signal<string | null> {
-    const events = toSignal(control.events, { initialValue: null });
-
-    return computed(() => {
-      events();
-      const clientMessage =
-        control.touched || control.dirty ? messageFor(control.errors, messages) : null;
-      return clientMessage ?? this.serverError(field);
-    });
+    const clientMessage = clientErrorSignal(control, messages);
+    return computed(() => clientMessage() ?? this.serverError(field));
   }
 
   /**
