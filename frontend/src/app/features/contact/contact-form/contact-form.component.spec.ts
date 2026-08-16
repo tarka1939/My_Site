@@ -1,14 +1,81 @@
-import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { config, of, throwError } from 'rxjs';
 import { ContactService } from '../../../core/api/api/contact.service';
 import { ApiProblem } from '../../../core/http/api-problem';
 import { ContactFormComponent } from './contact-form.component';
 
+const ACK = { id: '1', createdAt: '2026-08-16T00:00:00Z' };
+
+/** A 400 carrying several violations at once, which is what the API sends -- it does not dedup. */
+function problemWith(fieldErrors: { field: string; message: string }[]): ApiProblem {
+  return {
+    status: 400,
+    title: 'Bad Request',
+    detail: 'Request failed validation',
+    fieldErrors,
+    rateLimited: false,
+  };
+}
+
+function validationProblem(field: string, message: string): ApiProblem {
+  return problemWith([{ field, message }]);
+}
+
+/**
+ * Every interaction below goes through a real DOM event and whenStable(), never detectChanges().
+ * detectChanges() force-refreshes the view whether or not anything marked it dirty, so it cannot
+ * tell a message that repaints from one that only appears because the test asked for a repaint --
+ * and this app is zoneless, where that difference is the whole bug (issue #110).
+ */
+async function type(
+  fixture: ComponentFixture<ContactFormComponent>,
+  selector: string,
+  value: string,
+): Promise<void> {
+  const field = (fixture.nativeElement as HTMLElement).querySelector<
+    HTMLInputElement | HTMLTextAreaElement
+  >(selector);
+  if (!field) {
+    throw new Error(`no field matching ${selector}`);
+  }
+  field.value = value;
+  field.dispatchEvent(new Event('input'));
+  await fixture.whenStable();
+}
+
+/** Send the way a visitor does -- submit the form, rather than calling submit() directly. */
+async function send(fixture: ComponentFixture<ContactFormComponent>): Promise<void> {
+  (fixture.nativeElement as HTMLElement)
+    .querySelector('form')
+    ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await fixture.whenStable();
+}
+
+/** Type something all three validators accept, through the DOM, so the controls are dirty too. */
+async function fillValidMessage(fixture: ComponentFixture<ContactFormComponent>): Promise<void> {
+  await type(fixture, '#contact-name', 'Ada Lovelace');
+  await type(fixture, '#contact-email', 'ada@example.com');
+  await type(fixture, '#contact-message', 'Hello there');
+}
+
+function errorTextFor(host: HTMLElement, fieldId: string): string | null {
+  const field = host.querySelector(`#${fieldId}`)?.closest('.field');
+  return field?.querySelector('.field-error')?.textContent?.trim() ?? null;
+}
+
+const FIELD_IDS = ['contact-name', 'contact-email', 'contact-message'];
+
 describe('ContactFormComponent', () => {
   let submitContactMessage: ReturnType<typeof vi.fn>;
 
+  async function render(): Promise<ComponentFixture<ContactFormComponent>> {
+    const fixture = TestBed.createComponent(ContactFormComponent);
+    await fixture.whenStable();
+    return fixture;
+  }
+
   beforeEach(async () => {
-    submitContactMessage = vi.fn();
+    submitContactMessage = vi.fn().mockReturnValue(of(ACK));
 
     await TestBed.configureTestingModule({
       imports: [ContactFormComponent],
@@ -16,54 +83,306 @@ describe('ContactFormComponent', () => {
     }).compileComponents();
   });
 
-  it('does not submit an invalid form', () => {
-    const fixture = TestBed.createComponent(ContactFormComponent);
-    fixture.componentInstance['submit']();
+  it('does not submit an invalid form', async () => {
+    const fixture = await render();
+
+    await send(fixture);
 
     expect(submitContactMessage).not.toHaveBeenCalled();
     expect(fixture.componentInstance['form'].touched).toBe(true);
   });
 
-  it('submits a valid form and shows the confirmation message', () => {
-    submitContactMessage.mockReturnValue(of({ id: '1', createdAt: new Date().toISOString() }));
+  it('submits a valid form and shows the confirmation message', async () => {
+    const fixture = await render();
+    await fillValidMessage(fixture);
 
-    const fixture = TestBed.createComponent(ContactFormComponent);
-    fixture.componentInstance['form'].setValue({
-      name: 'Ada Lovelace',
-      email: 'ada@example.com',
-      message: 'Hello there',
-    });
-
-    fixture.componentInstance['submit']();
+    await send(fixture);
 
     expect(submitContactMessage).toHaveBeenCalledWith({
-      contactMessageWriteRequest: { name: 'Ada Lovelace', email: 'ada@example.com', message: 'Hello there' },
+      contactMessageWriteRequest: {
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        message: 'Hello there',
+      },
     });
-    expect(fixture.componentInstance['submitted']()).toBe(true);
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Thanks for reaching out');
+    expect(host.querySelector('form')).toBeNull();
   });
 
-  it('shows field-level validation errors returned by the API', () => {
-    const problem: ApiProblem = {
-      status: 400,
-      title: 'Bad Request',
-      fieldErrors: [{ field: 'email', message: 'must be a well-formed email address' }],
-      rateLimited: false,
-    };
-    submitContactMessage.mockReturnValue(throwError(() => problem));
+  describe('this form’s own validation messages', () => {
+    it('names every empty field when a blank form is sent, and sends nothing', async () => {
+      // The reported failure: the validators blocked submit() and the template rendered only
+      // fieldErrors(), which holds server messages -- and an invalid form never reaches the server.
+      // So Send did nothing, said nothing, and looked broken rather than invalid.
+      const fixture = await render();
 
-    // Client-side validators pass (well-formed email); the server rejects it anyway (e.g. a
-    // business rule the client doesn't replicate) -- this exercises how that gets displayed.
-    const fixture = TestBed.createComponent(ContactFormComponent);
-    fixture.componentInstance['form'].setValue({
-      name: 'Ada Lovelace',
-      email: 'ada@example.com',
-      message: 'Hello there',
+      await send(fixture);
+
+      expect(submitContactMessage).not.toHaveBeenCalled();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-name')).toBe('Name is required');
+      expect(errorTextFor(host, 'contact-email')).toBe('Email is required');
+      expect(errorTextFor(host, 'contact-message')).toBe('Message is required');
+      for (const id of FIELD_IDS) {
+        const message = host.querySelector(`#${id}-error`);
+        expect(message?.getAttribute('role')).toBe('alert');
+        expect(message?.textContent?.trim()).toBeTruthy();
+      }
     });
 
-    fixture.componentInstance['submit']();
+    it('says what is wrong with a malformed email', async () => {
+      // The symptom in the report: a visitor types an address the server would reject, presses
+      // Send, and nothing at all happens. Nobody arriving at this form has been told the rules, so
+      // the message names the shape it wants rather than only calling the value wrong.
+      const fixture = await render();
+      await type(fixture, '#contact-name', 'Ada Lovelace');
+      await type(fixture, '#contact-email', 'ada@');
+      await type(fixture, '#contact-message', 'Hello there');
 
-    expect(fixture.componentInstance['fieldErrors']()).toEqual({
-      email: 'must be a well-formed email address',
+      await send(fixture);
+
+      expect(submitContactMessage).not.toHaveBeenCalled();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-email')).toBe(
+        'Enter a valid email address, like name@example.com',
+      );
+      // The other two are fine, so they stay quiet -- a wrong email must not scold the whole form.
+      expect(errorTextFor(host, 'contact-name')).toBeNull();
+      expect(errorTextFor(host, 'contact-message')).toBeNull();
+    });
+
+    it('reports a message over the contract limit', async () => {
+      // maxLength(5000) mirrors ContactMessageWriteRequest in docs/openapi.yaml. Without a rendered
+      // message this is the worst case of the bug: a visitor who wrote something long presses Send
+      // and is told nothing, with no hint that shortening it is what is being asked for.
+      const fixture = await render();
+      await type(fixture, '#contact-name', 'Ada Lovelace');
+      await type(fixture, '#contact-email', 'ada@example.com');
+      await type(fixture, '#contact-message', 'x'.repeat(5001));
+
+      await send(fixture);
+
+      expect(submitContactMessage).not.toHaveBeenCalled();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-message')).toBe('Message cannot exceed 5000 characters');
+    });
+
+    it('says nothing about a field the visitor has not reached yet', async () => {
+      // A form that opens covered in complaints is its own defect. The gate is per control, not
+      // per form: typing a bad email must not also flag the two fields nobody has touched.
+      const fixture = await render();
+      const host = fixture.nativeElement as HTMLElement;
+
+      expect(host.querySelectorAll('.field-error')).toHaveLength(0);
+      for (const id of FIELD_IDS) {
+        expect(host.querySelector(`#${id}`)?.getAttribute('aria-invalid')).toBeNull();
+      }
+
+      await type(fixture, '#contact-email', 'ada@');
+
+      expect(errorTextFor(host, 'contact-email')).toBeTruthy();
+      expect(errorTextFor(host, 'contact-name')).toBeNull();
+      expect(errorTextFor(host, 'contact-message')).toBeNull();
+      expect(host.querySelector('#contact-name')?.getAttribute('aria-invalid')).toBeNull();
+      expect(host.querySelector('#contact-message')?.getAttribute('aria-invalid')).toBeNull();
+    });
+
+    it('points every invalid field at a message that resolves to real text', async () => {
+      // aria-invalid alone tells a screen-reader user the field is wrong without saying why:
+      // role="alert" fires once as the message appears and nothing re-announces it afterwards, so
+      // the description is what carries the reason on every later visit. A dangling
+      // aria-describedby id is announced as nothing at all, hence resolving each one -- and the id
+      // has to be absent while there is no message, which is what hardcoding it would get wrong.
+      const fixture = await render();
+      const host = fixture.nativeElement as HTMLElement;
+
+      for (const id of FIELD_IDS) {
+        expect(host.querySelector(`#${id}`)?.getAttribute('aria-describedby')).toBeNull();
+      }
+
+      await send(fixture);
+
+      for (const id of FIELD_IDS) {
+        const field = host.querySelector(`#${id}`);
+        expect(field?.getAttribute('aria-invalid')).toBe('true');
+        const describedBy = field?.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+        expect(describedBy.length).toBeGreaterThan(0);
+        const described = describedBy.map((ref) =>
+          host.querySelector(`#${ref}`)?.textContent?.trim(),
+        );
+        expect(described.every((text) => !!text)).toBe(true);
+      }
+    });
+
+    it('clears a message once the visitor fixes the field', async () => {
+      // The slot has to track the control both ways. A computed that reads only touched/dirty and
+      // errors caches its first answer forever, because AbstractControl exposes those through
+      // untracked() -- and a stale complaint on a field that is now correct is the same class of
+      // lie as no complaint on one that is wrong.
+      const fixture = await render();
+      const host = fixture.nativeElement as HTMLElement;
+      await send(fixture);
+
+      expect(errorTextFor(host, 'contact-email')).toBe('Email is required');
+
+      await type(fixture, '#contact-email', 'ada@example.com');
+
+      expect(errorTextFor(host, 'contact-email')).toBeNull();
+      expect(host.querySelector('#contact-email')?.getAttribute('aria-invalid')).toBeNull();
+      expect(host.querySelector('#contact-email')?.getAttribute('aria-describedby')).toBeNull();
+    });
+  });
+
+  describe('server field errors', () => {
+    it('shows a server field error for a value its own validators accept', async () => {
+      // Client validators are a shortcut, not the authority. The two halves share one slot, so the
+      // client message must not crowd out the server's.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('email', 'must be a well-formed email address')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-email')).toBe('must be a well-formed email address');
+      expect(host.querySelector('#contact-email')?.getAttribute('aria-invalid')).toBe('true');
+      // Claimed by a field slot means claimed for good -- it must not be repeated in the catch-all,
+      // and Send has nothing to be described by.
+      expect(host.querySelector('.form-error')).toBeNull();
+      expect(host.querySelector('button[type="submit"]')?.getAttribute('aria-describedby')).toBeNull();
+    });
+
+    it('lets this form’s message take over from the server’s while the field is wrong', async () => {
+      // A server verdict describes the value that was sent. Once the visitor edits the field it is
+      // describing something that no longer exists, so the live client message is the true one --
+      // and it has to win the moment the control goes into violation, not on the next send.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('email', 'this address bounced')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-email')).toBe('this address bounced');
+
+      await type(fixture, '#contact-email', 'ada@');
+
+      expect(errorTextFor(host, 'contact-email')).toBe(
+        'Enter a valid email address, like name@example.com',
+      );
+    });
+
+    it('surfaces a server key that no field slot claims', async () => {
+      // errorInterceptor deliberately stays quiet for any 400 that carries field errors, so a key
+      // this form does not enumerate is a message rejected in total silence -- and the person it
+      // happens to is a visitor with no other way to find out. The backend owns the field names
+      // and can rename one without this form changing, so the catch-all is the backstop.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('body', 'must not be blank')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      const region = host.querySelector('.form-error[role="alert"]');
+      expect(region?.textContent).toContain('must not be blank');
+      expect(region?.textContent).toContain('body');
+      // No field slot may show it, or it would be painted on a control that is not at fault.
+      for (const id of FIELD_IDS) {
+        expect(errorTextFor(host, id)).toBeNull();
+      }
+      // role="alert" announces it once on insertion; the description carries the reason to anyone
+      // who arrives at Send afterwards.
+      const describedBy = host
+        .querySelector('button[type="submit"]')
+        ?.getAttribute('aria-describedby');
+      expect(describedBy).toBe('contact-form-error');
+      expect(host.querySelector(`#${describedBy}`)?.textContent?.trim()).toBeTruthy();
+    });
+
+    it('still says something when the server names a field but gives no message', async () => {
+      // Not reachable from this backend today -- every field error comes from Bean Validation with
+      // a message -- but this is the one path whose entire contract is that a rejection reaches a
+      // destination. A blank message is falsy, so the slot would render nothing while the catch-all
+      // had already counted the key as claimed and shown: a rejection with nowhere left to appear.
+      submitContactMessage.mockReturnValue(
+        throwError(() => problemWith([{ field: 'email', message: '   ' }])),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-email')).toBeTruthy();
+      expect(host.querySelector('#contact-email')?.getAttribute('aria-invalid')).toBe('true');
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('clears the previous rejection when the next send fails without field errors', async () => {
+      // A 429 from the contact rate limiter carries no field errors, so nothing overwrites the map.
+      // Without the reset in submit() the first rejection's messages stay on screen describing a
+      // send that is over, next to a banner about a different failure entirely.
+      submitContactMessage.mockReturnValueOnce(
+        throwError(() => validationProblem('email', 'must be a well-formed email address')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-email')).toBe('must be a well-formed email address');
+
+      submitContactMessage.mockReturnValue(
+        throwError(() => ({
+          status: 429,
+          title: 'Too many requests',
+          fieldErrors: [],
+          rateLimited: true,
+        })),
+      );
+      await send(fixture);
+
+      expect(errorTextFor(host, 'contact-email')).toBeNull();
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('survives a rejection that is not an ApiProblem at all', () => {
+      // errorInterceptor normalizes every HttpErrorResponse but rethrows anything else unchanged,
+      // so this handler cannot assume the shape. Reading .fieldErrors off a bare Error throws
+      // *inside* the subscriber, which RxJS reports out of band -- vitest counts it under "Errors"
+      // while the "Tests N passed" line stays green, and the form sits on "Sending…" forever. The
+      // DOM looks the same either way, so this flag is the only way to assert nothing escapes; it
+      // is also why this one test calls submit() directly rather than dispatching a submit event,
+      // since jsdom would swallow the exception again.
+      config.useDeprecatedSynchronousErrorHandling = true;
+
+      try {
+        submitContactMessage.mockReturnValue(throwError(() => new TypeError('boom')));
+
+        const fixture = TestBed.createComponent(ContactFormComponent);
+        fixture.componentInstance['form'].setValue({
+          name: 'Ada Lovelace',
+          email: 'ada@example.com',
+          message: 'Hello there',
+        });
+
+        expect(() => fixture.componentInstance['submit']()).not.toThrow();
+        expect(fixture.componentInstance['submitting']()).toBe(false);
+      } finally {
+        config.useDeprecatedSynchronousErrorHandling = false;
+      }
     });
   });
 });
