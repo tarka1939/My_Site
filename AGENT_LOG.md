@@ -298,10 +298,11 @@ mechanisms. It propagated: the same sentence is in the component's own code comm
 there into issue #106's body. The issue was corrected on 2026-08-16; the code comment moves into
 `shared/form-errors/` in PR #113 and is corrected there, since a docs-only PR cannot reach it.
 
-Worth noting because generalising a plausible single mechanism from a partial reading is now the
-best-attested recurring mistake in this log — the 2026-08-09 entry alone is titled "three invented
-mechanisms in one docs PR", and its first defect is explicitly a rule written from one observed case
-and presented as general. This makes at least the fourth.
+Worth noting because generalising a plausible single mechanism from a partial reading is a repeat, not
+a one-off — the 2026-08-09 entry alone is titled "three invented mechanisms in one docs PR", and its
+first defect is explicitly a rule written from one observed case and presented as general. This makes
+at least the fourth. (Not this log's most-attested mistake: agents terminated with complete-but-
+uncommitted work is at ten across three entries and has its own rule in `CLAUDE.md`.)
 
 **Incremental commits converted a spend-cap loss into an inconvenience, for the second time.** The
 implementer died mid-sentence on "M18 kills F3's test. Restoring…" — mid-mutation, the single most
@@ -342,8 +343,11 @@ entry. The second happened in session on 2026-08-15 — `gh pr edit ... | tail -
 the same `$?`-from-the-wrong-end-of-a-pipe mistake — and was never logged, so nothing in the
 repository records it; it is written down here only because a fact-check of this PR pointed out that
 an unlogged instance makes a recurrence count unverifiable to the next reader, which is most of what
-these entries are for. Note that the 2026-08-07 entry already recorded the same mistake being repeated
-an hour after being written up; eight days later it recurred again, twice.
+these entries are for. Note what the 2026-08-07 entry says about occurrence one: this log already had
+a whole section on tooling that reports success while doing nothing, and the gate was written anyway,
+an hour after that section. So the section did not prevent the first occurrence, and eight days later
+the same shape recurred twice more — which is the case for a standing command form rather than another
+paragraph of advice.
 
 **Its own bad test was reported rather than quietly fixed.** The first stale-failure ordering test
 used `throwError`, which emits at *subscribe* time — so the failure landed before the success, testing
@@ -415,9 +419,15 @@ that shows no UI path reaches it today), #108 (the interceptor's 401 branch, app
   survived an adversarial key sweep. The signal to stop enumerating was the second recurrence, not
   the third.
 - **A comment recording a lesson is not a control.** The commit that wrote "mutations survived on this
-  side purely because the links tests were never duplicated for it" reproduced that exact gap one
-  commit later for a different guard. Notes inform a reader who is already looking; only a mutation
-  run makes the omission fail.
+  side purely because the links tests were never duplicated for it" left that exact gap, in that same
+  commit, for a different guard. Notes inform a reader who is already looking; only a mutation run
+  makes the omission fail.
+- **Correcting one site of a repeated claim is the same omission in prose.** Fixing this entry took
+  four fact-check rounds, and three of them found a claim corrected in one place and left standing in
+  another — once across files, twice within this file, including the bullet directly above. That is
+  structurally identical to the links-mirrored-but-not-images gap it describes: the fix was applied
+  where the finding pointed rather than everywhere the claim lived. The check is to grep for the claim,
+  not to edit the line that was quoted at you.
 - **A grep over a test run is a gate, and it inherits every rule about gates.** Three times now the
   failure has been the same: the command could not report red. Twice it was `$?` captured from the
   wrong end of a pipe; this time it was a filter narrow enough to hide a line the runner did print.
@@ -480,8 +490,9 @@ predicate the slots look up with, so the catch-all cannot drift from what is on 
 review confirmed no fifth instance by sweeping an adversarial key set — unknown keys, indexed keys,
 keys prefixing other keys, the empty string, keys with surrounding whitespace, wrong case — plus
 multi-key combinations, each asserting the message renders exactly once. That sweep was a review-time
-run and its keys were never committed, so this paragraph is the only record of it; the *shape* of what
-it covered is reproducible from the description, the exact count is not.
+run and its keys were never committed, so nothing in the codebase reproduces it; PR #105's merged
+description is the record, key list and count included. The count is deliberately not repeated here —
+a number in a log entry reads as something a reader could re-derive, and this one they cannot.
 
 Two process observations from the tail:
 
