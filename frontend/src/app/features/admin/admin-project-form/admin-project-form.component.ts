@@ -353,9 +353,14 @@ export class AdminProjectFormComponent {
       },
       error: (problem: ApiProblem) => {
         this.submitting.set(false);
-        // Optional-chained like the load handler's status check: errorInterceptor normalizes every
-        // HttpErrorResponse into an ApiProblem, but rethrows anything that is not one unchanged, so
-        // the shape here is only almost guaranteed.
+        // Optional-chained like the load handler's status check, and identical to the contact
+        // form's line: errorInterceptor normalizes every HttpErrorResponse into an ApiProblem but
+        // rethrows anything that is not one unchanged, so the shape here is only almost guaranteed.
+        // `?? []` is the half that has a reachable case -- .fieldErrors off a bare Error is
+        // undefined, and .length off that throws inside the subscriber, where RxJS reports it out
+        // of band and the form fails in silence. The `?.` has no reachable case and is not pretending
+        // to: it is the same defensive read at all three sites in both forms, which is worth more
+        // than deleting one of them.
         const fieldErrors = problem?.fieldErrors ?? [];
         if (fieldErrors.length > 0) {
           this.fieldErrors.set(Object.fromEntries(fieldErrors.map((e) => [e.field, e.message])));
@@ -477,8 +482,16 @@ export class AdminProjectFormComponent {
     // Same blank-message handling as the scalar slots: reading errors[field] straight out would let
     // a key that exists with an empty message render as nothing while unclaimedErrors() has already
     // counted it as shown.
+    //
+    // Object.hasOwn, matching the contact form's serverError(): `field in errors` would also answer
+    // true for a name that only exists on Object.prototype, reporting a rejection the server never
+    // sent. Unreachable from here -- `field` is a row key this component builds -- but this is the
+    // right primitive for "does this map hold this key", and the two forms had no reason to disagree
+    // about which one they use.
     const errors = this.fieldErrors();
-    const serverMessage = field in errors ? joinMessages([errors[field]], UNEXPLAINED_REJECTION) : null;
+    const serverMessage = Object.hasOwn(errors, field)
+      ? joinMessages([errors[field]], UNEXPLAINED_REJECTION)
+      : null;
     return clientMessage ?? serverMessage;
   }
 

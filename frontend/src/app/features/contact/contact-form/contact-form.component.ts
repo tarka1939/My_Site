@@ -125,8 +125,8 @@ export class ContactFormComponent {
       },
       error: (problem: ApiProblem) => {
         this.submitting.set(false);
-        // `?? []` is load-bearing: errorInterceptor normalizes every HttpErrorResponse into an
-        // ApiProblem but rethrows anything else unchanged, so the shape here is only almost
+        // `?? []` is the load-bearing half: errorInterceptor normalizes every HttpErrorResponse
+        // into an ApiProblem but rethrows anything else unchanged, so the shape here is only almost
         // guaranteed. Reading .fieldErrors off a bare Error does not throw -- it yields undefined.
         // Reading .length off *that* is what threw, and since it throws from inside the subscriber
         // RxJS reports it out of band: no field messages, no toast (the interceptor passed on a
@@ -134,7 +134,12 @@ export class ContactFormComponent {
         // once again appears to do nothing. Which is this component's original bug, by a longer
         // route. `submitting` is already false by then -- it is set on the line above -- so the
         // symptom is silence rather than a stuck spinner.
-        const fieldErrors = problem.fieldErrors ?? [];
+        //
+        // The `?.` has no reachable case of its own: nothing in the pipeline rethrows a nullish
+        // value. It is here because the admin form's handler has it, and these two lines are the
+        // same contract with the same interceptor -- spelled the same way, they read as one rule
+        // rather than as two independent judgements about how much to trust it.
+        const fieldErrors = problem?.fieldErrors ?? [];
         if (fieldErrors.length > 0) {
           this.fieldErrors.set(Object.fromEntries(fieldErrors.map((e) => [e.field, e.message])));
         }
