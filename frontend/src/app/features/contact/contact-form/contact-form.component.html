@@ -61,13 +61,22 @@
          Deliberately none of the server's own words: the key names a field this form does not
          show, and the message beside it is a Bean Validation default written for a developer.
          Either one, put in front of someone who has just lost what they wrote, reads as a leaked
-         stack trace. The full argument is on hasUnclaimedRejection(). -->
+         stack trace. The full argument is on hasUnclaimedRejection().
+
+         The wording is careful about two things it got wrong first time round. It does not say the
+         site could not tell which part -- in the case this exists for, a renamed field, the server
+         said exactly which part and this form is the thing that cannot use it. And it does not say
+         "something in it was not accepted", which puts the fault on what the visitor typed when a
+         honeypot rejection is about a field they never saw. It also does not suggest retrying: an
+         unclaimed key means a server-side disagreement about field names, which will reject the
+         next attempt identically, and there is no other way to reach me from this page. -->
     @if (hasUnclaimedRejection()) {
       <div id="contact-form-error" class="form-error" role="alert">
         <p class="form-error-heading">Your message was not sent.</p>
         <p>
-          Something in it was not accepted, and the site could not say which part. Check what you
-          entered above and send it again &mdash; if that does not work, please try again later.
+          The site refused it for a reason it cannot show you here, and nothing you change above
+          will get past it &mdash; this is a fault on my side, not in what you wrote. Sending it
+          again will most likely fail the same way.
         </p>
       </div>
     }

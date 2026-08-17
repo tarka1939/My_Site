@@ -63,6 +63,24 @@ function errorTextFor(host: HTMLElement, fieldId: string): string | null {
   return field?.querySelector('.field-error')?.textContent?.trim() ?? null;
 }
 
+/** The catch-all's text with template indentation collapsed, so the copy can be asserted whole. */
+function bannerText(host: HTMLElement): string | null {
+  const region = host.querySelector('.form-error');
+  return region ? (region.textContent ?? '').replace(/\s+/g, ' ').trim() : null;
+}
+
+/**
+ * Pinned verbatim, because in this region the wording *is* the behaviour. Three earlier versions
+ * were each accurate about the mechanism and wrong about the reader: one printed the backend's
+ * field key, one said the site could not tell which part when the server had said exactly which
+ * part, and one told the visitor to try again when a renamed field rejects every attempt alike.
+ * None of that is reachable through a structural assertion -- only through the sentence.
+ */
+const CATCH_ALL_COPY =
+  'Your message was not sent. The site refused it for a reason it cannot show you here, and ' +
+  'nothing you change above will get past it — this is a fault on my side, not in what you ' +
+  'wrote. Sending it again will most likely fail the same way.';
+
 const FIELD_IDS = ['contact-name', 'contact-email', 'contact-message'];
 
 describe('ContactFormComponent', () => {
@@ -293,9 +311,8 @@ describe('ContactFormComponent', () => {
       await send(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
-      const region = host.querySelector('.form-error[role="alert"]');
-      expect(region?.textContent).toContain('Your message was not sent');
-      expect(region?.textContent).toContain('send it again');
+      expect(host.querySelector('.form-error[role="alert"]')).not.toBeNull();
+      expect(bannerText(host)).toBe(CATCH_ALL_COPY);
       // No field slot may show it, or it would be painted on a control that is not at fault.
       for (const id of FIELD_IDS) {
         expect(errorTextFor(host, id)).toBeNull();
@@ -351,25 +368,33 @@ describe('ContactFormComponent', () => {
       }
     });
 
-    it('surfaces an unclaimed key that arrives with no message', async () => {
-      // The catch-all used to render the key and the server's text and nothing else, so a blank
-      // message there produced a bare field name where a field slot would have said something.
-      // Answering in this form's own words settles that asymmetry rather than patching it: there
-      // is no longer a server message whose emptiness the visible outcome can depend on.
-      submitContactMessage.mockReturnValue(
-        throwError(() => problemWith([{ field: 'body', message: null as unknown as string }])),
-      );
+    it.each([null, undefined, '', '   '])(
+      'surfaces an unclaimed key whose message is %p, identically to a real one',
+      async (message) => {
+        // Not the same assertion as the test above with a different fixture: what this pins is that
+        // the banner does not depend on the message *value* at all. An implementation that asked
+        // `!slotted.includes(key) && !!message` -- "only complain if the server actually said
+        // something" -- passes the test above and fails every case here, and it is the shape this
+        // codebase has already shipped twice under a different name. Same visible outcome as a
+        // full message, asserted against the same constant, is the property.
+        submitContactMessage.mockReturnValue(
+          throwError(() => problemWith([{ field: 'body', message: message as unknown as string }])),
+        );
 
-      const fixture = await render();
-      await fillValidMessage(fixture);
+        const fixture = await render();
+        await fillValidMessage(fixture);
 
-      await send(fixture);
+        await send(fixture);
 
-      const host = fixture.nativeElement as HTMLElement;
-      const region = host.querySelector('.form-error');
-      expect(region?.textContent).toContain('Your message was not sent');
-      expect(region?.textContent).toContain('send it again');
-    });
+        const host = fixture.nativeElement as HTMLElement;
+        expect(bannerText(host)).toBe(CATCH_ALL_COPY);
+        // And nothing stringifies its way onto the page. `{{ null }}` renders empty, but anything
+        // that reached for String(message) or a template literal would put "null" in front of a
+        // visitor.
+        expect(host.textContent).not.toContain('null');
+        expect(host.textContent).not.toContain('undefined');
+      },
+    );
 
     it('still says something when the server names a field but gives no message', async () => {
       // Not reachable from this backend today -- every field error comes from Bean Validation with
