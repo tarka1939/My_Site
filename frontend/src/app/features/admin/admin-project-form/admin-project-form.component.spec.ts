@@ -154,6 +154,15 @@ function errorTextFor(host: HTMLElement, inputId: string): string | null {
   return field?.querySelector('.field-error')?.textContent?.trim() ?? null;
 }
 
+/**
+ * The component's UNEXPLAINED_REJECTION, written out rather than imported, and that is the whole
+ * point: importing it would make the assertion agree with whatever the constant says, so swapping
+ * in the contact form's visitor-facing wording would still pass -- which is exactly the mutation
+ * this is here to catch. Two forms, two audiences, and this is the copy for the one whose reader
+ * knows what `links[0].label` means. If this assertion fails, decide which audience you meant.
+ */
+const ADMIN_FALLBACK_COPY = 'Rejected by the server, which gave no reason.';
+
 describe('AdminProjectFormComponent', () => {
   let getProject: ReturnType<typeof vi.fn>;
   let createProject: ReturnType<typeof vi.fn>;
@@ -944,7 +953,11 @@ describe('AdminProjectFormComponent', () => {
       await save(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
-      expect(errorTextFor(host, 'project-title')).toBeTruthy();
+      // Verbatim, not toBeTruthy(). This form's fallback is deliberately different from the contact
+      // form's -- it names the server, for a reader who knows what `links[0].label` means -- and
+      // that claim was unpinned on this side: swapping in the visitor-facing wording left the whole
+      // suite green, which is the very substitution the shared fallback used to make silently.
+      expect(errorTextFor(host, 'project-title')).toBe(ADMIN_FALLBACK_COPY);
       expect(host.querySelector('#project-title')?.getAttribute('aria-invalid')).toBe('true');
     });
 
@@ -1039,8 +1052,9 @@ describe('AdminProjectFormComponent', () => {
       const host = fixture.nativeElement as HTMLElement;
       const item = host.querySelector('.form-error li');
       expect(item?.textContent).toContain('links');
-      // A field name on its own is not a reason. Something beyond it has to be on screen.
-      expect(item?.textContent?.replace('links', '').trim()).toBeTruthy();
+      // A field name on its own is not a reason. Something beyond it has to be on screen -- and
+      // specifically this form's own wording, pinned for the same reason as the slot above.
+      expect(item?.textContent).toContain(ADMIN_FALLBACK_COPY);
     });
   });
 
