@@ -1,0 +1,27 @@
+-- Phase 6, issue #124: GET /tags now returns only tags attached to at least one project, via
+-- "EXISTS (SELECT 1 FROM project_tags pt WHERE pt.tag_id = t.id)". That is a tag_id-first
+-- lookup, and project_tags' only index was PRIMARY KEY (project_id, tag_id), whose leading
+-- column is the wrong one -- so CLAUDE.md's rule ("every new repository method that queries by
+-- a non-primary-key column needs a supporting index in the same migration") applies.
+--
+-- Measured, rather than assumed (EXPLAIN ANALYZE against real seeded data and against
+-- generated data at 20k and 200k project_tags rows):
+--
+--   * The listing query does NOT use this index, at any size tested, and is not meant to.
+--     It asks about EVERY tag at once, so the planner reads project_tags once and hash-
+--     aggregates the distinct tag_ids -- cheaper than 26 (or 50,000) index probes. Forcing
+--     the index with enable_seqscan=off was slower, and lowering random_page_cost to an
+--     SSD-typical 1.1 did not change the choice. That is the planner being right.
+--   * The index IS used for a single-tag_id probe (Bitmap Index Scan on ix_project_tags_tag_id).
+--     That is the shape of the referencing side of project_tags_tag_id_fkey, which Postgres
+--     does not index automatically: every tag row deletion must find its project_tags rows,
+--     and without this index that is a full scan of the join table. project_id needed no
+--     equivalent -- it is the PK's leading column.
+--
+-- So this index is here for the FK direction that had none, and as the supporting index the
+-- new query's WHERE column is entitled to under the project rule, not because it speeds up
+-- today's plan. If a later cleanup finds it genuinely unused, dropping it is a one-line
+-- migration; leaving the FK cascade unindexed is the harder thing to notice.
+--
+-- Not unique: a tag is deliberately attached to many projects.
+CREATE INDEX ix_project_tags_tag_id ON project_tags (tag_id);

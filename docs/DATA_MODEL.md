@@ -38,6 +38,8 @@ Relationships: many-to-many with `Tag` via join table `project_tags` (`project_i
 
 Relationships: many-to-many with `Project` via `project_tags` (see above).
 
+**Orphan rows are expected and are not cleaned up.** Nothing deletes a `tag` when its last `project_tags` row goes -- deleting on last-reference is a check-then-act write on state a concurrent project write may be attaching to, the same shape that already produced a race in the tag upsert. Instead `GET /tags` filters to tags with at least one project (`ix_project_tags_tag_id` supports the lookup), so a stale row is invisible through the API and becomes visible again by itself if a project re-attaches the name. The cost is that the table grows monotonically -- tidiness, not correctness. There is no tag-delete endpoint and no tag management UI.
+
 ### ~~BlogPost / Writeup~~ — cut from scope (2026-07-21)
 
 Was floated in the original data-model draft; confirmed out of scope in `SPEC.md` → Explicit non-goals. Left here only for traceability — don't implement.
