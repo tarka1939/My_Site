@@ -863,12 +863,19 @@ describe('AdminProjectFormComponent', () => {
       // so this handler cannot assume the shape. Reading .fieldErrors off a bare Error throws
       // *inside* the subscriber, which surfaces as an unhandled error rather than as a visibly
       // failed save -- the DOM looks identical either way, so asserting on the DOM here proves
-      // nothing. Hence the listener: the property under test is that nothing escapes.
+      // nothing. Hence the flag below: the property under test is that nothing escapes.
       // RxJS swallows a throw from a subscriber callback and reports it out of band, where neither
       // the DOM nor an assertion can see it -- vitest counts it under "Errors", which leaves the
       // "Tests N passed" line green. This flag makes the throw propagate out of subscribe() instead,
       // which is the only way to assert on it. It is also why this one test calls submit() directly
       // rather than dispatching a submit event: jsdom would swallow the exception again.
+      //
+      // One assertion on purpose, matching the contact form's twin of this test. `submitting` is
+      // false here whether or not the guard is present, because submitting.set(false) is the error
+      // handler's first statement and the read that can throw comes after it -- asserting it read
+      // as coverage while being unable to tell a working guard from a broken one. The flag being
+      // cleared on a rejected save is pinned where it can actually fail: the completedOn test at
+      // the end of this file, whose rejection is a real ApiProblem and so gets past that read.
       config.useDeprecatedSynchronousErrorHandling = true;
 
       try {
@@ -879,7 +886,6 @@ describe('AdminProjectFormComponent', () => {
         fillRequiredFields(fixture);
 
         expect(() => fixture.componentInstance['submit']()).not.toThrow();
-        expect(fixture.componentInstance['submitting']()).toBe(false);
       } finally {
         config.useDeprecatedSynchronousErrorHandling = false;
       }
