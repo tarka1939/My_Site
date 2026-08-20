@@ -23,8 +23,8 @@ export interface TagsServiceInterface {
     configuration: Configuration;
 
     /**
-     * List all tags
-     * Read-only. Tags are created implicitly (upserted by name) when attached to a project via POST/PUT /projects -- there is no POST /tags.
+     * List the tags currently attached to at least one project
+     * Read-only. Returns **only** tags attached to at least one project, ordered by name ascending. This endpoint exists to populate the public \&quot;filter by tag\&quot; control, and offering a filter value that matches nothing is a dead end -- selecting it would return an empty project list on the site\&#39;s front page.  Consequently the listing is derived, not stored: a tag drops out as soon as its last project is deleted (or stops referencing it), and comes back if a later project re-attaches the same name. Orphaned &#x60;tag&#x60; rows are deliberately *not* deleted when their last reference goes -- that would be a check-then-act write on state a concurrent project write may be attaching to at the same moment -- so the filtering happens here, on read. Stale rows in the table are invisible through the API.  Tags are created implicitly (upserted by name) when attached to a project via POST/PUT /projects -- there is no POST /tags.
      * @endpoint get /tags
 */
     listTags(extraHttpRequestParams?: any): Observable<Array<Tag>>;

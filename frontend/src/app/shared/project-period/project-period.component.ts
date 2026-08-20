@@ -60,8 +60,15 @@ import { hasDateValue, toProjectMonth } from './project-period';
   `,
 })
 export class ProjectPeriodComponent {
-  readonly startedOn = input<string | null | undefined>(null);
-  readonly completedOn = input<string | null | undefined>(null);
+  /**
+   * `string | null`, not `string | null | undefined`: `Project` lists both dates in `required`, so
+   * the API always sends the key and the generated type is non-optional. Null stays, and is the
+   * whole point -- it is a value here (nothing recorded; still ongoing), never a missing key.
+   *
+   * The `null` default is what keeps the inputs omittable; it is not a third "absent" state.
+   */
+  readonly startedOn = input<string | null>(null);
+  readonly completedOn = input<string | null>(null);
 
   protected readonly start = computed(() => toProjectMonth(this.startedOn()));
   protected readonly end = computed(() => toProjectMonth(this.completedOn()));

@@ -21,11 +21,11 @@ export interface Project {
     /**
      * When work on the project started. Null means unspecified.  Distinct from createdAt, which records when the row was entered. Stored at day precision but only ever rendered as month/year -- the underlying source material does not support day-level accuracy, so clients should not present one. The convention is the 1st of the month. 
      */
-    startedOn?: string | null;
+    startedOn: string | null;
     /**
      * When work finished. **Null means the project is ongoing**, which is a meaningful value here, not merely missing data. Must not precede startedOn. 
      */
-    completedOn?: string | null;
+    completedOn: string | null;
     createdAt: string;
     updatedAt: string;
 }
