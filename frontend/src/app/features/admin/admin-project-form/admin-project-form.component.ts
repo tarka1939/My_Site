@@ -13,7 +13,11 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ProjectWriteRequest } from '../../../core/api/model/projectWriteRequest';
 import { ApiProblem } from '../../../core/http/api-problem';
-import { clientErrorSignal, joinMessages } from '../../../shared/form-errors/form-errors';
+import {
+  clientErrorSignal,
+  groupFieldErrors,
+  joinMessages,
+} from '../../../shared/form-errors/form-errors';
 import {
   PROJECT_PERIOD_MESSAGES,
   validateProjectPeriod,
@@ -83,7 +87,14 @@ export class AdminProjectFormComponent {
   protected readonly isEditMode = this.projectId !== null;
   protected readonly loading = signal(this.isEditMode);
   protected readonly submitting = signal(false);
-  protected readonly fieldErrors = signal<Record<string, string>>({});
+  /**
+   * Every message the server sent, keyed by the field it named -- a list per key, because the API
+   * reports one entry per violation and does not dedup. `links[0].label` can arrive twice at once
+   * (@NotBlank and @Size, from a label of 51 spaces, which this form's `required` validator lets
+   * through), and a map of one message per key would keep the last and drop the first before any
+   * slot or catch-all ran. See groupFieldErrors(), which is what builds this.
+   */
+  protected readonly fieldErrors = signal<Record<string, string[]>>({});
   /**
    * Set when the project this form is editing could not be fetched. It gates both the template
    * (error state instead of the form) and submit(), because an edit form with no loaded data is
@@ -184,10 +195,15 @@ export class AdminProjectFormComponent {
       .filter(
         ([key]) => !rowKeys.has(key) && !scalarFields.some((field) => claims(field, key)),
       )
+      // One entry per *key*, with that key's messages joined -- not one entry per violation. Two
+      // complaints about `links` are one line in this list, the way two complaints about tags are
+      // one message in the tags slot: the key is what the reader is being pointed at, and repeating
+      // it would read as two separate problems.
+      //
       // Through joinMessages() for the same reason the field slots are: a key that arrives with a
       // blank message would otherwise render as a bare field name and nothing else, which is the
       // rejection-with-no-content case landing in the one destination that was still missing it.
-      .map(([field, message]) => ({ field, message: joinMessages([message], UNEXPLAINED_REJECTION) }));
+      .map(([field, messages]) => ({ field, message: joinMessages(messages, UNEXPLAINED_REJECTION) }));
   });
 
   constructor() {
@@ -363,7 +379,7 @@ export class AdminProjectFormComponent {
         // than deleting one of them.
         const fieldErrors = problem?.fieldErrors ?? [];
         if (fieldErrors.length > 0) {
-          this.fieldErrors.set(Object.fromEntries(fieldErrors.map((e) => [e.field, e.message])));
+          this.fieldErrors.set(groupFieldErrors(fieldErrors));
         }
         // Non-field errors are surfaced globally by errorInterceptor.
       },
@@ -393,25 +409,35 @@ export class AdminProjectFormComponent {
    * inside a collection: a tag name over the limit comes back as `tags[2]`, not `tags`. This form
    * edits tags as one comma-separated control, so a per-element message has no other slot to go to.
    *
-   * Every match, not the first. The API reports one entry per violation with no dedup, so two
-   * over-long tags arrive together as `tags[0]` and `tags[1]`, and unclaimedErrors() subtracts both
-   * -- it shares claims() with this. Returning only the first would leave the second rendered
-   * nowhere at all, which is the same silent drop this component keeps being fixed for, one level
-   * further in. Two complaints about tags also belong in the tags slot together rather than split
-   * across two regions of the page.
+   * Every match, not the first, and every message under each match. The API reports one entry per
+   * violation with no dedup, so two over-long tags arrive together as `tags[0]` and `tags[1]`, and
+   * unclaimedErrors() subtracts both -- it shares claims() with this. One key can also carry more
+   * than one message, which is why fieldErrors holds a list per key. Returning only the first of
+   * either would leave the rest rendered nowhere at all, which is the same silent drop this
+   * component keeps being fixed for, one level further in. Two complaints about tags also belong in
+   * the tags slot together rather than split across two regions of the page.
    *
    * The `]` check inside claims() keeps this to leaf keys: `links[0].label` belongs to a row
    * control, which looks itself up by that exact key via rowError().
    */
   private serverError(field: string): string | null {
     const errors = this.fieldErrors();
-    const claimed = Object.keys(errors)
-      .filter((key) => claims(field, key))
-      .map((key) => errors[key]);
-    // Joined rather than deduped: two identical messages mean two elements are wrong, and this form
-    // has one control for all of them, so the repetition is the only surviving trace of the count.
-    // The presence check is this method's own -- joinMessages() answers what to show, not whether.
-    return claimed.length > 0 ? joinMessages(claimed, UNEXPLAINED_REJECTION) : null;
+    const claimedKeys = Object.keys(errors).filter((key) => claims(field, key));
+    // Joined rather than deduped: two identical messages mean two violations, and this form has one
+    // control for all of them, so the repetition is the only surviving trace of the count. Both
+    // axes reach here -- several keys claimed by one slot (`tags[0]` and `tags[1]`), and several
+    // messages under one key (a link label that is blank *and* too long).
+    //
+    // The presence check counts *keys*, not messages: joinMessages() answers what to show, not
+    // whether, and unclaimedErrors() subtracts by key. Deciding presence on the flattened messages
+    // instead would let a key whose messages are all blank be subtracted as claimed and then render
+    // nothing -- the silent drop, back through the one seam the two halves have to agree on.
+    return claimedKeys.length > 0
+      ? joinMessages(
+          claimedKeys.flatMap((key) => errors[key]),
+          UNEXPLAINED_REJECTION,
+        )
+      : null;
   }
 
   /** The key the API reports a link element's violation under. Built here, used by both callers. */
@@ -481,7 +507,9 @@ export class AdminProjectFormComponent {
         : null;
     // Same blank-message handling as the scalar slots: reading errors[field] straight out would let
     // a key that exists with an empty message render as nothing while unclaimedErrors() has already
-    // counted it as shown.
+    // counted it as shown. The whole list goes to the join, not its first element: this is the key
+    // that actually arrives twice today, since a link label of 51 spaces violates @NotBlank and
+    // @Size at once and both come back as `links[0].label`.
     //
     // Object.hasOwn, matching the contact form's serverError(): `field in errors` would also answer
     // true for a name that only exists on Object.prototype, reporting a rejection the server never
@@ -490,7 +518,7 @@ export class AdminProjectFormComponent {
     // about which one they use.
     const errors = this.fieldErrors();
     const serverMessage = Object.hasOwn(errors, field)
-      ? joinMessages([errors[field]], UNEXPLAINED_REJECTION)
+      ? joinMessages(errors[field], UNEXPLAINED_REJECTION)
       : null;
     return clientMessage ?? serverMessage;
   }
