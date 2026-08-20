@@ -1610,4 +1610,186 @@ describe('AdminProjectFormComponent', () => {
     );
     expect(fixture.componentInstance['submitting']()).toBe(false);
   });
+  describe('a verdict the form has moved on from', () => {
+    /** Fill the form, have the next save rejected at `field`, and send it. */
+    async function saveRejectedAt(
+      fixture: ComponentFixture<AdminProjectFormComponent>,
+      field: string,
+      message: string,
+    ): Promise<void> {
+      createProject.mockReturnValue(throwError(() => validationProblem(field, message)));
+      fillRequiredFields(fixture);
+      await save(fixture);
+    }
+
+    it('drops a scalar verdict once its own control is edited', async () => {
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      await saveRejectedAt(fixture, 'title', 'A project with this title already exists');
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
+
+      // A different title, and one this form's own validators accept. The *absence* of the server's
+      // sentence is the assertion: asserting that a client message appeared instead would pass with
+      // the stale verdict still underneath it, and emptying the field would only hide it behind
+      // "Title is required" -- from where it comes back the moment the field is refilled.
+      await type(fixture, '#project-title', 'Equalizer v2');
+
+      expect(host.textContent).not.toContain('A project with this title already exists');
+      expect(errorTextFor(host, 'project-title')).toBeNull();
+      expect(host.querySelector('#project-title-error')).toBeNull();
+      expect(host.querySelector('#project-title')?.getAttribute('aria-invalid')).toBeNull();
+      // Not merely hidden: gone from the map, so no later render can find it again.
+      expect(fixture.componentInstance['fieldErrors']()).toEqual({});
+      // And not moved into the catch-all either -- the key is dropped, not unclaimed.
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('leaves the verdicts about other fields alone when one control is edited', async () => {
+      // The purge is scoped to the control that changed, the way forgetErrorsFor() is scoped to the
+      // collection that moved. Widening it to "discard everything on any edit" passes every other
+      // test in this file, and would clear a rejection the admin has not dealt with yet as a side
+      // effect of them fixing a different field.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'title', message: 'A project with this title already exists' },
+            { field: 'description', message: 'must be at most 5000 characters' },
+            { field: 'images', message: 'size must be between 0 and 20' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-description')).toBe('must be at most 5000 characters');
+
+      await type(fixture, '#project-title', 'Equalizer v2');
+
+      expect(errorTextFor(host, 'project-title')).toBeNull();
+      expect(errorTextFor(host, 'project-description')).toBe('must be at most 5000 characters');
+      expect(host.querySelector('.form-error')?.textContent).toContain(
+        'size must be between 0 and 20',
+      );
+    });
+
+    it('drops an indexed tags verdict once the tags control is edited', async () => {
+      // `tags[1]` names an element of the list this one control holds, so editing the control is
+      // what makes it stale -- there is no second slot for it to stay accurate in.
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await type(fixture, '#project-tags', 'dsp, an-extremely-long-tag');
+      await saveRejectedAt(fixture, 'tags[1]', 'must be at most 50 characters');
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-tags')).toBe('must be at most 50 characters');
+
+      await type(fixture, '#project-tags', 'dsp');
+
+      expect(host.textContent).not.toContain('must be at most 50 characters');
+      expect(errorTextFor(host, 'project-tags')).toBeNull();
+      expect(fixture.componentInstance['fieldErrors']()).toEqual({});
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('freezes the tags input while a save is in flight', async () => {
+      // The window the purge cannot see: a `tags[1]` verdict is computed against the list that was
+      // sent and arrives after any mid-flight edit, so it would render against a list that no
+      // longer holds that tag. Frozen for the reason the link and image rows are frozen -- the key
+      // is positional -- and readonly rather than disabled, which would grey the control out and
+      // take the focus with it.
+      const pending = new Subject<unknown>();
+      createProject.mockReturnValue(pending);
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await type(fixture, '#project-tags', 'dsp, audio');
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector<HTMLInputElement>('#project-tags')?.readOnly).toBe(true);
+
+      pending.error(validationProblem('tags[1]', 'must be at most 50 characters'));
+      await fixture.whenStable();
+
+      // Released with the rest of the form, and the verdict describes the list still in the box.
+      expect(host.querySelector<HTMLInputElement>('#project-tags')?.readOnly).toBe(false);
+      expect(host.querySelector<HTMLInputElement>('#project-tags')?.value).toBe('dsp, audio');
+      expect(errorTextFor(host, 'project-tags')).toBe('must be at most 50 characters');
+    });
+
+    it('releases the form when a save completes without emitting or failing', async () => {
+      // HttpClient always emits or errors, so this is a shape rather than a reachable path. With
+      // submitting() cleared only in the two handlers, a completion carrying neither leaves Save
+      // disabled for good -- and, since the row structure was frozen to the same signal, every
+      // "+ Add" and "Remove" button with it, saying nothing about why.
+      const pending = new Subject<unknown>();
+      createProject.mockReturnValue(pending);
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      // Filled, not just added: an empty row is invalid, and the save would be blocked by this
+      // form's own validators before it ever reached the state this test is about.
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://a.example/one');
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(createProject).toHaveBeenCalledTimes(1);
+      expect(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+
+      pending.complete();
+      await fixture.whenStable();
+
+      expect(fixture.componentInstance['submitting']()).toBe(false);
+      expect(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
+      for (const array of ['links', 'images']) {
+        expect(
+          host.querySelector<HTMLButtonElement>(`fieldset[formarrayname="${array}"] > button`)
+            ?.disabled,
+        ).toBe(false);
+      }
+      expect(
+        host.querySelector<HTMLButtonElement>(
+          'fieldset[formarrayname="links"] .repeatable-row button',
+        )?.disabled,
+      ).toBe(false);
+      expect(host.querySelector<HTMLInputElement>('#project-tags')?.readOnly).toBe(false);
+    });
+
+    it('shows the error state when a load completes without a project', async () => {
+      // The load's half of the same shape, and the reason clearing loading() is not on its own the
+      // safe end of it: loading false with nothing loaded and no error renders the form, empty --
+      // and an empty edit form is one PUT away from blanking the record.
+      const pending = new Subject<unknown>();
+      getProject.mockReturnValue(pending);
+      editExistingProject();
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('[role="status"]')?.textContent).toContain('Loading');
+
+      pending.complete();
+      await fixture.whenStable();
+
+      expect(fixture.componentInstance['loading']()).toBe(false);
+      expect(host.querySelector('form')).toBeNull();
+      expect(host.querySelector('#project-title')).toBeNull();
+      expect(host.querySelector('.load-error [role="alert"]')?.textContent).toContain(
+        'Could not load this project',
+      );
+    });
+  });
+
 });
