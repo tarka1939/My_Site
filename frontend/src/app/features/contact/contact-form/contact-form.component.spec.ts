@@ -471,6 +471,62 @@ describe('ContactFormComponent', () => {
       expect(bannerText(host)).toBeNull();
     });
 
+    it('takes down the previous rejection when the client blocks the resend', async () => {
+      // submit() returned on form.invalid *before* clearing fieldErrors, so a rejection from a send
+      // that is over stayed on screen beside the client message about a resend that never left.
+      // The visitor reads both as the answer to the button they just pressed.
+      //
+      // The server's verdict is on `name` and the field broken afterwards is `email`: where they
+      // are the same control the client message takes the slot regardless, so that version of this
+      // test would pass with the stale verdict still in the map.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('name', 'that name is not accepted')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-name')).toBe('that name is not accepted');
+
+      await type(fixture, '#contact-email', 'ada@');
+      await send(fixture);
+
+      // Blocked: nothing new can have been said about the name.
+      expect(submitContactMessage).toHaveBeenCalledTimes(1);
+      // The disappearance is the assertion. Checking only that the email now complains would pass
+      // with the name's verdict still showing underneath it.
+      expect(errorTextFor(host, 'contact-name')).toBeNull();
+      expect(host.querySelector('#contact-name')?.getAttribute('aria-invalid')).toBeNull();
+      expect(errorTextFor(host, 'contact-email')).toBe(
+        'Enter a valid email address, like name@example.com',
+      );
+    });
+
+    it('takes down the catch-all banner when the client blocks the resend', async () => {
+      // The banner says nothing the visitor changes will get past it -- true of the send it came
+      // from, and not a claim to keep making about a send that has not happened.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('honeypot', 'must be blank')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(bannerText(host)).toBe(CATCH_ALL_COPY);
+
+      await type(fixture, '#contact-message', '');
+      await send(fixture);
+
+      expect(submitContactMessage).toHaveBeenCalledTimes(1);
+      expect(bannerText(host)).toBeNull();
+      expect(host.querySelector('button[type="submit"]')?.getAttribute('aria-describedby')).toBeNull();
+      expect(errorTextFor(host, 'contact-message')).toBe('Message is required');
+    });
+
     it('clears the previous rejection when the next send fails without field errors', async () => {
       // A 429 from the contact rate limiter carries no field errors, so nothing overwrites the map.
       // Without the reset in submit() the first rejection's messages stay on screen describing a
