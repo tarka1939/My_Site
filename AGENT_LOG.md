@@ -203,6 +203,16 @@ The most dangerous class, because the feedback signal is actively misleading:
   a dispatched agent checking its own mutation result, and the same hole was live in the Senior Dev's
   command for the whole session. *(2026-08-15, "Admin form (#92)" — PR #105.)*
 
+- **Text crossed a process boundary and arrived as a different string, and the hash of it was
+  perfectly valid.** PowerShell 5.1 pipes to native commands in the console codepage *and* emits a
+  UTF-8 BOM preamble, so node received `U+FEFF` prepended to every password and accented characters
+  as `?`. bcrypt then hashed exactly what it was given and reported success; the only symptom was a
+  401 two steps later, which looked like a wrong password. Hashing *and verifying* inside node would
+  also have passed — it would faithfully round-trip the same corrupted string. **Fixed** by setting
+  `$OutputEncoding`, stripping a leading BOM in node, and — the part that generalises — having node
+  report back the character count it received so the caller can compare across the boundary.
+  *(2026-08-17, "Three defects only a browser could see" — no PR; a local helper script.)*
+
 **Lesson:** "it ran and didn't complain" is not evidence it did anything. For anything whose success
 is invisible (issue linking, migrations, merges), verify the *effect* directly, not the exit code.
 The **deprecation-warnings** bullet is the near-miss variant and is worth separating out: sometimes
@@ -210,6 +220,26 @@ the tool *did* complain, into output nobody was reading because the summary line
 **vitest-grep** bullet is that variant's sharper form — the tool complained in the same summary block
 the reader was already reading, a line or two from the count they were checking, and the filter
 dropped it.
+
+### 5b. Defects no test can see, because the DOM is correct
+
+- **An error colour at 2.87:1 on the dark canvas.** Every error message on the site, including the
+  public contact form, against WCAG AA's 4.5:1. Light mode was fine at 6.54:1, so it failed only in a
+  theme that is shipped and never rendered during review. Every other colour in the app had been
+  flipped per scheme with the ratio recorded in a comment; this was the one that was not.
+- **Developer-facing strings shown to visitors.** `Your message was not sent: honeypot must not be
+  blank` — a raw backend field key and a raw Bean Validation default, on the public contact form.
+  Every test asserted the text was present; none could judge whether it should be.
+- **E2E scaffolding in the public tag filter.** `e2e-alpha`, `e2e-beta` and four more with zero
+  projects behind them, offered as filter options on the landing page. Obvious on screen, invisible
+  to a suite that only asserted the filter renders.
+
+**Lesson:** these are not testing gaps that better assertions would close. In all three the DOM was
+exactly right and something else was wrong — a colour value, an audience, a stale row. The check is to
+render it and measure: contrast against the *resolved* canvas, copy read as its actual reader would
+read it, lists inspected for what is actually in them. Note also that `textContent` concatenates
+`aria-hidden` and `visually-hidden` siblings and so can report text no user ever perceives, which is
+its own way of looking wrong while being right.
 
 ### 6. What the review process itself taught
 
@@ -261,6 +291,92 @@ Copy this block per entry:
 ## Entries
 
 <!-- Add entries below, most recent first -->
+
+## 2026-08-17 — Three defects only a browser could see, and four bugs from asserting mechanisms instead of testing them
+
+**Task given:**
+
+Contact form validators (#106), then a stretch of backlog work: seeding the real content, standing the
+local stack up, and whatever the reviews turned up.
+
+**Agent(s) used:**
+
+`frontend-agent` and `backend-agent` on Opus for implementation, `general-purpose` on Opus for cold
+review and one documentation fact-check. The Senior Dev drove the browser, which turned out to matter
+more than expected.
+
+**What went right:**
+
+**An agent measured an instruction rather than obeying it, twice.** Told to clear a signal in two
+places, one implementer showed the pair was mutually redundant and produced the mutations: removing
+either alone left every test passing. Told the async test style guarded a reactivity bug, another
+measured that `detectChanges()` masks a *missing dirty-mark* but not a *stale computed* — so the style
+was not what made that bug catchable, and the claim recorded on issue #110 had to be narrowed. Both
+were right; both said so before implementing.
+
+**A colour was fixed against the constraint that actually binds.** `#116` needed a dark-mode error
+colour clearing 4.5:1. The obvious target is Chrome's `#121212`, and several redder candidates pass
+there — `#fa4d56` is 5.59:1 — while failing Firefox's lighter `#2b2a33` at 4.23:1. The chosen value
+was selected against the *lightest* dark canvas, and the test asserts both separately. The mutation
+that proves it: setting the token to that Chrome-tuned value passes one assertion and fails the other.
+
+**What went wrong (be specific):**
+
+1. **Three defects reached a green suite because no test can see appearance.** An error colour at
+   **2.87:1** on the dark canvas, affecting every error message on the site including the public
+   contact form. Raw backend field keys rendered to visitors (`Your message was not sent: honeypot
+   must not be blank`). Six E2E-scaffolding tags listed in the public tag filter with zero projects
+   behind them. In all three the DOM was exactly right and something else was wrong. Two were found
+   only because a review agent rendered the page; the third from a screenshot of a page that had just
+   passed 193 tests.
+2. **Fifteen consecutive issues were filed with no labels**, against a convention visible in ~100
+   prior issues. Cause was scope, not carelessness: the checklist section was titled "PR conventions",
+   is read before every PR, and was followed exactly — issues had no entry anywhere, so there was no
+   rule to skip.
+3. **A four-round debugging saga in one helper script, every round the same mistake.** A credential
+   helper failed four times, and each cause was a mechanism asserted rather than tested: that
+   `bcryptjs` resolves from the repo root (Node resolves *upward*, and the module was in `e2e/`); that
+   `npm install --silent` was harmless (it hid the install succeeding, leaving "install failed" as the
+   only available conclusion); that `psql -c` interpolates `:'var'` (it does not — `-c` requires a
+   string the *server* can parse); and that a 401 meant a bad password.
+4. **The real cause of that 401 was silent character corruption.** PowerShell 5.1 pipes text to native
+   commands in the console codepage **and** emits a UTF-8 BOM preamble. So node received `U+FEFF` +
+   the password — for *every* password, ASCII included — and any accented character arrived as `?`.
+   The result was a perfectly valid bcrypt hash of the wrong string. Measured, not guessed: a plain
+   ASCII probe arrived as `[65279, 90, 97, ...]`.
+
+**How it was caught:** rendering pages and computing contrast against the resolved canvas; a
+documentation fact-check that walked the commits rather than reading the prose; and, for the
+corruption, printing the character codes node actually received instead of reasoning about what it
+should have received.
+
+**Fix applied:** `--color-error` flipped per scheme with computed ratios recorded (#116). All issues
+labelled, `CLAUDE.md`'s section retitled "Issue and PR conventions" with the requirement stated first.
+The script defeats both corruptions and now refuses to write unless node reports back the same
+character count that was typed. Filed from this stretch: #114, #115, #116, #117, #118, #121, #122,
+#123, #124, plus a `content` label for work no existing area covered.
+
+**Takeaway for next time:**
+
+- **A test cannot see appearance, and this project now has three proofs.** Colour, copy-for-audience,
+  and stale data in a list all render correctly at the DOM level. Dispatched agents have no browser
+  and the Senior Dev does, so rendering is a coordinator responsibility — not delegable, and not
+  satisfied by a green suite.
+- **The guard has to sit where the corruption happens.** Hashing and verifying inside node would have
+  passed: it would faithfully hash and verify the same corrupted string. Only comparing the character
+  count *across the process boundary* could catch it. When data crosses a boundary, check it arrived,
+  not that the far side is self-consistent.
+- **A checklist complete for one artifact reads as complete for everything.** Nothing was skipped —
+  the requirement did not exist. Absence is invisible in a way a violated rule is not, and the part
+  that did exist being followed reliably is what hid it.
+- **Four failures in one script, one root cause.** Not four unrelated bugs: each was a mechanism
+  believed rather than probed, in an environment (PowerShell 5.1, Windows Node resolution, psql
+  argument handling) where the intuitions from other environments are wrong. The fix that finally
+  worked was running the real write path against a scratch table before handing it over.
+- **Verify a fix against the constraint that binds, not the one in front of you.** The dark-mode
+  contrast work would have shipped a value that passes in Chrome and fails in Firefox, and the only
+  reason it did not is that an existing comment on a *neighbouring* token already recorded both
+  canvases. Someone had been caught by this before and wrote it down; that note is what paid.
 
 ## 2026-08-15 — Admin form (#92): the fix for a silent failure shipped another one, and a test the brief itself specified could not fail
 
