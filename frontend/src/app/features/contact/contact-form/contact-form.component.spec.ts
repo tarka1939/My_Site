@@ -421,6 +421,56 @@ describe('ContactFormComponent', () => {
       expect(host.querySelector('.form-error')).toBeNull();
     });
 
+    it('shows both messages when the server names one field twice', async () => {
+      // The API emits one entry per violation with no dedup, so one field can be named twice in one
+      // response; folding that into a message per key kept the last and discarded the first before
+      // the slot ran. Not reachable through this form today -- each control mirrors the server's
+      // @Size with a client maxLength, so the double-violation combinations are blocked before the
+      // round trip -- but that is a property of these three validators, not a promise about what
+      // the server sends, and the same fold is what drops a message in the admin form.
+      //
+      // One exact string, not two toContain()s: a presence check cannot tell "both rendered" from
+      // "one rendered", which is the vacuity this suite has been caught by before.
+      submitContactMessage.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'email', message: 'must be a well-formed email address' },
+            { field: 'email', message: 'size must be between 0 and 320' },
+          ]),
+        ),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-email')).toBe(
+        'must be a well-formed email address; size must be between 0 and 320',
+      );
+      expect(host.querySelector('#contact-email')?.getAttribute('aria-invalid')).toBe('true');
+      // Claimed by a slot means claimed for good -- neither copy may reappear in the catch-all.
+      expect(bannerText(host)).toBeNull();
+    });
+
+    it('still shows a single violation as exactly what the server said', async () => {
+      // The list is per field, not a list rendered as one: one message must still arrive as itself,
+      // with no separator, no bracket and no fallback wording anywhere near it.
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('name', 'must not be blank')),
+      );
+
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'contact-name')).toBe('must not be blank');
+      expect(bannerText(host)).toBeNull();
+    });
+
     it('clears the previous rejection when the next send fails without field errors', async () => {
       // A 429 from the contact rate limiter carries no field errors, so nothing overwrites the map.
       // Without the reset in submit() the first rejection's messages stay on screen describing a
