@@ -114,6 +114,32 @@ git worktree remove ../My_Site-backend-agent
 git worktree remove ../My_Site-frontend-agent
 ```
 
+## Issue hygiene: labels and milestones (added 2026-08-17)
+
+`CLAUDE.md` carries the rule; this is the incident and the reasoning.
+
+**What happened.** Fifteen consecutive issues (#107-#124, plus #49 and #68 from earlier) were filed with **no labels at all**. The convention was unambiguous and visible in every one of the ~100 issues that came before: area labels only — `backend`, `frontend`, `infra`, `documentation` — with the stock GitHub set (`bug`, `enhancement`, `question`, ...) at **zero uses**. Nothing about the convention was ambiguous. It simply was not applied.
+
+**Why, and this is the part worth keeping.** The section in `CLAUDE.md` that carries the filing checklist was titled *"PR conventions"*. It is read before every PR and lists exactly what a PR needs, so it was followed exactly — for PRs. Issues had no entry anywhere, so nothing was skipped; there was nothing to skip. The rule was not broken, it was absent, and a checklist that is complete for one artifact reads as complete for everything.
+
+The section is now *"Issue and PR conventions"*, which is a smaller change than it looks: the failure was scope, not content.
+
+**Two mechanical contributors:**
+
+- `gh issue create` accepts a filing with neither label nor milestone and reports success identically either way. There is no warning and no non-zero exit. Success output is not evidence the issue is complete — the same "verify the effect, not the exit code" rule that `AGENT_LOG.md` class 5 already documents for issue *linking*.
+- Labels have to be passed on the `create` call. Adding them afterwards means remembering, at the end of a filing session, that a thing which already looked finished was not.
+
+**The check**, which takes one command and is worth running after any batch of filings:
+
+```
+gh issue list --state open --limit 200 --json number,labels --jq '[.[]|select(.labels|length==0)|.number]'
+gh issue list --state open --limit 200 --json number,milestone --jq '[.[]|select(.milestone==null)|.number]'
+```
+
+Both should return `[]`.
+
+**On adding a label rather than forcing a wrong one.** Fixing the backlog surfaced one issue (#49, content migration) that no existing area covered — it is site copy, not backend, frontend, or infra. A `content` label was added for it rather than mislabelling it `documentation`, which would have made the taxonomy lie to keep the checklist green. If a genuine gap appears, widen the taxonomy and say so; do not round to the nearest wrong answer.
+
 ## AGENT_LOG.md discipline
 
 Log every session, start to finish, for the whole project — not just Phase 4/7 (see `AGENT_LOG.md`'s own header note). During the Phase 7 isolation exercise specifically, flag contract mismatches (endpoint doesn't match the OpenAPI schema, an assumed enum value the backend never validates, pagination shape drift) as their own category, separate from ordinary bugs — that's the actual differentiation artifact `PROJECT_TODO.md` calls out.
