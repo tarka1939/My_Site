@@ -2,7 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal } 
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ContactService } from '../../../core/api/api/contact.service';
 import { ApiProblem } from '../../../core/http/api-problem';
-import { clientErrorSignal, joinMessages } from '../../../shared/form-errors/form-errors';
+import {
+  clientErrorSignal,
+  groupFieldErrors,
+  joinMessages,
+} from '../../../shared/form-errors/form-errors';
 
 /**
  * Wording for this form's own validators, keyed by the error key Validators.* produces. The limits
@@ -49,7 +53,16 @@ export class ContactFormComponent {
 
   protected readonly submitting = signal(false);
   protected readonly submitted = signal(false);
-  protected readonly fieldErrors = signal<Record<string, string>>({});
+  /**
+   * Every message the server sent, keyed by the field it named -- a list per key, because the API
+   * reports one entry per violation and does not dedup, so one field can be named twice in one
+   * response. Keeping a single message per key kept the last and discarded the first before any
+   * slot or the catch-all ran. Not reachable through this form today, since each control mirrors
+   * the server's @Size with a client maxLength and is blocked before the round trip -- but that is
+   * a property of these three validators, not a promise about what the server may send, and the
+   * admin form reaches it. See groupFieldErrors().
+   */
+  protected readonly fieldErrors = signal<Record<string, string[]>>({});
 
   protected readonly form = this.formBuilder.nonNullable.group({
     name: ['', [Validators.required, Validators.maxLength(200)]],
@@ -107,6 +120,19 @@ export class ContactFormComponent {
   });
 
   protected submit(): void {
+    // Before the guard below, not after it. A server verdict describes the message that produced
+    // it, and pressing Send says that message is being replaced -- so from here on it is about a
+    // send that is over, whether or not this attempt reaches the network. Left until after the
+    // return, a client-blocked resend leaves the previous rejection on screen beside the new client
+    // message, and the visitor reads the two as one response to what they just pressed. That
+    // includes the catch-all banner, which says nothing they change will get past it: true of the
+    // send it came from, and not a claim to keep making about a send that has not happened.
+    //
+    // Clearing here can drop a verdict about a field the visitor has not touched. The same trade as
+    // the admin form's: a stale rejection cannot be told apart from a fresh one, and the next send
+    // re-issues it if it is still true.
+    this.fieldErrors.set({});
+
     if (this.form.invalid || this.submitting()) {
       // Every slot is held back until its control is touched or dirty, so this is what turns a
       // rejected send from a button that appears not to work into three visible complaints.
@@ -115,7 +141,6 @@ export class ContactFormComponent {
     }
 
     this.submitting.set(true);
-    this.fieldErrors.set({});
 
     this.contactApi.submitContactMessage({ contactMessageWriteRequest: this.form.getRawValue() }).subscribe({
       next: () => {
@@ -141,7 +166,7 @@ export class ContactFormComponent {
         // rather than as two independent judgements about how much to trust it.
         const fieldErrors = problem?.fieldErrors ?? [];
         if (fieldErrors.length > 0) {
-          this.fieldErrors.set(Object.fromEntries(fieldErrors.map((e) => [e.field, e.message])));
+          this.fieldErrors.set(groupFieldErrors(fieldErrors));
         }
         // Non-field errors (rate limiting, server errors) are surfaced globally by errorInterceptor.
       },
@@ -164,10 +189,12 @@ export class ContactFormComponent {
   }
 
   /**
-   * What the server said about `field`, if anything. Routed through joinMessages() rather than read
-   * straight out of the map, because a key that arrives with a blank message would otherwise be
-   * subtracted from hasUnclaimedRejection() as claimed and then render as nothing at all -- a
-   * rejection reaching no destination, which is the failure this slot mechanism exists to prevent.
+   * Everything the server said about `field`, if anything. Routed through joinMessages() rather
+   * than read straight out of the map for two reasons: a key that arrives with a blank message
+   * would otherwise be subtracted from hasUnclaimedRejection() as claimed and then render as
+   * nothing at all -- a rejection reaching no destination, which is the failure this slot mechanism
+   * exists to prevent -- and a key can hold more than one message, since the API reports one entry
+   * per violation without deduping. Showing the first would drop the rest into the same nowhere.
    *
    * hasOwn rather than `in` guards the *lookup*, not the incoming key: it stops a slot resolving
    * against Object.prototype and reporting a rejection the server never sent. That is unreachable
@@ -181,7 +208,7 @@ export class ContactFormComponent {
   private serverError(field: string): string | null {
     const errors = this.fieldErrors();
     return Object.hasOwn(errors, field)
-      ? joinMessages([errors[field]], UNEXPLAINED_FIELD_REJECTION)
+      ? joinMessages(errors[field], UNEXPLAINED_FIELD_REJECTION)
       : null;
   }
 }

@@ -1058,6 +1058,168 @@ describe('AdminProjectFormComponent', () => {
     });
   });
 
+  describe('a save the client blocks', () => {
+    it('takes down the previous rejection instead of showing it beside the new complaint', async () => {
+      // submit() used to return on form.invalid *before* clearing fieldErrors, so the server's
+      // verdict about a finished save stayed on screen next to the client message about a resubmit
+      // that never left. Deliberately breaks a *different* field than the one the server named:
+      // where they are the same control the client message takes the slot anyway, so that version
+      // of this test would pass with the stale verdict still in the map.
+      createProject.mockReturnValue(
+        throwError(() => validationProblem('title', 'A project with this title already exists')),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
+
+      await type(fixture, '#project-description', '');
+      await save(fixture);
+
+      // Blocked: no second request, so nothing new can have been said about the title.
+      expect(createProject).toHaveBeenCalledTimes(1);
+      // The disappearance is the assertion. Checking only that the description now complains would
+      // pass with the title's verdict still underneath it.
+      expect(errorTextFor(host, 'project-title')).toBeNull();
+      expect(host.querySelector('#project-title-error')).toBeNull();
+      expect(host.querySelector('#project-title')?.getAttribute('aria-invalid')).toBeNull();
+      expect(errorTextFor(host, 'project-description')).toBe('Description is required');
+    });
+
+    it('takes down an unclaimed rejection and a row verdict too', async () => {
+      // The catch-all and the row slots read the same map, so they have to go with it -- an
+      // unclaimed key next to a Save that is not saving is the same stale sentence one destination
+      // over, and a row verdict is positional on top of that.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'links', message: 'size must be between 0 and 10' },
+            { field: 'links[0].url', message: 'must be a valid URL' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://github.example/x');
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.form-error')?.textContent).toContain(
+        'size must be between 0 and 10',
+      );
+      expect(host.querySelector('#link-url-0-error')?.textContent).toContain('must be a valid URL');
+
+      await type(fixture, '#project-title', '');
+      await save(fixture);
+
+      expect(createProject).toHaveBeenCalledTimes(1);
+      expect(host.querySelector('.form-error')).toBeNull();
+      expect(host.querySelector('button[type="submit"]')?.getAttribute('aria-describedby')).toBeNull();
+      expect(host.querySelector('#link-url-0-error')).toBeNull();
+      expect(errorTextFor(host, 'project-title')).toBe('Title is required');
+    });
+  });
+
+  describe('several violations on one field', () => {
+    it('shows both messages a scalar slot was sent, joined and in the order they arrived', async () => {
+      // The API emits one entry per violation and does not dedup, so one field can be named twice
+      // in one response. Folding that into a message per key kept the last and dropped the first
+      // before any slot ran -- upstream of every guard in this file. Asserted as one exact string
+      // rather than two toContain()s: "both rendered" and "one rendered" are indistinguishable
+      // through a presence check, which is what makes that assertion vacuous here.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'title', message: 'must not be blank' },
+            { field: 'title', message: 'size must be between 0 and 200' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe(
+        'must not be blank; size must be between 0 and 200',
+      );
+      // Claimed by a slot means claimed for good: neither copy may reappear in the catch-all.
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('shows both messages about one link row, which is the case reachable from the UI', async () => {
+      // A label of 51 spaces is the whole defect in one value. Validators.required passes it --
+      // isEmptyInputValue is true only for null or length 0 -- so the client sends it, and the
+      // server answers with @NotBlank *and* @Size, both keyed links[0].label. One of the two used
+      // to be discarded at the boundary, and the admin was told half of what was wrong.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'links[0].label', message: 'must not be blank' },
+            { field: 'links[0].label', message: 'size must be between 0 and 50' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', ' '.repeat(51));
+      await type(fixture, '#link-url-0', 'https://github.example/x');
+
+      await save(fixture);
+
+      // The client let it through, which is what makes the server's double violation reachable.
+      expect(createProject).toHaveBeenCalledTimes(1);
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('#link-label-0-error')?.textContent?.trim()).toBe(
+        'must not be blank; size must be between 0 and 50',
+      );
+      expect(host.querySelector('#link-label-0')?.getAttribute('aria-invalid')).toBe('true');
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('lists an unclaimed key once however many times the server named it', async () => {
+      // The catch-all is keyed by field, not by violation: two complaints about `links` are one
+      // entry whose text carries both, the way two complaints about tags are one message in the
+      // tags slot. One <li> per violation would repeat the key and read as two separate problems --
+      // and @for tracks error.field, which duplicates cannot survive.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'links', message: 'size must be between 0 and 10' },
+            { field: 'links', message: 'must not contain duplicates' },
+          ]),
+        ),
+      );
+
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      const items = host.querySelectorAll('.form-error li');
+      expect(items.length).toBe(1);
+      expect(items[0]?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'links size must be between 0 and 10; must not contain duplicates',
+      );
+    });
+  });
+
   describe('server errors once the rows move', () => {
     /** Two filled link rows and a rejection keyed at `field`. */
     async function twoRowsRejectedAt(

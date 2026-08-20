@@ -1,6 +1,7 @@
 import { computed, Signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AbstractControl, ValidationErrors } from '@angular/forms';
+import { ApiFieldError } from '../../core/http/api-problem';
 
 /**
  * The pieces every form on this site needs to make a rejection visible, and only those pieces.
@@ -11,6 +12,43 @@ import { AbstractControl, ValidationErrors } from '@angular/forms';
  * and each form pairs its lookup with the subtraction its catch-all does, so they stay in step with
  * each other rather than with this file. Only the two things that are identical live here.
  */
+
+/**
+ * Fold one response's violations into "every message the server sent about this field", keyed by
+ * field name.
+ *
+ * A list per key, not a message per key. `ApiProblem.fieldErrors` is one entry per violation with
+ * no dedup -- GlobalExceptionHandler maps every getFieldErrors() entry straight through -- so two
+ * constraints on one field arrive as two entries sharing a `field`. Folding that with
+ * Object.fromEntries(map(e => [e.field, e.message])) keeps the last and discards the first, before
+ * any slot, catch-all or toast has run: the silent drop, upstream of every guard built to prevent
+ * it. A link label of 51 spaces reaches this today -- the row control only checks `required`, and
+ * `Validators.required` passes whitespace -- and comes back as @NotBlank *and* @Size, both keyed
+ * `links[0].label`.
+ *
+ * Insertion order is preserved within a key, so joinMessages() renders the violations in the order
+ * the server listed them.
+ *
+ * Built through a Map and Object.fromEntries rather than by assigning into an object literal. The
+ * keys come off the wire, and `result[field] = messages` with a field named `__proto__` runs the
+ * Object.prototype setter and swaps the object's prototype instead of storing a key -- the entry
+ * would vanish. fromEntries defines own data properties, so a `__proto__` key stays an own key and
+ * both Object.hasOwn and Object.keys still see it, which is what the callers look it up with.
+ */
+export function groupFieldErrors(fieldErrors: ApiFieldError[]): Record<string, string[]> {
+  const grouped = new Map<string, string[]>();
+
+  for (const error of fieldErrors) {
+    const existing = grouped.get(error.field);
+    if (existing) {
+      existing.push(error.message);
+    } else {
+      grouped.set(error.field, [error.message]);
+    }
+  }
+
+  return Object.fromEntries(grouped);
+}
 
 /**
  * Join what the server said about one field, skipping entries with no text. Both parts matter:

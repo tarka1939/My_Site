@@ -1,7 +1,7 @@
 import { Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FormControl, Validators } from '@angular/forms';
-import { clientErrorSignal, joinMessages } from './form-errors';
+import { clientErrorSignal, groupFieldErrors, joinMessages } from './form-errors';
 
 /**
  * Two forms depend on this module's contract and neither one covers all of it: the admin form never
@@ -63,6 +63,65 @@ describe('joinMessages', () => {
     // Same reasoning as the null case: this is a JSON body. `{}` would render as [object Object].
     expect(joinMessages([{} as unknown as string], FALLBACK)).toBe(FALLBACK);
     expect(joinMessages([42 as unknown as string], FALLBACK)).toBe(FALLBACK);
+  });
+});
+
+describe('groupFieldErrors', () => {
+  it('keeps every violation of one field, in the order the server sent them', () => {
+    // The defect this function exists for: the API sends one entry per violation with no dedup, so
+    // a blank-but-over-long link label arrives as @NotBlank and @Size under one key. Folding to a
+    // single message per key discarded one of them before any rendering path could see it.
+    expect(
+      groupFieldErrors([
+        { field: 'links[0].label', message: 'must not be blank' },
+        { field: 'links[0].label', message: 'size must be between 0 and 50' },
+      ]),
+    ).toEqual({ 'links[0].label': ['must not be blank', 'size must be between 0 and 50'] });
+  });
+
+  it('keeps identical messages apart, because each one is a separate violation', () => {
+    expect(groupFieldErrors([
+      { field: 'tags', message: 'too long' },
+      { field: 'tags', message: 'too long' },
+    ])).toEqual({ tags: ['too long', 'too long'] });
+  });
+
+  it('gives each field its own list', () => {
+    expect(
+      groupFieldErrors([
+        { field: 'title', message: 'must not be blank' },
+        { field: 'links[0].url', message: 'must be a valid URL' },
+        { field: 'title', message: 'size must be between 0 and 200' },
+      ]),
+    ).toEqual({
+      title: ['must not be blank', 'size must be between 0 and 200'],
+      'links[0].url': ['must be a valid URL'],
+    });
+  });
+
+  it('produces an empty map for no violations', () => {
+    expect(groupFieldErrors([])).toEqual({});
+  });
+
+  it('stores a field named after a prototype member as an own key', () => {
+    // The keys come off the wire. `result[field] = messages` would run Object.prototype's __proto__
+    // setter and swap the prototype instead of storing anything, so the rejection would disappear
+    // -- and both callers look these up with Object.hasOwn/Object.keys, which would not find it.
+    const grouped = groupFieldErrors([{ field: '__proto__', message: 'must not be blank' }]);
+
+    expect(Object.hasOwn(grouped, '__proto__')).toBe(true);
+    expect(Object.keys(grouped)).toEqual(['__proto__']);
+    expect(grouped['__proto__']).toEqual(['must not be blank']);
+    expect(Object.getPrototypeOf(grouped)).toBe(Object.prototype);
+  });
+
+  it('keeps a blank message rather than dropping it, leaving the fallback to joinMessages', () => {
+    // Presence and content are separate questions: a key that arrived must stay a key, so the
+    // caller's slot can claim it, and joinMessages then decides what that slot actually says.
+    const grouped = groupFieldErrors([{ field: 'title', message: null as unknown as string }]);
+
+    expect(Object.hasOwn(grouped, 'title')).toBe(true);
+    expect(joinMessages(grouped['title'], FALLBACK)).toBe(FALLBACK);
   });
 });
 
