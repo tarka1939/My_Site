@@ -120,6 +120,19 @@ export class ContactFormComponent {
   });
 
   protected submit(): void {
+    // Before the guard below, not after it. A server verdict describes the message that produced
+    // it, and pressing Send says that message is being replaced -- so from here on it is about a
+    // send that is over, whether or not this attempt reaches the network. Left until after the
+    // return, a client-blocked resend leaves the previous rejection on screen beside the new client
+    // message, and the visitor reads the two as one response to what they just pressed. That
+    // includes the catch-all banner, which says nothing they change will get past it: true of the
+    // send it came from, and not a claim to keep making about a send that has not happened.
+    //
+    // Clearing here can drop a verdict about a field the visitor has not touched. The same trade as
+    // the admin form's: a stale rejection cannot be told apart from a fresh one, and the next send
+    // re-issues it if it is still true.
+    this.fieldErrors.set({});
+
     if (this.form.invalid || this.submitting()) {
       // Every slot is held back until its control is touched or dirty, so this is what turns a
       // rejected send from a button that appears not to work into three visible complaints.
@@ -128,7 +141,6 @@ export class ContactFormComponent {
     }
 
     this.submitting.set(true);
-    this.fieldErrors.set({});
 
     this.contactApi.submitContactMessage({ contactMessageWriteRequest: this.form.getRawValue() }).subscribe({
       next: () => {

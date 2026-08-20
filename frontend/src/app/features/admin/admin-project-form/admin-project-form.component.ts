@@ -334,6 +334,27 @@ export class AdminProjectFormComponent {
 
     const raw = this.form.getRawValue();
 
+    // Before the guard below, not after it. A server verdict describes the payload that produced
+    // it, and pressing Save says that payload is being replaced -- so from here on it is about a
+    // send that is over, whether or not this attempt reaches the network. Left until after the
+    // return, a client-blocked resubmit leaves the old rejection on screen beside the new client
+    // message, and the two read as one response.
+    //
+    // It clears verdicts that are arguably still true: the form can be invalid for a *different*
+    // field than the server complained about, and a title the admin has not touched since is still
+    // whatever the server called it. Dropped anyway, on the same grounds forgetErrorsFor() drops
+    // accurate-but-positional row verdicts -- a stale verdict cannot be told apart from a fresh
+    // one, and the next save re-issues it against the payload that actually exists. Where the
+    // invalid field *is* the one the server named, nothing visible is lost at all: the client
+    // message already takes that slot.
+    //
+    // Safe against the row purge rather than in tension with it: this is strictly stronger (it
+    // removes every key, indexed ones included) and it goes through the same fieldErrors.set(),
+    // which is what notifies unclaimedErrors(). The in-flight case is a no-op -- fieldErrors is
+    // emptied when a request starts and only the response handler refills it -- so a Save pressed
+    // during a save still cannot disturb the request that is running.
+    this.fieldErrors.set({});
+
     if (this.form.invalid || validateProjectPeriod(raw.startedOn, raw.completedOn) || this.submitting()) {
       this.form.markAllAsTouched();
       return;
@@ -356,7 +377,6 @@ export class AdminProjectFormComponent {
     };
 
     this.submitting.set(true);
-    this.fieldErrors.set({});
 
     const request$ = this.projectId
       ? this.projectsApi.updateProject({ id: this.projectId, projectWriteRequest: writeRequest })
