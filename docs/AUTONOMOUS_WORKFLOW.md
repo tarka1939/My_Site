@@ -45,6 +45,41 @@ These always stop and wait for the user — they are not treated as "keep workin
 - Anything touching production secrets, DNS, or billing directly, outside the one-time Phase 5 setup the user already did.
 - A decision `docs/DECISIONS.md` doesn't cover and that would be expensive to reverse later (the same "patch magnet" criterion `PROJECT_TODO.md` was built around from the start).
 
+## Render it before believing it (added 2026-08-17)
+
+**Dispatched agents have no browser. The Senior Dev does.** That asymmetry is not incidental — it is
+the only reason three defects were found at all, and it makes rendering a Senior Dev responsibility
+rather than something to delegate or skip.
+
+**The rule: when a change affects what a person sees, open it and measure. Do not accept a DOM
+assertion as evidence of appearance.** If in doubt, render — the check costs a minute and the class
+of bug it catches is invisible to every other gate in this project.
+
+Three found this way, all with the suite green:
+
+- **An error colour at 2.87:1 on the dark canvas** (#116). Every error message on the site, including
+  the public contact form. The DOM was correct throughout; only the colour was wrong, so no test
+  could have failed. Found by resolving the computed colour against the real canvas and calculating
+  the ratio.
+- **Developer-facing strings on a public page** (fixed in PR #113). `Your message was not sent:
+  honeypot must not be blank` — a raw backend field key shown to a visitor. Every test asserted the
+  text was *present*; none could judge whether it should be.
+- **E2E scaffolding on the landing page** (#124). `e2e-alpha`, `e2e-beta` and four other tags with
+  zero projects, listed in the public tag filter. Visible instantly on screen, invisible to a
+  suite that only ever asserted the filter renders.
+
+What to check when the change is visual: colour and contrast **computed against the resolved canvas**
+rather than eyeballed; copy read as its actual audience would read it; empty, error and loading states,
+not just the happy path; and anything a test asserts via `textContent`, which cannot distinguish what
+is displayed from what merely exists in the tree.
+
+Two practical notes. `textContent` concatenates `aria-hidden` and `visually-hidden` siblings, so it
+can show text no user ever perceives — a period rendering as `November 2025 – , ongoing` in
+`textContent` was correct on screen and correct to a screen reader, and was nearly reported as a bug.
+And when stopping a dev server, **check the port, not the process**: both `mvn spring-boot:run` and
+`ng serve` fork children that outlive their wrapper, and a stop that returns success has twice left a
+server listening.
+
 ## PR review protocol
 
 1. Senior Dev opens a PR, following `CLAUDE.md`'s PR conventions (closing keywords, correct milestone, project board status).

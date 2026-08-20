@@ -21,6 +21,19 @@ Closing keywords fire from *anywhere* in the body, including prose explaining or
 
 Run `gh api graphql` for `closingIssuesReferences` before merging — including on PRs meant **not** to close anything. See `docs/AGENT_WORKFLOW.md` for the three incidents behind this.
 
+## A test cannot see appearance
+
+If a change affects what someone *sees* — colour and contrast, copy as its audience reads it, empty
+and error states — a passing test is not evidence it looks right. Three defects have shipped past a
+green suite here for exactly this reason: an error colour at 2.87:1 on the dark canvas, raw backend
+field keys shown to visitors on the public contact form, and E2E scaffolding listed in the public tag
+filter. In all three the DOM was correct and something else was wrong.
+
+**Dispatched agents have no browser.** Flag anything that wants looking at for the Senior Dev, who
+does, rather than asserting it is fine. Note `textContent` concatenates `aria-hidden` and
+`visually-hidden` siblings, so it can report text no user ever perceives. Reasoning and the three
+cases: `docs/AUTONOMOUS_WORKFLOW.md`.
+
 ## Keeping docs current
 Three files need updating together whenever a phase's state changes, not just `AGENT_LOG.md` alone — a repeat mistake in this project specifically, where a fix would get logged in `AGENT_LOG.md` but the other two would go stale:
 - **`PROJECT_TODO.md`:** keep each phase's status blurb current for the *whole* time that phase is being worked, not just once at the initial completion checkpoint. Any follow-up after a phase's checklist is first checked off — review-round fixes, hardening, a process/infra discovery like a misconfigured default branch — needs the status note updated too, in the same session, before moving on.
