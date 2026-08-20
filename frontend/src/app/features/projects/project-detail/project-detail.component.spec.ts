@@ -23,13 +23,24 @@ import { META_DESCRIPTION_MAX_CHARS, NOINDEX, SITE_DESCRIPTION } from '../../../
 import { PROJECTS_ROUTES } from '../projects.routes';
 import { ProjectDetailComponent } from './project-detail.component';
 
-const PROJECT = {
+/**
+ * Typed as a full `Project` rather than left to inference: the two date keys were simply absent
+ * here, which is a response the API does not produce -- it always sends both, and the contract now
+ * says so in `Project.required`. Annotating it means a future required field fails here rather
+ * than silently leaving fixtures a shape ahead of the real payload.
+ *
+ * Both default to null: nothing recorded, so the period renders nothing. Tests that care about the
+ * rendered period override them.
+ */
+const PROJECT: Project = {
   id: 'p1',
   title: 'Equalizer',
   description: 'A DSP project',
   links: [],
   images: ['https://images.example.com/one.png', 'https://images.example.com/two.png'],
   tags: [],
+  startedOn: null,
+  completedOn: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };
