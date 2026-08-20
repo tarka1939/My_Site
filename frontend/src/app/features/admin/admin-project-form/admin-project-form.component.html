@@ -1,6 +1,6 @@
 <a routerLink="/admin/projects">&larr; Back to projects</a>
 
-<h1>{{ isEditMode ? 'Edit project' : 'New project' }}</h1>
+<h1>{{ isEditMode() ? 'Edit project' : 'New project' }}</h1>
 
 @if (loading()) {
   <p role="status">Loading&hellip;</p>
@@ -49,11 +49,24 @@
 
     <div class="field">
       <label for="project-tags">Tags (comma-separated)</label>
+      <!-- readonly while a save is in flight, for the reason the link and image rows are frozen:
+           `tags[2]` indexes the list this one control holds, so a verdict computed against the tags
+           that were sent lands on whatever the box holds when it arrives. Edit "a, b, c" down to
+           "a" mid-flight and a complaint about the third tag renders under a field with one tag in
+           it. The other scalars are left alone deliberately -- their keys name the control rather
+           than a position inside it, so a verdict that arrives late is at least in the right slot,
+           and the purge on edit takes it down from the next keystroke.
+
+           readonly rather than disabled: a disabled control drops out of form.value, greys out, and
+           takes the focus with it mid-typing. There is no handler behind this one the way there is
+           behind each row button, because nothing but this binding writes the control -- so unlike
+           those, the attribute is the guarantee rather than the UX half of one. -->
       <input
         id="project-tags"
         type="text"
         formControlName="tags"
         placeholder="angular, dsp, portfolio"
+        [readonly]="submitting()"
         [attr.aria-describedby]="tagsError() ? 'project-tags-error' : null"
         [attr.aria-invalid]="tagsError() ? 'true' : null"
       />

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
   FormArray,
@@ -10,6 +10,20 @@ import {
   Validators,
 } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import {
+  EMPTY,
+  Observable,
+  Subject,
+  catchError,
+  defer,
+  distinctUntilChanged,
+  finalize,
+  map,
+  merge,
+  switchMap,
+  tap,
+  throwIfEmpty,
+} from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ProjectWriteRequest } from '../../../core/api/model/projectWriteRequest';
 import { ApiProblem } from '../../../core/http/api-problem';
@@ -83,9 +97,29 @@ export class AdminProjectFormComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  protected readonly projectId = this.route.snapshot.paramMap.get('id');
-  protected readonly isEditMode = this.projectId !== null;
-  protected readonly loading = signal(this.isEditMode);
+  /**
+   * Which project this form is editing, or null on the "new project" route -- from route.paramMap,
+   * not route.snapshot.
+   *
+   * Angular's default RouteReuseStrategy reuses this component when a navigation changes only the
+   * params, so a field initialiser reading the snapshot would keep the first id forever:
+   * /admin/projects/A/edit -> /admin/projects/B/edit would leave A's data in the fields and PUT it
+   * back to A's URL while the address bar said B. ProjectDetailComponent was fixed for the same
+   * shape.
+   *
+   * Not reachable through the UI as it stands -- every link to an edit route comes from the
+   * projects list, which unmounts this component on the way -- so this is a landmine being taken
+   * out rather than a bug being fixed. It goes off the day someone adds a prev/next link, an "edit
+   * another" after saving, or a jump-to-project search.
+   */
+  protected readonly projectId = signal<string | null>(null);
+  protected readonly isEditMode = computed(() => this.projectId() !== null);
+  /**
+   * False rather than "true in edit mode": the constructor's subscription sets it, and paramMap
+   * emits synchronously on subscribe (it is a BehaviorSubject behind a map), so it is already right
+   * by the time this renders.
+   */
+  protected readonly loading = signal(false);
   protected readonly submitting = signal(false);
   /**
    * Every message the server sent, keyed by the field it named -- a list per key, because the API
@@ -182,10 +216,10 @@ export class AdminProjectFormComponent {
    * duplicate-row button, say. That would leave this describing a row set that is gone, and no
    * existing test would fail.
    *
-   * loadProject()'s success handler is the other FormArray mutation, and it does not rewrite
-   * fieldErrors. It is safe by reachability rather than by a check: retryLoad() is its only re-entry
-   * point, it is called from inside the loadError() branch, and that branch renders neither the form
-   * nor Save -- so fieldErrors is empty whenever those arrays are rebuilt.
+   * Loading a project is the other FormArray mutation, and it is safe by construction rather than
+   * by reachability: startLoad() calls resetForm() before every load, which empties both arrays and
+   * sets fieldErrors, so the map and the rows move together through a fieldErrors.set() exactly as
+   * they do here.
    */
   protected readonly unclaimedErrors = computed(() => {
     const rowKeys = new Set(this.rowFieldKeys());
@@ -206,76 +240,182 @@ export class AdminProjectFormComponent {
       .map(([field, messages]) => ({ field, message: joinMessages(messages, UNEXPLAINED_REJECTION) }));
   });
 
+  /** Retry's way into the load pipeline below -- see retryLoad(). */
+  private readonly reload$ = new Subject<string | null>();
+
   constructor() {
-    this.loadProject();
+    // A server verdict describes the value that produced it, so it stops being about this form the
+    // moment that value changes: type a different title and "A project with this title already
+    // exists" is no longer a statement about anything on screen. Scalars had no way to say that --
+    // forgetErrorsFor() only ran when a collection's rows moved -- so the stale sentence sat there
+    // until the next Save. Worse than it looks, because the client message hides it while the
+    // control is empty and hands it back the moment the field is refilled.
+    //
+    // This is that same rule, applied to the control that changed rather than to the collection
+    // that moved, and it is the same method doing the purging. It covers the tags slot's indexed
+    // keys as well: `tags[2]` names an element of the list this one control holds, so editing that
+    // control is what makes it stale.
+    //
+    // Scoped to the field that changed rather than "discard everything on any edit". The wider rule
+    // is easier to state, but it would drop a rejection about a field the admin has not dealt with
+    // yet as a side effect of them fixing a different one -- and forgetErrorsFor() is already scoped
+    // for exactly that reason. Pressing Save is what clears the lot (see submit()), because that is
+    // the point at which the whole payload the verdicts were about is replaced.
+    //
+    // Driven off Object.keys(this.scalarSlots) rather than a second hand-written list of control
+    // names, for the reason unclaimedErrors() subtracts from the same object: a slot added later
+    // without a purge would be found by whoever hits the stale message, not by this file. The keys
+    // are control names by construction, and a mismatch would silently leave one field unpurged, so
+    // it fails loudly instead.
+    for (const field of Object.keys(this.scalarSlots)) {
+      const control = this.form.get(field);
+      if (!control) {
+        throw new Error(`admin project form: message slot "${field}" names no control`);
+      }
+      control.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.forgetErrorsFor(field));
+    }
+
+    // One pipeline owns every load, whichever asked for it: the route saying which project this
+    // is, and "Try again" asking for the same one over. switchMap is what makes an id change safe
+    // -- it drops the request for the previous project, so its response can never land in the form
+    // now showing a different one -- and takeUntilDestroyed covers navigating off the route
+    // entirely. Same pair, for the same reasons, as ProjectDetailComponent.
+    merge(
+      // distinctUntilChanged, which the read-only detail page does not need: a reload here throws
+      // away whatever the admin has typed, so an id re-emitted unchanged must not restart one. It
+      // sits inside this branch rather than after the merge, so it cannot swallow a retry of the id
+      // already loaded -- which is the whole point of the other branch.
+      this.route.paramMap.pipe(
+        map((params) => params.get('id')),
+        distinctUntilChanged(),
+      ),
+      this.reload$,
+    )
+      .pipe(
+        switchMap((id) => this.startLoad(id)),
+        takeUntilDestroyed(),
+      )
+      .subscribe();
   }
 
   /**
-   * Re-runs the load after a failure, one at a time. Without the guard two quick clicks on "Try
-   * again" leave two responses in flight whose order nothing controls, and the last one to land
-   * writes its outcome over the other's -- a stale failure arriving after a success would put the
-   * error state back over a form that has just been populated. Refusing the second start removes
-   * the ordering question rather than trying to resolve it afterwards.
+   * Re-runs the load after a failure, one at a time. Two quick clicks on "Try again" otherwise
+   * leave two responses in flight whose order nothing controls, and the last one to land writes its
+   * outcome over the other's -- a stale failure arriving after a success would put the error state
+   * back over a form that has just been populated.
    *
-   * The guard belongs here rather than in loadProject(), because loading() is already true when the
-   * constructor calls that for the first time in edit mode.
+   * The pipeline's switchMap would now cancel the first load rather than race it, so this no longer
+   * carries that on its own. What it still does is refuse to throw away a load that is already
+   * running and start the identical one again, which is what the admin means by clicking twice.
+   *
+   * The guard belongs here rather than in startLoad(), which the constructor reaches with loading()
+   * about to be set for the first time.
    */
   protected retryLoad(): void {
     if (this.loading()) {
       return;
     }
-    this.loadProject();
+    this.reload$.next(this.projectId());
   }
 
-  private loadProject(): void {
-    const id = this.projectId;
-    if (!id) {
-      return;
-    }
+  /**
+   * Empties the form for whatever is about to go into it, and returns the request that fetches it
+   * -- or EMPTY on the "new project" route, where there is nothing to fetch.
+   *
+   * Returned rather than subscribed to, so the constructor's switchMap and takeUntilDestroyed own
+   * its lifetime. That is what stops project A's response arriving into project B's form.
+   *
+   * The defer() is load-bearing, not stylistic: switchMap tears the previous load down before it
+   * subscribes to this one, and that teardown runs the finalize() below. Anything here that writes
+   * loading() therefore has to run at *subscribe* time -- as plain statements in this method body,
+   * or in a tap() ahead of switchMap, it is a coin toss on operator internals whether the new
+   * load's loading() survives the old load's finalize.
+   */
+  private startLoad(id: string | null): Observable<unknown> {
+    return defer(() => {
+      this.projectId.set(id);
+      this.resetForm();
 
-    this.loading.set(true);
-    this.loadError.set(null);
+      if (id === null) {
+        // The "new project" route. A blank form is the finished state, not a loading one.
+        this.loading.set(false);
+        return EMPTY;
+      }
 
-    this.projectsApi.getProject({ id }).subscribe({
-      next: (project) => {
-        this.form.patchValue({
-          title: project.title,
-          description: project.description,
-          tags: project.tags.map((t) => t.name).join(', '),
-          // Round-tripping these matters more than it looks: PUT takes the same body as POST, so
-          // a field left out of the payload clears the stored value rather than preserving it.
-          startedOn: project.startedOn ?? '',
-          completedOn: project.completedOn ?? '',
-        });
-        // Clear before repopulating. Retry makes this handler runnable more than once, and push
-        // without clear gives a second successful load two of every row. (A retry that follows a
-        // failure finds the arrays empty, so that is not the case that bites -- which is exactly
-        // why the loader is made idempotent here rather than left to depend on how it got here.)
-        this.form.controls.links.clear();
-        this.form.controls.images.clear();
-        project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
-        project.images.forEach((image) =>
-          this.form.controls.images.push(this.buildImageControl(image)),
-        );
-        this.loading.set(false);
-      },
-      error: (problem: ApiProblem) => {
-        // No notifications.error() here on purpose: errorInterceptor already toasts every non-field
-        // error. It also logs out and redirects on a 401 -- but only while auth.isLoggedIn() is
-        // still true, and that is a wall-clock check on the token's expiresAt. A token that simply
-        // expired while this page sat open, one of the triggers this guard exists for, makes
-        // isLoggedIn() false before the 401 ever arrives: nothing redirects, and every retry fails
-        // identically. Say that instead of offering the admin the same dead end again. Leaving is
-        // what recovers, because navigating re-runs authGuard. The interceptor's side of this is
-        // issue #108, not this component's business.
-        this.loadError.set(
-          problem?.status === 401
-            ? 'Your admin session has expired. Log in again to edit this project -- "Back to projects" above will take you there.'
-            : 'Could not load this project. Nothing has been changed -- try again, or go back to the project list.',
-        );
-        this.loading.set(false);
-      },
+      this.loading.set(true);
+
+      // finalize(), not a loading.set(false) in each handler: a stream that completed without
+      // emitting or erroring would leave the page stuck on "Loading..." with no way back.
+      // HttpClient always does one or the other, so this closes a shape rather than a reachable
+      // path -- the same one as submit()'s, where being stuck also disables every row button.
+      //
+      // throwIfEmpty() ahead of it, because clearing the flag is not on its own the safe end of
+      // that path: loading false with no project loaded and no error renders the *form*, empty, and
+      // an empty edit form is a PUT away from blanking the record -- which is the whole reason a
+      // failed load has a state of its own. A completion that carried no project has not loaded the
+      // project, so it goes the way a failure goes: into the catchError below, where reading
+      // .status off an EmptyError gives undefined and produces the generic wording.
+      return this.projectsApi.getProject({ id }).pipe(
+        throwIfEmpty(),
+        tap((project) => {
+          this.form.patchValue({
+            title: project.title,
+            description: project.description,
+            tags: project.tags.map((t) => t.name).join(', '),
+            // Round-tripping these matters more than it looks: PUT takes the same body as POST, so
+            // a field left out of the payload clears the stored value rather than preserving it.
+            startedOn: project.startedOn ?? '',
+            completedOn: project.completedOn ?? '',
+          });
+          // The arrays are empty here because resetForm() ran above, for every load rather than
+          // only for a second one -- push without a clear gives a successful reload two of every
+          // row, and the id-change case has to lose the *previous project's* rows even when the
+          // load that follows never succeeds.
+          project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
+          project.images.forEach((image) =>
+            this.form.controls.images.push(this.buildImageControl(image)),
+          );
+        }),
+        catchError((problem: ApiProblem) => {
+          // No notifications.error() here on purpose: errorInterceptor already toasts every non-field
+          // error. It also logs out and redirects on a 401 -- but only while auth.isLoggedIn() is
+          // still true, and that is a wall-clock check on the token's expiresAt. A token that simply
+          // expired while this page sat open, one of the triggers this guard exists for, makes
+          // isLoggedIn() false before the 401 ever arrives: nothing redirects, and every retry fails
+          // identically. Say that instead of offering the admin the same dead end again. Leaving is
+          // what recovers, because navigating re-runs authGuard. The interceptor's side of this is
+          // issue #108, not this component's business.
+          this.loadError.set(
+            problem?.status === 401
+              ? 'Your admin session has expired. Log in again to edit this project -- "Back to projects" above will take you there.'
+              : 'Could not load this project. Nothing has been changed -- try again, or go back to the project list.',
+          );
+          // EMPTY, not a rethrow: the failure is fully handled here, and letting it out would kill
+          // the subscription in the constructor, so no later id or retry would ever load again.
+          return EMPTY;
+        }),
+        finalize(() => this.loading.set(false)),
+      );
     });
+  }
+
+  /**
+   * Back to a blank form, for whatever is about to be loaded into it.
+   *
+   * Every line here is the id-change case: form.reset() does not touch the FormArrays, so the rows
+   * are the previous project's links and images until they are cleared, and fieldErrors holds
+   * verdicts about the previous project's payload -- positional row keys included. Leaving either
+   * behind is the same stale-state defect forgetErrorsFor() exists to prevent, one project over.
+   *
+   * submitting() is deliberately not reset: it belongs to a request that is still running, and
+   * clearing it here would let a second save start while the first is in flight.
+   */
+  private resetForm(): void {
+    this.form.reset();
+    this.form.controls.links.clear();
+    this.form.controls.images.clear();
+    this.fieldErrors.set({});
+    this.loadError.set(null);
   }
 
   /**
@@ -378,32 +518,43 @@ export class AdminProjectFormComponent {
 
     this.submitting.set(true);
 
-    const request$ = this.projectId
-      ? this.projectsApi.updateProject({ id: this.projectId, projectWriteRequest: writeRequest })
+    const id = this.projectId();
+    const request$ = id
+      ? this.projectsApi.updateProject({ id, projectWriteRequest: writeRequest })
       : this.projectsApi.createProject({ projectWriteRequest: writeRequest });
 
-    request$.subscribe({
-      next: () => {
-        this.submitting.set(false);
-        this.router.navigateByUrl('/admin/projects');
-      },
-      error: (problem: ApiProblem) => {
-        this.submitting.set(false);
-        // Optional-chained like the load handler's status check, and identical to the contact
-        // form's line: errorInterceptor normalizes every HttpErrorResponse into an ApiProblem but
-        // rethrows anything that is not one unchanged, so the shape here is only almost guaranteed.
-        // `?? []` is the half that has a reachable case -- .fieldErrors off a bare Error is
-        // undefined, and .length off that throws inside the subscriber, where RxJS reports it out
-        // of band and the form fails in silence. The `?.` has no reachable case and is not pretending
-        // to: it is the same defensive read at all three sites in both forms, which is worth more
-        // than deleting one of them.
-        const fieldErrors = problem?.fieldErrors ?? [];
-        if (fieldErrors.length > 0) {
-          this.fieldErrors.set(groupFieldErrors(fieldErrors));
-        }
-        // Non-field errors are surfaced globally by errorInterceptor.
-      },
-    });
+    request$
+      // finalize(), not a set() in each handler: a stream that completed without emitting or
+      // erroring would leave submitting() stuck true, and since the row structure was frozen to it
+      // that disables Save, every "+ Add" and every "Remove" for good, with nothing said about why.
+      // HttpClient always emits or errors, so this closes a shape rather than a reachable path.
+      //
+      // It does move where the flag is released: finalize runs *after* whichever handler ended the
+      // stream, so submitting() now stays true across the error handler's fieldErrors.set() instead
+      // of being cleared just before it. Nothing reads it in between -- the guards that do
+      // (submit(), and the four row handlers) run from user events, and holding the freeze until
+      // the verdicts are on screen is the ordering those guards want anyway.
+      .pipe(finalize(() => this.submitting.set(false)))
+      .subscribe({
+        next: () => {
+          this.router.navigateByUrl('/admin/projects');
+        },
+        error: (problem: ApiProblem) => {
+          // Optional-chained like the load handler's status check, and identical to the contact
+          // form's line: errorInterceptor normalizes every HttpErrorResponse into an ApiProblem but
+          // rethrows anything that is not one unchanged, so the shape here is only almost guaranteed.
+          // `?? []` is the half that has a reachable case -- .fieldErrors off a bare Error is
+          // undefined, and .length off that throws inside the subscriber, where RxJS reports it out
+          // of band and the form fails in silence. The `?.` has no reachable case and is not pretending
+          // to: it is the same defensive read at all three sites in both forms, which is worth more
+          // than deleting one of them.
+          const fieldErrors = problem?.fieldErrors ?? [];
+          if (fieldErrors.length > 0) {
+            this.fieldErrors.set(groupFieldErrors(fieldErrors));
+          }
+          // Non-field errors are surfaced globally by errorInterceptor.
+        },
+      });
   }
 
   /**
@@ -485,24 +636,29 @@ export class AdminProjectFormComponent {
   }
 
   /**
-   * Drop every server verdict about one collection, because the payload it judged no longer exists.
-   * These keys are positional: remove link row 0 and the message the server sent about `links[1]`
-   * now points at a different link, so it would either paint onto the wrong row or vanish along
-   * with an index that no longer exists. A stale verdict is worse than no verdict -- the admin
-   * cannot tell it apart from a fresh one -- and the next save produces a current set anyway.
+   * Drop every server verdict about one field, because the value it judged no longer exists.
    *
-   * The bare collection key goes too: a size verdict about ten links is not about eleven. Scoped to
-   * the collection that moved, though -- a title rejection the admin has not dealt with yet is
-   * still true, and clearing it would hide work they still owe.
+   * Two callers, one rule. A collection whose rows moved: these keys are positional, so remove link
+   * row 0 and the message the server sent about `links[1]` now points at a different link -- it
+   * would either paint onto the wrong row or vanish along with an index that no longer exists. And
+   * a scalar control whose value the admin has edited: "A project with this title already exists"
+   * describes a title that is no longer in the box. Either way a stale verdict is worse than no
+   * verdict -- the admin cannot tell it apart from a fresh one -- and the next save produces a
+   * current set anyway.
+   *
+   * The bare key goes with the indexed ones: a size verdict about ten links is not about eleven,
+   * and `tags[2]` names an element of the list the tags control holds. Scoped to the field that
+   * moved, though -- a title rejection the admin has not dealt with yet is still true while they
+   * are fixing the links, and clearing it would hide work they still owe.
    *
    * The set() reaches beyond this method: it is what notifies unclaimedErrors(), which reads the
    * FormArrays without being reactive in them, so a purge that removes keys is also what tells the
    * catch-all the rows have moved. A purge that removes nothing has nothing to tell it -- see the
    * reasoning on unclaimedErrors() before assuming either half of that is free to change.
    */
-  private forgetErrorsFor(collection: 'links' | 'images'): void {
+  private forgetErrorsFor(field: string): void {
     const remaining = Object.entries(this.fieldErrors()).filter(
-      ([key]) => key !== collection && !key.startsWith(`${collection}[`),
+      ([key]) => key !== field && !key.startsWith(`${field}[`),
     );
     this.fieldErrors.set(Object.fromEntries(remaining));
   }
