@@ -19,14 +19,26 @@
   // value, because contrast has to be measured against the resolved canvas, not composited onto
   // it -- so it is flipped per scheme below. #666 is 5.7:1 on white.
   --color-text-muted: #666;
+
+  // Error text *and* error borders -- field messages, the form-error banner, destructive buttons.
+  // One token covers both because a single value clears the stricter of the two thresholds on
+  // every canvas: text needs 4.5:1, a border only 3:1, so anything good enough to read is more
+  // than good enough to draw. Like --color-text-muted this cannot be one value for both schemes,
+  // and for the same reason -- contrast is measured against the resolved canvas. #b3261e is
+  // 6.54:1 on white.
+  --color-error: #b3261e;
 }
 
 // Paired with `color-scheme: light dark` above: the canvas follows the same preference this query
 // reads, so the two can never disagree about which theme is on screen. #a3a3a3 is 7.4:1 on
 // Chrome's dark canvas (#121212) and still 5.6:1 on the lightest of the major browsers' (#2b2a33).
+// #ff7b72 is 7.43:1 on #121212 and still 5.62:1 on #2b2a33 -- measure against both, not just
+// Chrome's, or a value that looks fine in one browser lands under AA in another. It is a coral
+// red rather than a pale pink on purpose: the point of this colour is to still read as an error.
 @media (prefers-color-scheme: dark) {
   :root {
     --color-text-muted: #a3a3a3;
+    --color-error: #ff7b72;
   }
 }
 

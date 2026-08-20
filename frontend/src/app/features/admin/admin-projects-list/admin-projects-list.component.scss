@@ -19,7 +19,7 @@ td {
 .actions button {
   border: none;
   background: transparent;
-  color: #b3261e;
+  color: var(--color-error);
   cursor: pointer;
   padding: 0;
   font: inherit;
