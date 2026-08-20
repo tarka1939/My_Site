@@ -5,9 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commit conventions
 Never add "Co-Authored-By" lines to commits. Do not include Claude attribution in commit messages, PR descriptions, or any git metadata.
 
-## PR conventions
+## Issue and PR conventions
 
-Every PR needs: **issues linked** (one `Closes #N` per line — a comma-separated list silently links only the first), **milestone** (look the number up; it does not match the phase number), and **project board** entry with Status.
+Every **issue** needs **area labels** and a **milestone**. Labels are area-only: `backend`, `frontend`, `infra`, `documentation`, `content` — the stock GitHub set (`bug`, `enhancement`, ...) has never been used here, so don't start. `gh issue create` sets neither by default and warns about neither, so pass `--label` and `--milestone` on the create call itself; 15 issues shipped bare before anyone noticed, because the checklist below said "PR" and was read as covering only PRs.
+
+After filing, verify rather than assume — an unlabelled issue looks identical to a labelled one in `gh issue create` output:
+
+```
+gh issue list --state open --limit 200 --json number,labels --jq '[.[]|select(.labels|length==0)|.number]'
+```
+
+Every **PR** needs: **issues linked** (one `Closes #N` per line — a comma-separated list silently links only the first), **milestone** (look the number up; it does not match the phase number), and **project board** entry with Status.
 
 Closing keywords fire from *anywhere* in the body, including prose explaining or denying them. Backticks neutralise a keyword; blockquotes do not. `closingIssuesReferences` reads only the PR description, so scan commit messages separately. The keywords are `close`/`fix`/`resolve` and their inflections.
 
