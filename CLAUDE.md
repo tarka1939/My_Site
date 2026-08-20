@@ -21,6 +21,18 @@ Closing keywords fire from *anywhere* in the body, including prose explaining or
 
 Run `gh api graphql` for `closingIssuesReferences` before merging — including on PRs meant **not** to close anything. See `docs/AGENT_WORKFLOW.md` for the three incidents behind this.
 
+## Regenerate the API client after any contract change
+
+`docs/openapi.yaml` merging without `cd frontend && npm run generate:api` leaves the committed client
+stale. This is not only about types: the generator inlines `summary` and `description` into the
+client's JSDoc, so a **description-only** contract edit still produces a real diff. PR #129 changed
+two description strings, was merged on the correct reasoning that no generated *type* could change,
+and left the client stale anyway — the two claims are not the same claim.
+
+Run the regenerate and require `git status --porcelain` to come back empty. When starting contract
+work, regenerate from the *unmodified* spec first: any drift that surfaces belongs to an earlier
+merge, and baselining is what keeps it from being absorbed into your commit and misattributed.
+
 ## A test cannot see appearance
 
 If a change affects what someone *sees* — colour and contrast, copy as its audience reads it, empty
