@@ -433,7 +433,7 @@ components:
 
     Project:
       type: object
-      required: [id, title, description, links, images, tags, createdAt, updatedAt]
+      required: [id, title, description, links, images, tags, startedOn, completedOn, createdAt, updatedAt]
       properties:
         id:
           type: string
