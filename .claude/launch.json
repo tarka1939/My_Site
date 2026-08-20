@@ -6,6 +6,17 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "start"],
       "port": 4200
+    },
+    {
+      "name": "backend-dev",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "-f",
+        "backend/pom.xml",
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev"
+      ],
+      "port": 8080
     }
   ]
 }
