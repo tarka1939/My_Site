@@ -10,6 +10,9 @@
 
 
 export interface ValidationProblemDetailAllOfErrors { 
+    /**
+     * Which input the violation is about, as a path. Clients key their inline messages off this, so the exact spelling is part of the contract.  **Request body violations** (the common case) use the property\'s path within the body: a top-level property is its bare name (`title`, `completedOn`), a violation inside a collection carries the element\'s zero-based index in brackets (`images[0]`, `tags[2]`), and a nested property appends a dotted segment after the index (`links[0].label`, `links[0].url`).  **Query and path parameter violations** are *not* body paths -- they are prefixed with the operation\'s handler name, as in `listProjects.size` for `GET /projects?size=101`. Match these literally; do not try to read the part before the dot as a body property.  A single request can report several violations, and the same `field` may appear more than once when one input breaks more than one rule, so treat `errors` as a list per field rather than a map.  Do not assume the set of possible values is closed: a field with no slot in the UI still needs its message shown somewhere rather than dropped. 
+     */
     field: string;
     message: string;
 }
