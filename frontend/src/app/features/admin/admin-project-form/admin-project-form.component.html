@@ -1,6 +1,6 @@
 <a routerLink="/admin/projects">&larr; Back to projects</a>
 
-<h1>{{ isEditMode ? 'Edit project' : 'New project' }}</h1>
+<h1>{{ isEditMode() ? 'Edit project' : 'New project' }}</h1>
 
 @if (loading()) {
   <p role="status">Loading&hellip;</p>

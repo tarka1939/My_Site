@@ -10,7 +10,20 @@ import {
   Validators,
 } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { finalize, throwIfEmpty } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  Subject,
+  catchError,
+  defer,
+  distinctUntilChanged,
+  finalize,
+  map,
+  merge,
+  switchMap,
+  tap,
+  throwIfEmpty,
+} from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ProjectWriteRequest } from '../../../core/api/model/projectWriteRequest';
 import { ApiProblem } from '../../../core/http/api-problem';
@@ -84,9 +97,29 @@ export class AdminProjectFormComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  protected readonly projectId = this.route.snapshot.paramMap.get('id');
-  protected readonly isEditMode = this.projectId !== null;
-  protected readonly loading = signal(this.isEditMode);
+  /**
+   * Which project this form is editing, or null on the "new project" route -- from route.paramMap,
+   * not route.snapshot.
+   *
+   * Angular's default RouteReuseStrategy reuses this component when a navigation changes only the
+   * params, so a field initialiser reading the snapshot would keep the first id forever:
+   * /admin/projects/A/edit -> /admin/projects/B/edit would leave A's data in the fields and PUT it
+   * back to A's URL while the address bar said B. ProjectDetailComponent was fixed for the same
+   * shape.
+   *
+   * Not reachable through the UI as it stands -- every link to an edit route comes from the
+   * projects list, which unmounts this component on the way -- so this is a landmine being taken
+   * out rather than a bug being fixed. It goes off the day someone adds a prev/next link, an "edit
+   * another" after saving, or a jump-to-project search.
+   */
+  protected readonly projectId = signal<string | null>(null);
+  protected readonly isEditMode = computed(() => this.projectId() !== null);
+  /**
+   * False rather than "true in edit mode": the constructor's subscription sets it, and paramMap
+   * emits synchronously on subscribe (it is a BehaviorSubject behind a map), so it is already right
+   * by the time this renders.
+   */
+  protected readonly loading = signal(false);
   protected readonly submitting = signal(false);
   /**
    * Every message the server sent, keyed by the field it named -- a list per key, because the API
@@ -183,10 +216,10 @@ export class AdminProjectFormComponent {
    * duplicate-row button, say. That would leave this describing a row set that is gone, and no
    * existing test would fail.
    *
-   * loadProject()'s success handler is the other FormArray mutation, and it does not rewrite
-   * fieldErrors. It is safe by reachability rather than by a check: retryLoad() is its only re-entry
-   * point, it is called from inside the loadError() branch, and that branch renders neither the form
-   * nor Save -- so fieldErrors is empty whenever those arrays are rebuilt.
+   * Loading a project is the other FormArray mutation, and it is safe by construction rather than
+   * by reachability: startLoad() calls resetForm() before every load, which empties both arrays and
+   * sets fieldErrors, so the map and the rows move together through a fieldErrors.set() exactly as
+   * they do here.
    */
   protected readonly unclaimedErrors = computed(() => {
     const rowKeys = new Set(this.rowFieldKeys());
@@ -206,6 +239,9 @@ export class AdminProjectFormComponent {
       // rejection-with-no-content case landing in the one destination that was still missing it.
       .map(([field, messages]) => ({ field, message: joinMessages(messages, UNEXPLAINED_REJECTION) }));
   });
+
+  /** Retry's way into the load pipeline below -- see retryLoad(). */
+  private readonly reload$ = new Subject<string | null>();
 
   constructor() {
     // A server verdict describes the value that produced it, so it stops being about this form the
@@ -239,54 +275,89 @@ export class AdminProjectFormComponent {
       control.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.forgetErrorsFor(field));
     }
 
-    this.loadProject();
+    // One pipeline owns every load, whichever asked for it: the route saying which project this
+    // is, and "Try again" asking for the same one over. switchMap is what makes an id change safe
+    // -- it drops the request for the previous project, so its response can never land in the form
+    // now showing a different one -- and takeUntilDestroyed covers navigating off the route
+    // entirely. Same pair, for the same reasons, as ProjectDetailComponent.
+    merge(
+      // distinctUntilChanged, which the read-only detail page does not need: a reload here throws
+      // away whatever the admin has typed, so an id re-emitted unchanged must not restart one. It
+      // sits inside this branch rather than after the merge, so it cannot swallow a retry of the id
+      // already loaded -- which is the whole point of the other branch.
+      this.route.paramMap.pipe(
+        map((params) => params.get('id')),
+        distinctUntilChanged(),
+      ),
+      this.reload$,
+    )
+      .pipe(
+        switchMap((id) => this.startLoad(id)),
+        takeUntilDestroyed(),
+      )
+      .subscribe();
   }
 
   /**
-   * Re-runs the load after a failure, one at a time. Without the guard two quick clicks on "Try
-   * again" leave two responses in flight whose order nothing controls, and the last one to land
-   * writes its outcome over the other's -- a stale failure arriving after a success would put the
-   * error state back over a form that has just been populated. Refusing the second start removes
-   * the ordering question rather than trying to resolve it afterwards.
+   * Re-runs the load after a failure, one at a time. Two quick clicks on "Try again" otherwise
+   * leave two responses in flight whose order nothing controls, and the last one to land writes its
+   * outcome over the other's -- a stale failure arriving after a success would put the error state
+   * back over a form that has just been populated.
    *
-   * The guard belongs here rather than in loadProject(), because loading() is already true when the
-   * constructor calls that for the first time in edit mode.
+   * The pipeline's switchMap would now cancel the first load rather than race it, so this no longer
+   * carries that on its own. What it still does is refuse to throw away a load that is already
+   * running and start the identical one again, which is what the admin means by clicking twice.
+   *
+   * The guard belongs here rather than in startLoad(), which the constructor reaches with loading()
+   * about to be set for the first time.
    */
   protected retryLoad(): void {
     if (this.loading()) {
       return;
     }
-    this.loadProject();
+    this.reload$.next(this.projectId());
   }
 
-  private loadProject(): void {
-    const id = this.projectId;
-    if (!id) {
-      return;
-    }
+  /**
+   * Empties the form for whatever is about to go into it, and returns the request that fetches it
+   * -- or EMPTY on the "new project" route, where there is nothing to fetch.
+   *
+   * Returned rather than subscribed to, so the constructor's switchMap and takeUntilDestroyed own
+   * its lifetime. That is what stops project A's response arriving into project B's form.
+   *
+   * The defer() is load-bearing, not stylistic: switchMap tears the previous load down before it
+   * subscribes to this one, and that teardown runs the finalize() below. Anything here that writes
+   * loading() therefore has to run at *subscribe* time -- as plain statements in this method body,
+   * or in a tap() ahead of switchMap, it is a coin toss on operator internals whether the new
+   * load's loading() survives the old load's finalize.
+   */
+  private startLoad(id: string | null): Observable<unknown> {
+    return defer(() => {
+      this.projectId.set(id);
+      this.resetForm();
 
-    this.loading.set(true);
-    this.loadError.set(null);
+      if (id === null) {
+        // The "new project" route. A blank form is the finished state, not a loading one.
+        this.loading.set(false);
+        return EMPTY;
+      }
 
-    // finalize(), not a loading.set(false) in each handler: a stream that completed without
-    // emitting or erroring would leave the page stuck on "Loading..." with no way back. HttpClient
-    // always does one or the other, so this is a belt on braces rather than a fix for a reachable
-    // path -- the same shape as submit()'s, where being stuck also disables every row button.
-    //
-    // throwIfEmpty() ahead of it, because clearing the flag is not on its own the safe end of that
-    // path: loading false with no project loaded and no error renders the *form*, empty, and an
-    // empty edit form is a PUT away from blanking the record -- which is the whole reason the load
-    // failure has a state of its own. A completion that carried no project has not loaded the
-    // project, so it goes down the same road as a failure. It lands in the error handler below,
-    // where reading .status off an EmptyError gives undefined and produces the generic wording.
-    this.projectsApi
-      .getProject({ id })
-      .pipe(
+      this.loading.set(true);
+
+      // finalize(), not a loading.set(false) in each handler: a stream that completed without
+      // emitting or erroring would leave the page stuck on "Loading..." with no way back.
+      // HttpClient always does one or the other, so this closes a shape rather than a reachable
+      // path -- the same one as submit()'s, where being stuck also disables every row button.
+      //
+      // throwIfEmpty() ahead of it, because clearing the flag is not on its own the safe end of
+      // that path: loading false with no project loaded and no error renders the *form*, empty, and
+      // an empty edit form is a PUT away from blanking the record -- which is the whole reason a
+      // failed load has a state of its own. A completion that carried no project has not loaded the
+      // project, so it goes the way a failure goes: into the catchError below, where reading
+      // .status off an EmptyError gives undefined and produces the generic wording.
+      return this.projectsApi.getProject({ id }).pipe(
         throwIfEmpty(),
-        finalize(() => this.loading.set(false)),
-      )
-      .subscribe({
-        next: (project) => {
+        tap((project) => {
           this.form.patchValue({
             title: project.title,
             description: project.description,
@@ -296,18 +367,16 @@ export class AdminProjectFormComponent {
             startedOn: project.startedOn ?? '',
             completedOn: project.completedOn ?? '',
           });
-          // Clear before repopulating. Retry makes this handler runnable more than once, and push
-          // without clear gives a second successful load two of every row. (A retry that follows a
-          // failure finds the arrays empty, so that is not the case that bites -- which is exactly
-          // why the loader is made idempotent here rather than left to depend on how it got here.)
-          this.form.controls.links.clear();
-          this.form.controls.images.clear();
+          // The arrays are empty here because resetForm() ran above, for every load rather than
+          // only for a second one -- push without a clear gives a successful reload two of every
+          // row, and the id-change case has to lose the *previous project's* rows even when the
+          // load that follows never succeeds.
           project.links.forEach((link) => this.form.controls.links.push(this.buildLinkGroup(link.label, link.url)));
           project.images.forEach((image) =>
             this.form.controls.images.push(this.buildImageControl(image)),
           );
-        },
-        error: (problem: ApiProblem) => {
+        }),
+        catchError((problem: ApiProblem) => {
           // No notifications.error() here on purpose: errorInterceptor already toasts every non-field
           // error. It also logs out and redirects on a 401 -- but only while auth.isLoggedIn() is
           // still true, and that is a wall-clock check on the token's expiresAt. A token that simply
@@ -321,8 +390,32 @@ export class AdminProjectFormComponent {
               ? 'Your admin session has expired. Log in again to edit this project -- "Back to projects" above will take you there.'
               : 'Could not load this project. Nothing has been changed -- try again, or go back to the project list.',
           );
-        },
-      });
+          // EMPTY, not a rethrow: the failure is fully handled here, and letting it out would kill
+          // the subscription in the constructor, so no later id or retry would ever load again.
+          return EMPTY;
+        }),
+        finalize(() => this.loading.set(false)),
+      );
+    });
+  }
+
+  /**
+   * Back to a blank form, for whatever is about to be loaded into it.
+   *
+   * Every line here is the id-change case: form.reset() does not touch the FormArrays, so the rows
+   * are the previous project's links and images until they are cleared, and fieldErrors holds
+   * verdicts about the previous project's payload -- positional row keys included. Leaving either
+   * behind is the same stale-state defect forgetErrorsFor() exists to prevent, one project over.
+   *
+   * submitting() is deliberately not reset: it belongs to a request that is still running, and
+   * clearing it here would let a second save start while the first is in flight.
+   */
+  private resetForm(): void {
+    this.form.reset();
+    this.form.controls.links.clear();
+    this.form.controls.images.clear();
+    this.fieldErrors.set({});
+    this.loadError.set(null);
   }
 
   /**
@@ -425,8 +518,9 @@ export class AdminProjectFormComponent {
 
     this.submitting.set(true);
 
-    const request$ = this.projectId
-      ? this.projectsApi.updateProject({ id: this.projectId, projectWriteRequest: writeRequest })
+    const id = this.projectId();
+    const request$ = id
+      ? this.projectsApi.updateProject({ id, projectWriteRequest: writeRequest })
       : this.projectsApi.createProject({ projectWriteRequest: writeRequest });
 
     request$

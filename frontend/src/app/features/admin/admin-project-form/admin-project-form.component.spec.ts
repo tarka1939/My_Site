@@ -6,7 +6,7 @@ import {
   provideRouter,
   Router,
 } from '@angular/router';
-import { config, of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, config, of, Subject, throwError } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ApiProblem } from '../../../core/http/api-problem';
 import { AdminProjectFormComponent } from './admin-project-form.component';
@@ -25,12 +25,37 @@ const EXISTING_PROJECT = {
 };
 
 /**
- * The component reads the route id once, at construction. A mutable stub lets a test switch to
- * edit mode before createComponent -- TestBed.overrideProvider cannot, because injecting Router in
- * beforeEach has already instantiated the module by then.
+ * A second project, deliberately unlike the first in every field a test can see: a different title,
+ * description, tag, start date, an open-ended period, and -- the part that matters most -- two link
+ * rows to the first project's one. "Shows B" and "shows A and B" are otherwise the same assertion.
+ */
+const OTHER_PROJECT = {
+  id: 'p2',
+  title: 'Reverb',
+  description: 'A room simulator',
+  links: [
+    { label: 'Docs', url: 'https://docs.example/reverb' },
+    { label: 'Demo', url: 'https://demo.example/reverb' },
+  ],
+  images: ['https://images.example.com/two.png'],
+  tags: [{ id: 't2', name: 'audio' }],
+  startedOn: '2025-01-01',
+  completedOn: null,
+  createdAt: '2026-02-01T00:00:00Z',
+  updatedAt: '2026-02-01T00:00:00Z',
+};
+
+/**
+ * The component takes its id from route.paramMap, so the stub is a subject a test can push to --
+ * before createComponent to open in edit mode, and again afterwards to navigate from one edit URL
+ * to another without unmounting anything, which is what the default RouteReuseStrategy does.
+ *
+ * `snapshot` is a getter over the same value rather than a fixed object, so it stays honest the way
+ * the real ActivatedRoute's does. Nothing in the component reads it any more; RouterLink does.
  */
 interface RouteStub {
-  snapshot: { paramMap: ParamMap };
+  paramMap: BehaviorSubject<ParamMap>;
+  readonly snapshot: { paramMap: ParamMap };
 }
 
 function validationProblem(field: string, message: string): ApiProblem {
@@ -171,14 +196,37 @@ describe('AdminProjectFormComponent', () => {
 
   /** Switch the pending fixture from "new project" to "edit p1". Call before createComponent. */
   function editExistingProject(): void {
-    route.snapshot.paramMap = convertToParamMap({ id: 'p1' });
+    route.paramMap.next(convertToParamMap({ id: 'p1' }));
+  }
+
+  /**
+   * Navigate an already-created fixture from one edit URL to another. No new component: a
+   * params-only navigation reuses the instance, which is the whole point of the tests that call it.
+   */
+  function navigateToProject(
+    fixture: ComponentFixture<AdminProjectFormComponent>,
+    id: string,
+  ): void {
+    route.paramMap.next(convertToParamMap({ id }));
+    fixture.detectChanges();
+  }
+
+  /** Whatever is in the rendered inputs matching `selector`, in document order. */
+  function inputValues(host: HTMLElement, selector: string): string[] {
+    return [...host.querySelectorAll<HTMLInputElement>(selector)].map((input) => input.value);
   }
 
   beforeEach(async () => {
     getProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     createProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     updateProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
-    route = { snapshot: { paramMap: convertToParamMap({}) } };
+    const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+    route = {
+      paramMap,
+      get snapshot() {
+        return { paramMap: paramMap.value };
+      },
+    };
 
     await TestBed.configureTestingModule({
       imports: [AdminProjectFormComponent],
@@ -1570,7 +1618,7 @@ describe('AdminProjectFormComponent', () => {
   it('does not duplicate links and images when the project is loaded twice', () => {
     // The duplicate-append guard, exercised where it actually bites. A retry after a failure finds
     // the FormArrays empty, so only a second *successful* load can double the rows -- without the
-    // clear() in the load handler, this project comes back with two links and two images.
+    // clear() resetForm() does before each load, this project comes back with two of everything.
     editExistingProject();
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();
@@ -1789,6 +1837,182 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('.load-error [role="alert"]')?.textContent).toContain(
         'Could not load this project',
       );
+    });
+  });
+
+  describe('when the route moves from one project to another', () => {
+    // Angular's default RouteReuseStrategy reuses this component when a navigation changes only the
+    // params, so nothing here unmounts. Reading the id once, in a field initialiser, therefore
+    // leaves the form showing -- and saving -- the project the admin arrived on first.
+    //
+    // No UI path reaches this today: every link to an edit route is on the projects list, which
+    // does unmount the form. These pin the behaviour for whoever adds prev/next links or an "edit
+    // another" after saving, at which point it would be a silent write to the wrong record.
+    beforeEach(() => {
+      getProject.mockImplementation(({ id }: { id: string }) =>
+        of(id === 'p2' ? OTHER_PROJECT : EXISTING_PROJECT),
+      );
+    });
+
+    it('loads the project the route now names, and shows none of the previous one', () => {
+      editExistingProject();
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Equalizer');
+
+      navigateToProject(fixture, 'p2');
+
+      expect(getProject).toHaveBeenLastCalledWith({ id: 'p2' });
+      expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
+      expect(host.querySelector<HTMLTextAreaElement>('#project-description')?.value).toBe(
+        'A room simulator',
+      );
+      expect(host.querySelector<HTMLInputElement>('#project-tags')?.value).toBe('audio');
+      expect(host.querySelector<HTMLInputElement>('#project-started-on')?.value).toBe('2025-01-01');
+      // Reverb is ongoing. A field left holding Equalizer's completion date would be saved back.
+      expect(host.querySelector<HTMLInputElement>('#project-completed-on')?.value).toBe('');
+    });
+
+    it('rebuilds the rows for the second project rather than appending them to the first', () => {
+      // form.reset() does not empty a FormArray, so without the clear the arrays hold both
+      // projects' rows -- three links and two images -- and the next save PUTs all of them.
+      editExistingProject();
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      navigateToProject(fixture, 'p2');
+
+      const form = fixture.componentInstance['form'];
+      expect(form.controls.links.getRawValue()).toEqual(OTHER_PROJECT.links);
+      expect(form.controls.images.getRawValue()).toEqual(OTHER_PROJECT.images);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(inputValues(host, 'input[id^="link-label-"]')).toEqual(['Docs', 'Demo']);
+      expect(inputValues(host, 'input[id^="link-url-"]')).toEqual([
+        'https://docs.example/reverb',
+        'https://demo.example/reverb',
+      ]);
+      expect(inputValues(host, 'input[id^="image-"]')).toEqual([
+        'https://images.example.com/two.png',
+      ]);
+    });
+
+    it('saves to the id the route now names', () => {
+      // The data-loss half: with the id read once, this PUT goes to p1 while the address bar, the
+      // heading and every field say p2 -- an edit of one project silently overwriting another.
+      editExistingProject();
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      navigateToProject(fixture, 'p2');
+      fixture.componentInstance['submit']();
+
+      expect(updateProject).toHaveBeenCalledTimes(1);
+      const { id, projectWriteRequest } = updateProject.mock.calls[0][0];
+      expect(id).toBe('p2');
+      expect(projectWriteRequest.title).toBe('Reverb');
+      expect(projectWriteRequest.links).toEqual(OTHER_PROJECT.links);
+    });
+
+    it('drops the previous project\'s server verdicts', () => {
+      // These describe a payload for a different record, and the row keys are positional on top of
+      // that: `links[1].url` about Equalizer's links would land on one of Reverb's.
+      updateProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'title', message: 'A project with this title already exists' },
+            { field: 'links[0].url', message: 'must be a valid URL' },
+            { field: 'images', message: 'size must be between 0 and 20' },
+          ]),
+        ),
+      );
+      editExistingProject();
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+      fixture.componentInstance['submit']();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
+      expect(host.querySelector('#link-url-0-error')).not.toBeNull();
+      expect(host.querySelector('.form-error')).not.toBeNull();
+
+      navigateToProject(fixture, 'p2');
+
+      expect(fixture.componentInstance['fieldErrors']()).toEqual({});
+      expect(host.textContent).not.toContain('A project with this title already exists');
+      expect(host.querySelectorAll('.field-error')).toHaveLength(0);
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('does not leave the first project\'s failure over the second project\'s form', () => {
+      // The load for p1 fails and the admin navigates on. Without the reset the error state stays,
+      // and "Try again" is the only thing on screen for a project that loaded perfectly well.
+      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
+      editExistingProject();
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.load-error')).not.toBeNull();
+
+      navigateToProject(fixture, 'p2');
+
+      expect(host.querySelector('.load-error')).toBeNull();
+      expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
+    });
+
+    it('stays in its loading state while the second project is on its way', () => {
+      // Cancelling the first load runs its finalize(), which clears loading(). The second load has
+      // to set it *after* that teardown, or the page leaves the loading state with nothing loaded
+      // and no error -- which renders the form, empty, over a project that has not arrived yet, and
+      // an empty edit form is one PUT away from blanking the record. That ordering is what the
+      // defer() in startLoad() buys, and it is why the state is not set from a tap() before the
+      // switchMap.
+      const firstLoad = new Subject<unknown>();
+      const secondLoad = new Subject<unknown>();
+      getProject.mockReturnValueOnce(firstLoad).mockReturnValueOnce(secondLoad);
+      editExistingProject();
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      navigateToProject(fixture, 'p2');
+
+      expect(fixture.componentInstance['loading']()).toBe(true);
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('[role="status"]')?.textContent).toContain('Loading');
+      expect(host.querySelector('form')).toBeNull();
+
+      secondLoad.next(OTHER_PROJECT);
+      secondLoad.complete();
+      fixture.detectChanges();
+
+      expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
+    });
+
+    it('drops a request for the project the admin has navigated away from', () => {
+      // switchMap, not a second subscription: p1's response would otherwise land in a form that is
+      // now showing p2 and overwrite every field with the wrong project's data.
+      const slowFirstLoad = new Subject<unknown>();
+      getProject.mockReturnValueOnce(slowFirstLoad);
+      editExistingProject();
+      const fixture = TestBed.createComponent(AdminProjectFormComponent);
+      fixture.detectChanges();
+
+      navigateToProject(fixture, 'p2');
+      // p1 answering late, after the admin has moved on.
+      slowFirstLoad.next(EXISTING_PROJECT);
+      slowFirstLoad.complete();
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
+      expect(fixture.componentInstance['form'].controls.links.getRawValue()).toEqual(
+        OTHER_PROJECT.links,
+      );
+      expect(fixture.componentInstance['loading']()).toBe(false);
     });
   });
 
