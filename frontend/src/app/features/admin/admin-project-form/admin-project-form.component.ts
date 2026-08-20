@@ -428,10 +428,13 @@ export class AdminProjectFormComponent {
     // axes reach here -- several keys claimed by one slot (`tags[0]` and `tags[1]`), and several
     // messages under one key (a link label that is blank *and* too long).
     //
-    // The presence check counts *keys*, not messages: joinMessages() answers what to show, not
-    // whether, and unclaimedErrors() subtracts by key. Deciding presence on the flattened messages
-    // instead would let a key whose messages are all blank be subtracted as claimed and then render
-    // nothing -- the silent drop, back through the one seam the two halves have to agree on.
+    // The presence check is on the claimed *keys*, which is the same thing unclaimedErrors()
+    // subtracts by: whether this slot renders and whether the catch-all skips have to be one
+    // decision, or a key is claimed by a slot that then shows nothing. Counting the flattened
+    // messages instead would answer identically for every input groupFieldErrors() can produce (a
+    // key it holds has at least one entry, blank or not), so this is the right question to ask
+    // rather than a guard earning its keep -- and joinMessages() still answers what to show, not
+    // whether to show anything.
     return claimedKeys.length > 0
       ? joinMessages(
           claimedKeys.flatMap((key) => errors[key]),
