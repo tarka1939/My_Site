@@ -80,4 +80,108 @@ describe('errorInterceptor', () => {
     expect(auth.isLoggedIn()).toBe(false);
     expect(notifications.notifications()).toHaveLength(1);
   });
+
+  /**
+   * A rejected 400, and both destinations it can reach: the toast this interceptor fires, and the
+   * fieldErrors every form renders inline. Tests here assert on both together on purpose. Either
+   * one alone is satisfied by the bug -- "fieldErrors is []" passes just as happily when the
+   * rejection then goes nowhere, which is the failure this validation exists to prevent. The toast
+   * is asserted first for the same reason: it is the half that fails invisibly, so a regression
+   * should report itself on the line that says what the user was told.
+   */
+  async function reject(
+    body: Record<string, unknown>,
+  ): Promise<{ problem: ApiProblem; toasts: string[] }> {
+    const promise = firstValueFrom(httpClient.post('/api/v1/contact', {})).catch(
+      (problem: ApiProblem) => problem,
+    );
+
+    httpMock.expectOne('/api/v1/contact').flush(body, { status: 400, statusText: 'Bad Request' });
+
+    const problem = (await promise) as ApiProblem;
+    return { problem, toasts: notifications.notifications().map((n) => n.message) };
+  }
+
+  describe('a problem body whose errors is not what the contract promises', () => {
+    it('toasts a 400 whose errors is an object rather than an array', async () => {
+      // The shape that motivated all of this. Untouched, fieldErrors is that object, its .length is
+      // undefined, and `undefined === 0` is false -- so no toast here and no inline message in any
+      // form. A rejected save that says nothing at all.
+      const { problem, toasts } = await reject({
+        title: 'Bad Request',
+        detail: 'Request failed validation',
+        errors: { email: 'must not be blank' },
+      });
+
+      expect(toasts).toEqual(['Request failed validation']);
+      expect(problem.fieldErrors).toEqual([]);
+    });
+
+    it('toasts a 400 whose errors is a string rather than an array', async () => {
+      // Silence by the other route: a string's .length is truthy, so untouched this stays quiet
+      // here and the form reaches .map(), which throws inside the subscriber where RxJS reports it
+      // out of band -- green test run, blank form, dead Save button.
+      const { problem, toasts } = await reject({
+        title: 'Bad Request',
+        detail: 'Request failed validation',
+        errors: 'must not be blank',
+      });
+
+      expect(toasts).toEqual(['Request failed validation']);
+      expect(problem.fieldErrors).toEqual([]);
+    });
+
+    it('drops entries that are not field errors and toasts because it dropped them', async () => {
+      // The case the length check cannot cover by itself: one usable violation survives, so
+      // fieldErrors is non-empty and the fail-safe branch is false. Without the toast the form
+      // would show "url is not a valid URL", the admin would fix that, resubmit, and be rejected
+      // again for the three violations no part of the UI ever named.
+      const { problem, toasts } = await reject({
+        title: 'Bad Request',
+        detail: 'Request failed validation',
+        errors: [
+          { field: 'links[0].url', message: 'url is not a valid URL' },
+          null,
+          'title must not be blank',
+          { field: 'title' },
+          { field: 42, message: 'must be positive' },
+        ],
+      });
+
+      expect(toasts).toEqual(['Request failed validation']);
+      expect(problem.fieldErrors).toEqual([
+        { field: 'links[0].url', message: 'url is not a valid URL' },
+      ]);
+    });
+
+    it('toasts a 400 whose errors array holds nothing usable at all', async () => {
+      const { problem, toasts } = await reject({
+        title: 'Bad Request',
+        detail: 'Request failed validation',
+        errors: [null, 'title must not be blank', { message: 'no field named' }],
+      });
+
+      expect(toasts).toEqual(['Request failed validation']);
+      expect(problem.fieldErrors).toEqual([]);
+    });
+
+    it('still toasts a 400 that carries no errors field at all', async () => {
+      // The pre-existing fail-safe, kept honest while the branch above it grew a second clause: a
+      // 400 with nothing to say per field must still reach the toast, not be treated as "nothing
+      // was discarded, so nothing to report".
+      const { problem, toasts } = await reject({ title: 'Bad Request', detail: 'Malformed JSON' });
+
+      expect(toasts).toEqual(['Malformed JSON']);
+      expect(problem.fieldErrors).toEqual([]);
+    });
+
+    it('falls back to a default title when the body types title as something other than a string', async () => {
+      // Rendered straight into the toast, so a non-string is "[object Object]" on screen.
+      const { problem, toasts } = await reject({ title: { code: 400 }, detail: 42 });
+
+      expect(problem.title).toBe('Request failed (400).');
+      expect(problem.detail).toBeUndefined();
+      expect(toasts).toEqual(['Request failed (400).']);
+    });
+  });
 });
