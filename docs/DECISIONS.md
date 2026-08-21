@@ -254,6 +254,32 @@ The decisive fact: **Googlebot executes JavaScript, but the social scrapers do n
 
 **One further consequence, to settle when the real origin lands** (added 2026-08-14 from the PR #103 review — the decision above is unchanged, this is a knock-on effect it did not spell out). The static `og:url` is a single site-level value, and because Netlify returns the same `index.html` for every path, a non-JS scraper sees it on `/projects/<id>` too. Facebook and LinkedIn do not treat `og:url` as decoration: it is the shared object's *identity*, so they key their share cache and engagement counts on it and point the preview card's link at it. The ADR already accepts that a shared project link previews with the site-level **content**; the part not stated is that its **identity and destination** are the site root as well, so two different project links can collapse into one cached object and the card sends the reader to the landing page rather than the project. This is inert today — `.invalid` cannot resolve, so nothing is being cached — and becomes live the moment the placeholder is replaced. It is called out at the placeholder in `frontend/src/index.html` for whoever does that. Three options at that point, cheapest first: accept it (a portfolio's realistic share is the site itself, and the runtime `SeoService` already rewrites `og:url` per route for anything that executes JS); drop the static `og:url` so scrapers fall back to the URL they actually fetched, which is per-page correct but forgoes a stable identity for the root; or land prerendering, which fixes this and the preview content together, and whose deferral conditions are set out above.
 
+### 2026-08-18 — Phase 7a webhook sync: never writes curated copy, and auto-created repos arrive unpublished
+
+**Context:** #54 says a verified push/release webhook should "sync repo metadata into the Project service." Read naively that destroys the site's content: the portfolio's prose is hand-written and was signed off on 2026-08-17 (#49), so copying GitHub's repo description into `Project.description` would overwrite curated copy on every push — a data-loss path of the same class as #92, arriving automatically and on someone else's schedule.
+
+**Decision:** Three rules.
+
+1. **Sync never writes a curated field.** `title`, `description`, `tags`, `links`, `images`, `startedOn` and `completedOn` are the owner's and are never touched by an inbound webhook. This is a hard boundary, not a default.
+2. **Sync writes only fields GitHub is authoritative for** and the admin never edits — `lastPushedAt`, `defaultBranch`, `archived`. These are facts about the repository, not statements about the work.
+3. **A repo with no matching Project creates one, unpublished.** It is a draft for the owner to write and publish, never a live portfolio entry. Matching is by a new `Project.repoFullName` (`user/repo`, unique, nullable).
+
+**Alternatives considered:**
+
+- *Record deliveries only, write nothing to `Project`.* Zero content risk and the infrastructure still gets built, but it under-delivers #54 and produces nothing visible — the webhook would be machinery with no observable effect, which is hard to know is working.
+- *Full metadata sync (description, topics → tags).* Rejected. It is the naive reading, and it is the one that destroys #49's content.
+- *Auto-create as immediately-live entries.* Rejected. A curated portfolio that publishes whatever repos exist stops being curated, and the failure is public.
+
+**Consequences, and the third is the one that costs:**
+
+- **`Project` gains a `published` flag, and the public listing changes meaning.** Unpublished drafts must never appear on the site, so `GET /projects` and `GET /projects/{id}` filter to published while the admin endpoints see everything. That is a semantic change to the contract of the same kind as #124's tag filter, and it needs saying in `docs/openapi.yaml` rather than being implied by behaviour.
+- **The migration must default existing rows to published.** Every project currently in the database was put there deliberately. A migration defaulting `published` to false would blank the live site on deploy — this is the single most dangerous line in the change and it wants an explicit `DEFAULT true` for existing rows with the column's *application* default being false for auto-created ones.
+- **An ignore mechanism is required, not optional.** A webhook installed at organisation scope means every repo the owner touches becomes a draft, including private ones, experiments, and forks. Without a denylist the admin list fills with noise, and "just delete it" does not work — the next push recreates it.
+- **The admin UI needs a publish control**, and the project list needs to show draft status. Auto-created rows are invisible on the site but must be obvious in the admin.
+- **`archived` is stored but not yet rendered.** Recorded so that a later phase deciding to grey out or hide archived repos has the data already, rather than needing a backfill.
+
+**Not decided here:** whether `lastPushedAt` is rendered on the public site, and whether an archived repo is hidden or merely marked. Both are presentation questions that want seeing on screen before being settled, and neither blocks the sync work.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
