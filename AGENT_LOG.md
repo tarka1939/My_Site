@@ -292,6 +292,95 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-18 — Clearing the Phase 6 backlog: six agents, and the pattern was pushing back on the brief
+
+**Task given:**
+
+Work the remaining Phase 6 and Meta backlog autonomously, stopping only on something needing the
+owner. Ten issues closed across six dispatches: #116, #124, #114, #117, #115, #93, #109, #133, #111,
+#107, #78, #90, #110, #99.
+
+**Agent(s) used:**
+
+`frontend-agent` and `backend-agent` on Opus, one `general-purpose` on Opus for the contract work,
+one on Sonnet for a single test with a known target. Two were resumed after a session limit.
+
+**What went right:**
+
+**Five of six agents corrected something in the brief rather than implementing it as written**, and
+in four cases the correction was the more valuable half of the work:
+
+- **#78, the Caffeine argument.** The brief said a cache dependency was too large for a solo
+  portfolio site. The agent agreed and gave a better reason: **size-bounded eviction is the wrong
+  policy for a rate limiter.** Evicted by size under key churn, it discards the busiest keys'
+  neighbours exactly when an attacker is generating churn — the eviction policy becomes an attack
+  surface, and "who gets forgotten" stops meaning "whose window elapsed". The brief's objection was
+  about cost; this one is about correctness.
+- **#124, the index nobody needed.** `CLAUDE.md` requires a supporting index for a new non-PK query
+  column, so the brief asked for one. The agent measured instead: at 20k and 200k join rows the
+  planner never picks it, and forcing it is *slower* (270ms vs 169ms). Where it is used is the
+  referencing side of the FK, which Postgres does not index automatically — so every `tag` deletion
+  had been scanning the join table. The index stayed, for a reason the brief had not identified, and
+  the migration comment says so with the numbers.
+- **#109, a brief that would have re-created its own defect.** It said to document the validation
+  `field` as the request-body property path. The agent probed and found a second producer:
+  `@Validated` query params emit `listProjects.size`, a handler-prefixed *parameter* path. A client
+  told "it is the body property path" would read `listProjects` as a property name.
+- **#114, a half-done issue.** The brief omitted the issue's second half; the agent flagged it rather
+  than opening a PR whose `Closes #114` would have been a lie.
+
+**A stale generated client, caught only by baselining.** The contract agent regenerated from the
+*unmodified* spec before editing, and found a diff that predated its own work — PR #129's
+description-only change had left the committed client stale. The reasoning that merged #129 ("a
+description cannot change a generated type") was correct and insufficient: the generator inlines
+those strings into JSDoc. Without the baseline it would have been absorbed into the next commit and
+misattributed.
+
+**What went wrong (be specific):**
+
+1. **Two agents were terminated by a session limit, and one had six tests' worth of complete work
+   uncommitted.** The tree was green — 223 passing — so nothing was lost by luck rather than by
+   discipline. Resuming restores context, never the working tree; the standing rule is to commit each
+   unit as it passes its own check, and it was not followed here.
+2. **The `finalize()` item in #111 was billed as "a one-line change to both handlers." It was not.**
+   Clearing `loading` on a stream that completes *without emitting* leaves loading false, nothing
+   loaded, and no error — so the template renders the form, empty. That is #92 returning through a
+   different door, on the one component where an empty edit form is one PUT from blanking the record.
+   `throwIfEmpty()` now routes an empty completion where a failure goes.
+3. **#110's own issue text overstated the problem**, and would have propagated into the written
+   convention. Two comments had already narrowed it: `detectChanges()` *does* catch a stale
+   `computed`, and catchability also depends on the assertion being positive. The brief carried the
+   narrowings; without them the note would have claimed more than is true and been discounted by the
+   next reader.
+4. **#90's title had rotted.** It said six vulnerabilities; the real count was four, and had been for
+   some time. The numbers in an audit issue are a snapshot and drift silently.
+
+**How it was caught:** measurement in every case — `EXPLAIN` against generated data, a probe request
+against a live endpoint, a regenerate from an unmodified baseline, mutations run rather than reasoned
+about.
+
+**Fix applied:** all fourteen issues above closed. `CLAUDE.md` gained the regenerate-after-contract
+rule; `frontend/src/testing/zoneless.ts` now holds the test convention with its narrowings.
+
+**Takeaway for next time:**
+
+- **A brief is a hypothesis, and the agent is better placed to falsify it.** Five of six did. The
+  ones that mattered came from probing a claim the brief stated confidently — where an index is used,
+  what a validation key contains, what a cache library's policy actually does. Briefs should say what
+  is believed and why, so the belief is falsifiable, rather than stating conclusions the agent is
+  expected to implement.
+- **Put the convention where the copying happens.** #110's rule went into the shared testing module
+  rather than a README, because a spec author copies a sibling spec rather than reading docs — and
+  both async specs had already grown their own private, partial copies of the same helpers. Three
+  drifting copies is how a convention is lost.
+- **Verify the effect, not the tool that recommended it.** `npm audit` reporting zero says nothing
+  about whether the app still works; the suite and the build are what confirm a framework bump. Same
+  shape as the class-5 entries about exit codes.
+- **When a mutation fires on a different assertion than the one under test, the test is still
+  unproven.** #99's alt-text sweep looked covered because a *neighbouring* lookup failed first. It
+  took keeping the app mutated and moving the fixture to isolate it. A mutation that kills something
+  is not evidence it killed the thing you meant.
+
 ## 2026-08-17 — Three defects only a browser could see, and four bugs from asserting mechanisms instead of testing them
 
 **Task given:**
