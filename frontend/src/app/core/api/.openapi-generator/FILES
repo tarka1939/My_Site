@@ -12,6 +12,8 @@ api/projects.service.ts
 api/projects.serviceInterface.ts
 api/tags.service.ts
 api/tags.serviceInterface.ts
+api/webhooks.service.ts
+api/webhooks.serviceInterface.ts
 configuration.ts
 encoder.ts
 git_push.sh
@@ -20,6 +22,7 @@ model/contactMessage.ts
 model/contactMessageAck.ts
 model/contactMessagePageResponse.ts
 model/contactMessageWriteRequest.ts
+model/githubWebhookAck.ts
 model/link.ts
 model/loginRequest.ts
 model/loginResponse.ts

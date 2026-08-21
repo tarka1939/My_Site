@@ -4,13 +4,19 @@ info:
   description: |
     API contract for My Site's portfolio CMS (Project/Tag CRUD, contact form, admin auth).
 
-    Scope: Phase 1-3 core endpoints only (see PROJECT_TODO.md). Phase 7 extension endpoints
-    (GitHub sync, agent log, analytics, DSP demo) are intentionally NOT included here --
-    those entities are still marked draft/unconfirmed in docs/DATA_MODEL.md and will get
-    their own OpenAPI additions when each Phase 7 sub-phase actually starts.
+    Scope: Phase 1-3 core endpoints, plus each Phase 7 extension endpoint as its sub-phase
+    actually starts (see PROJECT_TODO.md). Phase 7a's GitHub webhook receiver is now in; the
+    agent log, analytics and DSP demo endpoints are still out -- those entities remain marked
+    draft/unconfirmed in docs/DATA_MODEL.md and get their own OpenAPI additions when their
+    sub-phase begins.
 
     Conventions:
     - All endpoints are namespaced under /api/v1.
+    - Not every path in this file is called by a browser. POST /webhooks/github is inbound-only:
+      GitHub calls it, this API's own frontend never does, and it authenticates by an HMAC-SHA256
+      signature over the raw request body rather than by a bearer token. It is documented here
+      because this file is the record of every HTTP endpoint the backend serves, not only the
+      subset the SPA calls -- see that operation's description for the reasoning.
     - Errors use RFC 7807 Problem Details (application/problem+json), matching Spring Boot 3's
       native ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas.
     - List endpoints return a page wrapper (content/page/size/totalElements/totalPages), not
@@ -40,6 +46,10 @@ tags:
     description: Public contact form submission + admin-gated message management
   - name: Auth
     description: Admin login
+  - name: Webhooks
+    description: |
+      Inbound deliveries from third-party systems. Not called by this API's frontend, and not
+      bearer-authenticated -- each operation documents its own verification scheme.
 
 paths:
   /projects:
@@ -347,6 +357,126 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblemDetail'
+
+  /webhooks/github:
+    post:
+      operationId: receiveGithubWebhook
+      summary: Receive a GitHub webhook delivery
+      description: |
+        Inbound-only, called by GitHub's webhook infrastructure. No browser client calls this,
+        and it takes no bearer token -- it is documented here anyway because this file is the
+        contract for every HTTP endpoint the backend serves, and this is the one endpoint whose
+        exact header names, verification scheme and status codes most need writing down, since
+        the caller is a third party that cannot be asked to adapt.
+
+        **Verification.** GitHub computes HMAC-SHA256 over the *exact raw bytes* of the request
+        body using the shared webhook secret and sends the result as
+        `X-Hub-Signature-256: sha256=<hex>`. The receiver verifies that signature over the
+        untouched bytes before parsing anything. A missing, malformed, or non-matching signature
+        is a 401 and nothing is recorded. Re-serialising a parsed body would change the bytes
+        (whitespace and key order), so the signed representation is the only one that can be
+        verified -- do not assume a semantically-equal payload will verify.
+
+        **Idempotency.** Deliveries are unique on `X-GitHub-Delivery`, and GitHub redelivers --
+        manually from the repository's webhook settings, and automatically after some failures.
+        A redelivered id is recorded exactly once: the replay answers 202 with
+        `status: duplicate` and publishes no domain event.
+
+        **Feature flag.** Disabled by default. While `app.github-sync.enabled` is false this path
+        is not mapped at all and answers 404, per CLAUDE.md's config-based flags for Phase 7
+        extensions. When it is true, an unset webhook secret is a startup failure rather than a
+        running receiver that cannot verify anything.
+
+        **Scope.** Phase 7a is the receiver only: verify, record, publish a
+        `GithubDeliveryReceivedEvent`, stop. What a verified delivery should change on a Project
+        is issue #54 and is deliberately not implemented -- the portfolio's prose is
+        hand-curated, so copying a repository description over it would destroy content.
+      tags: [Webhooks]
+      security: []
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          description: |
+            `sha256=` followed by the lowercase hex HMAC-SHA256 of the raw request body, keyed by
+            the shared webhook secret. Absent or non-matching means 401.
+          schema:
+            type: string
+            pattern: '^sha256=[0-9a-fA-F]{64}$'
+            example: sha256=757107ea0eb2509fc211221cce984b8a37570b6d7586c22c46f4379c8b043e17
+        - name: X-GitHub-Delivery
+          in: header
+          required: true
+          description: GitHub's unique id for this delivery. The idempotency key -- a repeat is recorded once.
+          schema:
+            type: string
+            maxLength: 255
+            example: 72d3162e-cc78-11e3-81ab-4c9367dc0958
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          description: The event name, e.g. `push`, `release`, `ping`.
+          schema:
+            type: string
+            maxLength: 100
+            example: push
+      requestBody:
+        required: true
+        description: |
+          GitHub's event payload, whose shape varies by event type and is GitHub's contract rather
+          than this API's -- deliberately not modelled field-by-field here. Phase 7a reads only
+          `repository.full_name` (absent on some events, e.g. an organization-level `ping`) and
+          stores the rest verbatim for debugging.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: |
+            Delivery verified and recorded. Also the answer to a replay -- check `status` to tell
+            a first delivery (`recorded`) from a duplicate (`duplicate`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GithubWebhookAck'
+        '400':
+          description: A required GitHub header is missing, or the verified body is not valid JSON.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '401':
+          description: |
+            The `X-Hub-Signature-256` header is missing, malformed, or does not match the body.
+            No `WWW-Authenticate` challenge is sent: there is no HTTP auth scheme to challenge
+            with, and GitHub's own webhook documentation names 401 for this case.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: The receiver is disabled (`app.github-sync.enabled` is false), so this path is not mapped.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '413':
+          description: Body exceeds the receiver's 1 MiB cap. Unauthenticated endpoint -- the cap is applied before the signature is checked.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '415':
+          description: |
+            Content type is not `application/json`. GitHub webhooks can be configured to send
+            `application/x-www-form-urlencoded` instead; that is rejected loudly rather than
+            recorded as garbage.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
 
 components:
   securitySchemes:
@@ -677,6 +807,25 @@ components:
           type: string
           format: password
           minLength: 8
+
+    GithubWebhookAck:
+      type: object
+      description: Acknowledgement for a verified GitHub webhook delivery.
+      required: [deliveryId, status]
+      properties:
+        deliveryId:
+          type: string
+          description: Echo of the `X-GitHub-Delivery` header, so a redelivery can be correlated in logs.
+          example: 72d3162e-cc78-11e3-81ab-4c9367dc0958
+        status:
+          type: string
+          enum: [recorded, duplicate]
+          description: |
+            `recorded` -- first time this delivery id was seen; it was stored and a
+            `GithubDeliveryReceivedEvent` was published.
+            `duplicate` -- this delivery id already existed; nothing was stored and no event was
+            published. Both are 202, because from GitHub's side both mean "received, stop retrying".
+          example: recorded
 
     ProblemDetail:
       type: object
