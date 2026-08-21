@@ -95,6 +95,36 @@ ng test
 
 Runs the [Vitest](https://vitest.dev/) test runner.
 
+### Writing a component spec: prefer real events plus `whenStable()`
+
+The convention and its reasoning live in **`src/testing/zoneless.ts`**, next to the helpers that
+implement it (`renderComponent`, `clickOn`, `typeInto`, `submitForm`). The short version:
+
+> Where a spec asserts that something **reacted**, act through a real DOM event and flush with
+> `await fixture.whenStable()`. `fixture.detectChanges()` stays fine for arrange steps and for
+> assertions that do not depend on a repaint.
+
+This app is zoneless, and under zoneless `detectChanges()` sets `includeAllTestViews = true`, so it
+refreshes every test view whether or not anything marked it dirty. That makes it structurally unable
+to see one thing: a **missing dirty-mark**. `whenStable()` only flushes work something scheduled, so
+an assertion after it depends on the notification having actually happened.
+
+Two things this is deliberately *not* claiming, both measured rather than assumed (issue #110) --
+overstating the problem gets the note discounted by the next reader, which is worse than no note:
+
+- **`detectChanges()` does catch a stale `computed`.** A cached computed returns its stale value
+  however many times you force a refresh. The `untracked()` trap this codebase actually hit -- a
+  `computed` reading only `AbstractControl.touched`/`dirty` and caching its first answer forever --
+  is that kind, and both styles catch it.
+- **The test style is not the only axis.** Catchability depends on the assertion being **positive**.
+  "The message clears once the field is fixed" passes under a mutation that stops the message
+  rendering at all, vacuously, because it never appeared. Assert presence on a path before asserting
+  absence on it, in either style.
+
+There is no test for the gap itself, on purpose: removing a dirty-mark while leaving the signal
+graph intact is not something application code can do, so a test claiming to cover it would cover
+nothing.
+
 ## Additional resources
 
 [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli)
