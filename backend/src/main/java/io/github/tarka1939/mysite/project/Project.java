@@ -67,6 +67,51 @@ public class Project {
 
     private LocalDate completedOn;
 
+    /**
+     * Whether this project appears on the public site. Public reads filter on it; the admin
+     * reads do not.
+     *
+     * <p>False by default here, and that is the <i>application</i> default: an object created
+     * without anyone saying otherwise -- which in practice means one auto-created from a GitHub
+     * webhook delivery -- is a draft the owner has not written or approved yet. It is
+     * deliberately <b>not</b> the same value as {@code V7}'s backfill for rows that already
+     * existed, which is true, because those rows are the live site. See the long comment at the
+     * top of {@code V7__project_publication_and_github_fields.sql}; the two values are easy to
+     * confuse and expensive to confuse.
+     *
+     * <p>A project created by hand through the CMS is published unless the request says
+     * otherwise -- {@link ProjectService#createProject} sends an explicit value, so this default
+     * never applies to that path.
+     */
+    @Column(nullable = false)
+    private boolean published;
+
+    /**
+     * The GitHub repository this project tracks, {@code owner/name}, or null for the projects
+     * (most of them) that track none. Unique case-insensitively via
+     * {@code ux_project_repo_full_name_lower} -- this is what an inbound delivery matches on.
+     */
+    @Column(name = "repo_full_name", length = 255)
+    private String repoFullName;
+
+    // The three GitHub-authoritative fields below are the only three an inbound webhook
+    // delivery may write (docs/DECISIONS.md, Phase 7a ADR). They are facts about a repository
+    // rather than statements about the work, which is what makes them safe to overwrite
+    // automatically -- everything above this line is the owner's and sync never touches it.
+    //
+    // They have getters but no setters on purpose. Sync does not load an entity and mutate it:
+    // ProjectRepository.upsertFromGithub writes all three in one atomic statement whose SET
+    // list is the boundary, and a setter here would be an invitation to bypass that.
+
+    @Column(name = "last_pushed_at")
+    private Instant lastPushedAt;
+
+    @Column(name = "default_branch", length = 255)
+    private String defaultBranch;
+
+    @Column(nullable = false)
+    private boolean archived;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
@@ -146,6 +191,34 @@ public class Project {
 
     public void setCompletedOn(LocalDate completedOn) {
         this.completedOn = completedOn;
+    }
+
+    public boolean isPublished() {
+        return published;
+    }
+
+    public void setPublished(boolean published) {
+        this.published = published;
+    }
+
+    public String getRepoFullName() {
+        return repoFullName;
+    }
+
+    public void setRepoFullName(String repoFullName) {
+        this.repoFullName = repoFullName;
+    }
+
+    public Instant getLastPushedAt() {
+        return lastPushedAt;
+    }
+
+    public String getDefaultBranch() {
+        return defaultBranch;
+    }
+
+    public boolean isArchived() {
+        return archived;
     }
 
     public Instant getCreatedAt() {
