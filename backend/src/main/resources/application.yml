@@ -15,6 +15,21 @@ app:
   # convenience fallback, prod/test require JWT_SECRET explicitly) so that running with no
   # active profile fails fast instead of silently picking up an insecure default. Same
   # discipline as the Phase 1 SecurityConfig fail-open fix -- see AGENT_LOG.md.
+  github-sync:
+    # Phase 7a's GitHub webhook receiver, and the flag pattern for Phase 7 extensions generally
+    # (CLAUDE.md: extensions ship behind config flags so the core CMS can ship while they are
+    # half-built). Off here, in the base config, so every profile -- including no profile at
+    # all -- inherits the closed default; turn it on per environment with GITHUB_SYNC_ENABLED.
+    # While off, no receiver bean is created and the endpoint 404s: there is no code path that
+    # could accept an unverified payload, rather than a path guarded by a check.
+    enabled: ${GITHUB_SYNC_ENABLED:false}
+    # Empty default, and NOT the same call as app.jwt.secret's deliberate absence of one.
+    # Enabling the receiver is an explicit opt-in, and it is that opt-in that makes the secret
+    # required: with enabled=true and this blank, GithubSignatureVerifier's constructor throws
+    # and the application refuses to start (see GithubSyncConfiguration). With enabled=false --
+    # the default -- a blank secret is simply irrelevant, because nothing reads it and there is
+    # nothing to verify. Fail fast on wrong, not on unused.
+    webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
   resend:
     api-key: ${RESEND_API_KEY:}
     from-address: ${RESEND_FROM_ADDRESS:onboarding@resend.dev}

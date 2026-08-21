@@ -98,6 +98,18 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/tags").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/contact").permitAll()
                 .requestMatchers("/api/v1/auth/**").permitAll()
+                // Phase 7a's GitHub webhook receiver. Named exactly -- one method, one exact
+                // path -- rather than folded into an existing matcher or a "/webhooks/**"
+                // wildcard, so this permit cannot quietly grow to cover a future receiver
+                // nobody has thought about yet. "Unauthenticated" here means only that the
+                // filter chain has no credential to check: the endpoint authenticates its
+                // caller by HMAC-SHA256 over the raw request body (GithubSignatureVerifier),
+                // which is not something a request matcher can express.
+                //
+                // Whether the path is mapped at all is a separate and independent gate -- see
+                // GithubSyncConfiguration's feature flag, which is off by default. Permitting
+                // a path that no handler serves yields a 404, not a hole.
+                .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/github").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));

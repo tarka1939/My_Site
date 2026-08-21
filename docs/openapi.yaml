@@ -442,7 +442,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/GithubWebhookAck'
         '400':
-          description: A required GitHub header is missing, or the verified body is not valid JSON.
+          description: |
+            A required GitHub header is missing or implausibly long for the value GitHub sends,
+            or the verified body is not valid JSON. Length is checked rather than trusted: the
+            recorded columns are bounded, and a value that overflows one should be a 400 the
+            sender can see, not a 500 that GitHub retries forever.
           content:
             application/problem+json:
               schema:
