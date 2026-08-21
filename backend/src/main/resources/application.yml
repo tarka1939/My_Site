@@ -30,6 +30,17 @@ app:
     # the default -- a blank secret is simply irrelevant, because nothing reads it and there is
     # nothing to verify. Fail fast on wrong, not on unused.
     webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
+    # The repositories a verified delivery may create or update a Project for, comma-separated as
+    # owner/name. An ALLOWLIST, not a denylist, and empty by default -- so a receiver switched on
+    # before anyone has said which repositories matter records deliveries and writes nothing,
+    # rather than turning every repository the owner pushes to, private ones included, into a row
+    # in the CMS. An empty denylist would do the opposite. Reasoning in full on GithubSyncPolicy.
+    #
+    # Absent is fine and means "sync nothing" -- a designed no-op, like RESEND_API_KEY's absence.
+    # An entry that is present but is not owner/name fails startup instead, because it could
+    # never match a delivery and would silently mean a repository the owner believes is synced
+    # is not. Fail fast on wrong, degrade on unused.
+    synced-repositories: ${GITHUB_SYNC_REPOSITORIES:}
   resend:
     api-key: ${RESEND_API_KEY:}
     from-address: ${RESEND_FROM_ADDRESS:onboarding@resend.dev}

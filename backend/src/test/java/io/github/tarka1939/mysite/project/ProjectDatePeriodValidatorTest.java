@@ -91,7 +91,7 @@ class ProjectDatePeriodValidatorTest {
         // constraint's own default message, not other constraints' violations on the bean.
         ProjectWriteRequest request = new ProjectWriteRequest(
             "  ".strip(), "Description", List.of(), List.of(), List.of(),
-            null, LocalDate.of(2024, 3, 1));
+            null, LocalDate.of(2024, 3, 1), null, null);
 
         Set<ConstraintViolation<ProjectWriteRequest>> violations = validator.validate(request);
 
@@ -101,7 +101,7 @@ class ProjectDatePeriodValidatorTest {
 
     private Set<ConstraintViolation<ProjectWriteRequest>> validate(LocalDate startedOn, LocalDate completedOn) {
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"), startedOn, completedOn);
+            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"), startedOn, completedOn, null, null);
         return validator.validate(request);
     }
 }

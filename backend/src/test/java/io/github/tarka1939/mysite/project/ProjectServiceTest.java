@@ -52,7 +52,7 @@ class ProjectServiceTest {
     void createProject_savesProjectAndPublishesEvent() {
         ProjectWriteRequest request = new ProjectWriteRequest(
             "Equalizer", "A DSP project", List.of(new LinkDto("GitHub", "https://github.com/x/y")),
-            List.of("https://example.com/img.png"), List.of("dsp", "java"), null, null);
+            List.of("https://example.com/img.png"), List.of("dsp", "java"), null, null, null, null);
 
         when(tagRepository.findByNameIgnoreCase("dsp")).thenReturn(Optional.of(new Tag("dsp")));
         when(tagRepository.findByNameIgnoreCase("java")).thenReturn(Optional.of(new Tag("java")));
@@ -75,7 +75,7 @@ class ProjectServiceTest {
     @Test
     void createProject_upsertsRatherThanCheckThenActToAvoidTagCreationRace() {
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "Title", "Description", List.of(), List.of(), List.of("react"), null, null);
+            "Title", "Description", List.of(), List.of(), List.of("react"), null, null, null, null);
         Tag existing = new Tag("React");
 
         when(tagRepository.findByNameIgnoreCase("react")).thenReturn(Optional.of(existing));
@@ -104,7 +104,7 @@ class ProjectServiceTest {
         when(projectRepository.findAllIds(pageable)).thenReturn(new PageImpl<>(List.of(projectId), pageable, 1));
         when(projectRepository.findAllById(List.of(projectId))).thenReturn(List.of(project));
 
-        PageResponse<ProjectResponse> response = projectService.listProjects(pageable, List.of());
+        PageResponse<ProjectResponse> response = projectService.listAllProjects(pageable, List.of());
 
         assertThat(response.content()).hasSize(1);
         assertThat(response.content().get(0).id()).isEqualTo(projectId);
@@ -117,7 +117,7 @@ class ProjectServiceTest {
         when(projectRepository.findIdsByTagNamesIgnoreCase(List.of("react"), pageable))
             .thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
-        projectService.listProjects(pageable, List.of("React"));
+        projectService.listAllProjects(pageable, List.of("React"));
 
         verify(projectRepository).findIdsByTagNamesIgnoreCase(eq(List.of("react")), eq(pageable));
     }
@@ -140,7 +140,7 @@ class ProjectServiceTest {
         when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "New title", "New description", List.of(), List.of(), List.of("dsp"), null, null);
+            "New title", "New description", List.of(), List.of(), List.of("dsp"), null, null, null, null);
 
         ProjectResponse response = projectService.updateProject(id, request);
 
@@ -153,7 +153,7 @@ class ProjectServiceTest {
     void createProject_mapsTheDatePeriodOntoTheEntity() {
         ProjectWriteRequest request = new ProjectWriteRequest(
             "Equalizer", "A DSP project", List.of(), List.of(), List.of(),
-            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1));
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1), null, null);
         when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProjectResponse response = projectService.createProject(request);
@@ -175,7 +175,7 @@ class ProjectServiceTest {
         when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProjectResponse response = projectService.updateProject(id, new ProjectWriteRequest(
-            "New title", "New description", List.of(), List.of(), List.of(), null, null));
+            "New title", "New description", List.of(), List.of(), List.of(), null, null, null, null));
 
         assertThat(response.startedOn()).isNull();
         assertThat(response.completedOn()).isNull();
@@ -187,7 +187,7 @@ class ProjectServiceTest {
     void updateProject_whenMissing_throwsResourceNotFoundException() {
         UUID id = UUID.randomUUID();
         when(projectRepository.findById(id)).thenReturn(Optional.empty());
-        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of(), null, null);
+        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of(), null, null, null, null);
 
         assertThatThrownBy(() -> projectService.updateProject(id, request))
             .isInstanceOf(ResourceNotFoundException.class);
