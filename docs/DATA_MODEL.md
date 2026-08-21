@@ -90,19 +90,11 @@ _Added 2026-07-24 — see `docs/DECISIONS.md` → Password reset flow ADR. Suppo
 
 ### GithubSyncRecord (7a — GitHub webhook auto-sync)
 
-**Built in Phase 7a (`V6__github_sync_record.sql`, issues #53/#55).** This table is the webhook receiver's *delivery ledger*: it records that a signed delivery arrived and was accepted, and nothing more. It does not yet track "synced repo metadata linked back to a `Project`", which is what the original draft below described — that is issue #54, and what a sync should write into a `Project` is still an open decision, because the portfolio's prose is hand-curated (#49, `content-seed/projects.json`) and copying a repo description over `Project.description` would destroy it.
+**Built in Phase 7a (`V6__github_sync_record.sql`, issues #53/#55).** This table is the webhook receiver's *delivery ledger*: it records that a signed delivery arrived and was accepted, and nothing more. It does not yet track "synced repo metadata linked back to a `Project`", which is what the original draft described — that is issue #54, still unbuilt. **What a sync may write is no longer open**: the Phase 7a ADR in `docs/DECISIONS.md` settles it, because the portfolio's prose is hand-curated (#49, `content-seed/projects.json`) and copying a repo description over `Project.description` would destroy it.
 
-**Confirmed 2026-08-18** (see the Phase 7a ADR in `docs/DECISIONS.md`). The sync boundary is the important part: this record and the GitHub-authoritative columns below are the *only* things an inbound webhook may write. `Project.title`, `description`, `tags`, `links`, `images`, `startedOn` and `completedOn` are curated by the owner and never touched by sync.
+**The sync boundary, confirmed 2026-08-18** (Phase 7a ADR): the ledger below and the GitHub-authoritative `Project` columns listed further down are the *only* things an inbound webhook may ever write. `Project.title`, `description`, `tags`, `links`, `images`, `startedOn` and `completedOn` are curated by the owner and never touched by sync.
 
-Phase 7a also adds to `Project`:
-
-| Field | Type | Notes |
-|---|---|---|
-| repo_full_name | varchar(255), nullable, unique | `user/repo` — what a delivery matches on. Nullable: projects predating 7a, and any that never had a repo |
-| published | boolean, not null | Whether the project appears on the public site. Existing rows migrate to **true**; auto-created drafts start **false** |
-| last_pushed_at | timestamptz, nullable | GitHub-authoritative |
-| default_branch | varchar(255), nullable | GitHub-authoritative |
-| archived | boolean, not null, default false | GitHub-authoritative. Stored now, not yet rendered |
+#### `github_sync_record` — built in 7a
 
 | Field | Type | Notes |
 |---|---|---|
@@ -119,6 +111,18 @@ Deliberately **not** created yet, both deferred to #54 rather than added specula
 |---|---|---|
 | project_id | uuid, FK → Project, nullable | Which `Project` a delivery belongs to — and whether the link is even by repo name — is part of the open #54 decision. Note that a DB FK here is fine under Spring Modulith (it checks Java package dependencies, not schema), but a JPA `@ManyToOne Project` would not be; store the bare UUID |
 | last_synced_at | timestamptz | Phase 7a performs no sync, so every value would be a lie |
+
+#### `project` additions — decided in the 7a ADR, built in #54
+
+Not in `V6`. Listed here so the decision and its schema live together; the migration that adds them is the one that must default existing rows to `published = true`, or a deploy blanks the live site.
+
+| Field | Type | Notes |
+|---|---|---|
+| repo_full_name | varchar(255), nullable, unique | `user/repo` — what a delivery matches on. Nullable: projects predating 7a, and any that never had a repo |
+| published | boolean, not null | Whether the project appears on the public site. Existing rows migrate to **true**; auto-created drafts start **false**. Public endpoints filter on it; admin endpoints do not |
+| last_pushed_at | timestamptz, nullable | GitHub-authoritative |
+| default_branch | varchar(255), nullable | GitHub-authoritative |
+| archived | boolean, not null, default false | GitHub-authoritative. Stored now, not yet rendered |
 
 ### AgentLogEntry (7b — rendered agent build-log page)
 
