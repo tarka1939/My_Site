@@ -2,6 +2,7 @@ export * from './contactMessage';
 export * from './contactMessageAck';
 export * from './contactMessagePageResponse';
 export * from './contactMessageWriteRequest';
+export * from './githubWebhookAck';
 export * from './link';
 export * from './loginRequest';
 export * from './loginResponse';

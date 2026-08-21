@@ -10,4 +10,7 @@ export * from './projects.serviceInterface';
 export * from './tags.service';
 import { TagsService } from './tags.service';
 export * from './tags.serviceInterface';
-export const APIS = [AuthService, ContactService, ProjectsService, TagsService];
+export * from './webhooks.service';
+import { WebhooksService } from './webhooks.service';
+export * from './webhooks.serviceInterface';
+export const APIS = [AuthService, ContactService, ProjectsService, TagsService, WebhooksService];

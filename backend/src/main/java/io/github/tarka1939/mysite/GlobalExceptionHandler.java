@@ -97,6 +97,49 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * A failed webhook signature. 401 rather than 403 on two counts: GitHub's own webhook
+     * documentation names 401 for a signature mismatch, and this codebase already answers 401
+     * for a credential that was presented and rejected (see
+     * {@link #handleInvalidCredentials}). No {@code WWW-Authenticate} header accompanies it,
+     * which RFC 9110 would want for a 401 -- but there is no HTTP authentication scheme to
+     * challenge with here, and inventing one to satisfy the letter of the spec would tell the
+     * caller something untrue about how to authenticate. Noted in docs/openapi.yaml.
+     *
+     * <p>The message is the exception's fixed text and says nothing about which check failed.
+     */
+    @ExceptionHandler(InvalidWebhookSignatureException.class)
+    public ProblemDetail handleInvalidWebhookSignature(InvalidWebhookSignatureException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setTitle("Unauthorized");
+        return problem;
+    }
+
+    /**
+     * A webhook delivery that verified but cannot be processed. Plain ProblemDetail rather than
+     * the {@code errors} array shape: there is no form and no field here, and the caller is
+     * GitHub, which has no use for per-field validation slots.
+     */
+    @ExceptionHandler(MalformedWebhookPayloadException.class)
+    public ProblemDetail handleMalformedWebhookPayload(MalformedWebhookPayloadException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Bad Request");
+        return problem;
+    }
+
+    /**
+     * {@code CONTENT_TOO_LARGE}, not the {@code PAYLOAD_TOO_LARGE} alias: both are 413, but RFC
+     * 9110 renamed the reason phrase and Spring keeps the old constant only for compatibility.
+     * They are distinct enum constants, so a test comparing {@code HttpStatus} values rather
+     * than status codes can fail on the difference -- which is how this was noticed.
+     */
+    @ExceptionHandler(WebhookPayloadTooLargeException.class)
+    public ProblemDetail handleWebhookPayloadTooLarge(WebhookPayloadTooLargeException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, ex.getMessage());
+        problem.setTitle("Payload Too Large");
+        return problem;
+    }
+
+    /**
      * Fallback for anything not handled above or by the base class (NPE, DataAccessException,
      * etc.) — without this, a truly unexpected exception falls through to Spring Boot's default
      * error response instead of the RFC 7807 shape every other error on this API uses.
