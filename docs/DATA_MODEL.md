@@ -92,6 +92,18 @@ _Added 2026-07-24 — see `docs/DECISIONS.md` → Password reset flow ADR. Suppo
 
 Tracks synced repo metadata and links it back to a `Project`. Needs to support idempotency (same webhook delivery arriving twice shouldn't duplicate data).
 
+**Confirmed 2026-08-18** (see the Phase 7a ADR in `docs/DECISIONS.md`). The sync boundary is the important part: this record and the GitHub-authoritative columns below are the *only* things an inbound webhook may write. `Project.title`, `description`, `tags`, `links`, `images`, `startedOn` and `completedOn` are curated by the owner and never touched by sync.
+
+Phase 7a also adds to `Project`:
+
+| Field | Type | Notes |
+|---|---|---|
+| repo_full_name | varchar(255), nullable, unique | `user/repo` — what a delivery matches on. Nullable: projects predating 7a, and any that never had a repo |
+| published | boolean, not null | Whether the project appears on the public site. Existing rows migrate to **true**; auto-created drafts start **false** |
+| last_pushed_at | timestamptz, nullable | GitHub-authoritative |
+| default_branch | varchar(255), nullable | GitHub-authoritative |
+| archived | boolean, not null, default false | GitHub-authoritative. Stored now, not yet rendered |
+
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid, PK | |
