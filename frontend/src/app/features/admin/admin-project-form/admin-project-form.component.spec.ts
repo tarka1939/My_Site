@@ -9,6 +9,7 @@ import {
 import { BehaviorSubject, config, of, Subject, throwError } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ApiProblem } from '../../../core/http/api-problem';
+import { clickOn, submitForm, typeInto } from '../../../../testing/zoneless';
 import { AdminProjectFormComponent } from './admin-project-form.component';
 
 const EXISTING_PROJECT = {
@@ -92,86 +93,40 @@ function fillRequiredFields(fixture: ComponentFixture<AdminProjectFormComponent>
   });
 }
 
+// Interactions go through a real DOM event and whenStable(), never detectChanges() -- see the
+// convention in src/testing/zoneless.ts for what that catches, and for the two cases it
+// deliberately does *not* claim to cover. These wrap the shared primitives with this form's
+// selectors.
+
 /** Click the "+ Add link" / "+ Add image" button, i.e. the fieldset's own direct-child button. */
-function addRow(
-  fixture: ComponentFixture<AdminProjectFormComponent>,
-  array: 'links' | 'images',
-): void {
-  const host = fixture.nativeElement as HTMLElement;
-  host.querySelector<HTMLButtonElement>(`fieldset[formarrayname="${array}"] > button`)?.click();
-  fixture.detectChanges();
-}
-
-/** Type into a rendered input the way a user does, so the control and the view both see it. */
-function typeInto(
-  fixture: ComponentFixture<AdminProjectFormComponent>,
-  selector: string,
-  value: string,
-): void {
-  const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(selector);
-  if (!input) {
-    throw new Error(`no input matching ${selector}`);
-  }
-  input.value = value;
-  input.dispatchEvent(new Event('input'));
-  fixture.detectChanges();
-}
-
-/** Click the Remove button of link row `index`. */
-function removeRow(fixture: ComponentFixture<AdminProjectFormComponent>, index: number): void {
-  const host = fixture.nativeElement as HTMLElement;
-  host
-    .querySelectorAll<HTMLButtonElement>('fieldset[formarrayname="links"] .repeatable-row button')
-    [index]?.click();
-  fixture.detectChanges();
-}
-
-// Async variants for the tests added after this point: real DOM events plus whenStable(), rather
-// than detectChanges(), which force-refreshes a view whether or not anything marked it dirty.
-async function clickAddRow(
+function clickAddRow(
   fixture: ComponentFixture<AdminProjectFormComponent>,
   array: 'links' | 'images',
 ): Promise<void> {
-  const host = fixture.nativeElement as HTMLElement;
-  host.querySelector<HTMLButtonElement>(`fieldset[formarrayname="${array}"] > button`)?.click();
-  await fixture.whenStable();
+  return clickOn(fixture, `fieldset[formarrayname="${array}"] > button`);
 }
 
-async function clickRemoveRow(
+/** Click the Remove button of row `index` in the links or images fieldset. */
+function clickRemoveRow(
   fixture: ComponentFixture<AdminProjectFormComponent>,
   array: 'links' | 'images',
   index: number,
 ): Promise<void> {
-  const host = fixture.nativeElement as HTMLElement;
-  host
-    .querySelectorAll<HTMLButtonElement>(
-      `fieldset[formarrayname="${array}"] .repeatable-row button`,
-    )
-    [index]?.click();
-  await fixture.whenStable();
+  return clickOn(fixture, `fieldset[formarrayname="${array}"] .repeatable-row button`, index);
 }
 
-async function type(
+/** Type into a rendered input the way a user does, so the control and the view both see it. */
+function type(
   fixture: ComponentFixture<AdminProjectFormComponent>,
   selector: string,
   value: string,
 ): Promise<void> {
-  const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(selector);
-  if (!input) {
-    throw new Error(`no input matching ${selector}`);
-  }
-  input.value = value;
-  input.dispatchEvent(new Event('input'));
-  await fixture.whenStable();
+  return typeInto(fixture, selector, value);
 }
 
 /** Save the way the admin does -- submit the form, rather than calling submit() directly. */
-async function save(fixture: ComponentFixture<AdminProjectFormComponent>): Promise<void> {
-  const host = fixture.nativeElement as HTMLElement;
-  host
-    .querySelector('form')
-    ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  await fixture.whenStable();
+function save(fixture: ComponentFixture<AdminProjectFormComponent>): Promise<void> {
+  return submitForm(fixture);
 }
 
 function errorTextFor(host: HTMLElement, inputId: string): string | null {
@@ -203,12 +158,15 @@ describe('AdminProjectFormComponent', () => {
    * Navigate an already-created fixture from one edit URL to another. No new component: a
    * params-only navigation reuses the instance, which is the whole point of the tests that call it.
    */
-  function navigateToProject(
+  async function navigateToProject(
     fixture: ComponentFixture<AdminProjectFormComponent>,
     id: string,
-  ): void {
+  ): Promise<void> {
     route.paramMap.next(convertToParamMap({ id }));
-    fixture.detectChanges();
+    // whenStable(), not detectChanges(): the rebuilt rows come off form.controls.links.controls,
+    // a plain array and not a signal, and they are rebuilt from a subscribe callback rather than
+    // from a template listener. Forcing a refresh would render them however the view got marked.
+    await fixture.whenStable();
   }
 
   /** Whatever is in the rendered inputs matching `selector`, in document order. */
@@ -349,17 +307,14 @@ describe('AdminProjectFormComponent', () => {
     expect(body.completedOn).toBeNull();
   });
 
-  it('blocks a completion date that precedes the start date, and says why', () => {
+  it('blocks a completion date that precedes the start date, and says why', async () => {
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();
     fillRequiredFields(fixture);
-    fixture.componentInstance['form'].patchValue({
-      startedOn: '2025-06-01',
-      completedOn: '2024-03-01',
-    });
-    fixture.detectChanges();
+    await type(fixture, '#project-started-on', '2025-06-01');
+    await type(fixture, '#project-completed-on', '2024-03-01');
 
-    fixture.componentInstance['submit']();
+    await save(fixture);
 
     expect(createProject).not.toHaveBeenCalled();
     const host = fixture.nativeElement as HTMLElement;
@@ -367,7 +322,7 @@ describe('AdminProjectFormComponent', () => {
     expect(host.querySelector('#project-completed-on')?.getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('points the completion input at its error message, not just at the hint', () => {
+  it('points the completion input at its error message, not just at the hint', async () => {
     // aria-invalid alone tells a screen-reader user the field is wrong without saying why:
     // role="alert" fires once as the message appears, and nothing re-announces it when the user
     // tabs back. The description is what carries the reason on every later visit, so the ids
@@ -380,11 +335,8 @@ describe('AdminProjectFormComponent', () => {
 
     expect(input?.getAttribute('aria-describedby')).toBe('project-completed-on-hint');
 
-    fixture.componentInstance['form'].patchValue({
-      startedOn: '2025-06-01',
-      completedOn: '2024-03-01',
-    });
-    fixture.detectChanges();
+    await type(fixture, '#project-started-on', '2025-06-01');
+    await type(fixture, '#project-completed-on', '2024-03-01');
 
     const describedBy = input?.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
     expect(describedBy).toContain('project-completed-on-error');
@@ -395,14 +347,13 @@ describe('AdminProjectFormComponent', () => {
     expect(described.join(' ')).toContain('cannot be earlier');
   });
 
-  it('blocks a completion date supplied without a start date', () => {
+  it('blocks a completion date supplied without a start date', async () => {
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();
     fillRequiredFields(fixture);
-    fixture.componentInstance['form'].patchValue({ completedOn: '2025-06-01' });
-    fixture.detectChanges();
+    await type(fixture, '#project-completed-on', '2025-06-01');
 
-    fixture.componentInstance['submit']();
+    await save(fixture);
 
     expect(createProject).not.toHaveBeenCalled();
     const host = fixture.nativeElement as HTMLElement;
@@ -491,7 +442,7 @@ describe('AdminProjectFormComponent', () => {
       expect(getProject).toHaveBeenCalledTimes(2);
     });
 
-    it('does not leave a stale failure showing over a form that has since loaded', () => {
+    it('does not leave a stale failure showing over a form that has since loaded', async () => {
       // The ordering the guard exists to prevent: retry A succeeds and populates the form, retry B
       // fails afterwards and paints the error state back over it. With one load at a time, B never
       // starts, so the admin ends up looking at the project rather than at an error about it.
@@ -516,22 +467,21 @@ describe('AdminProjectFormComponent', () => {
       // The straggler, landing after the form is already populated. If it was ever allowed to
       // start, its failure is what the admin ends up looking at.
       secondRetry.error(LOAD_FAILURE);
-      fixture.detectChanges();
+      await fixture.whenStable();
 
       const host = fixture.nativeElement as HTMLElement;
       expect(host.querySelector('.load-error')).toBeNull();
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Equalizer');
     });
 
-    it('loads the project on retry, populating links and images exactly once', () => {
+    it('loads the project on retry, populating links and images exactly once', async () => {
       failFirstLoad();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
       const host = fixture.nativeElement as HTMLElement;
 
-      host.querySelector<HTMLButtonElement>('.load-error button')?.click();
-      fixture.detectChanges();
+      await clickOn(fixture, '.load-error button');
 
       expect(getProject).toHaveBeenCalledTimes(2);
       expect(host.querySelector('.load-error')).toBeNull();
@@ -543,7 +493,7 @@ describe('AdminProjectFormComponent', () => {
       expect(form.controls.images.length).toBe(1);
       expect(host.querySelectorAll('input[type="url"]').length).toBe(2);
 
-      fixture.componentInstance['submit']();
+      await save(fixture);
 
       expect(updateProject).toHaveBeenCalledTimes(1);
       const body = updateProject.mock.calls[0][0].projectWriteRequest;
@@ -562,15 +512,14 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('#project-title')?.getAttribute('aria-invalid')).toBeNull();
     });
 
-    it('names every empty required field when a blank form is submitted', () => {
+    it('names every empty required field when a blank form is submitted', async () => {
       // The old failure mode: markAllAsTouched() and a silent return, indistinguishable from the
       // Save button not working. fieldErrors() only ever holds server messages, and an invalid
       // form never reaches the server, so nothing was rendered at all.
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       expect(createProject).not.toHaveBeenCalled();
       const host = fixture.nativeElement as HTMLElement;
@@ -584,14 +533,13 @@ describe('AdminProjectFormComponent', () => {
       }
     });
 
-    it('points each invalid input at a message that resolves to real text', () => {
+    it('points each invalid input at a message that resolves to real text', async () => {
       // Same reasoning as the completion-date case: aria-invalid says the field is wrong without
       // saying why, and a dangling aria-describedby id is announced as nothing at all.
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
       for (const id of ['project-title', 'project-description', 'project-tags']) {
@@ -604,30 +552,27 @@ describe('AdminProjectFormComponent', () => {
       }
     });
 
-    it('reports a title over the contract limit', () => {
+    it('reports a title over the contract limit', async () => {
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
       fillRequiredFields(fixture);
       fixture.componentInstance['form'].patchValue({ title: 'x'.repeat(201) });
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       expect(createProject).not.toHaveBeenCalled();
       const host = fixture.nativeElement as HTMLElement;
       expect(errorTextFor(host, 'project-title')).toBe('Title cannot exceed 200 characters');
     });
 
-    it('names an empty link row and image row on submit', () => {
+    it('names an empty link row and image row on submit', async () => {
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
       fillRequiredFields(fixture);
-      fixture.componentInstance['addLink']();
-      fixture.componentInstance['addImage']();
-      fixture.detectChanges();
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'images');
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       expect(createProject).not.toHaveBeenCalled();
       const host = fixture.nativeElement as HTMLElement;
@@ -646,7 +591,7 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('#image-0')?.getAttribute('aria-invalid')).toBe('true');
     });
 
-    it('still shows a server field error for a field its own validators accept', () => {
+    it('still shows a server field error for a field its own validators accept', async () => {
       // The two halves share one slot, so the client message must not crowd out the server's.
       createProject.mockReturnValue(
         throwError(() => validationProblem('title', 'A project with this title already exists')),
@@ -656,24 +601,25 @@ describe('AdminProjectFormComponent', () => {
       fixture.detectChanges();
       fillRequiredFields(fixture);
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
       expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
     });
 
-    it('says nothing about a row the admin has only just added', () => {
+    it('says nothing about a row the admin has only just added', async () => {
       // "+ Add link" creates a row that is empty by definition. Painting "Link label is required"
       // on it before anyone has typed scolds the admin for clicking the button. Added by clicking,
       // not by calling addLink(): a programmatic push does not re-render the row, so this would
       // otherwise assert "no message" against a DOM with no row in it.
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
-      addRow(fixture, 'links');
-      addRow(fixture, 'images');
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'images');
 
       const host = fixture.nativeElement as HTMLElement;
+      // The positive half, and it has to come first: the rest of this test asserts an absence, and
+      // an absence is indistinguishable from a row that never rendered at all.
       expect(host.querySelector('#link-label-0')).not.toBeNull();
       expect(host.querySelector('#image-0')).not.toBeNull();
       expect(host.querySelectorAll('.field-error')).toHaveLength(0);
@@ -684,16 +630,18 @@ describe('AdminProjectFormComponent', () => {
 
   describe('server field errors on collection elements', () => {
     /** Fill the form with something the client validators accept, so the request reaches the API. */
-    function fillValidProjectWithRows(fixture: ComponentFixture<AdminProjectFormComponent>): void {
+    async function fillValidProjectWithRows(
+      fixture: ComponentFixture<AdminProjectFormComponent>,
+    ): Promise<void> {
       fillRequiredFields(fixture);
-      const form = fixture.componentInstance['form'];
-      fixture.componentInstance['addLink']();
-      fixture.componentInstance['addImage']();
-      form.controls.links.at(0).setValue({ label: 'GitHub', url: 'https://github.example/x' });
-      form.controls.images.at(0).setValue('https://images.example.com/one.png');
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://github.example/x');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
     }
 
-    it('shows a links[i] violation on that row, not nowhere', () => {
+    it('shows a links[i] violation on that row, not nowhere', async () => {
       // The client control only checks `required`; the API also bounds the length. A 51-character
       // label is therefore rejected by the server alone, and errorInterceptor stays silent for a
       // 400 carrying fieldErrors -- so if the indexed key matches no slot, Save does nothing and
@@ -706,11 +654,9 @@ describe('AdminProjectFormComponent', () => {
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
-      fillValidProjectWithRows(fixture);
-      fixture.detectChanges();
+      await fillValidProjectWithRows(fixture);
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       expect(createProject).toHaveBeenCalledTimes(1);
       const host = fixture.nativeElement as HTMLElement;
@@ -722,18 +668,16 @@ describe('AdminProjectFormComponent', () => {
       expect(input?.getAttribute('aria-describedby')).toBe('link-label-0-error');
     });
 
-    it('shows an images[i] violation on that row', () => {
+    it('shows an images[i] violation on that row', async () => {
       createProject.mockReturnValue(
         throwError(() => validationProblem('images[0]', 'must be at most 500 characters')),
       );
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
-      fillValidProjectWithRows(fixture);
-      fixture.detectChanges();
+      await fillValidProjectWithRows(fixture);
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
       expect(host.querySelector('#image-0-error')?.textContent?.trim()).toBe(
@@ -742,7 +686,7 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('#image-0')?.getAttribute('aria-invalid')).toBe('true');
     });
 
-    it('shows a tags[i] violation in the tags field, which has no per-index slot', () => {
+    it('shows a tags[i] violation in the tags field, which has no per-index slot', async () => {
       createProject.mockReturnValue(
         throwError(() => validationProblem('tags[0]', 'tag name must be at most 50 characters')),
       );
@@ -751,8 +695,7 @@ describe('AdminProjectFormComponent', () => {
       fixture.detectChanges();
       fillRequiredFields(fixture);
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
       expect(errorTextFor(host, 'project-tags')).toBe('tag name must be at most 50 characters');
@@ -852,7 +795,7 @@ describe('AdminProjectFormComponent', () => {
       );
     });
 
-    it('gives startedOn the same message wiring as completedOn', () => {
+    it('gives startedOn the same message wiring as completedOn', async () => {
       createProject.mockReturnValue(
         throwError(() => validationProblem('startedOn', 'startedOn must not be in the future')),
       );
@@ -862,8 +805,7 @@ describe('AdminProjectFormComponent', () => {
       fillRequiredFields(fixture);
       fixture.componentInstance['form'].patchValue({ startedOn: '2999-01-01' });
 
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
       const host = fixture.nativeElement as HTMLElement;
       const input = host.querySelector('#project-started-on');
@@ -1565,7 +1507,7 @@ describe('AdminProjectFormComponent', () => {
     // rows come from form.controls.links.controls, a plain array and not a signal, so nothing marks
     // this OnPush view dirty when the array is mutated from outside a template listener -- in the
     // app the "+ Add link" click does that, and a programmatic call in a test does not.
-    it('drops the removed link from the DOM rather than the last one', () => {
+    it('drops the removed link from the DOM rather than the last one', async () => {
       // formGroupName is positional, so tracking rows by $index leaves the surviving group bound to
       // the removed row's DOM: the admin sees the link they just deleted, deletes it again, and
       // loses the other one -- and whatever those inputs hold is what the next PUT sends.
@@ -1573,14 +1515,14 @@ describe('AdminProjectFormComponent', () => {
       fixture.detectChanges();
       const host = fixture.nativeElement as HTMLElement;
 
-      addRow(fixture, 'links');
-      addRow(fixture, 'links');
-      typeInto(fixture, '#link-label-0', 'GitHub');
-      typeInto(fixture, '#link-url-0', 'https://a.example/one');
-      typeInto(fixture, '#link-label-1', 'Docs');
-      typeInto(fixture, '#link-url-1', 'https://b.example/two');
+      await clickAddRow(fixture, 'links');
+      await clickAddRow(fixture, 'links');
+      await type(fixture, '#link-label-0', 'GitHub');
+      await type(fixture, '#link-url-0', 'https://a.example/one');
+      await type(fixture, '#link-label-1', 'Docs');
+      await type(fixture, '#link-url-1', 'https://b.example/two');
 
-      removeRow(fixture, 0);
+      await clickRemoveRow(fixture, 'links', 0);
 
       expect(host.querySelectorAll('[id^="link-label-"]')).toHaveLength(1);
       expect(host.querySelector<HTMLInputElement>('#link-label-0')?.value).toBe('Docs');
@@ -1593,20 +1535,17 @@ describe('AdminProjectFormComponent', () => {
       });
     });
 
-    it('drops the removed image from the DOM rather than the last one', () => {
+    it('drops the removed image from the DOM rather than the last one', async () => {
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
       const host = fixture.nativeElement as HTMLElement;
 
-      addRow(fixture, 'images');
-      addRow(fixture, 'images');
-      typeInto(fixture, '#image-0', 'https://images.example.com/one.png');
-      typeInto(fixture, '#image-1', 'https://images.example.com/two.png');
+      await clickAddRow(fixture, 'images');
+      await clickAddRow(fixture, 'images');
+      await type(fixture, '#image-0', 'https://images.example.com/one.png');
+      await type(fixture, '#image-1', 'https://images.example.com/two.png');
 
-      host
-        .querySelectorAll('fieldset[formarrayname="images"] .repeatable-row button')[0]
-        ?.dispatchEvent(new Event('click', { bubbles: true }));
-      fixture.detectChanges();
+      await clickRemoveRow(fixture, 'images', 0);
 
       expect(host.querySelectorAll('[id^="image-"]')).toHaveLength(1);
       expect(host.querySelector<HTMLInputElement>('#image-0')?.value).toBe(
@@ -1615,7 +1554,7 @@ describe('AdminProjectFormComponent', () => {
     });
   });
 
-  it('does not duplicate links and images when the project is loaded twice', () => {
+  it('does not duplicate links and images when the project is loaded twice', async () => {
     // The duplicate-append guard, exercised where it actually bites. A retry after a failure finds
     // the FormArrays empty, so only a second *successful* load can double the rows -- without the
     // clear() resetForm() does before each load, this project comes back with two of everything.
@@ -1623,8 +1562,11 @@ describe('AdminProjectFormComponent', () => {
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();
 
+    // retryLoad() directly, not through the button: the first load succeeded, so there is no
+    // error state and no button to click. Only the flush is converted -- the repaint that follows
+    // is what the assertions below read.
     fixture.componentInstance['retryLoad']();
-    fixture.detectChanges();
+    await fixture.whenStable();
 
     expect(getProject).toHaveBeenCalledTimes(2);
     const form = fixture.componentInstance['form'];
@@ -1634,7 +1576,7 @@ describe('AdminProjectFormComponent', () => {
     expect(host.querySelectorAll('input[type="url"]').length).toBe(2);
   });
 
-  it('shows the server field error for completedOn when the client check passes', () => {
+  it('shows the server field error for completedOn when the client check passes', async () => {
     // The client check is an early warning, not the authority -- e.g. a stale tab whose rules
     // predate a backend change still has to surface whatever the 400 says.
     createProject.mockReturnValue(
@@ -1649,8 +1591,7 @@ describe('AdminProjectFormComponent', () => {
       completedOn: '2025-06-01',
     });
 
-    fixture.componentInstance['submit']();
-    fixture.detectChanges();
+    await save(fixture);
 
     const host = fixture.nativeElement as HTMLElement;
     expect(errorTextFor(host, 'project-completed-on')).toBe(
@@ -1854,7 +1795,7 @@ describe('AdminProjectFormComponent', () => {
       );
     });
 
-    it('loads the project the route now names, and shows none of the previous one', () => {
+    it('loads the project the route now names, and shows none of the previous one', async () => {
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
@@ -1862,7 +1803,7 @@ describe('AdminProjectFormComponent', () => {
       const host = fixture.nativeElement as HTMLElement;
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Equalizer');
 
-      navigateToProject(fixture, 'p2');
+      await navigateToProject(fixture, 'p2');
 
       expect(getProject).toHaveBeenLastCalledWith({ id: 'p2' });
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
@@ -1875,14 +1816,14 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector<HTMLInputElement>('#project-completed-on')?.value).toBe('');
     });
 
-    it('rebuilds the rows for the second project rather than appending them to the first', () => {
+    it('rebuilds the rows for the second project rather than appending them to the first', async () => {
       // form.reset() does not empty a FormArray, so without the clear the arrays hold both
       // projects' rows -- three links and two images -- and the next save PUTs all of them.
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
 
-      navigateToProject(fixture, 'p2');
+      await navigateToProject(fixture, 'p2');
 
       const form = fixture.componentInstance['form'];
       expect(form.controls.links.getRawValue()).toEqual(OTHER_PROJECT.links);
@@ -1899,15 +1840,15 @@ describe('AdminProjectFormComponent', () => {
       ]);
     });
 
-    it('saves to the id the route now names', () => {
+    it('saves to the id the route now names', async () => {
       // The data-loss half: with the id read once, this PUT goes to p1 while the address bar, the
       // heading and every field say p2 -- an edit of one project silently overwriting another.
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
 
-      navigateToProject(fixture, 'p2');
-      fixture.componentInstance['submit']();
+      await navigateToProject(fixture, 'p2');
+      await save(fixture);
 
       expect(updateProject).toHaveBeenCalledTimes(1);
       const { id, projectWriteRequest } = updateProject.mock.calls[0][0];
@@ -1916,7 +1857,7 @@ describe('AdminProjectFormComponent', () => {
       expect(projectWriteRequest.links).toEqual(OTHER_PROJECT.links);
     });
 
-    it('drops the previous project\'s server verdicts', () => {
+    it('drops the previous project\'s server verdicts', async () => {
       // These describe a payload for a different record, and the row keys are positional on top of
       // that: `links[1].url` about Equalizer's links would land on one of Reverb's.
       updateProject.mockReturnValue(
@@ -1931,15 +1872,16 @@ describe('AdminProjectFormComponent', () => {
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
-      fixture.componentInstance['submit']();
-      fixture.detectChanges();
+      await save(fixture);
 
+      // Asserted present before the navigation asserts them gone -- otherwise "no verdicts after"
+      // would pass against a form that never rendered a verdict in the first place.
       const host = fixture.nativeElement as HTMLElement;
       expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
       expect(host.querySelector('#link-url-0-error')).not.toBeNull();
       expect(host.querySelector('.form-error')).not.toBeNull();
 
-      navigateToProject(fixture, 'p2');
+      await navigateToProject(fixture, 'p2');
 
       expect(fixture.componentInstance['fieldErrors']()).toEqual({});
       expect(host.textContent).not.toContain('A project with this title already exists');
@@ -1947,7 +1889,7 @@ describe('AdminProjectFormComponent', () => {
       expect(host.querySelector('.form-error')).toBeNull();
     });
 
-    it('does not leave the first project\'s failure over the second project\'s form', () => {
+    it('does not leave the first project\'s failure over the second project\'s form', async () => {
       // The load for p1 fails and the admin navigates on. Without the reset the error state stays,
       // and "Try again" is the only thing on screen for a project that loaded perfectly well.
       getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
@@ -1958,13 +1900,13 @@ describe('AdminProjectFormComponent', () => {
       const host = fixture.nativeElement as HTMLElement;
       expect(host.querySelector('.load-error')).not.toBeNull();
 
-      navigateToProject(fixture, 'p2');
+      await navigateToProject(fixture, 'p2');
 
       expect(host.querySelector('.load-error')).toBeNull();
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
     });
 
-    it('stays in its loading state while the second project is on its way', () => {
+    it('stays in its loading state while the second project is on its way', async () => {
       // Cancelling the first load runs its finalize(), which clears loading(). The second load has
       // to set it *after* that teardown, or the page leaves the loading state with nothing loaded
       // and no error -- which renders the form, empty, over a project that has not arrived yet, and
@@ -1978,7 +1920,7 @@ describe('AdminProjectFormComponent', () => {
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
 
-      navigateToProject(fixture, 'p2');
+      await navigateToProject(fixture, 'p2');
 
       expect(fixture.componentInstance['loading']()).toBe(true);
       const host = fixture.nativeElement as HTMLElement;
@@ -1987,12 +1929,12 @@ describe('AdminProjectFormComponent', () => {
 
       secondLoad.next(OTHER_PROJECT);
       secondLoad.complete();
-      fixture.detectChanges();
+      await fixture.whenStable();
 
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
     });
 
-    it('drops a request for the project the admin has navigated away from', () => {
+    it('drops a request for the project the admin has navigated away from', async () => {
       // switchMap, not a second subscription: p1's response would otherwise land in a form that is
       // now showing p2 and overwrite every field with the wrong project's data.
       const slowFirstLoad = new Subject<unknown>();
@@ -2001,11 +1943,11 @@ describe('AdminProjectFormComponent', () => {
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
 
-      navigateToProject(fixture, 'p2');
+      await navigateToProject(fixture, 'p2');
       // p1 answering late, after the admin has moved on.
       slowFirstLoad.next(EXISTING_PROJECT);
       slowFirstLoad.complete();
-      fixture.detectChanges();
+      await fixture.whenStable();
 
       const host = fixture.nativeElement as HTMLElement;
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
