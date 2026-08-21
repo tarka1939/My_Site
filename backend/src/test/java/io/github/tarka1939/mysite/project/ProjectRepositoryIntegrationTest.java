@@ -88,7 +88,7 @@ class ProjectRepositoryIntegrationTest {
         // is built — a plain save() defers that flush to commit, after the method returns,
         // and a mock-based unit test can't catch it since mocks don't simulate flush timing.
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"), null, null);
+            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"), null, null, null, null);
 
         ProjectResponse response = projectService.createProject(request);
 
@@ -123,7 +123,7 @@ class ProjectRepositoryIntegrationTest {
         createProject("Beta", List.of("java"));
         createProject("Gamma", List.of("dsp", "java"));
 
-        PageResponse<ProjectResponse> firstPage = projectService.listProjects(sortedPage(0, 2), List.of());
+        PageResponse<ProjectResponse> firstPage = projectService.listAllProjects(sortedPage(0, 2), List.of());
 
         assertThat(firstPage.totalElements()).isEqualTo(3);
         assertThat(firstPage.totalPages()).isEqualTo(2);
@@ -144,7 +144,7 @@ class ProjectRepositoryIntegrationTest {
         // unsorted Pageable here would silently not exercise that path -- this is a real
         // regression test for a bug manual `curl` verification caught that this integration
         // suite originally missed.
-        PageResponse<ProjectResponse> page = projectService.listProjects(
+        PageResponse<ProjectResponse> page = projectService.listAllProjects(
             sortedPage(0, 10), List.of("dsp", "java"));
 
         // Gamma has BOTH tags -- must appear once, not twice, despite matching the tag
@@ -158,7 +158,7 @@ class ProjectRepositoryIntegrationTest {
     void listProjects_tagFilterIsCaseInsensitive() {
         createProject("Alpha", List.of("React"));
 
-        PageResponse<ProjectResponse> page = projectService.listProjects(sortedPage(0, 10), List.of("react"));
+        PageResponse<ProjectResponse> page = projectService.listAllProjects(sortedPage(0, 10), List.of("react"));
 
         assertThat(page.totalElements()).isEqualTo(1);
     }
@@ -173,7 +173,7 @@ class ProjectRepositoryIntegrationTest {
         Thread.sleep(5);
 
         ProjectWriteRequest updateRequest = new ProjectWriteRequest(
-            "Updated title", "Updated description", List.of(), List.of(), List.of("java"), null, null);
+            "Updated title", "Updated description", List.of(), List.of(), List.of("java"), null, null, null, null);
         ProjectResponse updated = projectService.updateProject(created.id(), updateRequest);
 
         assertThat(updated.title()).isEqualTo("Updated title");
@@ -185,7 +185,7 @@ class ProjectRepositoryIntegrationTest {
 
     @Test
     void updateProject_whenIdDoesNotExist_throwsResourceNotFoundException() {
-        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of(), null, null);
+        ProjectWriteRequest request = new ProjectWriteRequest("T", "D", List.of(), List.of(), List.of(), null, null, null, null);
 
         assertThatThrownBy(() -> projectService.updateProject(UUID.randomUUID(), request))
             .isInstanceOf(ResourceNotFoundException.class);
@@ -224,7 +224,7 @@ class ProjectRepositoryIntegrationTest {
     void createProject_withAFullDatePeriod_roundTripsBothDates() {
         ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
             "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"),
-            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1)));
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1), null, null));
         entityManager.clear();
 
         Project reloaded = projectRepository.findById(created.id()).orElseThrow();
@@ -239,7 +239,7 @@ class ProjectRepositoryIntegrationTest {
     void createProject_withStartedOnOnly_storesAnOngoingProject() {
         ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
             "Ongoing", "Still being worked on", List.of(), List.of(), List.of("dsp"),
-            LocalDate.of(2026, 2, 1), null));
+            LocalDate.of(2026, 2, 1), null, null, null));
         entityManager.clear();
 
         Project reloaded = projectRepository.findById(created.id()).orElseThrow();
@@ -270,10 +270,10 @@ class ProjectRepositoryIntegrationTest {
         // date clears it rather than preserving the stored value.
         ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
             "Dated", "Has a period", List.of(), List.of(), List.of("dsp"),
-            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1)));
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1), null, null));
 
         ProjectResponse updated = projectService.updateProject(created.id(), new ProjectWriteRequest(
-            "Dated", "Period removed", List.of(), List.of(), List.of("dsp"), null, null));
+            "Dated", "Period removed", List.of(), List.of(), List.of("dsp"), null, null, null, null));
         entityManager.flush();
         entityManager.clear();
 
@@ -288,11 +288,11 @@ class ProjectRepositoryIntegrationTest {
     void updateProject_canCloseOutAnOngoingProject() {
         ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
             "Ongoing", "Not finished yet", List.of(), List.of(), List.of("dsp"),
-            LocalDate.of(2024, 3, 1), null));
+            LocalDate.of(2024, 3, 1), null, null, null));
 
         ProjectResponse updated = projectService.updateProject(created.id(), new ProjectWriteRequest(
             "Ongoing", "Now finished", List.of(), List.of(), List.of("dsp"),
-            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1)));
+            LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1), null, null));
 
         assertThat(updated.completedOn()).isEqualTo(LocalDate.of(2025, 6, 1));
     }
@@ -372,7 +372,7 @@ class ProjectRepositoryIntegrationTest {
 
     private ProjectResponse createProject(String title, List<String> tags) {
         ProjectWriteRequest request = new ProjectWriteRequest(
-            title, "Description of " + title, List.of(), List.of(), tags, null, null);
+            title, "Description of " + title, List.of(), List.of(), tags, null, null, null, null);
         return projectService.createProject(request);
     }
 

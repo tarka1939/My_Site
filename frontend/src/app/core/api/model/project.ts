@@ -26,7 +26,30 @@ export interface Project {
      * When work finished. **Null means the project is ongoing**, which is a meaningful value here, not merely missing data. Must not precede startedOn. 
      */
     completedOn: string | null;
+    /**
+     * Whether the project appears on the public site. Always true in anything the public endpoints return -- they cannot return anything else -- so the field carries information only on GET /admin/projects, where drafts are visible and need marking as such. 
+     */
+    published: boolean;
+    /**
+     * The GitHub repository this project tracks, as `owner/name`. Null for projects with no repository and for everything created before Phase 7a.  This is what an inbound webhook delivery matches on, case-insensitively. A delivery for a repository no project claims creates a new **unpublished** project rather than touching an existing one. 
+     */
+    repoFullName: string | null;
+    /**
+     * When the linked repository was last pushed to, according to GitHub. Null until a delivery for that repository arrives.  One of exactly three GitHub-authoritative fields -- with `defaultBranch` and `archived` -- that an inbound webhook may write. Everything else on a Project is curated by the owner and is never written by sync; see POST /webhooks/github. 
+     */
+    lastPushedAt: string | null;
+    /**
+     * The linked repository\'s default branch, according to GitHub. GitHub-authoritative -- see `lastPushedAt`.
+     */
+    defaultBranch: string | null;
+    /**
+     * Whether the linked repository is archived on GitHub. GitHub-authoritative -- see `lastPushedAt`. False for a project with no linked repository. Stored and exposed, but nothing renders it yet. 
+     */
+    archived: boolean;
     createdAt: string;
+    /**
+     * When the row last changed. A webhook sync writing `lastPushedAt`/`defaultBranch`/ `archived` does change the row, so it bumps this too -- this timestamp tracks the record, not the owner\'s editing. 
+     */
     updatedAt: string;
 }
 

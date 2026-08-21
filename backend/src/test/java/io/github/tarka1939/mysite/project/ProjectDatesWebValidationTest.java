@@ -250,6 +250,8 @@ class ProjectDatesWebValidationTest {
     private ProjectResponse response(LocalDate startedOn, LocalDate completedOn) {
         return new ProjectResponse(
             PROJECT_ID, "Title", "Description", List.of(), List.of(), List.of(),
-            startedOn, completedOn, Instant.parse("2026-08-08T10:00:00Z"), Instant.parse("2026-08-08T10:00:00Z"));
+            startedOn, completedOn,
+            true, null, null, null, false,
+            Instant.parse("2026-08-08T10:00:00Z"), Instant.parse("2026-08-08T10:00:00Z"));
     }
 }

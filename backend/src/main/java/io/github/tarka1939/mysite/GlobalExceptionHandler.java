@@ -74,6 +74,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    /**
+     * A repoFullName another project already claims. 409 rather than a 400, because nothing
+     * about the request is malformed -- it collides with the current state of another resource,
+     * and it may well succeed unchanged once that project releases the name.
+     *
+     * <p>Also carried as a field error, so the admin form can put the message on the offending
+     * input rather than in a banner, which is what {@code errorInterceptor}'s
+     * {@code fieldErrors} branch expects.
+     */
+    @ExceptionHandler(DuplicateRepoFullNameException.class)
+    public ProblemDetail handleDuplicateRepoFullName(DuplicateRepoFullNameException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setTitle("Conflict");
+        problem.setProperty("errors", List.of(new FieldErrorDetail("repoFullName", ex.getMessage())));
+        return problem;
+    }
+
     @ExceptionHandler(RateLimitExceededException.class)
     public ProblemDetail handleRateLimitExceeded(RateLimitExceededException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());

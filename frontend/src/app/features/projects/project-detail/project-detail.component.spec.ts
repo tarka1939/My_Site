@@ -41,6 +41,11 @@ const PROJECT: Project = {
   tags: [],
   startedOn: null,
   completedOn: null,
+  published: true,
+  repoFullName: null,
+  lastPushedAt: null,
+  defaultBranch: null,
+  archived: false,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };

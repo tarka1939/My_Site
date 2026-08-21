@@ -35,7 +35,9 @@ import {
     ProjectsServiceInterface,
     CreateProjectRequestParams,
     DeleteProjectRequestParams,
+    GetAnyProjectRequestParams,
     GetProjectRequestParams,
+    ListAllProjectsRequestParams,
     ListProjectsRequestParams,
     UpdateProjectRequestParams
 } from './projects.serviceInterface';
@@ -183,7 +185,70 @@ export class ProjectsService extends BaseService implements ProjectsServiceInter
     }
 
     /**
-     * Get a project by id
+     * Get any project by id, draft or published (admin)
+     * The admin counterpart to GET /projects/{id}, and the only way to read a draft -- which is what the admin UI needs before it can offer a publish control. 404 here means the id really does not exist, since nothing is filtered out. 
+     * @endpoint get /admin/projects/{id}
+     * @param requestParameters
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public getAnyProject(requestParameters: GetAnyProjectRequestParams, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<Project>;
+    public getAnyProject(requestParameters: GetAnyProjectRequestParams, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Project>>;
+    public getAnyProject(requestParameters: GetAnyProjectRequestParams, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Project>>;
+    public getAnyProject(requestParameters: GetAnyProjectRequestParams, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        const id = requestParameters?.id;
+        if (id === null || id === undefined) {
+            throw new Error('Required parameter id was null or undefined when calling getAnyProject.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        // authentication (bearerAuth) required
+        localVarHeaders = this.configuration.addCredentialToHeaders('bearerAuth', 'Authorization', localVarHeaders, 'Bearer ');
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json',
+            'application/problem+json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/admin/projects/${this.configuration.encodeParam({name: "id", value: id, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: "uuid"})}`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<Project>('get', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Get a published project by id
+     * Public. **Published projects only**: an unpublished draft answers 404, identically to an id that names nothing at all.  That is deliberate, not an approximation. A 403 would be the more literal description of what happened, and it is the wrong answer here, because it confirms that the id names a real project -- which is the single fact a draft exists to withhold. Drafts are auto-created from repositories the owner pushes to, including private ones, so \&quot;this id is real but not yours to see\&quot; is exactly the leak to avoid. Admins read drafts through GET /admin/projects/{id}. 
      * @endpoint get /projects/{id}
      * @param requestParameters
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
@@ -241,8 +306,99 @@ export class ProjectsService extends BaseService implements ProjectsServiceInter
     }
 
     /**
-     * List projects
-     * Public, paginated, optionally filtered by tag (OR semantics across repeated &#x60;tag&#x60; params).
+     * List every project, drafts included (admin)
+     * The admin counterpart to GET /projects: same paging, same tag filtering, same response schema, but no &#x60;published&#x60; filter, so unpublished drafts are included and can be told apart by the &#x60;published&#x60; field.  A separate path rather than a flag on the public listing, on purpose. The public operation then has no parameter, header or credential that could widen what it returns -- the query behind it names &#x60;published &#x3D; true&#x60; unconditionally -- so a draft leaking publicly cannot be caused by a mistake in deciding who the caller is. The cost is one more operation; the alternative puts the site\&#39;s most public surface one boolean away from exposing the owner\&#39;s private repositories. 
+     * @endpoint get /admin/projects
+     * @param requestParameters
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<ProjectPageResponse>;
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ProjectPageResponse>>;
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ProjectPageResponse>>;
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        const page = requestParameters?.page;
+        const size = requestParameters?.size;
+        const tag = requestParameters?.tag;
+
+        let localVarQueryParameters = new OpenApiHttpParams(this.encoder);
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'page',
+            <any>page,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'size',
+            <any>size,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'tag',
+            <any>tag,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        let localVarHeaders = this.defaultHeaders;
+
+        // authentication (bearerAuth) required
+        localVarHeaders = this.configuration.addCredentialToHeaders('bearerAuth', 'Authorization', localVarHeaders, 'Bearer ');
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json',
+            'application/problem+json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/admin/projects`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<ProjectPageResponse>('get', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                params: localVarQueryParameters.toHttpParams(),
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * List published projects
+     * Public, paginated, optionally filtered by tag (OR semantics across repeated &#x60;tag&#x60; params).  **Published projects only.** A project with &#x60;published: false&#x60; is a draft -- either created automatically from a GitHub webhook delivery (see POST /webhooks/github) or un-published by the admin -- and never appears here, whatever credentials the caller presents. The filter is unconditional rather than relaxed for an authenticated admin, so there is no caller state, parameter or header in which this operation can return a draft. Admins list everything through GET /admin/projects instead. 
      * @endpoint get /projects
      * @param requestParameters
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.

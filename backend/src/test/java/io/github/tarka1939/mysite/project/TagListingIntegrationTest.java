@@ -138,7 +138,7 @@ class TagListingIntegrationTest {
 
     private ProjectResponse createProject(String title, List<String> tags) {
         ProjectResponse created = projectService.createProject(new ProjectWriteRequest(
-            title, "Description of " + title, List.of(), List.of(), tags, null, null));
+            title, "Description of " + title, List.of(), List.of(), tags, null, null, null, null));
         entityManager.flush();
         return created;
     }

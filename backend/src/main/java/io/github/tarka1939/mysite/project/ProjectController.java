@@ -37,6 +37,11 @@ public class ProjectController {
         this.projectService = projectService;
     }
 
+    /**
+     * Public, and published-only. Unconditionally so: there is no parameter here and no
+     * credential the filter chain could supply that widens this to include drafts -- the admin
+     * listing is a different path served by {@link AdminProjectController}.
+     */
     @GetMapping
     public ResponseEntity<PageResponse<ProjectResponse>> listProjects(
         @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -44,12 +49,17 @@ public class ProjectController {
         @RequestParam(required = false) List<String> tag
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return ResponseEntity.ok(projectService.listProjects(pageable, tag));
+        return ResponseEntity.ok(projectService.listPublishedProjects(pageable, tag));
     }
 
+    /**
+     * Public, and published-only: an unpublished project answers 404, exactly as an id naming
+     * nothing does. A 403 would be the more literal answer and the wrong one -- it confirms the
+     * id names a real project, which is what a draft is withholding.
+     */
     @GetMapping("/{id}")
     public ResponseEntity<ProjectResponse> getProject(@PathVariable UUID id) {
-        return ResponseEntity.ok(projectService.getProject(id));
+        return ResponseEntity.ok(projectService.getPublishedProject(id));
     }
 
     @PostMapping

@@ -14,7 +14,15 @@ public interface TagRepository extends JpaRepository<Tag, UUID> {
     Optional<Tag> findByNameIgnoreCase(String name);
 
     /**
-     * Tags attached to at least one project, name-ascending — the listing behind GET /tags.
+     * Tags attached to at least one <em>published</em> project, name-ascending — the listing
+     * behind GET /tags.
+     *
+     * <p>The "published" half is Phase 7a's addition, and follows directly from GET /projects
+     * filtering to published. A tag reachable only through an unpublished draft is exactly the
+     * dead-end filter value described below -- selecting it returns an empty project list -- and
+     * it additionally tells a visitor something about work that is not on the site yet. Same
+     * defect as the E2E-scaffolding tag that reached the public filter in Phase 6 (#124),
+     * arriving by a new route, so it is fixed in the same place and the same way.
      *
      * <p>Not {@code findAll}: nothing deletes a tag when its last project stops referencing it,
      * so the table accumulates orphans (six of twenty-six in the first real content load), and
@@ -36,7 +44,8 @@ public interface TagRepository extends JpaRepository<Tag, UUID> {
      * matching row per tag and needs no deduplication pass.
      */
     @Query(value = "SELECT t.* FROM tag t "
-        + "WHERE EXISTS (SELECT 1 FROM project_tags pt WHERE pt.tag_id = t.id) "
+        + "WHERE EXISTS (SELECT 1 FROM project_tags pt JOIN project p ON p.id = pt.project_id "
+        + "              WHERE pt.tag_id = t.id AND p.published) "
         + "ORDER BY t.name ASC", nativeQuery = true)
     List<Tag> findAllInUseOrderByNameAsc();
 

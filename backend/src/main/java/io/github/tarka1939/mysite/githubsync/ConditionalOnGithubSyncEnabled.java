@@ -18,7 +18,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
  * where the two named cases did not meet and every profile falling between them got permit-all
  * -- and that gap was introduced by the fix for an earlier fail-open finding on the same file.
  * Writing {@code @ConditionalOnProperty(prefix = "app.github-sync", name = "enabled",
- * havingValue = "true")} on three classes would be three chances to make that mistake. Written
+ * havingValue = "true")} on each of the five classes that carry this would be five chances to
+ * make that mistake -- it was three when #53 wrote this, and #54 added the sync policy and the
+ * sync listener, which is exactly how a repeated predicate drifts. Written
  * this way there is one predicate, and the classes that share it say so.
  *
  * <p>{@code matchIfMissing} is left at its default of false, so an absent property is off, and
@@ -29,7 +31,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
  * <p>Off means the annotated beans do not exist: no controller, so no handler mapped at
  * {@code /api/v1/webhooks/github}, so a 404 from the dispatcher. That is stronger than a flag
  * checked inside a handler, because there is no code path to reach and nothing later to
- * short-circuit by accident. Forgetting this annotation on one of the three classes fails
+ * short-circuit by accident. Forgetting this annotation on one of those classes fails
  * loudly rather than open -- the context cannot satisfy the missing dependency and the
  * application does not start.
  */
