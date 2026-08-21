@@ -11,7 +11,7 @@ import { Link } from './link';
 
 
 /**
- * Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.  startedOn/completedOn are both optional and both nullable. Because this body is also used for full replacement (PUT), omitting either field clears it -- it does not preserve the stored value. 
+ * Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.  startedOn/completedOn are both optional and both nullable. Because this body is also used for full replacement (PUT), omitting either field clears it -- it does not preserve the stored value.  `published` and `repoFullName` are the two exceptions to that rule, and the exception is deliberate -- see each field. 
  */
 export interface ProjectWriteRequest { 
     title: string;
@@ -30,5 +30,13 @@ export interface ProjectWriteRequest {
      * When work finished. Null or omitted means **ongoing**. Rejected with 400 if it precedes startedOn, or if it is supplied while startedOn is not -- a project cannot finish without having started. 
      */
     completedOn?: string | null;
+    /**
+     * Whether the project appears on the public site.  **Omitted or null means \"leave it as it is\"** -- the one exception, with `repoFullName`, to this body\'s otherwise-full-replacement semantics. The exception is deliberate: this field did not exist before Phase 7a, so a PUT from a client that predates it carries no statement about publication at all, and reading that silence as `false` would un-publish a live project on its next edit. That is the same \"the site goes blank\" failure the Phase 7a migration guards against, reached through the API instead.  On create, omitted means **true**: a project entered by hand through the CMS is meant to be live, which is what POST has always done. Un-publishing therefore takes an explicit `false`. 
+     */
+    published?: boolean | null;
+    /**
+     * Link this project to a GitHub repository, as `owner/name`, so that webhook deliveries for that repository update it instead of creating a separate draft. Unique across projects, compared case-insensitively; a name another project already claims is rejected with 409.  **Omitted or null means \"leave it as it is\"**, for the same reason as `published`: an older client\'s PUT is not a request to unlink. Clearing an existing link is consequently not possible through this endpoint in Phase 7a. 
+     */
+    repoFullName?: string | null;
 }
 

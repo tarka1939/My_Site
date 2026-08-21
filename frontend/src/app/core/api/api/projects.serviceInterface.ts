@@ -29,8 +29,18 @@ export interface DeleteProjectRequestParams {
     id: string;
 }
 
+export interface GetAnyProjectRequestParams {
+    id: string;
+}
+
 export interface GetProjectRequestParams {
     id: string;
+}
+
+export interface ListAllProjectsRequestParams {
+    page?: number;
+    size?: number;
+    tag?: Array<string>;
 }
 
 export interface ListProjectsRequestParams {
@@ -66,16 +76,32 @@ export interface ProjectsServiceInterface {
     deleteProject(requestParameters: DeleteProjectRequestParams, extraHttpRequestParams?: any): Observable<{}>;
 
     /**
-     * Get a project by id
-     * 
+     * Get any project by id, draft or published (admin)
+     * The admin counterpart to GET /projects/{id}, and the only way to read a draft -- which is what the admin UI needs before it can offer a publish control. 404 here means the id really does not exist, since nothing is filtered out. 
+     * @endpoint get /admin/projects/{id}
+* @param requestParameters
+     */
+    getAnyProject(requestParameters: GetAnyProjectRequestParams, extraHttpRequestParams?: any): Observable<Project>;
+
+    /**
+     * Get a published project by id
+     * Public. **Published projects only**: an unpublished draft answers 404, identically to an id that names nothing at all.  That is deliberate, not an approximation. A 403 would be the more literal description of what happened, and it is the wrong answer here, because it confirms that the id names a real project -- which is the single fact a draft exists to withhold. Drafts are auto-created from repositories the owner pushes to, including private ones, so \&quot;this id is real but not yours to see\&quot; is exactly the leak to avoid. Admins read drafts through GET /admin/projects/{id}. 
      * @endpoint get /projects/{id}
 * @param requestParameters
      */
     getProject(requestParameters: GetProjectRequestParams, extraHttpRequestParams?: any): Observable<Project>;
 
     /**
-     * List projects
-     * Public, paginated, optionally filtered by tag (OR semantics across repeated &#x60;tag&#x60; params).
+     * List every project, drafts included (admin)
+     * The admin counterpart to GET /projects: same paging, same tag filtering, same response schema, but no &#x60;published&#x60; filter, so unpublished drafts are included and can be told apart by the &#x60;published&#x60; field.  A separate path rather than a flag on the public listing, on purpose. The public operation then has no parameter, header or credential that could widen what it returns -- the query behind it names &#x60;published &#x3D; true&#x60; unconditionally -- so a draft leaking publicly cannot be caused by a mistake in deciding who the caller is. The cost is one more operation; the alternative puts the site\&#39;s most public surface one boolean away from exposing the owner\&#39;s private repositories. 
+     * @endpoint get /admin/projects
+* @param requestParameters
+     */
+    listAllProjects(requestParameters: ListAllProjectsRequestParams, extraHttpRequestParams?: any): Observable<ProjectPageResponse>;
+
+    /**
+     * List published projects
+     * Public, paginated, optionally filtered by tag (OR semantics across repeated &#x60;tag&#x60; params).  **Published projects only.** A project with &#x60;published: false&#x60; is a draft -- either created automatically from a GitHub webhook delivery (see POST /webhooks/github) or un-published by the admin -- and never appears here, whatever credentials the caller presents. The filter is unconditional rather than relaxed for an authenticated admin, so there is no caller state, parameter or header in which this operation can return a draft. Admins list everything through GET /admin/projects instead. 
      * @endpoint get /projects
 * @param requestParameters
      */

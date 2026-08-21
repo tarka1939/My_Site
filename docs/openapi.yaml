@@ -22,6 +22,10 @@ info:
     - List endpoints return a page wrapper (content/page/size/totalElements/totalPages), not
       Spring Data's raw Page<T> serialization.
     - Multiple `tag` query params on GET /projects are OR'd together (any matching tag), not AND'd.
+    - Projects have a `published` flag, and the public reads (GET /projects, GET /projects/{id},
+      GET /tags) return published projects only -- unconditionally, with no parameter or credential
+      that widens them. Drafts are read through the separate admin operations under /admin/projects.
+      An unpublished project answers 404 publicly, not 403; see GET /projects/{id}.
     - Write endpoints (POST/PUT/DELETE on projects, contact-message reads/deletes) require a
       bearer JWT obtained from POST /auth/login (1 hour expiry, no refresh endpoint). There is no
       self-service registration endpoint -- the single AdminUser row is provisioned via a Flyway
@@ -55,8 +59,16 @@ paths:
   /projects:
     get:
       operationId: listProjects
-      summary: List projects
-      description: Public, paginated, optionally filtered by tag (OR semantics across repeated `tag` params).
+      summary: List published projects
+      description: |
+        Public, paginated, optionally filtered by tag (OR semantics across repeated `tag` params).
+
+        **Published projects only.** A project with `published: false` is a draft -- either created
+        automatically from a GitHub webhook delivery (see POST /webhooks/github) or un-published by
+        the admin -- and never appears here, whatever credentials the caller presents. The filter is
+        unconditional rather than relaxed for an authenticated admin, so there is no caller state,
+        parameter or header in which this operation can return a draft. Admins list everything
+        through GET /admin/projects instead.
       tags: [Projects]
       security: []
       parameters:
@@ -102,6 +114,8 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /projects/{id}:
     parameters:
@@ -113,7 +127,17 @@ paths:
           format: uuid
     get:
       operationId: getProject
-      summary: Get a project by id
+      summary: Get a published project by id
+      description: |
+        Public. **Published projects only**: an unpublished draft answers 404, identically to an id
+        that names nothing at all.
+
+        That is deliberate, not an approximation. A 403 would be the more literal description of
+        what happened, and it is the wrong answer here, because it confirms that the id names a
+        real project -- which is the single fact a draft exists to withhold. Drafts are auto-created
+        from repositories the owner pushes to, including private ones, so "this id is real but not
+        yours to see" is exactly the leak to avoid. Admins read drafts through
+        GET /admin/projects/{id}.
       tags: [Projects]
       security: []
       responses:
@@ -150,6 +174,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     delete:
       operationId: deleteProject
       summary: Delete a project
@@ -164,15 +190,93 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /admin/projects:
+    get:
+      operationId: listAllProjects
+      summary: List every project, drafts included (admin)
+      description: |
+        The admin counterpart to GET /projects: same paging, same tag filtering, same response
+        schema, but no `published` filter, so unpublished drafts are included and can be told apart
+        by the `published` field.
+
+        A separate path rather than a flag on the public listing, on purpose. The public operation
+        then has no parameter, header or credential that could widen what it returns -- the query
+        behind it names `published = true` unconditionally -- so a draft leaking publicly cannot be
+        caused by a mistake in deciding who the caller is. The cost is one more operation; the
+        alternative puts the site's most public surface one boolean away from exposing the owner's
+        private repositories.
+      tags: [Projects]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: tag
+          in: query
+          description: Filter to projects having any of the given tag names. Repeat the param for multiple tags (OR'd together).
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: Paginated list of projects, published and unpublished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/projects/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getAnyProject
+      summary: Get any project by id, draft or published (admin)
+      description: |
+        The admin counterpart to GET /projects/{id}, and the only way to read a draft -- which is
+        what the admin UI needs before it can offer a publish control. 404 here means the id really
+        does not exist, since nothing is filtered out.
+      tags: [Projects]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /tags:
     get:
       operationId: listTags
-      summary: List the tags currently attached to at least one project
+      summary: List the tags currently attached to at least one published project
       description: >-
-        Read-only. Returns **only** tags attached to at least one project, ordered by name
-        ascending. This endpoint exists to populate the public "filter by tag" control, and
+        Read-only. Returns **only** tags attached to at least one **published** project, ordered by
+        name ascending. This endpoint exists to populate the public "filter by tag" control, and
         offering a filter value that matches nothing is a dead end -- selecting it would
         return an empty project list on the site's front page.
+
+
+        The "published" half of that is Phase 7a's doing and follows from GET /projects filtering
+        to published: a tag reachable only through an unpublished draft is exactly the dead-end
+        filter value described above, and it additionally tells a visitor something about work
+        that is not on the site yet. This is the same defect as the E2E-scaffolding tag that
+        once reached the public filter, arriving by a new route.
 
 
         Consequently the listing is derived, not stored: a tag drops out as soon as its last
@@ -387,10 +491,21 @@ paths:
         extensions. When it is true, an unset webhook secret is a startup failure rather than a
         running receiver that cannot verify anything.
 
-        **Scope.** Phase 7a is the receiver only: verify, record, publish a
-        `GithubDeliveryReceivedEvent`, stop. What a verified delivery should change on a Project
-        is issue #54 and is deliberately not implemented -- the portfolio's prose is
-        hand-curated, so copying a repository description over it would destroy content.
+        **What a delivery changes.** A `push` or `release` for a repository on the sync allowlist
+        writes exactly three fields on the matching Project -- `lastPushedAt`, `defaultBranch` and
+        `archived` -- matching case-insensitively on `repoFullName`. Nothing else is touched:
+        `title`, `description`, `tags`, `links`, `images`, `startedOn` and `completedOn` are the
+        owner's, and copying a repository description over hand-written prose would destroy
+        content. If no project claims the repository, a new one is created **unpublished**, with
+        placeholder title and description for the owner to write, so an inbound delivery can never
+        put an entry on the live site. Any other event type, and any repository not on the
+        allowlist, is recorded in the delivery ledger and changes no project at all.
+
+        **Allowlist, not denylist.** `app.github-sync.synced-repositories` names the repositories a
+        delivery may write, as a comma-separated list of `owner/name`. Empty -- the default --
+        means no delivery writes anything, so the failure mode of an unconfigured receiver is
+        "does nothing" rather than "turns every repository the owner touches into a draft". The
+        200/202 answer here says the delivery was recorded, not that a project changed.
       tags: [Webhooks]
       security: []
       parameters:
@@ -425,8 +540,11 @@ paths:
         description: |
           GitHub's event payload, whose shape varies by event type and is GitHub's contract rather
           than this API's -- deliberately not modelled field-by-field here. Phase 7a reads only
-          `repository.full_name` (absent on some events, e.g. an organization-level `ping`) and
-          stores the rest verbatim for debugging.
+          `repository.full_name` (absent on some events, e.g. an organization-level `ping`) plus,
+          for a `push` or `release`, `repository.pushed_at`, `repository.default_branch` and
+          `repository.archived`. The rest is stored verbatim for debugging. Note `pushed_at` is
+          Unix epoch seconds on a `push` payload and an ISO-8601 string elsewhere; both are
+          accepted.
         content:
           application/json:
             schema:
@@ -529,6 +647,12 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ValidationProblemDetail'
+    Conflict:
+      description: The request collides with another resource -- currently only a repoFullName another project already claims
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
     RateLimited:
       description: Too many requests from this requester
       content:
@@ -567,7 +691,7 @@ components:
 
     Project:
       type: object
-      required: [id, title, description, links, images, tags, startedOn, completedOn, createdAt, updatedAt]
+      required: [id, title, description, links, images, tags, startedOn, completedOn, published, repoFullName, lastPushedAt, defaultBranch, archived, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -616,12 +740,59 @@ components:
             When work finished. **Null means the project is ongoing**, which is a meaningful
             value here, not merely missing data. Must not precede startedOn.
           example: '2025-06-01'
+        published:
+          type: boolean
+          description: |
+            Whether the project appears on the public site. Always true in anything the public
+            endpoints return -- they cannot return anything else -- so the field carries information
+            only on GET /admin/projects, where drafts are visible and need marking as such.
+          example: true
+        repoFullName:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            The GitHub repository this project tracks, as `owner/name`. Null for projects with no
+            repository and for everything created before Phase 7a.
+
+            This is what an inbound webhook delivery matches on, case-insensitively. A delivery for
+            a repository no project claims creates a new **unpublished** project rather than
+            touching an existing one.
+          example: tarka1939/Equalizer
+        lastPushedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            When the linked repository was last pushed to, according to GitHub. Null until a
+            delivery for that repository arrives.
+
+            One of exactly three GitHub-authoritative fields -- with `defaultBranch` and `archived`
+            -- that an inbound webhook may write. Everything else on a Project is curated by the
+            owner and is never written by sync; see POST /webhooks/github.
+        defaultBranch:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: The linked repository's default branch, according to GitHub. GitHub-authoritative -- see `lastPushedAt`.
+          example: main
+        archived:
+          type: boolean
+          description: |
+            Whether the linked repository is archived on GitHub. GitHub-authoritative -- see
+            `lastPushedAt`. False for a project with no linked repository. Stored and exposed, but
+            nothing renders it yet.
+          example: false
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+          description: |
+            When the row last changed. A webhook sync writing `lastPushedAt`/`defaultBranch`/
+            `archived` does change the row, so it bumps this too -- this timestamp tracks the
+            record, not the owner's editing.
 
     ProjectWriteRequest:
       type: object
@@ -632,6 +803,9 @@ components:
         startedOn/completedOn are both optional and both nullable. Because this body is also used
         for full replacement (PUT), omitting either field clears it -- it does not preserve the
         stored value.
+
+        `published` and `repoFullName` are the two exceptions to that rule, and the exception is
+        deliberate -- see each field.
       required: [title, description, tags]
       properties:
         title:
@@ -678,6 +852,38 @@ components:
             precedes startedOn, or if it is supplied while startedOn is not -- a project cannot
             finish without having started.
           example: '2025-06-01'
+        published:
+          type: boolean
+          nullable: true
+          description: |
+            Whether the project appears on the public site.
+
+            **Omitted or null means "leave it as it is"** -- the one exception, with `repoFullName`,
+            to this body's otherwise-full-replacement semantics. The exception is deliberate: this
+            field did not exist before Phase 7a, so a PUT from a client that predates it carries no
+            statement about publication at all, and reading that silence as `false` would
+            un-publish a live project on its next edit. That is the same "the site goes blank"
+            failure the Phase 7a migration guards against, reached through the API instead.
+
+            On create, omitted means **true**: a project entered by hand through the CMS is meant to
+            be live, which is what POST has always done. Un-publishing therefore takes an explicit
+            `false`.
+          example: true
+        repoFullName:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[^\s/]+/[^\s/]+$'
+          description: |
+            Link this project to a GitHub repository, as `owner/name`, so that webhook deliveries
+            for that repository update it instead of creating a separate draft. Unique across
+            projects, compared case-insensitively; a name another project already claims is
+            rejected with 409.
+
+            **Omitted or null means "leave it as it is"**, for the same reason as `published`: an
+            older client's PUT is not a request to unlink. Clearing an existing link is
+            consequently not possible through this endpoint in Phase 7a.
+          example: tarka1939/Equalizer
 
     ProjectPageResponse:
       allOf:
