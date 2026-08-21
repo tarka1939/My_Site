@@ -127,7 +127,7 @@ application under test.
 
 | File | Journey |
 |---|---|
-| `tests/projects.spec.ts` | Browse projects → filter by tag → open a project's detail page. Asserts the filter both keeps one fixture and drops the other, then that the detail page renders the stored title, description, tags, and link. |
+| `tests/projects.spec.ts` | Browse projects → filter by tag → open a project's detail page. Asserts the filter both keeps one fixture and drops the other, then that the detail page renders the stored title, description, tags, and link. Also carries the content-rendering assertions of issue #99: the card summarises a long description, the line clamp holds it to three rendered lines, the gallery's alt text names the image's position, and no alt text claims to know what an image contains. |
 | `tests/contact.spec.ts` | Submit the contact form. Asserts an actual `201`, that an empty form never reaches the API, and reads the message back through the admin API rather than trusting the confirmation banner. |
 | `tests/contact.spec.ts` | Fill the contact rate-limit window and get rejected. Asserts an actual `429` with the RFC 7807 body, that the user-visible error appears, and that exactly the allowed number of messages was stored. |
 | `tests/admin.spec.ts` | Admin logs in → creates a project through the UI → it appears on the public (unauthenticated) list → logs out → `authGuard` redirects a protected route back to login with `returnUrl` intact. |
@@ -192,9 +192,26 @@ Reruns must not depend on how the previous run ended, so:
 - **Prefer role- and label-based locators.** Phase 3 did real accessibility work — semantic
   headings, `aria-label`s, `aria-pressed` on the tag filters, labelled form controls. Use it
   instead of CSS chains; a locator that breaks when a class is renamed is worse than no test.
-- **Fixture projects have no images.** Images are stored as external URLs
-  (`docs/DECISIONS.md`, 2026-07-24), so a fixture with images would make the suite depend on a
-  third-party host being reachable.
+- **Fixture images are served by the test, not fetched.** They used to be absent entirely, on the
+  correct reasoning that images are external URLs (`docs/DECISIONS.md`, 2026-07-24) and a fixture
+  with images would make the suite depend on a third-party host. Issue #99 is the cost of that:
+  with no images, nothing here could catch a regression in the gallery's alt text or the card
+  thumbnail's `alt=""`. Both are kept: `FIXTURE_ALPHA_IMAGES` are absolute `https:` URLs on
+  `images.e2e.invalid`, a hostname RFC 2606 guarantees can never resolve, and `stubFixtureImages`
+  (`support/images.ts`) fulfils them from bytes the test owns. **Call it before the first
+  `page.goto` of any spec that reaches the public project list** — `projects.spec.ts` and
+  `admin.spec.ts` both do. Omitting it does not fail anything outright, it just spends a DNS
+  failure per card image and lays the gallery out against a broken-image placeholder.
+- **Alpha is long and imaged; Beta is short and imageless. That asymmetry is load-bearing.** It is
+  what lets one journey prove the card *summarises* a long description rather than truncating
+  unconditionally, that the CSS line clamp actually lays out, and that a project with no images
+  renders no `<img>` at all. `projects.spec.ts` measures the rendered height of
+  `.card-description` and divides by the computed line-height, because **a real browser is the
+  only place this is checkable**: jsdom performs no layout, so a component test can see
+  `line-clamp: 3` on the element and never that the element is eight lines tall. Deleting
+  `-webkit-box-orient: vertical` once did exactly that. Assert the *box*, never the declaration.
+  If you shorten Alpha's description, the clamp assertion fails on its own precondition rather
+  than passing vacuously.
 - **Project tag order is not deterministic.** The backend holds tags in a `HashSet` and returns
   `Set.copyOf(...)`, whose iteration order is randomized per JVM run. Assert tag *membership*,
   never order.

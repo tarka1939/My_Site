@@ -6,6 +6,7 @@ import {
   E2E_TITLE_PREFIX,
   TAG_ADMIN_CREATED,
 } from '../support/env';
+import { stubFixtureImages } from '../support/images';
 
 /**
  * Journey 4 -- `SPEC.md`'s admin content-management story, end to end through the UI:
@@ -37,6 +38,11 @@ test.beforeEach(async () => {
 test('an admin can log in, publish a project, and log back out', async ({ page }) => {
   const title = `${E2E_TITLE_PREFIX} Admin-created ${Date.now()}`;
   const description = 'Created through the admin UI by the Playwright E2E suite.';
+
+  // This journey reaches the public project list further down, where the seeded Alpha fixture's
+  // thumbnail points at a deliberately unresolvable `.invalid` host. Serve it locally rather than
+  // spending a DNS failure on every card image -- see support/images.ts.
+  await stubFixtureImages(page);
 
   await page.goto('/admin/login');
   await expect(page.getByRole('heading', { name: 'Admin login', level: 1 })).toBeVisible();
