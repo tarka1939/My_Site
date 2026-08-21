@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mock;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
+import io.github.tarka1939.mysite.project.ProjectService;
+
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -20,14 +22,21 @@ import tools.jackson.databind.ObjectMapper;
 class GithubSyncEnablementTest {
 
     /**
-     * Registers the three {@link ConditionalOnGithubSyncEnabled} classes directly, so the
-     * condition is evaluated exactly as component scanning would evaluate it, without the cost
-     * of a full application context per property permutation.
+     * Registers every {@link ConditionalOnGithubSyncEnabled} class directly, so the condition is
+     * evaluated exactly as component scanning would evaluate it, without the cost of a full
+     * application context per property permutation.
+     *
+     * <p>#54 added two of these -- the sync policy and the sync listener -- and adding them here
+     * is the point of the list being explicit: a class that quietly missed the annotation would
+     * exist while the feature is switched off, and for the listener that means a bean that writes
+     * to the Project table on an event the flag was supposed to prevent ever being published.
      */
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
         .withUserConfiguration(
-            GithubSignatureVerifier.class, GithubSyncService.class, GithubWebhookController.class)
+            GithubSignatureVerifier.class, GithubSyncService.class, GithubWebhookController.class,
+            GithubSyncPolicy.class, GithubProjectSyncListener.class)
         .withBean(GithubSyncRecordRepository.class, () -> mock(GithubSyncRecordRepository.class))
+        .withBean(ProjectService.class, () -> mock(ProjectService.class))
         .withBean(ObjectMapper.class, ObjectMapper::new);
 
     @Test
@@ -37,6 +46,11 @@ class GithubSyncEnablementTest {
             assertThat(context).doesNotHaveBean(GithubWebhookController.class);
             assertThat(context).doesNotHaveBean(GithubSyncService.class);
             assertThat(context).doesNotHaveBean(GithubSignatureVerifier.class);
+            // The two #54 added. The listener especially: with the flag off there must be no
+            // bean subscribed to a delivery event, so there is no code path to a Project write
+            // rather than a path guarded by a check.
+            assertThat(context).doesNotHaveBean(GithubSyncPolicy.class);
+            assertThat(context).doesNotHaveBean(GithubProjectSyncListener.class);
         });
     }
 
@@ -120,6 +134,8 @@ class GithubSyncEnablementTest {
                 assertThat(context).hasSingleBean(GithubWebhookController.class);
                 assertThat(context).hasSingleBean(GithubSyncService.class);
                 assertThat(context).hasSingleBean(GithubSignatureVerifier.class);
+                assertThat(context).hasSingleBean(GithubSyncPolicy.class);
+                assertThat(context).hasSingleBean(GithubProjectSyncListener.class);
             });
     }
 }
