@@ -44,9 +44,12 @@ public class GithubSyncRecord {
     private Instant receivedAt;
 
     /**
-     * The verbatim delivery body. {@code @JdbcTypeCode(SqlTypes.JSON)} is what maps a String
-     * field onto a Postgres {@code jsonb} column in Hibernate 6 -- without it the driver hands
-     * back a {@code PGobject} that will not cast to String.
+     * The delivery body as {@code jsonb} -- equal in content to what arrived, but not in form.
+     * jsonb parses rather than stores text, so whitespace is gone, keys are reordered and
+     * escapes are resolved. Do not treat this as the signed octets; they are not recoverable
+     * from here. {@code @JdbcTypeCode(SqlTypes.JSON)} is what maps a String field onto a
+     * Postgres {@code jsonb} column in Hibernate 6 -- without it the driver hands back a
+     * {@code PGobject} that will not cast to String.
      */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "raw_payload")

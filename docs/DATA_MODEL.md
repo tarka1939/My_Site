@@ -99,7 +99,7 @@ _Added 2026-07-24 — see `docs/DECISIONS.md` → Password reset flow ADR. Suppo
 | event_type | varchar(100), not null | `X-GitHub-Event` — `push`, `release`, `ping`, ... A recorded delivery that doesn't say what kind of event it was is close to useless for #54 |
 | repo_full_name | varchar(255), **nullable** | e.g. `user/repo`, read from `repository.full_name` in the verified payload. Nullable, unlike the draft: an organization-level `ping` carries no `repository` object, and a verified delivery must still be recorded or idempotency has a hole exactly where the payload is unusual. NULL means "this delivery named no repo", not "unknown" |
 | received_at | timestamptz, not null default `now()` | When the delivery was verified and accepted — a fact this phase knows, unlike `last_synced_at` |
-| raw_payload | jsonb, nullable | Verbatim body, for debugging a delivery that can't easily be replayed. `jsonb` keeps it queryable; the accepted trade is that a payload containing an escaped NUL can't be stored and would fail the insert (see the migration comment) |
+| raw_payload | jsonb, nullable | The delivery body, for debugging a delivery that can't easily be replayed. Content-equal to what arrived but **not byte-equal** — `jsonb` parses rather than stores text, so whitespace goes, keys are reordered and escapes are resolved. It therefore can't be used to re-verify a signature after the fact; nothing needs that, since verification happens once on the wire bytes. The other accepted trade is that a payload containing an escaped NUL can't be stored at all and would fail the insert (see the migration comment) |
 
 Deliberately **not** created yet, both deferred to #54 rather than added speculatively:
 

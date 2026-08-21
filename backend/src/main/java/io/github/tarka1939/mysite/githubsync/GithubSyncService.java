@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
 
 import io.github.tarka1939.mysite.MalformedWebhookPayloadException;
 
@@ -18,6 +19,8 @@ import tools.jackson.databind.ObjectMapper;
  * record it once, announce it. Nothing here trusts the payload -- {@link GithubWebhookController}
  * verifies before calling in, and that ordering is the point.
  */
+@Service
+@ConditionalOnGithubSyncEnabled
 public class GithubSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(GithubSyncService.class);

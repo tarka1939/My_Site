@@ -28,8 +28,17 @@ CREATE TABLE github_sync_record (
     event_type         varchar(100) NOT NULL,
     repo_full_name     varchar(255),
     received_at        timestamptz  NOT NULL DEFAULT now(),
-    -- Verbatim payload, for debugging a delivery that cannot easily be replayed. jsonb rather
+    -- The delivery body, for debugging a delivery that cannot easily be replayed. jsonb rather
     -- than text so it stays queryable (->, @>, jsonb_path_query) when diagnosing a sync.
+    --
+    -- Note what this does NOT store: the bytes. jsonb is a parsed representation, so it strips
+    -- whitespace, reorders keys, drops duplicate keys and resolves escapes -- what comes back
+    -- out is equal in content but not in form. That is fine for the debugging this column
+    -- exists for, and it means the column can never be used to re-verify a signature after the
+    -- fact, since the signed octets are gone. Nothing needs that today (the signature is
+    -- checked once, on the wire bytes, and not stored), but it is the sort of thing a later
+    -- reader would otherwise assume was available. Verified rather than assumed, in
+    -- GithubWebhookIntegrationTest's raw-body test, which asserts the stored form differs.
     --
     -- Known, accepted limitation: jsonb cannot store an escaped NUL (backslash-u-0000) inside a
     -- JSON string, so a payload containing one would fail this INSERT and surface as a 500,

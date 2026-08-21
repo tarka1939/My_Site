@@ -126,9 +126,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    /**
+     * {@code CONTENT_TOO_LARGE}, not the {@code PAYLOAD_TOO_LARGE} alias: both are 413, but RFC
+     * 9110 renamed the reason phrase and Spring keeps the old constant only for compatibility.
+     * They are distinct enum constants, so a test comparing {@code HttpStatus} values rather
+     * than status codes can fail on the difference -- which is how this was noticed.
+     */
     @ExceptionHandler(WebhookPayloadTooLargeException.class)
     public ProblemDetail handleWebhookPayloadTooLarge(WebhookPayloadTooLargeException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.PAYLOAD_TOO_LARGE, ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, ex.getMessage());
         problem.setTitle("Payload Too Large");
         return problem;
     }

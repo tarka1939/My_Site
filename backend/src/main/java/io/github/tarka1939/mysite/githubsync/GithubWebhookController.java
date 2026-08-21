@@ -8,7 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.RestController;
 
 import io.github.tarka1939.mysite.InvalidWebhookSignatureException;
 import io.github.tarka1939.mysite.MalformedWebhookPayloadException;
@@ -17,26 +17,16 @@ import io.github.tarka1939.mysite.WebhookPayloadTooLargeException;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Receives GitHub webhook deliveries. Only exists when {@code app.github-sync.enabled} is true
- * -- see {@link GithubSyncConfiguration}, which is the single place that decision is made.
+ * Receives GitHub webhook deliveries. Only exists when the receiver is enabled -- see
+ * {@link ConditionalOnGithubSyncEnabled}, which is the single place that decision is defined.
  *
  * <p>This is the one endpoint on this API that a stranger can reach with no bearer token, so
  * the order of operations below is the security design and not an implementation detail.
  *
- * <p>{@code @RequestMapping} + {@code @ResponseBody} rather than {@code @RestController}: that
- * shorthand is those two plus {@code @Controller}, which is a {@code @Component}, which would
- * mean component scan registering this class unconditionally <i>and</i>
- * {@link GithubSyncConfiguration} registering it again -- a duplicate bean definition, which
- * Boot rejects at startup. Dropping the stereotype leaves the flag as the only thing that
- * decides whether this handler exists. {@code RequestMappingHandlerMapping} treats any bean
- * whose type carries {@code @Controller} <i>or</i> {@code @RequestMapping} as a handler, so the
- * mapping is unaffected -- and both halves of that are asserted, 202 when the flag is on in
- * {@code GithubWebhookIntegrationTest} and 404 when it is off in
- * {@code GithubWebhookDisabledIntegrationTest}, rather than left as a claim about Spring
- * internals.
  */
+@RestController
+@ConditionalOnGithubSyncEnabled
 @RequestMapping("/api/v1/webhooks/github")
-@ResponseBody
 public class GithubWebhookController {
 
     /**

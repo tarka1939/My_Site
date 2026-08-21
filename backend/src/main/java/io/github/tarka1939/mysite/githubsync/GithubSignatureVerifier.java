@@ -8,6 +8,9 @@ import java.util.HexFormat;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
 /**
  * Verifies GitHub's {@code X-Hub-Signature-256} header against the raw bytes of a webhook
  * delivery. This is the only thing standing between a public, unauthenticated URL and this
@@ -32,6 +35,8 @@ import javax.crypto.spec.SecretKeySpec;
  * which is why {@code GithubSignatureVerifierTest} asserts on the bytecode's call targets --
  * a functional test cannot observe a timing property.
  */
+@Component
+@ConditionalOnGithubSyncEnabled
 public class GithubSignatureVerifier {
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
@@ -53,12 +58,25 @@ public class GithubSignatureVerifier {
     private final SecretKeySpec key;
 
     /**
-     * @throws IllegalStateException if the configured secret is absent or too short. This bean
-     *     is only created when {@code app.github-sync.enabled} is true, so reaching this
-     *     constructor at all means someone asked for a live receiver -- see
-     *     {@link GithubSyncConfiguration} for why that is a boot failure rather than a warning.
+     * Note the {@code :} default on the placeholder -- an empty string rather than an
+     * unresolvable-property failure. Deliberate: a raw "could not resolve placeholder" is a
+     * worse message than the one thrown below, which names the property, says what accepting
+     * the alternative would mean, and gives the way out.
+     *
+     * <p>CLAUDE.md separates an absent <i>optional</i> value that degrades deliberately
+     * ({@code RESEND_API_KEY} warns and skips) from a present-but-malformed one that must fail
+     * fast. A webhook secret is neither. This bean only exists when the receiver was explicitly
+     * enabled, so reaching this constructor at all means someone asserted they wanted a live
+     * receiver -- and a live receiver with no secret can only reject everything (a broken
+     * endpoint that looks healthy) or accept everything (a public write path into the
+     * database). So the secret is required <i>given</i> the opt-in, and the application refuses
+     * to boot without it. Taking the app down over a Phase 7 extension is the intended trade:
+     * you had to turn it on, and turning it back off is the documented way to run without a
+     * secret.
+     *
+     * @throws IllegalStateException if the configured secret is absent or too short
      */
-    GithubSignatureVerifier(String webhookSecret) {
+    GithubSignatureVerifier(@Value("${app.github-sync.webhook-secret:}") String webhookSecret) {
         if (webhookSecret == null || webhookSecret.isBlank()) {
             throw new IllegalStateException(
                 "app.github-sync.enabled is true but app.github-sync.webhook-secret "
