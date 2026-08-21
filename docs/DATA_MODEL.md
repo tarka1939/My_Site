@@ -86,20 +86,27 @@ _Added 2026-07-24 — see `docs/DECISIONS.md` → Password reset flow ADR. Suppo
 
 ## Phase 7 extension entities
 
-**These are inferred from the Phase 7 feature descriptions in `PROJECT_TODO.md` — the TODO does not specify exact fields. Treat every table below as a draft to confirm or rewrite before implementing, not a settled schema.**
+**These are inferred from the Phase 7 feature descriptions in `PROJECT_TODO.md` — the TODO does not specify exact fields. Treat every table below as a draft to confirm or rewrite before implementing, not a settled schema.** GithubSyncRecord is no longer a draft — see below.
 
 ### GithubSyncRecord (7a — GitHub webhook auto-sync)
 
-Tracks synced repo metadata and links it back to a `Project`. Needs to support idempotency (same webhook delivery arriving twice shouldn't duplicate data).
+**Built in Phase 7a (`V6__github_sync_record.sql`, issues #53/#55).** This table is the webhook receiver's *delivery ledger*: it records that a signed delivery arrived and was accepted, and nothing more. It does not yet track "synced repo metadata linked back to a `Project`", which is what the original draft below described — that is issue #54, and what a sync should write into a `Project` is still an open decision, because the portfolio's prose is hand-curated (#49, `content-seed/projects.json`) and copying a repo description over `Project.description` would destroy it.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid, PK | |
-| project_id | uuid, FK → Project, nullable | nullable until matched/created |
-| repo_full_name | varchar(255), not null | e.g. `user/repo` |
-| github_delivery_id | varchar(255), not null, unique | GitHub's `X-GitHub-Delivery` header — unique constraint is the idempotency check on webhook redelivery |
-| last_synced_at | timestamptz | |
-| raw_payload | jsonb, nullable | optional, for debugging sync issues |
+| github_delivery_id | varchar(255), not null, unique | GitHub's `X-GitHub-Delivery` header. The unique index `ux_github_sync_record_delivery_id` is *the* idempotency guard: the receiver inserts with `ON CONFLICT DO NOTHING` and treats "0 rows" as a replay, rather than pre-checking for the id and then inserting — that check-then-act shape races two concurrent redeliveries through. Doubles as the supporting index for `findByGithubDeliveryId` |
+| event_type | varchar(100), not null | `X-GitHub-Event` — `push`, `release`, `ping`, ... A recorded delivery that doesn't say what kind of event it was is close to useless for #54 |
+| repo_full_name | varchar(255), **nullable** | e.g. `user/repo`, read from `repository.full_name` in the verified payload. Nullable, unlike the draft: an organization-level `ping` carries no `repository` object, and a verified delivery must still be recorded or idempotency has a hole exactly where the payload is unusual. NULL means "this delivery named no repo", not "unknown" |
+| received_at | timestamptz, not null default `now()` | When the delivery was verified and accepted — a fact this phase knows, unlike `last_synced_at` |
+| raw_payload | jsonb, nullable | Verbatim body, for debugging a delivery that can't easily be replayed. `jsonb` keeps it queryable; the accepted trade is that a payload containing an escaped NUL can't be stored and would fail the insert (see the migration comment) |
+
+Deliberately **not** created yet, both deferred to #54 rather than added speculatively:
+
+| Field | Type | Why not yet |
+|---|---|---|
+| project_id | uuid, FK → Project, nullable | Which `Project` a delivery belongs to — and whether the link is even by repo name — is part of the open #54 decision. Note that a DB FK here is fine under Spring Modulith (it checks Java package dependencies, not schema), but a JPA `@ManyToOne Project` would not be; store the bare UUID |
+| last_synced_at | timestamptz | Phase 7a performs no sync, so every value would be a lie |
 
 ### AgentLogEntry (7b — rendered agent build-log page)
 
@@ -190,19 +197,18 @@ erDiagram
     }
 ```
 
-Phase 7 draft entities (speculative — see caveat above each table) relate back to `PROJECT` as follows; not implemented until each sub-phase starts:
+Phase 7 entities relate back to `PROJECT` as follows. `GITHUB_SYNC_RECORD` is built (Phase 7a) and shown as implemented — note it has **no** `PROJECT` relationship yet, because the link is issue #54's open decision. The rest are still speculative — see the caveat above each table — and are not implemented until their sub-phase starts:
 
 ```mermaid
 erDiagram
-    PROJECT ||--o{ GITHUB_SYNC_RECORD : "nullable FK"
     PROJECT ||--o{ ANALYTICS_EVENT : "nullable FK"
     GITHUB_SYNC_RECORD {
         uuid id PK
-        uuid project_id FK
-        string repo_full_name
-        string github_delivery_id
-        timestamptz last_synced_at
-        jsonb raw_payload
+        string github_delivery_id UK
+        string event_type
+        string repo_full_name "nullable"
+        timestamptz received_at
+        jsonb raw_payload "nullable"
     }
     ANALYTICS_EVENT {
         uuid id PK
