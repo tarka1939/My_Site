@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { trackImageAttributeOrder } from '../../../../testing/image-attribute-order';
+import { clickOn } from '../../../../testing/zoneless';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
 import { CARD_EXCERPT_MAX_CHARS } from '../../../shared/description-excerpt/description-excerpt';
@@ -103,13 +104,21 @@ describe('ProjectsListComponent', () => {
     expect(compiled.textContent).toContain('Equalizer');
   });
 
-  it('re-fetches with the tag filter when a tag is toggled', () => {
+  it('re-fetches with the tag filter when a tag is toggled, and marks it pressed', async () => {
+    // Clicked rather than toggleTag()'d, and awaited rather than detectChanges()'d: the pressed
+    // state is the only feedback the visitor gets that the filter took, and it repaints only if
+    // the click marked the view dirty. Asserting the re-fetch alone reads as coverage of a filter
+    // that could look untouched the whole time -- the request is invisible, the button is not.
     const fixture = TestBed.createComponent(ProjectsListComponent);
     fixture.detectChanges();
+    const button = (fixture.nativeElement as HTMLElement).querySelector('.tag-filter button')!;
+    expect(button.getAttribute('aria-pressed')).toBe('false');
 
-    fixture.componentInstance['toggleTag']('dsp');
+    await clickOn(fixture, '.tag-filter button');
 
     expect(listProjects).toHaveBeenLastCalledWith({ page: 0, size: 12, tag: ['dsp'] });
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.classList.contains('is-selected')).toBe(true);
   });
 
   it('loads the first card image eagerly and the rest lazily', () => {

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { config, of, throwError } from 'rxjs';
+import { renderComponent, submitForm, typeInto } from '../../../../testing/zoneless';
 import { ContactService } from '../../../core/api/api/contact.service';
 import { ApiProblem } from '../../../core/http/api-problem';
 import { ContactFormComponent } from './contact-form.component';
@@ -21,34 +22,21 @@ function validationProblem(field: string, message: string): ApiProblem {
   return problemWith([{ field, message }]);
 }
 
-/**
- * Every interaction below goes through a real DOM event and whenStable(), never detectChanges().
- * detectChanges() force-refreshes the view whether or not anything marked it dirty, so it cannot
- * tell a message that repaints from one that only appears because the test asked for a repaint --
- * and this app is zoneless, where that difference is the whole bug (issue #110).
- */
-async function type(
+// Every interaction below goes through a real DOM event and whenStable(), never detectChanges().
+// The convention, and the two things it deliberately does not claim, live in
+// src/testing/zoneless.ts.
+
+function type(
   fixture: ComponentFixture<ContactFormComponent>,
   selector: string,
   value: string,
 ): Promise<void> {
-  const field = (fixture.nativeElement as HTMLElement).querySelector<
-    HTMLInputElement | HTMLTextAreaElement
-  >(selector);
-  if (!field) {
-    throw new Error(`no field matching ${selector}`);
-  }
-  field.value = value;
-  field.dispatchEvent(new Event('input'));
-  await fixture.whenStable();
+  return typeInto(fixture, selector, value);
 }
 
 /** Send the way a visitor does -- submit the form, rather than calling submit() directly. */
-async function send(fixture: ComponentFixture<ContactFormComponent>): Promise<void> {
-  (fixture.nativeElement as HTMLElement)
-    .querySelector('form')
-    ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  await fixture.whenStable();
+function send(fixture: ComponentFixture<ContactFormComponent>): Promise<void> {
+  return submitForm(fixture);
 }
 
 /** Type something all three validators accept, through the DOM, so the controls are dirty too. */
@@ -86,10 +74,8 @@ const FIELD_IDS = ['contact-name', 'contact-email', 'contact-message'];
 describe('ContactFormComponent', () => {
   let submitContactMessage: ReturnType<typeof vi.fn>;
 
-  async function render(): Promise<ComponentFixture<ContactFormComponent>> {
-    const fixture = TestBed.createComponent(ContactFormComponent);
-    await fixture.whenStable();
-    return fixture;
+  function render(): Promise<ComponentFixture<ContactFormComponent>> {
+    return renderComponent(ContactFormComponent);
   }
 
   beforeEach(async () => {
