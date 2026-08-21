@@ -1507,6 +1507,11 @@ describe('AdminProjectFormComponent', () => {
     // rows come from form.controls.links.controls, a plain array and not a signal, so nothing marks
     // this OnPush view dirty when the array is mutated from outside a template listener -- in the
     // app the "+ Add link" click does that, and a programmatic call in a test does not.
+    //
+    // Which is why the flush matters as much as the click: detectChanges() would refresh the view
+    // regardless, so a real click followed by detectChanges() asserts no more than a programmatic
+    // call does. These are the strongest instance in this codebase of what src/testing/zoneless.ts
+    // describes -- keep them on await, not on a forced refresh.
     it('drops the removed link from the DOM rather than the last one', async () => {
       // formGroupName is positional, so tracking rows by $index leaves the surviving group bound to
       // the removed row's DOM: the admin sees the link they just deleted, deletes it again, and
