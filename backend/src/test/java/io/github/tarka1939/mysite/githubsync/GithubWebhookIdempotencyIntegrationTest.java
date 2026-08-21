@@ -173,18 +173,20 @@ class GithubWebhookIdempotencyIntegrationTest {
     }
 
     /**
-     * The test that matters, and the one the sequential replay above cannot stand in for.
+     * Simultaneous redeliveries end to end: {@value #CONCURRENT_REDELIVERIES} at once through
+     * real HTTP still produce one record and one event.
      *
-     * <p>An implementation that asks "have I already seen this delivery id?" and then inserts
-     * passes the sequential test perfectly -- by the time the second request arrives, the first
-     * has committed and the pre-check sees it. It fails here, because all
-     * {@value #CONCURRENT_REDELIVERIES} requests read "no" before any of them writes, and every
-     * one of them proceeds to insert. That is the check-then-act shape CLAUDE.md lists as a
-     * standing risk in this codebase, and it is ordinary traffic for a webhook: GitHub retries
-     * on its own schedule and a human can click Redeliver while a retry is already in flight.
+     * <p><b>This is not the race proof, and it was written believing it was.</b> Mutating the
+     * implementation to the naive "does this delivery id exist? no? then insert" -- the exact
+     * check-then-act shape the ON CONFLICT design exists to avoid -- left this test green. The
+     * window a pre-check leaves open is one database round trip, and the spread in when a dozen
+     * HTTP requests actually reach their handler is wider than that, so the racers arrive in
+     * single file however precisely the {@link CyclicBarrier} released them.
      *
-     * <p>A {@link CyclicBarrier} releases every thread at once, so they overlap rather than
-     * merely running on different threads.
+     * <p>{@code GithubSyncConcurrencyIntegrationTest} is the test that does catch it, by
+     * calling the service directly so that nothing sits between the barrier and the critical
+     * section. This one is kept for what it genuinely covers -- the full stack under concurrent
+     * load -- with its claim corrected rather than inflated.
      */
     @Test
     void concurrentRedeliveriesOfTheSameIdProduceOneRecordAndOneEvent() throws Exception {
