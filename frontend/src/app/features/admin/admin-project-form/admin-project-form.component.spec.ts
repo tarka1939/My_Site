@@ -9,7 +9,7 @@ import {
 import { BehaviorSubject, config, of, Subject, throwError } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ApiProblem } from '../../../core/http/api-problem';
-import { clickOn, submitForm, typeInto } from '../../../../testing/zoneless';
+import { clickOn, renderComponent, submitForm, typeInto } from '../../../../testing/zoneless';
 import { AdminProjectFormComponent } from './admin-project-form.component';
 
 const EXISTING_PROJECT = {
@@ -132,6 +132,37 @@ function type(
   value: string,
 ): Promise<void> {
   return typeInto(fixture, selector, value);
+}
+
+/**
+ * Tick or untick a checkbox the way the admin does.
+ *
+ * A `change` event, not `input`: CheckboxControlValueAccessor listens for change, so an input event
+ * would move the DOM and leave the control holding the old value -- which is precisely the wiring
+ * this goes through the DOM to exercise rather than assume.
+ */
+async function toggleCheckbox(
+  fixture: ComponentFixture<AdminProjectFormComponent>,
+  selector: string,
+): Promise<void> {
+  const box = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(selector);
+  if (!box) {
+    throw new Error(`no checkbox matching ${selector}`);
+  }
+  box.checked = !box.checked;
+  box.dispatchEvent(new Event('change'));
+  await fixture.whenStable();
+}
+
+/** Whether the rendered publication checkbox is ticked. */
+function publishedBox(fixture: ComponentFixture<AdminProjectFormComponent>): HTMLInputElement {
+  const box = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+    '#project-published',
+  );
+  if (!box) {
+    throw new Error('the publication checkbox is not rendered');
+  }
+  return box;
 }
 
 /** Save the way the admin does -- submit the form, rather than calling submit() directly. */
@@ -370,6 +401,133 @@ describe('AdminProjectFormComponent', () => {
     expect(errorTextFor(host, 'project-completed-on')).toContain(
       'cannot finish without having started',
     );
+  });
+
+  describe('publication', () => {
+    /** An auto-created draft: unpublished, linked to the repository whose push created it. */
+    const DRAFT = { ...EXISTING_PROJECT, published: false, repoFullName: 'tarka1939/Equalizer' };
+
+    /** The body of the only write this form has sent, whichever verb it used. */
+    function sentBody() {
+      const call = updateProject.mock.calls[0] ?? createProject.mock.calls[0];
+      expect(call).toBeDefined();
+      return call[0].projectWriteRequest;
+    }
+
+    it('keeps a published project published through an edit that never touches the box', async () => {
+      // The regression that matters. `published` is the one field on this body that is *not*
+      // full-replacement -- omitted means "leave it as it is" -- which makes the opposite mistake
+      // the dangerous one: a checkbox that defaulted unticked, or a payload built without reading
+      // it, sends `published: false` and takes a live project off the site on its first edit. That
+      // is issue #92's blank-form PUT in a new guise, and it is silent: the save succeeds.
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      // Ticked before anything is typed, because the loaded project is live. The state the admin
+      // is shown is the state that will be sent.
+      expect(publishedBox(fixture).checked).toBe(true);
+
+      await type(fixture, '#project-title', 'Equalizer v2');
+      await save(fixture);
+
+      expect(sentBody().title).toBe('Equalizer v2');
+      expect(sentBody().published).toBe(true);
+    });
+
+    it('keeps a draft a draft through an edit that never touches the box', async () => {
+      // The same rule in the other direction: writing a draft's description is not a request to
+      // publish it, and the admin gets to decide when it goes live.
+      getAnyProject.mockReturnValue(of(DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      expect(publishedBox(fixture).checked).toBe(false);
+
+      await type(fixture, '#project-description', 'Now actually written up.');
+      await save(fixture);
+
+      expect(sentBody().published).toBe(false);
+    });
+
+    it('publishes a draft when the admin ticks the box', async () => {
+      getAnyProject.mockReturnValue(of(DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await toggleCheckbox(fixture, '#project-published');
+      await save(fixture);
+
+      expect(sentBody().published).toBe(true);
+    });
+
+    it('takes a live project down when the admin unticks it', async () => {
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await toggleCheckbox(fixture, '#project-published');
+      await save(fixture);
+
+      // Explicitly false, not omitted: un-publishing is the one publication change the contract
+      // says must be stated out loud, since silence means "unchanged".
+      expect(sentBody().published).toBe(false);
+    });
+
+    it('never sends repoFullName, so an auto-created draft keeps the link that made it', async () => {
+      getAnyProject.mockReturnValue(of(DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await save(fixture);
+
+      // Absence asserted on the keys: an explicit `repoFullName: undefined` serializes to nothing
+      // and would pass a value comparison, which is only accidentally the same as meaning it.
+      // Omitted is what preserves the link -- the contract offers no way to clear one in Phase 7a,
+      // so sending a stale value here is the only way this form could break the webhook's match.
+      expect(Object.keys(sentBody())).not.toContain('repoFullName');
+    });
+
+    it('creates a project live by default', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      expect(publishedBox(fixture).checked).toBe(true);
+
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      // Matches what POST does with the field omitted: something typed in by hand is meant to be
+      // live. Sent explicitly all the same, so the box on screen and the request agree.
+      expect(createProject).toHaveBeenCalledTimes(1);
+      expect(sentBody().published).toBe(true);
+    });
+
+    it('creates a draft when the box is unticked before saving', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      fillRequiredFields(fixture);
+      await toggleCheckbox(fixture, '#project-published');
+      await save(fixture);
+
+      expect(sentBody().published).toBe(false);
+    });
+
+    it('labels the checkbox and says what leaving it unticked costs', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      const host = fixture.nativeElement as HTMLElement;
+      const box = publishedBox(fixture);
+
+      // Reachable and named: a checkbox whose label is not associated announces as "checkbox,
+      // unchecked" and nothing else.
+      const label = host.querySelector<HTMLLabelElement>('label[for="project-published"]');
+      expect(label?.textContent?.trim()).toBe('Published');
+
+      // And described, because "Published" alone does not say that unticking hides the project
+      // from the public list *and* makes its page answer 404 to someone holding the link.
+      const describedBy = box.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      const hint = host.querySelector('#' + describedBy)?.textContent ?? '';
+      expect(hint).toContain('draft');
+      expect(hint).toContain('not found');
+    });
   });
 
   describe('when the project fails to load', () => {
