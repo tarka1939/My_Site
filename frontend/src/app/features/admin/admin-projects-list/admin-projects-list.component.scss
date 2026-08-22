@@ -10,6 +10,36 @@ td {
   border-bottom: 1px solid var(--color-border);
 }
 
+// The repository a project tracks, under its title. Muted and small: it is context for the row,
+// not a second heading competing with the title.
+.repo {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-family: monospace;
+}
+
+// Both publication states get a word; only the one that means "invisible to the public" gets a
+// box around it. Colour is deliberately not the signal -- --color-text on --color-surface-muted
+// is canvastext over a semi-transparent grey, so it is legible at full contrast in either scheme
+// without a per-scheme value, and it still reads for anyone who cannot tell two hues apart.
+.status {
+  font-size: 0.85rem;
+}
+
+.status--draft {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--color-text-muted);
+  border-radius: 999px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.status--live {
+  color: var(--color-text-muted);
+}
+
 .actions {
   display: flex;
   gap: 0.75rem;
@@ -17,12 +47,37 @@ td {
 }
 
 .actions button {
+  cursor: pointer;
+  font: inherit;
+}
+
+// The publish toggle is the row's ordinary action, so it looks like a button rather than borrowing
+// the destructive red next to it.
+.publish-toggle {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+}
+
+.actions .delete {
   border: none;
   background: transparent;
   color: var(--color-error);
-  cursor: pointer;
   padding: 0;
-  font: inherit;
+}
+
+.actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.publish-error {
+  border: 1px solid var(--color-error);
+  border-radius: 0.25rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-error);
 }
 
 .pagination {

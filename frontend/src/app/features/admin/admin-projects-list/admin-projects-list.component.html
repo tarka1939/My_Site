@@ -2,16 +2,24 @@
 
 <p><a routerLink="/admin/projects/new">+ New project</a></p>
 
+<!-- A publish that was rejected with field errors, which errorInterceptor deliberately does not
+     toast. Outside the table so it cannot be scrolled past horizontally, and above it so it is
+     read before the row it is about. -->
+@if (publishError(); as message) {
+  <p class="publish-error" role="alert">{{ message }}</p>
+}
+
 @if (loading()) {
   <p role="status">Loading&hellip;</p>
 } @else if (projects().length === 0) {
   <p>No projects yet.</p>
 } @else {
   <table>
-    <caption class="visually-hidden">Projects</caption>
+    <caption class="visually-hidden">Projects, drafts included</caption>
     <thead>
       <tr>
         <th scope="col">Title</th>
+        <th scope="col">Status</th>
         <th scope="col">Tags</th>
         <th scope="col">Actions</th>
       </tr>
@@ -19,11 +27,58 @@
     <tbody>
       @for (project of projects(); track project.id) {
         <tr>
-          <td>{{ project.title }}</td>
+          <td>
+            {{ project.title }}
+            <!-- Provenance, not status: a repository name means webhook deliveries land on this
+                 project, which is true of a draft and a live entry alike. Rendering it here rather
+                 than as a second kind of badge keeps "is this on the site?" a one-question column
+                 -- and it is what tells an auto-created draft (repo set, placeholder description)
+                 from one entered by hand (no repo). -->
+            @if (project.repoFullName; as repo) {
+              <span class="repo">
+                <span class="visually-hidden">GitHub repository:</span>{{ repo }}
+              </span>
+            }
+          </td>
+          <td>
+            <!-- Both states carry a word of their own. "Draft" as a badge and "published" as the
+                 absence of one would make a failure to render read as *live*, which is the silent
+                 difference this column exists to end: a row the public cannot see must never look
+                 like a row they can. -->
+            @if (project.published) {
+              <span class="status status--live">Live</span>
+            } @else {
+              <span class="status status--draft">Draft</span>
+            }
+          </td>
           <td>{{ project.tags.map((t) => t.name).join(', ') }}</td>
           <td class="actions">
             <a [routerLink]="['/admin/projects', project.id, 'edit']">Edit</a>
-            <button type="button" (click)="deleteProject(project)" [disabled]="deletingId() === project.id">
+            <!-- An action label ("Publish"/"Unpublish") rather than a state label plus
+                 aria-pressed. The two are alternatives, not a pair: a toggle button announces as
+                 "<name>, pressed", so a button that renames itself to the action would be read out
+                 as "Unpublish, pressed" -- which says the opposite of what is true. State is the
+                 Status column's job here; this button says what pressing it does.
+
+                 The accessible name is built from the same expression as the visible text so the
+                 two can never disagree (WCAG 2.5.3), and carries the title because a screen reader
+                 moving button to button through a table hears "Publish" with no idea which row. -->
+            <button
+              type="button"
+              class="publish-toggle"
+              (click)="setPublished(project, !project.published)"
+              [disabled]="publishingId() === project.id"
+              [attr.aria-label]="publishAction(project) + ' ' + project.title"
+            >
+              {{ publishAction(project) }}
+            </button>
+            <button
+              type="button"
+              class="delete"
+              (click)="deleteProject(project)"
+              [disabled]="deletingId() === project.id"
+              [attr.aria-label]="(deletingId() === project.id ? 'Deleting…' : 'Delete') + ' ' + project.title"
+            >
               {{ deletingId() === project.id ? 'Deleting…' : 'Delete' }}
             </button>
           </td>
