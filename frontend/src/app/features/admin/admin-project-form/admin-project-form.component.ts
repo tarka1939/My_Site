@@ -146,6 +146,16 @@ export class AdminProjectFormComponent {
     completedOn: [''],
     links: new FormArray<LinkGroup>([]),
     images: new FormArray<FormControl<string>>([]),
+    /**
+     * Whether this project is on the public site.
+     *
+     * Default true, which is the create route's answer and matches what POST does with the field
+     * omitted (see ProjectWriteRequest in docs/openapi.yaml) -- a project typed into the CMS by
+     * hand is meant to be live. An edit overwrites it from the loaded project before the form is
+     * ever shown, and form.reset() puts this default back between loads because the group is
+     * nonNullable.
+     */
+    published: [true],
   });
 
   /**
@@ -355,7 +365,11 @@ export class AdminProjectFormComponent {
       // failed load has a state of its own. A completion that carried no project has not loaded the
       // project, so it goes the way a failure goes: into the catchError below, where reading
       // .status off an EmptyError gives undefined and produces the generic wording.
-      return this.projectsApi.getProject({ id }).pipe(
+      // getAnyProject (GET /admin/projects/{id}), not getProject: the public read filters to
+      // published and answers 404 for a draft, identically to an id that names nothing -- so on the
+      // public operation this form could not open the very projects it exists to publish, and would
+      // report them as missing. The admin read is the only one that returns a draft.
+      return this.projectsApi.getAnyProject({ id }).pipe(
         throwIfEmpty(),
         tap((project) => {
           this.form.patchValue({
@@ -366,6 +380,11 @@ export class AdminProjectFormComponent {
             // a field left out of the payload clears the stored value rather than preserving it.
             startedOn: project.startedOn ?? '',
             completedOn: project.completedOn ?? '',
+            // The round trip that matters most. `published` is required on every Project the API
+            // returns, so this is the project's real state rather than a guess, and submit() sends
+            // back whatever is in this box -- meaning an edit that never touches the checkbox saves
+            // the project exactly as publication found it.
+            published: project.published,
           });
           // The arrays are empty here because resetForm() ran above, for every load rather than
           // only for a second one -- push without a clear gives a successful reload two of every
@@ -514,6 +533,25 @@ export class AdminProjectFormComponent {
       // a full replacement, so saying "clear this" out loud beats relying on an absent field.
       startedOn: raw.startedOn || null,
       completedOn: raw.completedOn || null,
+      // Sent explicitly, on every save, rather than left out.
+      //
+      // The contract reads an omitted `published` as "leave it as it is" -- deliberately, so that a
+      // client written before Phase 7a cannot unpublish a live project by saying nothing. That is a
+      // safety net for clients with no opinion, and this form has one: the checkbox is on screen
+      // showing the state that is about to be saved. Omitting it would make that checkbox a
+      // decoration the admin could tick to no effect, which is a worse lie than the one the
+      // exception is guarding against.
+      //
+      // The direction the exception exists to prevent is closed here by the control's default and
+      // by where it gets its value: true on the create route, and the loaded project's own value on
+      // the edit route, patched before the form is rendered. There is no path on which this sends
+      // `false` because a checkbox happened to start out unticked -- which would be issue #92's
+      // blank-form PUT wearing a different hat.
+      //
+      // `repoFullName` is the other omitted-means-unchanged field and is deliberately *not* sent:
+      // this form does not edit it, and omitting it is what preserves an auto-created draft's link
+      // to the repository that made it.
+      published: raw.published,
     };
 
     this.submitting.set(true);

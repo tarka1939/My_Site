@@ -9,7 +9,7 @@ import {
 import { BehaviorSubject, config, of, Subject, throwError } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ApiProblem } from '../../../core/http/api-problem';
-import { clickOn, submitForm, typeInto } from '../../../../testing/zoneless';
+import { clickOn, renderComponent, submitForm, typeInto } from '../../../../testing/zoneless';
 import { AdminProjectFormComponent } from './admin-project-form.component';
 
 const EXISTING_PROJECT = {
@@ -21,6 +21,11 @@ const EXISTING_PROJECT = {
   tags: [{ id: 't1', name: 'dsp' }],
   startedOn: '2024-03-01',
   completedOn: '2025-06-01',
+  published: true,
+  repoFullName: null,
+  lastPushedAt: null,
+  defaultBranch: null,
+  archived: false,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };
@@ -42,6 +47,11 @@ const OTHER_PROJECT = {
   tags: [{ id: 't2', name: 'audio' }],
   startedOn: '2025-01-01',
   completedOn: null,
+  published: true,
+  repoFullName: null,
+  lastPushedAt: null,
+  defaultBranch: null,
+  archived: false,
   createdAt: '2026-02-01T00:00:00Z',
   updatedAt: '2026-02-01T00:00:00Z',
 };
@@ -75,7 +85,7 @@ function problemWith(fieldErrors: { field: string; message: string }[]): ApiProb
 }
 
 /**
- * What a failed getProject looks like to the component: errorInterceptor has already normalized the
+ * What a failed getAnyProject looks like to the component: errorInterceptor has already normalized the
  * response, toasted it and (on a 401) logged out, so all the component ever sees is this.
  */
 const LOAD_FAILURE: ApiProblem = {
@@ -124,6 +134,37 @@ function type(
   return typeInto(fixture, selector, value);
 }
 
+/**
+ * Tick or untick a checkbox the way the admin does.
+ *
+ * A `change` event, not `input`: CheckboxControlValueAccessor listens for change, so an input event
+ * would move the DOM and leave the control holding the old value -- which is precisely the wiring
+ * this goes through the DOM to exercise rather than assume.
+ */
+async function toggleCheckbox(
+  fixture: ComponentFixture<AdminProjectFormComponent>,
+  selector: string,
+): Promise<void> {
+  const box = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(selector);
+  if (!box) {
+    throw new Error(`no checkbox matching ${selector}`);
+  }
+  box.checked = !box.checked;
+  box.dispatchEvent(new Event('change'));
+  await fixture.whenStable();
+}
+
+/** Whether the rendered publication checkbox is ticked. */
+function publishedBox(fixture: ComponentFixture<AdminProjectFormComponent>): HTMLInputElement {
+  const box = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+    '#project-published',
+  );
+  if (!box) {
+    throw new Error('the publication checkbox is not rendered');
+  }
+  return box;
+}
+
 /** Save the way the admin does -- submit the form, rather than calling submit() directly. */
 function save(fixture: ComponentFixture<AdminProjectFormComponent>): Promise<void> {
   return submitForm(fixture);
@@ -144,7 +185,7 @@ function errorTextFor(host: HTMLElement, inputId: string): string | null {
 const ADMIN_FALLBACK_COPY = 'Rejected by the server, which gave no reason.';
 
 describe('AdminProjectFormComponent', () => {
-  let getProject: ReturnType<typeof vi.fn>;
+  let getAnyProject: ReturnType<typeof vi.fn>;
   let createProject: ReturnType<typeof vi.fn>;
   let updateProject: ReturnType<typeof vi.fn>;
   let route: RouteStub;
@@ -175,7 +216,7 @@ describe('AdminProjectFormComponent', () => {
   }
 
   beforeEach(async () => {
-    getProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
+    getAnyProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     createProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     updateProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
@@ -190,7 +231,7 @@ describe('AdminProjectFormComponent', () => {
       imports: [AdminProjectFormComponent],
       providers: [
         provideRouter([]),
-        { provide: ProjectsService, useValue: { getProject, createProject, updateProject } },
+        { provide: ProjectsService, useValue: { getAnyProject, createProject, updateProject } },
         { provide: ActivatedRoute, useValue: route },
       ],
     }).compileComponents();
@@ -261,7 +302,7 @@ describe('AdminProjectFormComponent', () => {
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();
 
-    expect(getProject).toHaveBeenCalledWith({ id: 'p1' });
+    expect(getAnyProject).toHaveBeenCalledWith({ id: 'p1' });
     const host = fixture.nativeElement as HTMLElement;
     expect(host.querySelector<HTMLInputElement>('#project-started-on')?.value).toBe('2024-03-01');
     expect(host.querySelector<HTMLInputElement>('#project-completed-on')?.value).toBe('2025-06-01');
@@ -278,7 +319,7 @@ describe('AdminProjectFormComponent', () => {
   });
 
   it('keeps an ongoing project ongoing through an edit', () => {
-    getProject.mockReturnValue(of({ ...EXISTING_PROJECT, completedOn: null }));
+    getAnyProject.mockReturnValue(of({ ...EXISTING_PROJECT, completedOn: null }));
     editExistingProject();
 
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -295,7 +336,7 @@ describe('AdminProjectFormComponent', () => {
   });
 
   it('leaves a project with no dates dateless through an edit', () => {
-    getProject.mockReturnValue(of({ ...EXISTING_PROJECT, startedOn: null, completedOn: null }));
+    getAnyProject.mockReturnValue(of({ ...EXISTING_PROJECT, startedOn: null, completedOn: null }));
     editExistingProject();
 
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -362,9 +403,136 @@ describe('AdminProjectFormComponent', () => {
     );
   });
 
+  describe('publication', () => {
+    /** An auto-created draft: unpublished, linked to the repository whose push created it. */
+    const DRAFT = { ...EXISTING_PROJECT, published: false, repoFullName: 'tarka1939/Equalizer' };
+
+    /** The body of the only write this form has sent, whichever verb it used. */
+    function sentBody() {
+      const call = updateProject.mock.calls[0] ?? createProject.mock.calls[0];
+      expect(call).toBeDefined();
+      return call[0].projectWriteRequest;
+    }
+
+    it('keeps a published project published through an edit that never touches the box', async () => {
+      // The regression that matters. `published` is the one field on this body that is *not*
+      // full-replacement -- omitted means "leave it as it is" -- which makes the opposite mistake
+      // the dangerous one: a checkbox that defaulted unticked, or a payload built without reading
+      // it, sends `published: false` and takes a live project off the site on its first edit. That
+      // is issue #92's blank-form PUT in a new guise, and it is silent: the save succeeds.
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      // Ticked before anything is typed, because the loaded project is live. The state the admin
+      // is shown is the state that will be sent.
+      expect(publishedBox(fixture).checked).toBe(true);
+
+      await type(fixture, '#project-title', 'Equalizer v2');
+      await save(fixture);
+
+      expect(sentBody().title).toBe('Equalizer v2');
+      expect(sentBody().published).toBe(true);
+    });
+
+    it('keeps a draft a draft through an edit that never touches the box', async () => {
+      // The same rule in the other direction: writing a draft's description is not a request to
+      // publish it, and the admin gets to decide when it goes live.
+      getAnyProject.mockReturnValue(of(DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      expect(publishedBox(fixture).checked).toBe(false);
+
+      await type(fixture, '#project-description', 'Now actually written up.');
+      await save(fixture);
+
+      expect(sentBody().published).toBe(false);
+    });
+
+    it('publishes a draft when the admin ticks the box', async () => {
+      getAnyProject.mockReturnValue(of(DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await toggleCheckbox(fixture, '#project-published');
+      await save(fixture);
+
+      expect(sentBody().published).toBe(true);
+    });
+
+    it('takes a live project down when the admin unticks it', async () => {
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await toggleCheckbox(fixture, '#project-published');
+      await save(fixture);
+
+      // Explicitly false, not omitted: un-publishing is the one publication change the contract
+      // says must be stated out loud, since silence means "unchanged".
+      expect(sentBody().published).toBe(false);
+    });
+
+    it('never sends repoFullName, so an auto-created draft keeps the link that made it', async () => {
+      getAnyProject.mockReturnValue(of(DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await save(fixture);
+
+      // Absence asserted on the keys: an explicit `repoFullName: undefined` serializes to nothing
+      // and would pass a value comparison, which is only accidentally the same as meaning it.
+      // Omitted is what preserves the link -- the contract offers no way to clear one in Phase 7a,
+      // so sending a stale value here is the only way this form could break the webhook's match.
+      expect(Object.keys(sentBody())).not.toContain('repoFullName');
+    });
+
+    it('creates a project live by default', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      expect(publishedBox(fixture).checked).toBe(true);
+
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      // Matches what POST does with the field omitted: something typed in by hand is meant to be
+      // live. Sent explicitly all the same, so the box on screen and the request agree.
+      expect(createProject).toHaveBeenCalledTimes(1);
+      expect(sentBody().published).toBe(true);
+    });
+
+    it('creates a draft when the box is unticked before saving', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      fillRequiredFields(fixture);
+      await toggleCheckbox(fixture, '#project-published');
+      await save(fixture);
+
+      expect(sentBody().published).toBe(false);
+    });
+
+    it('labels the checkbox and says what leaving it unticked costs', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      const host = fixture.nativeElement as HTMLElement;
+      const box = publishedBox(fixture);
+
+      // Reachable and named: a checkbox whose label is not associated announces as "checkbox,
+      // unchecked" and nothing else.
+      const label = host.querySelector<HTMLLabelElement>('label[for="project-published"]');
+      expect(label?.textContent?.trim()).toBe('Published');
+
+      // And described, because "Published" alone does not say that unticking hides the project
+      // from the public list *and* makes its page answer 404 to someone holding the link.
+      const describedBy = box.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      const hint = host.querySelector('#' + describedBy)?.textContent ?? '';
+      expect(hint).toContain('draft');
+      expect(hint).toContain('not found');
+    });
+  });
+
   describe('when the project fails to load', () => {
     function failFirstLoad(): void {
-      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
+      getAnyProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
       editExistingProject();
     }
 
@@ -409,7 +577,7 @@ describe('AdminProjectFormComponent', () => {
       // that is a wall-clock check on expiresAt. A token that expired while this page sat open --
       // one of the triggers issue #92 names -- fails that check before the 401 arrives, so nothing
       // redirects and "Try again" would fail identically for as long as the admin keeps pressing.
-      getProject.mockReturnValueOnce(throwError(() => ({ ...LOAD_FAILURE, status: 401 })));
+      getAnyProject.mockReturnValueOnce(throwError(() => ({ ...LOAD_FAILURE, status: 401 })));
       editExistingProject();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -429,7 +597,7 @@ describe('AdminProjectFormComponent', () => {
       // Check-then-act. Two clicks on "Try again" otherwise leave two responses racing, and nothing
       // orders them -- see the ordering test below for what the loser does to the winner's state.
       const inFlight = new Subject<unknown>();
-      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE)).mockReturnValue(inFlight);
+      getAnyProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE)).mockReturnValue(inFlight);
       editExistingProject();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -439,7 +607,7 @@ describe('AdminProjectFormComponent', () => {
       fixture.componentInstance['retryLoad']();
 
       // The failed initial load plus exactly one retry -- not two, and not three subscriptions.
-      expect(getProject).toHaveBeenCalledTimes(2);
+      expect(getAnyProject).toHaveBeenCalledTimes(2);
     });
 
     it('does not leave a stale failure showing over a form that has since loaded', async () => {
@@ -451,7 +619,7 @@ describe('AdminProjectFormComponent', () => {
       // the opposite ordering to the one at issue.
       const firstRetry = new Subject<unknown>();
       const secondRetry = new Subject<unknown>();
-      getProject
+      getAnyProject
         .mockReturnValueOnce(throwError(() => LOAD_FAILURE))
         .mockReturnValueOnce(firstRetry)
         .mockReturnValue(secondRetry);
@@ -483,7 +651,7 @@ describe('AdminProjectFormComponent', () => {
 
       await clickOn(fixture, '.load-error button');
 
-      expect(getProject).toHaveBeenCalledTimes(2);
+      expect(getAnyProject).toHaveBeenCalledTimes(2);
       expect(host.querySelector('.load-error')).toBeNull();
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Equalizer');
       // The duplicate-append guard: the first load's rows have to be cleared before the second
@@ -1573,7 +1741,7 @@ describe('AdminProjectFormComponent', () => {
     fixture.componentInstance['retryLoad']();
     await fixture.whenStable();
 
-    expect(getProject).toHaveBeenCalledTimes(2);
+    expect(getAnyProject).toHaveBeenCalledTimes(2);
     const form = fixture.componentInstance['form'];
     expect(form.controls.links.length).toBe(1);
     expect(form.controls.images.length).toBe(1);
@@ -1765,7 +1933,7 @@ describe('AdminProjectFormComponent', () => {
       // safe end of it: loading false with nothing loaded and no error renders the form, empty --
       // and an empty edit form is one PUT away from blanking the record.
       const pending = new Subject<unknown>();
-      getProject.mockReturnValue(pending);
+      getAnyProject.mockReturnValue(pending);
       editExistingProject();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -1795,7 +1963,7 @@ describe('AdminProjectFormComponent', () => {
     // does unmount the form. These pin the behaviour for whoever adds prev/next links or an "edit
     // another" after saving, at which point it would be a silent write to the wrong record.
     beforeEach(() => {
-      getProject.mockImplementation(({ id }: { id: string }) =>
+      getAnyProject.mockImplementation(({ id }: { id: string }) =>
         of(id === 'p2' ? OTHER_PROJECT : EXISTING_PROJECT),
       );
     });
@@ -1810,7 +1978,7 @@ describe('AdminProjectFormComponent', () => {
 
       await navigateToProject(fixture, 'p2');
 
-      expect(getProject).toHaveBeenLastCalledWith({ id: 'p2' });
+      expect(getAnyProject).toHaveBeenLastCalledWith({ id: 'p2' });
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
       expect(host.querySelector<HTMLTextAreaElement>('#project-description')?.value).toBe(
         'A room simulator',
@@ -1897,7 +2065,7 @@ describe('AdminProjectFormComponent', () => {
     it('does not leave the first project\'s failure over the second project\'s form', async () => {
       // The load for p1 fails and the admin navigates on. Without the reset the error state stays,
       // and "Try again" is the only thing on screen for a project that loaded perfectly well.
-      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
+      getAnyProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
@@ -1920,7 +2088,7 @@ describe('AdminProjectFormComponent', () => {
       // switchMap.
       const firstLoad = new Subject<unknown>();
       const secondLoad = new Subject<unknown>();
-      getProject.mockReturnValueOnce(firstLoad).mockReturnValueOnce(secondLoad);
+      getAnyProject.mockReturnValueOnce(firstLoad).mockReturnValueOnce(secondLoad);
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
@@ -1943,7 +2111,7 @@ describe('AdminProjectFormComponent', () => {
       // switchMap, not a second subscription: p1's response would otherwise land in a form that is
       // now showing p2 and overwrite every field with the wrong project's data.
       const slowFirstLoad = new Subject<unknown>();
-      getProject.mockReturnValueOnce(slowFirstLoad);
+      getAnyProject.mockReturnValueOnce(slowFirstLoad);
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
