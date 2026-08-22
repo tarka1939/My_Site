@@ -180,6 +180,36 @@ class ProjectPublicationVisibilityIntegrationTest {
     }
 
     /**
+     * The operation the admin publish control depends on entirely: PUT reaches a draft, unlike
+     * GET on the same path. {@code findProjectOrThrow} in {@code ProjectService} is unfiltered by
+     * {@code published} incidentally rather than by a pinned guarantee, so this is the test that
+     * would fail if someone narrowed it to published-only for a plausible-looking reason -- the
+     * other two PUT tests above both start from an already-published project and would not catch
+     * that.
+     */
+    @Test
+    void aPutThatSaysPublishedTrue_reachesADraftAndPublishesIt() {
+        String id = createProject(token, "Draft to publish", false, null);
+
+        ResponseEntity<Map> updated = restTemplate.exchange(
+            url("/api/v1/projects/" + id), HttpMethod.PUT,
+            new HttpEntity<>(Map.of(
+                "title", "Draft to publish",
+                "description", "Published via PUT",
+                "tags", List.of(),
+                "published", true), authHeaders(token)),
+            Map.class);
+
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody().get("published")).isEqualTo(true);
+
+        assertThat(restTemplate.getForEntity(url("/api/v1/projects/" + id), String.class)
+            .getStatusCode())
+            .as("the project must now be reachable publicly, which it was not before the PUT")
+            .isEqualTo(HttpStatus.OK);
+    }
+
+    /**
      * GET /tags populates the public "filter by tag" control, so a tag reachable only through a
      * draft would be a filter value that returns an empty list -- the same defect as the
      * E2E-scaffolding tag that reached the public filter in Phase 6, by a new route.
