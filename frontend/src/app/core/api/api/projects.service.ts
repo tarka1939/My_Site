@@ -485,6 +485,7 @@ export class ProjectsService extends BaseService implements ProjectsServiceInter
 
     /**
      * Replace a project (full update)
+     * Admin-authenticated, so unlike GET /projects/{id} on this same path, this operation reaches a project **regardless of its &#x60;published&#x60; state**, drafts included -- there is no separate \&quot;admin update\&quot; path the way reads split into GET /projects/{id} vs. GET /admin/projects/{id}.  That asymmetry is deliberate, not an oversight carried over from before drafts existed. Publishing a draft works by PUT-ing &#x60;published: true&#x60; to it -- see the &#x60;published&#x60; field on ProjectWriteRequest -- which is only possible if this operation can reach a draft in the first place. A 404 here means the id names no project at all, published or not. 
      * @endpoint put /projects/{id}
      * @param requestParameters
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
