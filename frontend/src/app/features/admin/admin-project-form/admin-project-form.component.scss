@@ -23,6 +23,24 @@ textarea {
   font: inherit;
 }
 
+// The publication checkbox and its label share a line; the hint stays under both, which is what
+// the surrounding .field's column layout already does.
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// The `input` rule above is written for text fields. A checkbox wants none of it -- padding and a
+// border on a native control render as a box around a box.
+.checkbox-row input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: none;
+  accent-color: var(--color-accent);
+}
+
 .field-error {
   color: var(--color-error);
   font-size: 0.85rem;

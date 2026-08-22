@@ -75,6 +75,30 @@
       }
     </div>
 
+    <!-- Publication. A checkbox rather than a pair of radios: this is one binary property of the
+         project, and the hint below carries what "unticked" actually costs -- which is the part
+         that is not obvious from the word "Published" on its own.
+
+         It has no message slot of its own, unlike every field above. A checkbox cannot be filled in
+         wrongly, so there is no client verdict to show, and a server 400 keyed `published` would be
+         a rejection of a value this form did not let the admin get wrong -- unclaimedErrors() below
+         catches that rather than dropping it. -->
+    <div class="field field--checkbox">
+      <div class="checkbox-row">
+        <input
+          id="project-published"
+          type="checkbox"
+          formControlName="published"
+          aria-describedby="project-published-hint"
+        />
+        <label for="project-published">Published</label>
+      </div>
+      <p id="project-published-hint" class="field-hint">
+        Unticked keeps this a draft: it stays off the public project list, and its page answers
+        &ldquo;not found&rdquo; even to someone holding the link.
+      </p>
+    </div>
+
     <fieldset class="period">
       <legend>Project period</legend>
 

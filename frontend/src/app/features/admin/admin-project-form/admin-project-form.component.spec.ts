@@ -21,6 +21,11 @@ const EXISTING_PROJECT = {
   tags: [{ id: 't1', name: 'dsp' }],
   startedOn: '2024-03-01',
   completedOn: '2025-06-01',
+  published: true,
+  repoFullName: null,
+  lastPushedAt: null,
+  defaultBranch: null,
+  archived: false,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };
@@ -42,6 +47,11 @@ const OTHER_PROJECT = {
   tags: [{ id: 't2', name: 'audio' }],
   startedOn: '2025-01-01',
   completedOn: null,
+  published: true,
+  repoFullName: null,
+  lastPushedAt: null,
+  defaultBranch: null,
+  archived: false,
   createdAt: '2026-02-01T00:00:00Z',
   updatedAt: '2026-02-01T00:00:00Z',
 };
@@ -75,7 +85,7 @@ function problemWith(fieldErrors: { field: string; message: string }[]): ApiProb
 }
 
 /**
- * What a failed getProject looks like to the component: errorInterceptor has already normalized the
+ * What a failed getAnyProject looks like to the component: errorInterceptor has already normalized the
  * response, toasted it and (on a 401) logged out, so all the component ever sees is this.
  */
 const LOAD_FAILURE: ApiProblem = {
@@ -144,7 +154,7 @@ function errorTextFor(host: HTMLElement, inputId: string): string | null {
 const ADMIN_FALLBACK_COPY = 'Rejected by the server, which gave no reason.';
 
 describe('AdminProjectFormComponent', () => {
-  let getProject: ReturnType<typeof vi.fn>;
+  let getAnyProject: ReturnType<typeof vi.fn>;
   let createProject: ReturnType<typeof vi.fn>;
   let updateProject: ReturnType<typeof vi.fn>;
   let route: RouteStub;
@@ -175,7 +185,7 @@ describe('AdminProjectFormComponent', () => {
   }
 
   beforeEach(async () => {
-    getProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
+    getAnyProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     createProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     updateProject = vi.fn().mockReturnValue(of(EXISTING_PROJECT));
     const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
@@ -190,7 +200,7 @@ describe('AdminProjectFormComponent', () => {
       imports: [AdminProjectFormComponent],
       providers: [
         provideRouter([]),
-        { provide: ProjectsService, useValue: { getProject, createProject, updateProject } },
+        { provide: ProjectsService, useValue: { getAnyProject, createProject, updateProject } },
         { provide: ActivatedRoute, useValue: route },
       ],
     }).compileComponents();
@@ -261,7 +271,7 @@ describe('AdminProjectFormComponent', () => {
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();
 
-    expect(getProject).toHaveBeenCalledWith({ id: 'p1' });
+    expect(getAnyProject).toHaveBeenCalledWith({ id: 'p1' });
     const host = fixture.nativeElement as HTMLElement;
     expect(host.querySelector<HTMLInputElement>('#project-started-on')?.value).toBe('2024-03-01');
     expect(host.querySelector<HTMLInputElement>('#project-completed-on')?.value).toBe('2025-06-01');
@@ -278,7 +288,7 @@ describe('AdminProjectFormComponent', () => {
   });
 
   it('keeps an ongoing project ongoing through an edit', () => {
-    getProject.mockReturnValue(of({ ...EXISTING_PROJECT, completedOn: null }));
+    getAnyProject.mockReturnValue(of({ ...EXISTING_PROJECT, completedOn: null }));
     editExistingProject();
 
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -295,7 +305,7 @@ describe('AdminProjectFormComponent', () => {
   });
 
   it('leaves a project with no dates dateless through an edit', () => {
-    getProject.mockReturnValue(of({ ...EXISTING_PROJECT, startedOn: null, completedOn: null }));
+    getAnyProject.mockReturnValue(of({ ...EXISTING_PROJECT, startedOn: null, completedOn: null }));
     editExistingProject();
 
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -364,7 +374,7 @@ describe('AdminProjectFormComponent', () => {
 
   describe('when the project fails to load', () => {
     function failFirstLoad(): void {
-      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
+      getAnyProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
       editExistingProject();
     }
 
@@ -409,7 +419,7 @@ describe('AdminProjectFormComponent', () => {
       // that is a wall-clock check on expiresAt. A token that expired while this page sat open --
       // one of the triggers issue #92 names -- fails that check before the 401 arrives, so nothing
       // redirects and "Try again" would fail identically for as long as the admin keeps pressing.
-      getProject.mockReturnValueOnce(throwError(() => ({ ...LOAD_FAILURE, status: 401 })));
+      getAnyProject.mockReturnValueOnce(throwError(() => ({ ...LOAD_FAILURE, status: 401 })));
       editExistingProject();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -429,7 +439,7 @@ describe('AdminProjectFormComponent', () => {
       // Check-then-act. Two clicks on "Try again" otherwise leave two responses racing, and nothing
       // orders them -- see the ordering test below for what the loser does to the winner's state.
       const inFlight = new Subject<unknown>();
-      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE)).mockReturnValue(inFlight);
+      getAnyProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE)).mockReturnValue(inFlight);
       editExistingProject();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -439,7 +449,7 @@ describe('AdminProjectFormComponent', () => {
       fixture.componentInstance['retryLoad']();
 
       // The failed initial load plus exactly one retry -- not two, and not three subscriptions.
-      expect(getProject).toHaveBeenCalledTimes(2);
+      expect(getAnyProject).toHaveBeenCalledTimes(2);
     });
 
     it('does not leave a stale failure showing over a form that has since loaded', async () => {
@@ -451,7 +461,7 @@ describe('AdminProjectFormComponent', () => {
       // the opposite ordering to the one at issue.
       const firstRetry = new Subject<unknown>();
       const secondRetry = new Subject<unknown>();
-      getProject
+      getAnyProject
         .mockReturnValueOnce(throwError(() => LOAD_FAILURE))
         .mockReturnValueOnce(firstRetry)
         .mockReturnValue(secondRetry);
@@ -483,7 +493,7 @@ describe('AdminProjectFormComponent', () => {
 
       await clickOn(fixture, '.load-error button');
 
-      expect(getProject).toHaveBeenCalledTimes(2);
+      expect(getAnyProject).toHaveBeenCalledTimes(2);
       expect(host.querySelector('.load-error')).toBeNull();
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Equalizer');
       // The duplicate-append guard: the first load's rows have to be cleared before the second
@@ -1573,7 +1583,7 @@ describe('AdminProjectFormComponent', () => {
     fixture.componentInstance['retryLoad']();
     await fixture.whenStable();
 
-    expect(getProject).toHaveBeenCalledTimes(2);
+    expect(getAnyProject).toHaveBeenCalledTimes(2);
     const form = fixture.componentInstance['form'];
     expect(form.controls.links.length).toBe(1);
     expect(form.controls.images.length).toBe(1);
@@ -1765,7 +1775,7 @@ describe('AdminProjectFormComponent', () => {
       // safe end of it: loading false with nothing loaded and no error renders the form, empty --
       // and an empty edit form is one PUT away from blanking the record.
       const pending = new Subject<unknown>();
-      getProject.mockReturnValue(pending);
+      getAnyProject.mockReturnValue(pending);
       editExistingProject();
 
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
@@ -1795,7 +1805,7 @@ describe('AdminProjectFormComponent', () => {
     // does unmount the form. These pin the behaviour for whoever adds prev/next links or an "edit
     // another" after saving, at which point it would be a silent write to the wrong record.
     beforeEach(() => {
-      getProject.mockImplementation(({ id }: { id: string }) =>
+      getAnyProject.mockImplementation(({ id }: { id: string }) =>
         of(id === 'p2' ? OTHER_PROJECT : EXISTING_PROJECT),
       );
     });
@@ -1810,7 +1820,7 @@ describe('AdminProjectFormComponent', () => {
 
       await navigateToProject(fixture, 'p2');
 
-      expect(getProject).toHaveBeenLastCalledWith({ id: 'p2' });
+      expect(getAnyProject).toHaveBeenLastCalledWith({ id: 'p2' });
       expect(host.querySelector<HTMLInputElement>('#project-title')?.value).toBe('Reverb');
       expect(host.querySelector<HTMLTextAreaElement>('#project-description')?.value).toBe(
         'A room simulator',
@@ -1897,7 +1907,7 @@ describe('AdminProjectFormComponent', () => {
     it('does not leave the first project\'s failure over the second project\'s form', async () => {
       // The load for p1 fails and the admin navigates on. Without the reset the error state stays,
       // and "Try again" is the only thing on screen for a project that loaded perfectly well.
-      getProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
+      getAnyProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
@@ -1920,7 +1930,7 @@ describe('AdminProjectFormComponent', () => {
       // switchMap.
       const firstLoad = new Subject<unknown>();
       const secondLoad = new Subject<unknown>();
-      getProject.mockReturnValueOnce(firstLoad).mockReturnValueOnce(secondLoad);
+      getAnyProject.mockReturnValueOnce(firstLoad).mockReturnValueOnce(secondLoad);
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
@@ -1943,7 +1953,7 @@ describe('AdminProjectFormComponent', () => {
       // switchMap, not a second subscription: p1's response would otherwise land in a form that is
       // now showing p2 and overwrite every field with the wrong project's data.
       const slowFirstLoad = new Subject<unknown>();
-      getProject.mockReturnValueOnce(slowFirstLoad);
+      getAnyProject.mockReturnValueOnce(slowFirstLoad);
       editExistingProject();
       const fixture = TestBed.createComponent(AdminProjectFormComponent);
       fixture.detectChanges();
