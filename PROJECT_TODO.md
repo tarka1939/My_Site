@@ -183,10 +183,15 @@ These are the four "give the backend a real job" candidates from earlier. Build 
 
 **Note (2026-08-05):** Phase 5's pause doesn't block starting 7a–7d — all four are backend/frontend feature development that runs fully against local dev. The one piece that can't be finished yet is 7a's final step of pointing GitHub's real webhook at a live public endpoint; build and test the receiver locally with a webhook relay tool (e.g. smee.io, or a temporary tunnel) and defer only that last wiring step until Phase 5 is done.
 
-**7a. GitHub webhook auto-sync**
-- [ ] New `githubsync` package: webhook receiver endpoint, verifying GitHub's signature header before trusting any payload
-- [ ] On push/release events, call GitHub's API for repo metadata and update your project list via the `Project` service (or by reacting to it through the event publisher set up in Phase 1)
-- [ ] Tests: signature verification, and idempotency — the same webhook delivery arriving twice shouldn't duplicate data
+**7a. GitHub webhook auto-sync** — **complete** (issues #53, #54, #55, #144, epic #70). Backend 100 → 202 tests, frontend 236 → 255.
+- [x] New `githubsync` package: webhook receiver endpoint, verifying GitHub's signature header before trusting any payload — signature checked against the **raw bytes** (a deserialised body is not what GitHub signed), constant-time comparison, fails closed on an unconfigured secret, feature-flagged off by default
+- [x] On push/release events, sync repo metadata via the `Project` service — **scoped by an ADR written before the code** (`docs/DECISIONS.md`, 2026-08-18): sync never writes a curated field, only what GitHub is authoritative for, and an unmatched repo becomes an *unpublished draft*. A naive reading of this item would have overwritten the prose signed off in #49
+- [x] Tests: signature verification, and idempotency — guarded by a unique constraint rather than a pre-check
+- [x] **Not in the original plan** — the admin can see and publish drafts (#144), and `PUT` reaching a draft is now pinned (#146). Without the first, an auto-created draft could never go live; without the second, the behaviour the control depends on was untested
+
+> **Known follow-up:** #148 — an auto-created draft has no tags and the edit form requires one, so open-edit-publish cannot be completed. Publishing from the list works. Needs an editorial decision, not a patch.
+>
+> **Not yet wired to anything real:** per the 2026-08-05 note above, pointing GitHub's webhook at a live endpoint waits on Phase 5. The flag is off by default.
 
 **7b. Rendered agent build-log page**
 - [ ] New `agentlog` package: parse `AGENT_LOG.md` (or move its entries into the DB directly, arguably cleaner) and expose via a read-only endpoint
