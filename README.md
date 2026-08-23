@@ -8,6 +8,8 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 **Phase 6 (content & polish) is in progress** — a performance pass, a project date period, the content-rendering work real portfolio copy depends on, and a substantial hardening pass across both forms have landed. What remains needs decisions rather than code: per-image alt text, a contact route that does not depend on the contact endpoint, and the canonical domain the sitemap needs.
 
+**Phase 7a (GitHub webhook auto-sync) is complete** — a `githubsync` package that verifies GitHub's signature against the raw request bytes, records deliveries idempotently, syncs only the fields GitHub is authoritative for, and creates unpublished drafts for repositories it has not seen. It is feature-flagged off and not yet pointed at a live endpoint, which waits on Phase 5.
+
 **Phase 5 (deployment) is paused** pending VPS setup, so nothing is deployed yet. Phase 6 and Phase 7 don't depend on it and are proceeding in the meantime.
 
 `PROJECT_TODO.md` carries the authoritative per-phase status; this section summarises it and can lag.

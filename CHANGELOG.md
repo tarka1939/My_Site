@@ -7,6 +7,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Phase 7a — GitHub webhook auto-sync** (2026-08-21, issues #53/#54/#55/#144, epic #70). A `githubsync` package that verifies GitHub's `X-Hub-Signature-256` against the **raw request bytes** (a deserialised body is not what GitHub signed), compares digests in constant time, refuses to start with an unconfigured secret, and ships feature-flagged off. Deliveries are recorded idempotently against a unique `X-GitHub-Delivery`, guarded by the constraint rather than a pre-check. Sync writes only the fields GitHub is authoritative for — `lastPushedAt`, `defaultBranch`, `archived` — and **never a curated field**, a boundary fixed by an ADR written before any handler existed, because a naive reading of #54 would have overwritten the prose signed off in #49. A repository with no matching project becomes an *unpublished draft*, which gives `Project` a `published` flag and makes the public listing filter on it; the migration backfills existing rows to `true`, since a default of `false` would blank the live site on deploy. The admin can see and publish drafts (#144), and `PUT` reaching a draft — the operation the whole control depends on — is now pinned (#146). Backend 100 → 202 tests, frontend 236 → 255. Not yet pointed at a live endpoint; that waits on Phase 5. Known follow-up: #148. See `AGENT_LOG.md` 2026-08-21
+
 - Filled in `SPEC.md`, `docs/DATA_MODEL.md`, `docs/DECISIONS.md`, `README.md`, `CLAUDE.md` from the revised `PROJECT_TODO.md` (2026-07-21)
 - Draft Phase 7 extension entities in `docs/DATA_MODEL.md`: `GithubSyncRecord`, `AgentLogEntry`, `AnalyticsEvent`, `DspJob` (inferred, not yet confirmed)
 

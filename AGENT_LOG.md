@@ -292,6 +292,96 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-21 — Phase 7a: the isolation exercise finally ran, and found what reading the backend would have hidden
+
+**Task given:**
+
+Start Phase 7, sequentially. 7a's three issues (#53 receiver, #54 sync, #55 tests), plus the two the
+work itself produced (#144 admin publish control, #146 pinning that `PUT` reaches a draft).
+
+**Agent(s) used:**
+
+`backend-agent` on Opus for the receiver and the sync handler, Sonnet for the single pinning test,
+`frontend-agent` on Opus for the admin control. Two were resumed after session limits.
+
+**What went right:**
+
+**Deciding before dispatching worked for the third time on this project.** #54 says "sync repo
+metadata into the Project service." Read naively that copies GitHub's repo description over
+`Project.description` — destroying prose signed off two days earlier (#49), automatically, on someone
+else's schedule. That is #92's data-loss shape arriving by a route nobody was watching. The ADR was
+written and merged before any handler existed, and it is why the implementation needed no rework.
+
+**The backend/frontend isolation exercise ran for the first time, and paid immediately.**
+`PROJECT_TODO.md` has recorded since 2026-08-02 that the exercise deferred from Phase 4 lives in
+Phase 7 — Phase 3 having been built against a running backend, so no first integration remained to
+test. #144 was the first task where the rule was real: the agent could not read `/backend`, only
+`docs/openapi.yaml` and the generated client.
+
+It found **two defects that meant the feature could not have worked**: the admin list called
+`listProjects`, the *public* endpoint that filters to published unconditionally — so the page was
+structurally incapable of showing a draft — and the edit form loaded through `getProject`, which 404s
+for a draft identically to an id naming nothing. It also flagged **two contract ambiguities rather
+than resolving them**, which is the part that makes the exercise worth its cost. One became #146; the
+other is #148.
+
+Reading the Java would have hidden all four, because the obvious move is to call whichever method
+works. The Senior Dev's premise in #144 — "a draft appears in the admin list looking identical to a
+live project" — was itself wrong: it did not appear at all.
+
+**Three traps caught by measuring rather than reasoning:**
+
+- **`repository.pushed_at` has two wire formats.** Epoch seconds as a *number* on a `push` event, an
+  ISO-8601 *string* everywhere else. Handling one passes whichever test is written first and silently
+  drops the field in production for the other — on the event the feature is named after.
+- **A concurrent idempotency test passed against the bug it was written to catch.** Twelve threads
+  through HTTP could not race a check-then-act insert, because dispatch jitter is wider than the race
+  window; the racers arrived single-file. Rewritten below the HTTP layer, it fails on round 0.
+- **`jsonb` parses rather than stores.** Whitespace goes, keys reorder, escapes resolve — so a payload
+  recorded "verbatim" cannot re-verify its own signature. The migration, entity and data model all
+  claimed verbatim; all three were corrected.
+
+**What went wrong (be specific):**
+
+1. **A merge left `docs/DATA_MODEL.md` arguing with itself.** The ADR branch and the receiver branch
+   both edited the `GithubSyncRecord` section; git auto-resolved cleanly, and the result had one
+   paragraph saying the sync scope was still an open decision and the next saying it was confirmed,
+   plus two unlabelled tables back to back. A clean auto-merge is not a coherent document.
+2. **The ADR shipped saying "denylist" and the code shipped an allowlist.** The implementer's argument
+   was better than the ADR's: the deciding case is a blank config — a fresh environment, a forgotten
+   variable — where an empty allowlist syncs nothing and an empty denylist syncs everything. The ADR
+   was amended rather than left contradicting the code it exists to explain.
+3. **Regenerating the client broke the frontend suite, and `npm run build` did not notice.** Five
+   `Project` fields became required; no application code constructs a `Project` literal, but a test
+   fixture does. Build green, `npm test` failing to compile.
+4. **An agent reported a Maven trap that does not reproduce.** It claimed `mvn test` ran stale test
+   classes after a signature change, which would mean every backend gate this session was unreliable.
+   Checked before repeating it: `testCompile` reports "Recompiling the module because of changed
+   dependency" and rebuilds all 29 classes. Something happened to it, but not for the stated reason.
+
+**How it was caught:** the merge contradiction by re-reading the merged section rather than trusting a
+clean auto-merge; the frontend break by running `npm test` as well as `npm run build`; the Maven claim
+by trying to reproduce it; #148 by rendering the admin screen against a real draft row.
+
+**Fix applied:** all five issues closed, epic #70 closed. #148 filed with three coherent options rather
+than a patch, because which surface is wrong is an editorial question about the portfolio.
+
+**Takeaway for next time:**
+
+- **The isolation rule's value is entirely in what gets *reported*.** An agent that resolves a contract
+  ambiguity by reading the other side produces working code and no finding. Two of Phase 7a's four
+  discoveries exist only because the agent was told to flag rather than resolve, and did.
+- **A guard added for a hypothetical earned out twice.** `project-detail.component.spec.ts`'s
+  `: Project` annotation was added in PR #132 *specifically* so a future required field would fail
+  loudly. It has now done so twice, in #93 and here. The instruction that mattered second time was
+  "do not silence it with a cast."
+- **A clean auto-merge is not a coherent document.** Two branches editing the same section from
+  different premises merged without conflict and produced text that contradicted itself two paragraphs
+  apart. Read the merged region, not the merge exit code.
+- **When an agent reports a trap, reproducing it is part of accepting it.** The Maven claim would have
+  gone into this log as a fourth structurally-cannot-fail gate. It does not hold up, and recording it
+  would have made the file less trustworthy, not more.
+
 ## 2026-08-18 — Clearing the Phase 6 backlog: six agents, and the pattern was pushing back on the brief
 
 **Task given:**
