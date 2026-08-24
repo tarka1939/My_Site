@@ -29,6 +29,29 @@ describe('AuthService', () => {
     expect(service.isLoggedIn()).toBe(false);
   });
 
+  it('still reports hasToken for a session that has expired by wall clock', () => {
+    // The one window the two predicates are meant to disagree in, and the reason hasToken() exists:
+    // "may this person use the admin area" is already no, while "did we hold a credential the
+    // server could have just rejected" is still yes. errorInterceptor needs the second question --
+    // asking the first gave it the wrong answer for ordinary expiry (issue #108).
+    const service = TestBed.inject(AuthService);
+    service.setSession({ token: 'abc123', expiresAt: new Date(Date.now() - 60_000).toISOString() });
+
+    expect(service.isLoggedIn()).toBe(false);
+    expect(service.hasToken()).toBe(true);
+  });
+
+  it('reports no token before a session is set and after logout', () => {
+    const service = TestBed.inject(AuthService);
+    expect(service.hasToken()).toBe(false);
+
+    service.setSession({ token: 'abc123', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    expect(service.hasToken()).toBe(true);
+
+    service.logout();
+    expect(service.hasToken()).toBe(false);
+  });
+
   it('clears the token and storage on logout', () => {
     const service = TestBed.inject(AuthService);
     service.setSession({ token: 'abc123', expiresAt: new Date(Date.now() + 60_000).toISOString() });
