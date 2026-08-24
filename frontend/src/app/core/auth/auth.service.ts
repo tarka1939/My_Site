@@ -29,6 +29,24 @@ export class AuthService {
     return token !== null && expiresAt !== null && Date.parse(expiresAt) > Date.now();
   });
 
+  /**
+   * Whether this tab is holding a token at all, expired or not.
+   *
+   * Deliberately not a synonym for isLoggedIn(), and never a basis for deciding what to render or
+   * who to let onto a route -- that is isLoggedIn()'s job and only isLoggedIn()'s job. The two
+   * answer different questions and are *meant* to disagree, in exactly one window: after expiresAt
+   * has passed but before anything has cleared the session (the idle-admin state the comment above
+   * describes). In that window "may this person use the admin area" is no, while "did we hold a
+   * credential the server could have just rejected" is yes.
+   *
+   * The second question is the one errorInterceptor needs, and asking isLoggedIn() instead got it
+   * the wrong answer for the most common way a session ends: an ordinary wall-clock expiry produced
+   * a generic "Request failed (401)." toast with no logout and no redirect (issue #108). Naming the
+   * predicate here rather than writing `auth.token() !== null` at the call site keeps both
+   * definitions in one file, so a reader comparing them cannot miss that the difference is meant.
+   */
+  readonly hasToken = computed(() => this.tokenSignal() !== null);
+
   setSession(response: LoginResponse): void {
     this.tokenSignal.set(response.token);
     this.expiresAtSignal.set(response.expiresAt);
