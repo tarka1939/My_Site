@@ -2,9 +2,22 @@ import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, throwError } from 'rxjs';
+import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notifications/notification.service';
 import { ApiFieldError, ApiProblem } from './api-problem';
+
+/**
+ * The one endpoint in docs/openapi.yaml where 401 does not mean "your token was not accepted".
+ * Its 401 is documented as "Invalid credentials" -- a mistyped password, not a session ending.
+ *
+ * Matched exactly rather than by suffix or prefix so that this exclusion cannot quietly grow to
+ * cover an endpoint whose 401 *does* mean the session is over; silently declining to log someone
+ * out is the failure mode worth guarding against here, not the other way round. Built from
+ * environment.apiBaseUrl because that is what app.config.ts hands provideApi(), so the generated
+ * client's `${basePath}/auth/login` is this string.
+ */
+const LOGIN_URL = `${environment.apiBaseUrl}/auth/login`;
 
 /**
  * Normalizes every failed API response into an ApiProblem and rethrows that instead of the raw
@@ -29,7 +42,29 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       const { problem, discardedFieldErrors } = normalizeFailure(error);
 
-      if (error.status === 401 && auth.isLoggedIn()) {
+      // hasToken(), not isLoggedIn(). isLoggedIn() is already false once the token has expired by
+      // wall clock, which is the most common way a session ends -- so gating on it meant ordinary
+      // expiry fell through to the generic toast below ("Request failed (401).") with no logout and
+      // no redirect, and only the rare server-side rejection of a still-believed-valid token (clock
+      // skew, rotated signing secret, revocation) ever took this path. Both mean the same thing to
+      // the admin: log in again. See issue #108 and hasToken()'s comment in auth.service.ts.
+      //
+      // The two other conjuncts are what keep this from firing on unrelated 401s, and both are
+      // load-bearing:
+      //
+      //   hasToken() -- someone who never authenticated must not be bounced to a login page they
+      //   never asked for. The public contact form is the case that matters: an anonymous visitor
+      //   holds no token, so a 401 there (undocumented, but reachable once Phase 5 puts a proxy in
+      //   front of the backend) leaves them where they are with a plain toast.
+      //
+      //   not the login endpoint -- a wrong password answers 401 too, and this branch would then
+      //   report it as an expired session and navigate to /admin/login with returnUrl set to the
+      //   login page itself, destroying the returnUrl authGuard had just put there. That is not
+      //   hypothetical: authGuard redirects on expiry *without* calling logout(), so an admin
+      //   arriving at the login page after an expiry still has the stale token in this signal, and
+      //   one typo would strand them. A login 401 falls through to the generic toast, which is
+      //   where AdminLoginComponent already expects invalid credentials to be surfaced.
+      if (error.status === 401 && auth.hasToken() && req.url !== LOGIN_URL) {
         auth.logout();
         notifications.error('Your admin session has expired. Please log in again.');
         router.navigate(['/admin/login'], { queryParams: { returnUrl: router.url } });
