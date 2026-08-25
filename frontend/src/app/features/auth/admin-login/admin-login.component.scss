@@ -12,14 +12,15 @@ form {
 }
 
 label {
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
 }
 
 input {
   padding: 0.5rem;
-  border: 1px solid var(--color-border);
+  // An input's outline is the only thing saying "you can type here", so it takes the 3:1-clearing
+  // muted value rather than --color-hairline -- see the hairline token's note in styles.scss.
+  border: 1px solid var(--color-text-muted);
   border-radius: 0.25rem;
-  font: inherit;
 }
 
 button {
@@ -28,7 +29,7 @@ button {
   border: none;
   border-radius: 0.25rem;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   cursor: pointer;
 }
 

@@ -7,16 +7,17 @@ th,
 td {
   text-align: left;
   padding: 0.5rem;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-hairline);
 }
 
 // The repository a project tracks, under its title. Muted and small: it is context for the row,
 // not a second heading competing with the title.
 .repo {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
-  font-family: monospace;
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-mono);
 }
 
 // Both publication states get a word; only the one that means "invisible to the public" gets a
@@ -24,7 +25,7 @@ td {
 // is canvastext over a semi-transparent grey, so it is legible at full contrast in either scheme
 // without a per-scheme value, and it still reads for anyone who cannot tell two hues apart.
 .status {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .status--draft {
@@ -32,7 +33,10 @@ td {
   padding: 0.1rem 0.5rem;
   border: 1px solid var(--color-text-muted);
   border-radius: 999px;
-  font-weight: 700;
+  // --weight-emphasis, not 700: only 400 and 600 of IBM Plex Sans are shipped, so a 700 on body
+  // text resolves to the 600 cut anyway. Declaring the weight that exists stops the stylesheet
+  // claiming a face the browser never loads.
+  font-weight: var(--weight-emphasis);
   color: var(--color-text);
   background: var(--color-surface-muted);
 }
@@ -49,14 +53,15 @@ td {
 
 .actions button {
   cursor: pointer;
-  font: inherit;
 }
 
 // The publish toggle is the row's ordinary action, so it looks like a button rather than borrowing
 // the destructive red next to it.
 .publish-toggle {
   padding: 0.15rem 0.6rem;
-  border: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  // A control boundary, not a rule between rows: 3:1 rather than the hairline's 1.6:1.
+  border: 1px solid var(--color-text-muted);
   border-radius: 0.25rem;
   background: transparent;
   color: inherit;

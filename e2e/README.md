@@ -212,6 +212,13 @@ Reruns must not depend on how the previous run ended, so:
   `-webkit-box-orient: vertical` once did exactly that. Assert the *box*, never the declaration.
   If you shorten Alpha's description, the clamp assertion fails on its own precondition rather
   than passing vacuously.
+- **Await `waitForFontsReady` (`support/fonts.ts`) before measuring anything geometric.** The
+  clamp assertion's stability used to rest on the site being `system-ui` with no webfonts, so there
+  was no `font-display: swap` reflow to race. Since the 2026-08-22 visual direction the site
+  self-hosts Archivo and IBM Plex, and a measurement taken mid-swap compares a fallback's line
+  count against a webfont's. The faces carry metric overrides that make the swap nearly free, which
+  is not the same as free — and a layout test that is right almost every time teaches people to
+  press re-run rather than to look.
 - **Project tag order is not deterministic.** The backend holds tags in a `HashSet` and returns
   `Set.copyOf(...)`, whose iteration order is randomized per JVM run. Assert tag *membership*,
   never order.

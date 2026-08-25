@@ -54,7 +54,12 @@ import { hasDateValue, toProjectMonth } from './project-period';
   styles: `
     .project-period {
       margin: 0.25rem 0;
-      font-size: 0.9rem;
+      // Dates are metadata, and metadata is set in the mono face (docs/DECISIONS.md, 2026-08-22).
+      // It earns its place here beyond the stylistic argument: a monospaced digit means "March
+      // 2024" and "August 2025" occupy the same width, so a grid of cards does not wobble.
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      letter-spacing: var(--tracking-mono);
       color: var(--color-text-muted);
     }
   `,
