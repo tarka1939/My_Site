@@ -282,6 +282,34 @@ The decisive fact: **Googlebot executes JavaScript, but the social scrapers do n
 
 **Not decided here:** whether `lastPushedAt` is rendered on the public site, and whether an archived repo is hidden or merely marked. Both are presentation questions that want seeing on screen before being settled, and neither blocks the sync work.
 
+### 2026-08-22 — Visual direction: generated artwork per project, self-hosted type, tokens flipped per scheme
+
+**Context:** the site had no visual design. It had browser defaults plus accessibility repairs — every colour decision to date was driven by a contrast defect (#116) rather than by an aesthetic intent, and the measurable state was: no type scale (`h2` at 1.1× body; `17.6px` and `13.3333px` are unset UA values), headings inheriting body leading at 1.5, the tag chips rendering in Arial 13.3px against `system-ui` 16px, and `--color-border: #ccc` — a hairline at 1.6:1 on white and **11.7:1 on the near-black canvas**, used as a stroke in 16 places. Recorded as #152. Three directions were mocked with the real content and compared on both grounds; the owner chose the third.
+
+**Decision:**
+
+1. **Direction C, "Spectrum".** A card grid where **each project renders its own generated artwork** — a deterministic spectrum derived from that project's own title and tags, so it is stable across reloads and distinct per project. Display face `Archivo` at heavy weights and tight tracking, `IBM Plex Sans` for body, `IBM Plex Mono` for metadata and tags. Cool near-black ground, single warm accent.
+2. **Generated art is a fallback, not the goal.** Where a project has a real image, the image wins. The generator exists because two of five projects have none and a third has architecture diagrams rather than screenshots — it removes the empty-card problem without shipping stock placeholders.
+3. **Typefaces are self-hosted, not loaded from Google Fonts.** Three reasons, in order: the audience is substantially EU, and embedding the Google Fonts CDN sends visitor IPs to a third party — a decision that should not be made silently on a personal site; #122 will add a Content-Security-Policy, and a self-hosted face keeps `font-src` at `'self'` instead of allowlisting two more origins; and the deployment (Netlify static) serves the files at no cost or complexity.
+4. **Every new colour is defined per scheme with its computed ratio recorded**, following the pattern `--color-text-muted` and `--color-error` already set. No new token may be declared once and inherited by both grounds — that is precisely how #116 and the border defect happened, twice.
+
+**Alternatives considered:**
+
+- *Direction A, "Instrument"* — a dense ledger with dates as a tabular column. Strong, and free: it needs no images at all. Lost because it commits the portfolio to carrying itself on typography alone.
+- *Direction B, "Editorial"* — a printed contents page, warm neutrals, serif display. Also needs no images, and reads well against long descriptions. Lost to C on the same axis it won on: it accepts having no imagery rather than solving it.
+- *Google Fonts CDN* — one line, browser-cached, zero build work. Rejected on the privacy and CSP grounds above.
+- *`system-ui` with a proper scale and no webfonts* — the cheapest possible improvement, and genuinely most of the measurable win in #152. Rejected because a portfolio's typography is part of what it is demonstrating, and `system-ui` is the one choice that cannot be read as a choice.
+
+**Consequences, and the first two are the ones that cost:**
+
+- **Webfonts reintroduce font-swap reflow, which the E2E suite currently relies on not existing.** `projects.spec.ts` asserts a rendered line count to prove the CSS line clamp is laying out — the only check in the project that would fail if `-webkit-box-orient` were deleted again. Its stability argument rests explicitly on `system-ui` with no webfonts, so there is no swap to race. That assumption dies here. **The test must await `document.fonts.ready` before measuring**, and the faces should carry fallback metric overrides (`size-adjust`, `ascent-override`) so a swap moves as little as possible. Getting this wrong turns the project's most valuable layout test flaky, which teaches people to re-run rather than to look.
+- **Two component stylesheets are already over the 2kB budget warning** — `admin-project-form` at 2967 bytes and `projects-list` at 2454, against a 4kB error ceiling — and the card work lands on the second. Either the card styling stays lean or the budget is revisited deliberately; silently raising a budget to fit is how the previous budgets stopped meaning anything (#51 replaced the stock ones for exactly that reason).
+- **Font bytes count against the initial budget** (320kB warn / 400kB error). Subset to Latin, `woff2` only, preload only the face used above the fold.
+- **`--color-border` is replaced rather than patched.** It is a light-mode value drawing every dark-mode box; a per-scheme hairline token supersedes it across all 16 usages.
+- **The generator becomes real code with a real cost** — it must be deterministic, must not run for cards that have an image, and must degrade to a plain surface if canvas is unavailable rather than leaving a blank hole.
+
+**Not decided here:** whether `lastPushedAt` or archived state surface visually, and the treatment of the admin area, which is not public and does not need the same investment. Both wait until the public pages are done and can be seen.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
