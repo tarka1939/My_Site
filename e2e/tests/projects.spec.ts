@@ -11,6 +11,7 @@ import {
   FIXTURE_BETA,
   FIXTURE_BETA_PERIOD,
 } from '../support/fixtures';
+import { waitForFontsReady } from '../support/fonts';
 import { stubFixtureImages } from '../support/images';
 
 /**
@@ -104,6 +105,14 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   // browser is the only place the difference exists, so measure the *box*, never the declaration --
   // asserting `-webkit-line-clamp: 3` is present is precisely the check that passed while the bug
   // was live.
+  //
+  // The wait is not optional. This assertion's stability used to rest on the site being `system-ui`
+  // with no webfonts, so there was no font swap to race; the 2026-08-22 visual direction self-hosts
+  // Archivo and IBM Plex at `font-display: swap` and that assumption is gone. Measuring mid-swap
+  // would compare a fallback's line count against a webfont's -- which is exactly the kind of
+  // failure that looks like flake, gets re-run, and passes.
+  await waitForFontsReady(page);
+
   const clamp = await alphaDescription.evaluate((el) => {
     const rendered = el.getBoundingClientRect();
 
