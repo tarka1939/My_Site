@@ -1,5 +1,5 @@
 .site-header {
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-hairline);
 }
 
 .site-nav {
@@ -13,8 +13,12 @@
 }
 
 .site-nav__brand {
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-display);
   text-decoration: none;
+  color: var(--color-text);
 }
 
 .site-nav ul {
@@ -31,7 +35,8 @@
 
 .site-nav a.is-active {
   text-decoration: underline;
-  font-weight: 600;
+  text-underline-offset: 0.3em;
+  font-weight: var(--weight-emphasis);
 }
 
 .link-button {
@@ -55,6 +60,9 @@ main {
   max-width: 60rem;
   margin: 0 auto;
   padding: 1rem;
+  border-top: 1px solid var(--color-hairline);
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
 }

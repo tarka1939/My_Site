@@ -39,25 +39,26 @@ import { NotificationService } from './notification.service';
       gap: 0.75rem;
       padding: 0.75rem 1rem;
       border-radius: 0.375rem;
-      background: #333;
-      color: #fff;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      background: var(--color-surface-notice);
+      color: var(--color-on-notice);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
     }
 
     .notification--error {
-      background: #7a1f1f;
+      background: var(--color-surface-danger);
+      color: var(--color-on-danger);
     }
 
     .notification p {
       margin: 0;
-      font-size: 0.9rem;
+      font-size: var(--text-sm);
     }
 
     .notification button {
       background: transparent;
       border: none;
       color: inherit;
-      font-size: 1.1rem;
+      font-size: var(--text-md);
       line-height: 1;
       cursor: pointer;
       padding: 0;

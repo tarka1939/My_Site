@@ -7,6 +7,21 @@
   padding: 0;
 }
 
+// Tags, like dates, are metadata and take the mono face (docs/DECISIONS.md, 2026-08-22). The link
+// list deliberately does not: those are labels a person wrote and reads as prose.
+.tag-list {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--color-text-muted);
+}
+
+// The page's own title, larger than the h1 that names a listing: a detail page is about one thing
+// and the thing should say so. The rest of the scale is inherited from styles.scss.
+h1 {
+  font-size: var(--text-3xl);
+}
+
 .image-gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
@@ -28,10 +43,14 @@
     // chart or a UI capture all lose meaning when cropped, and letterboxing is the option that
     // never destroys content, so it is the right default for an unknown image.
     //
-    // The letterbox fill must be theme-aware: the site follows the OS theme (styles.scss sets
-    // `color-scheme: light dark` with system `canvas`/`canvastext` colours), so the fixed #ccc of
-    // --color-border -- fine as a 1px stroke, which is all it was used for before -- would paint
-    // light-grey bars around every image that is not 16:10 on a dark canvas.
+    // The letterbox fill must be theme-aware: the site follows the OS theme, and a fixed grey would
+    // paint light bars around every image that is not 16:10 on the dark ground. That was the
+    // original reason for reaching past the old --color-border here, and it still holds against the
+    // token that replaced it -- --color-hairline is a *stroke* value tuned to 1.6:1, so filling an
+    // area with it would be a stripe of almost-the-ground rather than a letterbox. Nor is
+    // --color-surface right: the gallery already sits on the page, and a card-coloured plate behind
+    // each image would read as a second card. --color-surface-muted is the token that exists for
+    // exactly this -- a fill that composites against whichever ground is live.
     aspect-ratio: 16 / 10;
     object-fit: contain;
     background: var(--color-surface-muted);
