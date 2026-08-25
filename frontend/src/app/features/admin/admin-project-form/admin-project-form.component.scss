@@ -22,7 +22,6 @@ textarea {
   // muted value rather than --color-hairline -- see the hairline token's note in styles.scss.
   border: 1px solid var(--color-text-muted);
   border-radius: 0.25rem;
-  font: inherit;
 }
 
 // The publication checkbox and its label share a line; the hint stays under both, which is what
