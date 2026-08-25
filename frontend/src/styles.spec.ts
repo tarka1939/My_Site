@@ -681,6 +681,20 @@ describe('component stylesheets', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('never hard-code a font weight, because only two body cuts exist', () => {
+    // IBM Plex Sans ships at 400 and 600 only. `font-weight: 700` on body text therefore renders
+    // as the 600 cut whatever the stylesheet says -- a declaration that quietly does not mean what
+    // it reads as. Naming the token is what keeps the weights declared and the weights shipped the
+    // same set; adding a third cut is then one decision in one place, made against the byte cost.
+    const offenders = sources.flatMap(({ file, css }) =>
+      [...css.matchAll(/font-weight\s*:\s*([^;]+);/g)]
+        .map((m) => m[1].trim())
+        .filter((value) => !/^var\(--weight-[a-z]+\)$/.test(value) && value !== 'inherit')
+        .map((value) => file + ': ' + value),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it('never hard-code a font size a step of the scale should own', () => {
     // 0.85rem, 0.9rem and 1.1rem were all in here, and none of them was on any scale -- they were
     // each picked once, next to the thing they were shrinking. That is how #152 §2 happened.

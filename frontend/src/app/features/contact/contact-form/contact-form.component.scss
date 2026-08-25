@@ -12,7 +12,7 @@ form {
 }
 
 label {
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
 }
 
 input,
@@ -46,7 +46,7 @@ textarea {
 
   .form-error-heading {
     margin-bottom: 0.5rem;
-    font-weight: 600;
+    font-weight: var(--weight-emphasis);
   }
 }
 

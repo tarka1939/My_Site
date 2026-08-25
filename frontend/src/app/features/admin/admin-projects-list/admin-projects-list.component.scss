@@ -33,7 +33,10 @@ td {
   padding: 0.1rem 0.5rem;
   border: 1px solid var(--color-text-muted);
   border-radius: 999px;
-  font-weight: 700;
+  // --weight-emphasis, not 700: only 400 and 600 of IBM Plex Sans are shipped, so a 700 on body
+  // text resolves to the 600 cut anyway. Declaring the weight that exists stops the stylesheet
+  // claiming a face the browser never loads.
+  font-weight: var(--weight-emphasis);
   color: var(--color-text);
   background: var(--color-surface-muted);
 }
