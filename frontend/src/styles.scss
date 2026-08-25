@@ -1,46 +1,287 @@
 /* Global styles */
 
+// =================================================================================================
+// Self-hosted type -- docs/DECISIONS.md, 2026-08-22
+// =================================================================================================
+//
+// Served from public/fonts/, never from the Google Fonts CDN. The decisive reason is privacy: the
+// audience is substantially EU and the CDN would hand every visitor's IP to a third party on every
+// page view. It also keeps #122's future Content-Security-Policy at `font-src 'self'`.
+//
+// What ships, and why so little:
+//   Archivo (variable wght, latin)  35.0 kB  -- display: the brand, every heading
+//   IBM Plex Sans 400 (latin)       22.6 kB  -- body
+//   IBM Plex Sans 600 (latin)       24.3 kB  -- labels, active nav, anything emphasised
+//   IBM Plex Mono 400 (latin)       14.7 kB  -- metadata, dates, tags
+//                                   -------
+//                                   96.5 kB
+//
+// One variable file covers Archivo's whole weight axis, so the display face costs one request no
+// matter how many weights the design ends up using. Plex Sans is shipped as two static cuts rather
+// than its variable file on purpose: the variable latin cut is 45.7 kB, barely less than both
+// statics together, and it would put 45.7 kB rather than 22.6 kB in front of the first paint of
+// body text. No italics: nothing on the site sets any, and shipping a face nobody renders is pure
+// weight. Latin only, woff2 only -- see the `unicode-range` note below for what that costs.
+//
+// Paths are absolute (`/fonts/...`) because these are assets copied from public/, not stylesheet-
+// relative resources the bundler rewrites and hashes. That is deliberate: index.html preloads two
+// of them by name, and a name it cannot know at build time could not be preloaded at all.
+
+@font-face {
+  font-family: 'Archivo Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/archivo-latin-wght-normal.woff2') format('woff2-variations');
+  // Latin only. Anything outside this range -- a project title in Greek or Cyrillic -- renders in
+  // the fallback below instead of as tofu, which is why the range is declared rather than omitted:
+  // without it the browser believes this file covers every codepoint and draws boxes.
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+// -----------------------------------------------------------------------------------------------
+// Fallback faces, metrically matched to the webfonts above
+// -----------------------------------------------------------------------------------------------
+//
+// `font-display: swap` means the first paint uses a local face and then swaps. Without these the
+// swap reflows the page, and this project has a specific reason to care: e2e/tests/projects.spec.ts
+// measures a rendered line count to prove the card's line clamp lays out, and its stability
+// argument used to rest on the site having no webfonts at all (docs/DECISIONS.md, 2026-08-22).
+//
+// Each fallback loads a local face and then overrides its metrics so that, at the same font-size,
+// it occupies the same average advance width and declares the same ascent/descent as the webfont
+// it stands in for. Values are derived, not guessed:
+//
+//   size-adjust       = webfont.xWidthAvg/upm  /  fallback.xWidthAvg/upm
+//   ascent-override   = webfont.ascent  / (webfont.upm * size-adjust)
+//   descent-override  = |webfont.descent| / (webfont.upm * size-adjust)
+//   line-gap-override = webfont.lineGap / (webfont.upm * size-adjust)
+//
+// from the published metrics (capsizecss/metrics 4.2.0):
+//   Archivo 700        upm 1000  asc  878  desc -210  gap 0  xWidthAvg 472
+//   IBM Plex Sans 400  upm 1000  asc 1025  desc -275  gap 0  xWidthAvg 451
+//   IBM Plex Mono 400  upm 1000  asc 1025  desc -275  gap 0  xWidthAvg 600
+//   Arial              upm 2048  asc 1854  desc -434  gap 67 xWidthAvg 913
+//   Courier New        upm 2048  asc 1705  desc -615  gap 0  xWidthAvg 1229
+//
+// The `local()` lists are chosen so the override stays true wherever it lands, rather than being
+// exact on one platform and wrong on the rest: Liberation Sans is metric-compatible with Arial by
+// design, and Roboto -- what Android resolves a sans request to -- averages 0.44482 em per glyph
+// against Arial's 0.44580, a 0.22% difference. Courier New, Liberation Mono and Roboto Mono all
+// advance 0.60010 em exactly, so the monospace correction is not an approximation at all.
+//
+// Archivo's fallback is matched on the *700* cut because every display use on this site is set at
+// var(--weight-display); matching the 400 cut would leave headings 7% narrow before the swap.
+
+@font-face {
+  font-family: 'Archivo Fallback';
+  src: local('Arial'), local('Liberation Sans'), local('Roboto'), local('Helvetica');
+  size-adjust: 105.88%;
+  ascent-override: 82.93%;
+  descent-override: 19.83%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans Fallback';
+  src: local('Arial'), local('Liberation Sans'), local('Roboto'), local('Helvetica');
+  size-adjust: 101.17%;
+  ascent-override: 101.32%;
+  descent-override: 27.18%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono Fallback';
+  src: local('Courier New'), local('Liberation Mono'), local('Roboto Mono');
+  size-adjust: 99.98%;
+  ascent-override: 102.52%;
+  descent-override: 27.50%;
+  line-gap-override: 0%;
+}
+
+// =================================================================================================
+// Tokens
+// =================================================================================================
+
 :root {
+  // `color-scheme: light dark` still matters even though the canvas is now an explicit colour: it
+  // is what makes form controls, scrollbars, spinners and the caret render in the matching theme.
+  // What it no longer does is *pick the ground* -- that used to be `canvas`/`canvastext`, which
+  // resolves to a different near-black in every browser (#121212 in Chrome, #2b2a33 in Firefox)
+  // and so could never be designed against. The ADR calls for a cool near-black; a cool near-black
+  // has to be stated.
   color-scheme: light dark;
-  --color-bg: canvas;
-  --color-text: canvastext;
-  --color-accent: #3457d5;
-  --color-border: #ccc;
+
+  // -- Palette ----------------------------------------------------------------------------------
+  //
+  // Every value below is declared for BOTH schemes -- light here, dark in the media query. That is
+  // the rule the 2026-08-22 ADR sets, and it exists because the two colour defects this project
+  // has shipped were both a value chosen against one ground and inherited by the other: #116's
+  // error red (2.87:1 on dark) and #152's border (#ccc, a correct 1.61:1 hairline on white and a
+  // hard 11.67:1 white box on the dark canvas). Ratios are recorded here and asserted in
+  // styles.spec.ts, which re-derives them from this file rather than trusting the comments.
+  //
+  //                                                      light ground   dark ground
+  --color-bg: #fcfbfd;
+  --color-text: #131218; //                                 18.06:1        17.58:1
+  --color-text-muted: #61606c; //                            5.99:1         5.91:1
+  --color-accent: #b03a5b; //                                5.65:1         5.79:1
+  --color-error: #b3261e; //                                 6.34:1         7.84:1
+
+  // The lifted surface a card or panel sits on. Barely separated from the ground (1.10:1 light,
+  // 1.06:1 dark) on purpose -- it reads as a plane, not a box -- so text contrast has to be
+  // checked against it too, not only against the ground: ink is 16.47:1 light / 16.59:1 dark on
+  // it, muted 5.47:1 / 5.58:1, accent 5.16:1 / 5.46:1. All clear AA.
+  --color-surface: #f2f0f6;
+
+  // The 1px stroke. THIS is the replacement for --color-border, which is gone: a hairline is
+  // supposed to be low contrast (1.57:1 light, 1.66:1 dark) so it reads as a line rather than as
+  // an outline shouting at you. A boundary this quiet is only legitimate because it is never the
+  // sole indicator of anything -- the surface, the content and the hover state all define a card
+  // as well -- and because keyboard focus gets a real ring of its own (--color-focus below).
+  //
+  // WHICH MEANS IT IS THE WRONG TOKEN FOR A CONTROL. WCAG 1.4.11 asks 3:1 of any boundary that is
+  // the only thing saying "this is a control", and an input or a tag chip has nothing else saying
+  // it: no fill of its own, no icon, just an outline round some text. Those take
+  // --color-text-muted instead (5.99:1 light / 5.91:1 dark, and 5.47:1 / 5.58:1 on the card
+  // surface), which is what admin-projects-list's draft badge already does. The split is:
+  // structure -- card edges, table rules, the header underline, fieldset boxes -- gets the
+  // hairline; anything a person can type in or click gets the muted value.
+  --color-hairline: #cdc9d8;
+
+  // The keyboard focus ring. WCAG 2.2 SC 1.4.11/2.4.7 want a focus indicator at 3:1 against what
+  // is adjacent to it, and --color-hairline at 1.6:1 is nowhere near that -- so the ring is the
+  // ink colour, the single loudest value in the scheme, and it clears the threshold by more than
+  // five times over on every surface it can land on: 18.06:1 on the light ground and 16.47:1 on
+  // the light card; 17.58:1 and 16.59:1 for the dark values. It is drawn with `outline-offset`, so
+  // the two colours actually adjacent to it are always the ground or the card surface, never the
+  // fill of the control it surrounds -- that is what makes it safe on the accent-filled and
+  // danger-filled buttons, whose own fills are the one place a single ring colour could fail.
+  --color-focus: #131218;
+
+  // Text and icons painted ON --color-accent, which is a fill often enough (primary buttons, the
+  // skip link) to need its own token. It cannot be #fff in both schemes: #fff on the dark accent
+  // #e0607f is 3.42:1, under AA, so every primary button in dark mode would have failed exactly
+  // the way #116 did. On the light accent #fff is 5.65:1; on the dark accent the near-black ground
+  // is 5.79:1.
+  --color-on-accent: #ffffff;
+
+  // Destructive fills -- the delete button, the error toast. Also per scheme, and for a reason the
+  // ratio makes plain: #7a1f1f is a strong 9.96:1 boundary on the light ground but only 1.92:1 on
+  // the near-black one, where it would be a barely-visible rectangle. The dark value trades some
+  // label contrast for a boundary that exists: 3.63:1 against the ground, with #fff on it at
+  // 5.45:1 (light: 9.96:1 boundary, #fff at 10.28:1).
+  --color-surface-danger: #7a1f1f;
+  --color-on-danger: #ffffff;
+
+  // The toast is deliberately the inverse of the page in both schemes -- that is what makes a
+  // thing floating over the content read as floating over the content. Surface against ground and
+  // text against surface are the same measurement here, 18.06:1 light and 17.58:1 dark.
+  --color-surface-notice: #131218;
+  --color-on-notice: #fcfbfd;
 
   // Semi-transparent grey, so it composites against whatever --color-bg resolves to and stays a
-  // subtle backdrop in both light and dark. Use this, not --color-border, for anything that fills
-  // an area rather than drawing a 1px stroke -- --color-border is a fixed light grey and reads as
-  // glaring bars on a dark canvas.
+  // subtle backdrop in both light and dark. Use this for a fill that must not commit to a colour
+  // -- the image letterbox, the draft badge -- where --color-surface would read as a second card.
+  // Composites to #e6e5e7 on the light ground and #1f1f22 on the dark one; ink is 14.84:1 /
+  // 14.62:1 on it and muted text 4.92:1 on both, so it clears AA either way without a per-scheme
+  // value.
   --color-surface-muted: rgb(128 128 128 / 18%);
 
-  // De-emphasised *text* -- hints, tags, dates. Use this rather than a literal `gray`: `gray`
-  // (#808080) is only 3.95:1 on the light canvas, under WCAG AA's 4.5:1 for body text, even though
-  // it clears it on a dark one. Unlike --color-surface-muted this cannot be one semi-transparent
-  // value, because contrast has to be measured against the resolved canvas, not composited onto
-  // it -- so it is flipped per scheme below. #666 is 5.7:1 on white.
-  --color-text-muted: #666;
+  // -- Type -------------------------------------------------------------------------------------
+  --font-display: 'Archivo Variable', 'Archivo Fallback', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'IBM Plex Sans Fallback', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'IBM Plex Mono Fallback', ui-monospace, monospace;
 
-  // Error text *and* error borders -- field messages, the form-error banner, destructive buttons.
-  // One token covers both because a single value clears the stricter of the two thresholds on
-  // every canvas: text needs 4.5:1, a border only 3:1, so anything good enough to read is more
-  // than good enough to draw. Like --color-text-muted this cannot be one value for both schemes,
-  // and for the same reason -- contrast is measured against the resolved canvas. #b3261e is
-  // 6.54:1 on white.
-  --color-error: #b3261e;
+  --weight-body: 400;
+  --weight-emphasis: 600;
+  --weight-display: 700;
+
+  // A real scale, replacing the UA values #152 measured: h2 at 17.6px (1.1x body, so section
+  // headings barely registered as headings) and buttons at 13.3333px, neither of which anyone
+  // chose. The steps widen as the sizes grow -- 1.17, 1.14, 1.13, 1.22, 1.27, 1.29, 1.33 -- rather
+  // than holding one ratio, because the two ends of a scale have opposite problems: adjacent small
+  // sizes have to stay far enough apart to be told apart and close enough together to all stay
+  // readable, while display sizes have to jump hard enough to register as hierarchy at a glance.
+  // Every step lands on a whole pixel at a 16px root.
+  --text-xs: 0.75rem; //     12px  -- tags
+  --text-sm: 0.875rem; //    14px  -- metadata, hints, field errors, footer
+  --text-base: 1rem; //      16px  -- body
+  --text-md: 1.125rem; //    18px  -- h4, lead-in text
+  --text-lg: 1.375rem; //    22px  -- h3, card titles
+  --text-xl: 1.75rem; //     28px  -- h2
+  --text-2xl: 2.25rem; //    36px  -- h1
+  --text-3xl: 3rem; //       48px  -- the project detail page's title, which is the page
+
+  // #152's fourth defect: `line-height: 1.5` inherited into h1, putting 48px of leading on a 32px
+  // face, so a heading read as a loose paragraph. Display type wants 1.1-1.25. The two heading
+  // values are not one value because the smaller headings sit closer to body size, where 1.15 is
+  // tight enough to look cramped rather than deliberate.
+  --leading-body: 1.5;
+  --leading-heading: 1.15;
+  --leading-snug: 1.25;
+
+  // Archivo at heavy weights opens up at size; pulling the tracking in is what keeps a 36px
+  // heading reading as one object instead of a row of letters.
+  --tracking-display: -0.02em;
+  --tracking-mono: 0.01em;
 }
 
-// Paired with `color-scheme: light dark` above: the canvas follows the same preference this query
-// reads, so the two can never disagree about which theme is on screen. #a3a3a3 is 7.4:1 on
-// Chrome's dark canvas (#121212) and still 5.6:1 on the lightest of the major browsers' (#2b2a33).
-// #ff7b72 is 7.43:1 on #121212 and still 5.62:1 on #2b2a33 -- measure against both, not just
-// Chrome's, or a value that looks fine in one browser lands under AA in another. It is a coral
-// red rather than a pale pink on purpose: the point of this colour is to still read as an error.
+// Paired with `color-scheme: light dark` above. Ratios in the comments are against the two grounds
+// declared in this file, --color-bg and --color-surface -- not against a browser's system canvas,
+// which the site no longer uses.
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-text-muted: #a3a3a3;
+    --color-bg: #0a0a0d;
+    --color-text: #f2f1f5;
+    --color-text-muted: #8d8b98;
+    --color-accent: #e0607f;
     --color-error: #ff7b72;
+    --color-surface: #121218;
+    --color-hairline: #37363f;
+    --color-focus: #f2f1f5;
+    --color-on-accent: #0a0a0d;
+    --color-surface-danger: #b84044;
+    --color-surface-notice: #f2f1f5;
+    --color-on-notice: #0a0a0d;
   }
 }
+
+// =================================================================================================
+// Base
+// =================================================================================================
 
 * {
   box-sizing: border-box;
@@ -48,14 +289,81 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: var(--weight-body);
+  line-height: var(--leading-body);
   color: var(--color-text);
   background: var(--color-bg);
-  line-height: 1.5;
+}
+
+// #152's third defect, fixed at the root rather than one control at a time. The tag chips rendered
+// in Arial 13.3333px because projects-list's rule never said otherwise and a UA gives form controls
+// their own font -- which is a trap every new control walks into, not a mistake that one stylesheet
+// made. Inheriting here means the next button someone writes cannot reintroduce it.
+button,
+input,
+select,
+textarea,
+optgroup {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-display);
+  // Trades a slightly shorter measure for line lengths that do not leave one word alone on the
+  // last line. Only ever applied to headings: browsers cap `balance` at a handful of lines, and it
+  // is the wrong effect for body copy anyway.
+  text-wrap: balance;
+  margin: 1.5em 0 0.5em;
+}
+
+h1 {
+  font-size: var(--text-2xl);
+}
+
+h2 {
+  font-size: var(--text-xl);
+}
+
+h3 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
+}
+
+h4,
+h5,
+h6 {
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+// A heading that opens its container has nothing to be spaced away from, and the container's own
+// padding already put it where it belongs.
+:is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
 }
 
 a {
   color: var(--color-accent);
+}
+
+// One ring, defined once, for everything focusable. `:focus-visible` rather than `:focus` so a
+// mouse click on a button does not leave it ringed. The offset is what makes a single colour safe
+// everywhere: it puts the ground or the card surface -- never the control's own fill -- on both
+// sides of the ring. See --color-focus for the measured ratios.
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 .skip-link {
@@ -65,7 +373,8 @@ a {
   z-index: 2000;
   padding: 0.5rem 1rem;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
+  font-weight: var(--weight-emphasis);
 }
 
 .skip-link:focus {
@@ -73,6 +382,9 @@ a {
   top: 0.5rem;
 }
 
+// Deliberately not :focus-visible. `main` is focused programmatically by the skip link so the next
+// Tab continues from the content, and a ring around the whole page is noise, not information --
+// the focus that matters has already been announced by the heading.
 main:focus {
   outline: none;
 }

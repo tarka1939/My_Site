@@ -10,6 +10,35 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
 
     <!--
+      The two faces the first screen is actually set in, fetched in parallel with the stylesheet
+      that will ask for them rather than after it (docs/DECISIONS.md, 2026-08-22 -- "preload only
+      the face used above the fold"). Archivo draws the brand and the h1; IBM Plex Sans 400 draws
+      every card. The other two files styles.scss declares -- Plex Sans 600 and Plex Mono -- are
+      deliberately NOT here: preloading everything is the same as preloading nothing, since it
+      just moves the contention rather than removing it, and both are metrically matched to a
+      local fallback so their swap costs a repaint, not a reflow.
+
+      `crossorigin` is mandatory even though these are same-origin: fonts are always fetched in
+      CORS mode, so a preload without it is a second, unused request rather than a warmed cache.
+      The paths are the ones styles.scss names, unhashed, because they are copied from public/ --
+      if you rename a file there, rename it in both places or this silently becomes dead weight.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/archivo-latin-wght-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/ibm-plex-sans-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <!--
       Static SEO / sharing tags -- see the 2026-08-10 SEO ADR in docs/DECISIONS.md.
 
       This app is client-rendered, so these are the ONLY tags a non-JS crawler ever sees. Googlebot
