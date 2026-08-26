@@ -69,13 +69,6 @@
     color: inherit;
   }
 
-  img {
-    width: 100%;
-    height: 10rem;
-    object-fit: cover;
-    border-radius: 0.375rem;
-  }
-
   // #152's second defect, at its worst point: 1.1rem is 17.6px, 1.1x body, so a card title barely
   // registered as a title. --text-lg is 22px against 16px body and 36px for the page's h1, which
   // is the hierarchy a grid of cards needs -- titles that scan as titles without competing with
@@ -106,6 +99,42 @@
     // is laid out past the card edge instead of wrapping inside the clamped box.
     overflow-wrap: anywhere;
     margin: 0.5rem 0 0;
+  }
+}
+
+// The media slot every card carries, and the ground anything in it lands on.
+//
+// A raw image on the card was the problem: both images the site actually has are light-background
+// artefacts -- a UI screenshot and an SVG diagram -- so dropped straight onto the near-black canvas
+// they read as bright blocks punched into it. The plate is the fix, and it is the same
+// --color-surface-muted the detail gallery already letterboxes onto, so an image card and an
+// artwork card sit on one ground rather than two. A scrim over the image was the alternative and
+// was rejected: it would dim the one thing the image is there to show, on a thumbnail this small.
+//
+// `scale-down`, not `cover`: dsp_execution_pipeline.svg is 187x150 natively against a 160px slot,
+// so `cover` was scaling a small diagram up to fill a box it never had the pixels for. scale-down
+// contains anything larger than the slot and leaves anything smaller at its own size, centred. The
+// padding keeps a bright rectangle off the plate's edge, so it reads as an inset artefact rather
+// than a hole cut in the card.
+//
+// The height is fixed and independent of what is in the slot -- that is what holds a row of cards
+// to one height across any mix of images and artwork. The artwork fills the plate edge to edge
+// (`overflow: hidden` clips it to the same radius); only images are inset.
+.card-media {
+  height: 10rem;
+  border-radius: 0.375rem;
+  background: var(--color-surface-muted);
+  overflow: hidden;
+
+  > * {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  img {
+    object-fit: scale-down;
+    padding: 0.5rem;
   }
 }
 

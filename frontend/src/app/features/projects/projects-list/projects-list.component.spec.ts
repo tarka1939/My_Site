@@ -1,8 +1,9 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
+import { CanvasRecording, recordCanvas } from '../../../../testing/canvas';
 import { trackImageAttributeOrder } from '../../../../testing/image-attribute-order';
-import { clickOn } from '../../../../testing/zoneless';
+import { clickOn, renderComponent } from '../../../../testing/zoneless';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
 import { CARD_EXCERPT_MAX_CHARS } from '../../../shared/description-excerpt/description-excerpt';
@@ -32,6 +33,9 @@ const OTHER_PROJECT_WITH_IMAGE = {
   title: 'Delay',
   images: ['https://images.example.com/delay.png'],
 };
+
+/** A second imageless project, so one grid holds two cards that must not draw the same thing. */
+const ARTWORK_NEIGHBOUR = { ...PROJECT, id: 'p7', title: 'Colour Pipeline' };
 
 const COMPLETED_PROJECT = {
   ...PROJECT,
@@ -74,10 +78,30 @@ describe('ProjectsListComponent', () => {
   let listProjects: ReturnType<typeof vi.fn>;
   let listTags: ReturnType<typeof vi.fn>;
   let tracker: ReturnType<typeof trackImageAttributeOrder>;
+  let canvas: CanvasRecording;
 
-  afterEach(() => tracker?.restore());
+  afterEach(() => {
+    tracker?.restore();
+    canvas.restore();
+  });
+
+  /** The draw calls made by the artwork on the card at `index`, in order. */
+  function artworkOps(
+    fixture: ComponentFixture<ProjectsListComponent>,
+    index: number,
+  ): readonly string[] {
+    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.project-card app-project-artwork canvas',
+    );
+    return canvas.opsFor(cards[index] as HTMLCanvasElement);
+  }
 
   beforeEach(async () => {
+    // Stubbed for the whole file rather than only the artwork tests: most fixtures here have
+    // no images, so most of these tests now render a card that draws its own artwork, and
+    // jsdom implements no 2D context -- letting the real call through would print a "not
+    // implemented" error under every one of them.
+    canvas = recordCanvas();
     listProjects = vi.fn().mockReturnValue(
       of({ content: [PROJECT], page: 0, size: 12, totalElements: 1, totalPages: 1 }),
     );
@@ -252,6 +276,98 @@ describe('ProjectsListComponent', () => {
     const link = (fixture.nativeElement as HTMLElement).querySelector('.project-card a')!;
     expect(link.querySelector('img')!.getAttribute('alt')).toBe('');
     expect(link.textContent).toContain('Reverb');
+  });
+
+  // --- Generated card artwork (docs/DECISIONS.md, 2026-08-22) -----------------------------------
+  //
+  // Rendered through renderComponent/whenStable rather than detectChanges(): the paint is a
+  // *reaction* to the canvas existing, registered as a render effect, so forcing a refresh would
+  // assert something weaker than what a browser does. See testing/zoneless.ts.
+
+  it('draws a project its own artwork when it has no image', async () => {
+    const fixture = await renderComponent(ProjectsListComponent);
+
+    const slot = (fixture.nativeElement as HTMLElement).querySelector('.project-card .card-media')!;
+    expect(slot.querySelector('img')).toBeNull();
+    const artwork = slot.querySelector('app-project-artwork')!;
+    expect(artwork).not.toBeNull();
+    expect(canvas.requests.length).toBe(1);
+    expect(canvas.opsFor(artwork.querySelector('canvas')!).length).toBeGreaterThan(0);
+  });
+
+  it('renders the image and no generated artwork when a project has one', async () => {
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+
+    const slot = (fixture.nativeElement as HTMLElement).querySelector('.card-media')!;
+    expect(slot.querySelector('img')!.getAttribute('src')).toBe(PROJECT_WITH_IMAGE.images[0]);
+    expect(slot.querySelector('app-project-artwork')).toBeNull();
+    // Not merely hidden: the generator must not *run* for a card that has an image, which is why
+    // it sits in the @else branch rather than behind a flag. Nothing asked for a context at all.
+    expect(canvas.requests).toEqual([]);
+  });
+
+  it('draws the same artwork for a project every time it is rendered', async () => {
+    // Two independent renders. "Stable across reloads" is a claim about repeated construction,
+    // and a seed memoised inside one component instance satisfies a weaker version of it.
+    const first = await renderComponent(ProjectsListComponent);
+    const second = await renderComponent(ProjectsListComponent);
+
+    expect(artworkOps(first, 0).length).toBeGreaterThan(0);
+    expect(artworkOps(second, 0)).toEqual(artworkOps(first, 0));
+  });
+
+  it('draws different artwork for two projects in the same grid', async () => {
+    listProjects.mockReturnValue(pageOf([PROJECT, ARTWORK_NEIGHBOUR]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+
+    expect(artworkOps(fixture, 0).length).toBeGreaterThan(0);
+    expect(artworkOps(fixture, 1)).not.toEqual(artworkOps(fixture, 0));
+  });
+
+  it('keeps the generated artwork out of the accessibility tree', async () => {
+    const fixture = await renderComponent(ProjectsListComponent);
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector('.project-card a')!;
+    expect(link.querySelector('app-project-artwork')!.getAttribute('aria-hidden')).toBe('true');
+    // The link's accessible name stays the title alone. textContent concatenates aria-hidden and
+    // visually-hidden siblings, so artwork contributing any text would surface right here.
+    expect(link.textContent!.trim()).toBe(PROJECT.title);
+  });
+
+  it('gives every card one media slot of a fixed height, whatever the slot holds', async () => {
+    // The uniform-row assertion available without layout: jsdom measures nothing, so what can be
+    // checked is that the slot is on every card, holds exactly one thing, and takes its height
+    // from the stylesheet rather than from its content. The rendered heights themselves need a
+    // browser -- see CLAUDE.md, "A test cannot see appearance".
+    listProjects.mockReturnValue(pageOf([PROJECT, PROJECT_WITH_IMAGE, OTHER_PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+
+    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.project-card');
+    expect(cards.length).toBe(3);
+    for (const card of cards) {
+      const slots = card.querySelectorAll('.card-media');
+      expect(slots.length).toBe(1);
+      expect(slots[0].children.length).toBe(1);
+      const style = getComputedStyle(slots[0]);
+      expect(style.height).toBe('10rem');
+      expect(style.overflow).toBe('hidden');
+    }
+  });
+
+  it('contains a card image rather than scaling it up to fill the slot', async () => {
+    // The regression this pins: `object-fit: cover` on a fixed-height slot enlarges anything
+    // smaller than the box. One of the two real images is a 187x150 SVG diagram in a 160px slot,
+    // and it was being blown up past its natural size. scale-down never enlarges.
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+
+    const style = getComputedStyle((fixture.nativeElement as HTMLElement).querySelector('img')!);
+    expect(style.objectFit).toBe('scale-down');
   });
 
   it('shows each card period as month/year, ongoing where there is no end date', () => {
