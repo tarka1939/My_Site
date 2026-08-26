@@ -281,8 +281,8 @@ describe('ProjectsListComponent', () => {
   // --- Generated card artwork (docs/DECISIONS.md, 2026-08-22) -----------------------------------
   //
   // Rendered through renderComponent/whenStable rather than detectChanges(): the paint is a
-  // *reaction* to the canvas existing, registered as a render effect, so forcing a refresh would
-  // assert something weaker than what a browser does. See testing/zoneless.ts.
+  // *reaction* to the view existing, so awaiting it asserts the same sequence a browser runs
+  // rather than one forced by the test. See testing/zoneless.ts.
 
   it('draws a project its own artwork when it has no image', async () => {
     const fixture = await renderComponent(ProjectsListComponent);

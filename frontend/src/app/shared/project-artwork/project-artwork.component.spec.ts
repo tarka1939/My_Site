@@ -92,8 +92,8 @@ describe('ProjectArtworkComponent', () => {
 
     it('repaints when the project it is drawing changes', async () => {
       // A card is tracked by project id, so this instance survives an edit to the title it is
-      // drawing from. Without a render *effect* -- a one-shot afterNextRender, say -- it would go
-      // on showing the old project's picture until a full reload.
+      // drawing from. Paint once at ngAfterViewInit and never again, and it would go on showing
+      // the old project's picture until a full reload.
       const fixture = await render('Equalizer', [{ name: 'dsp' }]);
       const before = [...opsOf(fixture)];
       expect(canvas.requests.length).toBe(1);

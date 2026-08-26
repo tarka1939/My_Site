@@ -1,8 +1,9 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
-  afterRenderEffect,
+  OnChanges,
   computed,
   input,
   signal,
@@ -67,7 +68,7 @@ import {
     }
   `,
 })
-export class ProjectArtworkComponent {
+export class ProjectArtworkComponent implements AfterViewInit, OnChanges {
   readonly projectTitle = input.required<string>();
 
   /**
@@ -91,12 +92,31 @@ export class ProjectArtworkComponent {
     ),
   );
 
-  constructor() {
-    // `write` phase, not a plain effect: this touches the DOM, and it has to happen after the
-    // canvas element exists. Registering it as a render effect rather than `afterNextRender` also
-    // means an edited title repaints -- a card is tracked by project id, so the same component
-    // instance survives a title change and would otherwise keep drawing the old project's picture.
-    afterRenderEffect({ write: () => this.paint() });
+  /**
+   * Two plain lifecycle hooks rather than `afterRenderEffect`, which is the idiomatic way to write
+   * to the DOM from signal state and was what this used first. It was changed on a measurement:
+   * against the same tree, the initial bundle came out at 303.17 kB on these hooks, 305.64 kB on
+   * `afterNextRender` and 307.01 kB on `afterRenderEffect` -- so the reactive render effect costs
+   * 3.84 kB of a budget with 18 kB of headroom left, to schedule a paint that `ngAfterViewInit`
+   * can do directly. The canvas is in the DOM by then, which is the only thing the timing has to
+   * guarantee, and nothing here reads layout.
+   *
+   * `ngOnChanges` is what the effect was really buying, and it is free: a card is tracked by
+   * project id, so this instance survives a change to the title it draws from and would otherwise
+   * go on showing the old project's picture. It costs a flag because it fires before the view
+   * exists on the first pass, and `viewChild.required` would throw there.
+   */
+  private viewReady = false;
+
+  ngAfterViewInit(): void {
+    this.viewReady = true;
+    this.paint();
+  }
+
+  ngOnChanges(): void {
+    if (this.viewReady) {
+      this.paint();
+    }
   }
 
   private paint(): void {
