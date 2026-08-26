@@ -96,6 +96,39 @@ describe('ProjectsListComponent', () => {
     return canvas.opsFor(cards[index] as HTMLCanvasElement);
   }
 
+  /** Every card's media slot, in grid order. */
+  function mediaSlots(fixture: ComponentFixture<ProjectsListComponent>): HTMLElement[] {
+    return [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.card-media')];
+  }
+
+  /**
+   * What each slot reports it is showing, in grid order.
+   *
+   * Read back off the DOM rather than recomputed here: the component publishes this, so a test that
+   * derived the expected value from the same rule the component uses would be checking its own
+   * arithmetic. These specs compare it against literals.
+   */
+  function mediaKinds(fixture: ComponentFixture<ProjectsListComponent>): (string | null)[] {
+    return mediaSlots(fixture).map((slot) => slot.getAttribute('data-media'));
+  }
+
+  /**
+   * Fail the image on the card at `index` the way a browser does -- a real `error` event on the
+   * <img>, then `whenStable()`. Dispatching rather than calling the handler is the point: the
+   * fallback is the `(error)` binding, and a programmatic call would not exercise it.
+   */
+  async function failImageOn(
+    fixture: ComponentFixture<ProjectsListComponent>,
+    index: number,
+  ): Promise<void> {
+    const image = mediaSlots(fixture)[index].querySelector('img');
+    if (!image) {
+      throw new Error(`card ${index} has no <img> to fail`);
+    }
+    image.dispatchEvent(new Event('error'));
+    await fixture.whenStable();
+  }
+
   beforeEach(async () => {
     // Stubbed for the whole file rather than only the artwork tests: most fixtures here have
     // no images, so most of these tests now render a card that draws its own artwork, and
@@ -368,6 +401,138 @@ describe('ProjectsListComponent', () => {
 
     const style = getComputedStyle((fixture.nativeElement as HTMLElement).querySelector('img')!);
     expect(style.objectFit).toBe('scale-down');
+  });
+
+  // --- An image that does not arrive (#156) -----------------------------------------------------
+  //
+  // The slot used to branch on `project.images.length > 0`, which asks whether an image was
+  // *specified*, not whether one *arrived*. These are external URLs an admin pasted, on hosts
+  // nobody here controls, and the admin's own browser has them cached -- so the failure is one only
+  // a visitor sees, and only a test can hold.
+
+  it('falls back to generated artwork when a card image fails to load', async () => {
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    const slot = mediaSlots(fixture)[0];
+    // Presence before absence: the image really rendered first, so what follows is a claim about it
+    // being replaced rather than one that would pass just as well if it had never appeared.
+    expect(slot.querySelector('img')).not.toBeNull();
+    expect(canvas.requests).toEqual([]);
+
+    await failImageOn(fixture, 0);
+
+    expect(slot.querySelector('img')).toBeNull();
+    const artwork = slot.querySelector('app-project-artwork');
+    expect(artwork).not.toBeNull();
+    // Drawn, not merely mounted -- an empty canvas over the plate is the hole this exists to avoid.
+    expect(canvas.opsFor(artwork!.querySelector('canvas')!).length).toBeGreaterThan(0);
+    // And the generator ran only once it was needed: nothing asked for a context before the error.
+    expect(canvas.requests.length).toBe(1);
+  });
+
+  it('distinguishes a card that lost its image from one that never had one', async () => {
+    // Both cards end up drawing the same kind of picture, and they are not the same situation: one
+    // is ordinary, the other is a dead link somebody should go and fix. Whoever debugs a grid of
+    // generated art needs to be able to tell them apart without guessing.
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE, PROJECT]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    expect(mediaKinds(fixture)).toEqual(['image', 'artwork']);
+
+    await failImageOn(fixture, 0);
+
+    expect(mediaKinds(fixture)).toEqual(['artwork-fallback', 'artwork']);
+    for (const slot of mediaSlots(fixture)) {
+      expect(slot.querySelector('app-project-artwork')).not.toBeNull();
+    }
+  });
+
+  it('leaves a card alone when its image loads normally', async () => {
+    // The other half of the branch, and the one a too-eager fallback breaks: a `load` must swap
+    // nothing. This is also what rules out anything time- or measurement-based -- a slow image
+    // that eventually loads has to survive, and only `error` can tell the two apart.
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    const slot = mediaSlots(fixture)[0];
+    slot.querySelector('img')!.dispatchEvent(new Event('load'));
+    await fixture.whenStable();
+
+    expect(mediaKinds(fixture)).toEqual(['image']);
+    expect(slot.querySelector('img')!.getAttribute('src')).toBe(PROJECT_WITH_IMAGE.images[0]);
+    expect(slot.querySelector('app-project-artwork')).toBeNull();
+    expect(canvas.requests).toEqual([]);
+  });
+
+  it('keeps the media slot the same shape after a card falls back', async () => {
+    // Rows are uniform because the slot's height comes from the stylesheet and not from what is in
+    // it, so a swap that happens after load must not touch that. jsdom lays nothing out, so this
+    // asserts the structural cause: the same slot element, still holding exactly one thing, still
+    // sized by the rule, with the replacement filling it exactly as the image did.
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.project-card')!;
+    const slot = mediaSlots(fixture)[0];
+    expect(getComputedStyle(slot).height).toBe('10rem');
+    expect(slot.children.length).toBe(1);
+    expect(getComputedStyle(slot.children[0]).height).toBe('100%');
+
+    await failImageOn(fixture, 0);
+
+    expect(card.querySelectorAll('.card-media').length).toBe(1);
+    expect(card.querySelector('.card-media')).toBe(slot);
+    expect(slot.children.length).toBe(1);
+    const style = getComputedStyle(slot);
+    expect(style.height).toBe('10rem');
+    expect(style.overflow).toBe('hidden');
+    // No pixel height introduced anywhere on the way: one would stop tracking the rem-based rule
+    // the moment a visitor raises their font size, and rows would go ragged only for them.
+    expect(getComputedStyle(slot.children[0]).height).toBe('100%');
+  });
+
+  it('keeps the eager LCP treatment, and its attribute order, when another card fails', async () => {
+    // The fallback is a listener, not an attribute, so the static attributes on the two <img>
+    // branches must still be written during the creation pass -- before `src`. Collapsing them into
+    // one bound element to make room for the handler would defeat eager loading in a real browser
+    // while leaving every final attribute value identical in jsdom.
+    tracker = trackImageAttributeOrder();
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE, OTHER_PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    const lcp = mediaSlots(fixture)[0].querySelector('img')!;
+    expect(lcp.getAttribute('loading')).toBe('eager');
+
+    await failImageOn(fixture, 1);
+
+    expect(mediaKinds(fixture)).toEqual(['image', 'artwork-fallback']);
+    // The same element throughout: a neighbour failing must not re-create the LCP image, which
+    // would re-request a picture that has already arrived.
+    expect(mediaSlots(fixture)[0].querySelector('img')).toBe(lcp);
+    expect(lcp.getAttribute('loading')).toBe('eager');
+    expect(lcp.getAttribute('fetchpriority')).toBe('high');
+    const order = tracker.writesFor(lcp).filter((name) => name === 'loading' || name === 'src');
+    expect(order).toEqual(['loading', 'src']);
+  });
+
+  it('confines a failed image to the card that owns it', async () => {
+    listProjects.mockReturnValue(
+      pageOf([PROJECT_WITH_IMAGE, OTHER_PROJECT_WITH_IMAGE, ARTWORK_NEIGHBOUR]),
+    );
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    expect(mediaKinds(fixture)).toEqual(['image', 'image', 'artwork']);
+
+    await failImageOn(fixture, 0);
+
+    expect(mediaKinds(fixture)).toEqual(['artwork-fallback', 'image', 'artwork']);
+    const survivor = mediaSlots(fixture)[1].querySelector('img');
+    expect(survivor!.getAttribute('src')).toBe(OTHER_PROJECT_WITH_IMAGE.images[0]);
+    expect(mediaSlots(fixture)[1].querySelector('app-project-artwork')).toBeNull();
+    // The neighbour that was already drawing its own picture is untouched too -- it never had an
+    // <img> to lose, and it must not acquire one.
+    expect(mediaSlots(fixture)[2].querySelector('img')).toBeNull();
   });
 
   it('shows each card period as month/year, ongoing where there is no end date', () => {
