@@ -483,7 +483,10 @@ describe('ProjectsListComponent', () => {
 
     expect(card.querySelectorAll('.card-media').length).toBe(1);
     expect(card.querySelector('.card-media')).toBe(slot);
+    // Asserted first, so nothing below can hold vacuously: a fix that never swapped, or one that
+    // hid the broken <img> and stacked artwork over it, both leave "unchanged" trivially true.
     expect(slot.children.length).toBe(1);
+    expect(slot.children[0].tagName.toLowerCase()).toBe('app-project-artwork');
     const style = getComputedStyle(slot);
     expect(style.height).toBe('10rem');
     expect(style.overflow).toBe('hidden');
