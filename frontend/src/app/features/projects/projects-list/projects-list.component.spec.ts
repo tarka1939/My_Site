@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { CanvasRecording, recordCanvas } from '../../../../testing/canvas';
 import { trackImageAttributeOrder } from '../../../../testing/image-attribute-order';
 import { clickOn, renderComponent } from '../../../../testing/zoneless';
@@ -79,8 +79,12 @@ const LONG_DESCRIPTION = [
 
 const LONG_DESCRIPTION_PROJECT = { ...PROJECT, id: 'p6', description: LONG_DESCRIPTION };
 
+function pageValue(content: unknown[]) {
+  return { content, page: 0, size: 12, totalElements: content.length, totalPages: 1 };
+}
+
 function pageOf(content: unknown[]) {
-  return of({ content, page: 0, size: 12, totalElements: content.length, totalPages: 1 });
+  return of(pageValue(content));
 }
 
 describe('ProjectsListComponent', () => {
@@ -571,6 +575,42 @@ describe('ProjectsListComponent', () => {
       expect(slot.querySelector('img')).toBeNull();
       expect(slot.querySelector('app-project-artwork')).not.toBeNull();
     }
+  });
+
+  it('keeps a card on artwork when a re-fetch rebuilds the grid', async () => {
+    // Nothing clears the record on a re-fetch, and a tag toggle is the path that proves it means
+    // something: loadProjects() sets loading(true) and the grid lives in the @else of
+    // @if (loading()), so the whole <ul> is destroyed and every card -- and every <img> -- is built
+    // again from nothing. A record kept only in the view would not survive that, and the visitor
+    // would watch the dead image be re-requested and fail a second time.
+    listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    const before = mediaSlots(fixture)[0];
+    await failImageOn(fixture, 0);
+    expect(mediaKinds(fixture)).toEqual(['artwork-fallback']);
+
+    // The re-fetch is left pending rather than answered synchronously, because that is what a real
+    // HTTP call is. With `of(...)` both writes to `loading` land before change detection runs, the
+    // @if never observes `true`, and the grid is quietly reused -- so the test would assert nothing
+    // about a rebuild it never caused.
+    const pending = new Subject<unknown>();
+    listProjects.mockReturnValue(pending);
+    await clickOn(fixture, '.tag-filter button');
+
+    expect(listProjects).toHaveBeenLastCalledWith({ page: 0, size: 12, tag: ['dsp'] });
+    // The grid really is gone at this point, which is what makes the rest of this test non-vacuous.
+    expect(mediaSlots(fixture).length).toBe(0);
+
+    pending.next(pageValue([PROJECT_WITH_IMAGE]));
+    await fixture.whenStable();
+
+    // A different element, so this is a fresh card rather than the old one left alone.
+    expect(mediaSlots(fixture)[0]).not.toBe(before);
+    expect(mediaKinds(fixture)).toEqual(['artwork-fallback']);
+    // And no <img> was created for the dead URL on the way -- not created-then-swapped, never
+    // created. That is the flicker the record exists to prevent.
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('img').length).toBe(0);
   });
 
   it('shows each card period as month/year, ongoing where there is no end date', () => {
