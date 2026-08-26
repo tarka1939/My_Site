@@ -11,9 +11,20 @@ import type { Page } from '@playwright/test';
  * broken-image placeholder rather than as an image. This route supplies them.
  *
  * Call it **before** the first `page.goto` of any spec that renders a project card or gallery.
- * Without it nothing fails outright — alt text and the CSS clamp are both properties of the
- * markup, not of a successful fetch — but every card image spends a DNS failure, and the gallery
- * lays out against a placeholder. Both specs that reach the public project list call it.
+ * **Omitting it now fails the suite outright**, which it did not before #156. A card image that
+ * fires `error` is replaced by generated artwork, and `images.e2e.invalid` fails DNS, so with no
+ * route the card renders no `<img>` at all and `projects.spec.ts`'s thumbnail assertions —
+ * `toHaveCount(1)`, `alt=""`, `src` — fail rather than merely costing a lookup. The old note said
+ * nothing failed outright because alt text and the CSS clamp are properties of the markup rather
+ * than of a successful fetch; that reasoning was right and is now obsolete, because whether the
+ * markup exists is itself conditional on the fetch.
+ *
+ * The detail gallery still degrades the older, quieter way — it keeps its `<img>` and lays out
+ * against a broken-image placeholder — so there it is the `naturalWidth > 0` poll, not a missing
+ * element, that would catch an absent stub. Both specs that reach the public project list call it.
+ *
+ * Nothing in CI runs this suite (`.github/workflows/` holds only a README), so this comment is the
+ * only warning a future reader gets. Keep it true.
  *
  * SVG rather than a raster format: it is a few hundred bytes of text with an intrinsic size the
  * renderer can use immediately, and the label makes it obvious in a failure screenshot that the

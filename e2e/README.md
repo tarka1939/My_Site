@@ -200,8 +200,12 @@ Reruns must not depend on how the previous run ended, so:
   `images.e2e.invalid`, a hostname RFC 2606 guarantees can never resolve, and `stubFixtureImages`
   (`support/images.ts`) fulfils them from bytes the test owns. **Call it before the first
   `page.goto` of any spec that reaches the public project list** — `projects.spec.ts` and
-  `admin.spec.ts` both do. Omitting it does not fail anything outright, it just spends a DNS
-  failure per card image and lays the gallery out against a broken-image placeholder.
+  `admin.spec.ts` both do. **Omitting it fails `projects.spec.ts` outright**, which it did not
+  before #156: a card image that errors is now replaced by generated artwork, so a card whose URL
+  fails DNS renders no `<img>` for the thumbnail assertions to find. The detail gallery still keeps
+  its `<img>` and falls back to a broken-image placeholder, which is what its `naturalWidth` poll
+  is there to catch. Nothing in CI runs this suite, so that note and the one in `support/images.ts`
+  are the only warning a future reader gets.
 - **Alpha is long and imaged; Beta is short and imageless. That asymmetry is load-bearing.** It is
   what lets one journey prove the card *summarises* a long description rather than truncating
   unconditionally, that the CSS line clamp actually lays out, and that a project with no images
