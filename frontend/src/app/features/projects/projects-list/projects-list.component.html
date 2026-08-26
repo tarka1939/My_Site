@@ -31,8 +31,12 @@
                is what keeps a row of cards uniform across a mix of images and generated artwork.
                The plate it draws, the contained fit and why a small image is never upscaled are all
                in .card-media's comment in the stylesheet. -->
-          <div class="card-media">
-            @if (project.images.length > 0) {
+          <!-- `data-media` reports which of the three the slot ended up showing: an image, artwork
+               for a project that has none, or artwork after an image failed to load. The same call
+               is the branch condition below, so the attribute is a readout of that decision rather
+               than a second copy of it. See mediaKind() for why the last two are kept apart. -->
+          <div class="card-media" [attr.data-media]="mediaKind(project)">
+            @if (mediaKind(project) === 'image') {
               <!-- The first thumbnail the grid actually renders is the likely LCP element above the
                    fold, so it is fetched eagerly and at high priority; every other card stays lazy.
                    Keyed off firstImageProjectId() rather than `$first`, because `$first` indexes
@@ -41,7 +45,14 @@
                    `[attr.loading]`, so `loading` is applied at element creation (before `src`)
                    instead of after it; the specs assert that ordering, not just the final attribute
                    values. `decoding` is left at the browser default on the eager branch on purpose
-                   -- deferring the decode of the LCP image is the one thing worth not doing. -->
+                   -- deferring the decode of the LCP image is the one thing worth not doing.
+                   `(error)` is a listener, not an attribute, and is written last on both elements
+                   so the static attributes above it keep the source order the specs pin. -->
+              <!-- These are external URLs an admin pasted, on hosts nobody here controls, so they
+                   can stop resolving without anything in this app changing: a renamed repository, a
+                   rate-limited host, an origin a visitor's network blocks. `(error)` is what turns
+                   that into the generated artwork instead of an empty plate -- it fires on real
+                   failure and never on a slow load, which is why nothing here measures or waits. -->
               <!-- alt="" on purpose: the thumbnail sits inside a link whose visible text is already
                    the project title (the <h2> below), so any alt text here is redundant with
                    adjacent text and just makes the link announce the title twice. That is W3C/WAI's
@@ -49,16 +60,33 @@
                    case and does get alt text -- see shared/project-image-alt/project-image-alt.ts.
                    -->
               @if (project.id === firstImageProjectId()) {
-                <img [src]="project.images[0]" alt="" loading="eager" fetchpriority="high" />
+                <img
+                  [src]="project.images[0]"
+                  alt=""
+                  loading="eager"
+                  fetchpriority="high"
+                  (error)="onImageError(project.images[0])"
+                />
               } @else {
-                <img [src]="project.images[0]" alt="" loading="lazy" decoding="async" />
+                <img
+                  [src]="project.images[0]"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  (error)="onImageError(project.images[0])"
+                />
               }
             } @else {
-              <!-- No image, so the card draws its own. Deliberately in the @else and nowhere else:
-                   the generator must not run for a card that has a usable image, and not rendering
+              <!-- No usable image, so the card draws its own. Deliberately in the @else and nowhere
+                   else: the generator must not run for a card whose image is fine, and not rendering
                    the component is a stronger guarantee than any flag it could be passed -- nothing
-                   is seeded and no drawing context is requested. Tags go in by reference, because
-                   that reference is what the seed is memoised on. -->
+                   is seeded and no drawing context is requested. That property is what matters for
+                   a project that never had an image, and it is untouched: such a card takes this
+                   branch on the first pass and no image work happens for it, ever. A card that had
+                   an image and lost it necessarily arrives here later, as a runtime transition, and
+                   pays for the <img> it already made -- which is the cost of finding out.
+                   Tags go in by reference, because that reference is what the seed is memoised
+                   on. -->
               <app-project-artwork [projectTitle]="project.title" [tags]="project.tags" />
             }
           </div>

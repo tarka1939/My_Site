@@ -31,12 +31,34 @@ export class ProjectsListComponent {
   protected readonly loadError = signal<string | null>(null);
 
   /**
+   * Image URLs whose <img> has told us, by firing `error`, that it did not arrive.
+   *
+   * `error` is the only signal used, and the alternatives are worse rather than merely different:
+   * `naturalWidth === 0` polling and a load timeout both fire on an image that is *slow*, and would
+   * throw away a picture that was about to appear on a bad connection. `error` fires on genuine
+   * failure -- DNS, 404, 403, a rate-limited host, a blocked origin -- and never on a slow load.
+   *
+   * Keyed by URL, not by project id. The failure belongs to the URL: an admin who repairs a dead
+   * link changes it, and the card then recovers on the next load without anything here having to
+   * notice the edit. Two cards pointing at one dead URL are also genuinely both dead. Nothing
+   * clears this on a re-fetch on purpose -- a URL that failed a moment ago has not been fixed by
+   * a page change, and re-adding the <img> only to watch it fail again is a visible flicker.
+   */
+  private readonly failedImages = signal<ReadonlySet<string>>(new Set<string>());
+
+  /**
    * Id of the first project on the page that actually has an image -- i.e. the owner of the first
    * <img> the grid renders, which is the LCP candidate that must not be lazy-loaded.
    *
    * Deliberately not `$first` in the template: that indexes over projects, not over projects that
    * have images. `images` is optional content with no upload pipeline, so one imageless project at
    * the top of a createdAt-DESC list would otherwise leave every image on the page lazy.
+   *
+   * Equally deliberately, this does *not* read `failedImages`. LCP is decided in the first moments
+   * of the page; by the time an image has failed, promoting the next card's image to eager would
+   * re-create that <img> in the other branch of the template and re-request a picture that has very
+   * likely already arrived. The eager treatment is a bet placed at render time, and a lost bet is
+   * not worth re-placing.
    */
   protected readonly firstImageProjectId = computed(
     () => this.projects().find((project) => project.images.length > 0)?.id ?? null,
@@ -47,6 +69,41 @@ export class ProjectsListComponent {
       next: (tags) => this.allTags.set(tags),
     });
     this.loadProjects();
+  }
+
+  /**
+   * What a card's media slot is showing, and why.
+   *
+   * This is both the template's branch condition and the value it publishes as `data-media`, so the
+   * attribute cannot drift from what was actually rendered -- there is one decision, read twice.
+   *
+   * `'artwork'` and `'artwork-fallback'` draw the same picture and are still two values, because
+   * "this project has no image" and "this project's image is broken" are different situations: the
+   * first is ordinary and the second is something the owner would want to fix. It extends the
+   * observability the artwork host already provides rather than adding a mechanism of another kind
+   * -- `data-artwork="painted" | "plain"` says how the drawing went, `data-media` says why it was
+   * asked for -- and it stays out of the accessibility tree, since neither is anything a visitor
+   * needs told.
+   */
+  protected mediaKind(project: Project): 'image' | 'artwork' | 'artwork-fallback' {
+    if (project.images.length === 0) {
+      return 'artwork';
+    }
+    return this.failedImages().has(project.images[0]) ? 'artwork-fallback' : 'image';
+  }
+
+  /**
+   * An <img> reported that its source did not load. Record the URL, which swaps that card -- and
+   * only cards showing that URL -- over to generated artwork.
+   *
+   * Guarded so a repeat `error` for a URL already known bad does not replace the set and repaint
+   * the whole grid. A browser can fire `error` more than once for one element.
+   */
+  protected onImageError(url: string): void {
+    if (this.failedImages().has(url)) {
+      return;
+    }
+    this.failedImages.update((failed) => new Set(failed).add(url));
   }
 
   protected toggleTag(tagName: string): void {
