@@ -290,6 +290,72 @@ Copy this block per entry:
 
 ## Entries
 
+## 2026-08-26 — Phase 8's visual design: three rounds where the thing measured was not the thing seen
+
+Issue #152, PRs #153 (direction, ADR first), #154 (token layer, type scale, self-hosted faces),
+#155 (card grid and generated artwork). Frontend 255 → 329 tests. The failures worth recording are
+all one shape: a check that was real, passing, and pointed at the wrong surface.
+
+### The palette I signed off would have shipped an AA failure — my error, not an agent's
+
+I verified the new palette the way #116 taught: ink, muted, accent and hairline each measured
+against the ground they sit on, in both schemes, ratios written into the token comments. Every one
+passed. I never measured text drawn *on* the accent, because "accent" was a stroke and a link colour
+in my head while the mockups had made it a **fill** — primary buttons, the skip link. `#fff` on the
+dark accent `#e0607f` is **3.42:1**. Every primary button in dark mode would have failed exactly the
+way #116 did, in the PR whose entire purpose was to stop that recurring.
+
+Caught by the agent implementing #154, which added `--color-on-accent` (light `#ffffff` at 5.65:1;
+dark, the near-black ground at 5.79:1) and found the same class one token over: `#7a1f1f` is a
+strong 9.96:1 boundary on the light ground and **1.92:1** on the near-black one — a delete button
+that is a barely-visible rectangle.
+
+**The generalisation, now enforced.** Recording the ratio of a colour is not the same as recording
+the ratios of the *pairs* that colour takes part in, and the token's name does not tell you what
+those pairs are. `styles.spec.ts` grew `has a check for every colour token that exists`: the set of
+`--color-*` tokens declared in `styles.scss` must equal the set the ratio table knows about, so a
+colour added with no recorded ratios fails a build rather than waiting for someone to look at it.
+
+### HSL lightness is not lightness
+
+The artwork generator (#155) first held its curves at a fixed HSL lightness, which sounds like "the
+same visual weight at every hue" and is not. At `l: 62%` the stroke measures **1.04:1 against the
+light plate at one hue and 4.20:1 at another** (2.64:1 to 12.16:1 against the dark one) — some cards
+would have shouted while their neighbours were invisible, and which did which depended on the
+scheme. Solving for sRGB relative luminance instead, by bisection over lightness at fixed hue, pins
+every hue to 3.33:1 light / 3.26:1 dark. Nothing there is text, so 3:1 is no obligation — it is
+where a line stops being a suggestion.
+
+### Two tests that measured the test rather than the code
+
+Same PR, both found by mutating the code they were meant to guard, which is the only reason they
+were found at all:
+
+- `de41048` — two assertions were arithmetic over constants the spec itself declared. Raising the
+  background grid to alpha 0.9, and making the area under the curve fully opaque, both left the
+  suite green. Neither read anything the generator produced. The fake context now records each
+  gradient separately and parses every alpha out of the string the generator actually wrote.
+- `b216a33` — a mutation squeezing the response into a 10% band in the middle of the slot passed
+  `uses the full height of the slot`. The fake context kept every point in one flat list, so the
+  grid, which runs corner to corner regardless, satisfied an assertion aimed at the curve. Points
+  are now grouped by path and the three paths a draw makes are asserted rather than assumed.
+
+### A failure I reported that was my own harness
+
+I reported that a card's image never loaded, `loading="lazy"` appearing not to fire. It fires. The
+Browser pane was not compositing, so nothing entered the viewport and the lazy load correctly did
+nothing; the image reports `complete: true` once the pane renders. Verified **before** filing, which
+is the only reason this is a paragraph here instead of an issue someone else had to close.
+
+### What looking at it found that 329 green tests could not
+
+Another entry for `CLAUDE.md`'s "a test cannot see appearance". With the whole suite green, opening
+the running site produced #156: the card asks whether an image was *specified*
+(`project.images.length > 0`), never whether one *arrived*. `Project.images` are admin-pasted
+external URLs, so a dead one leaves the plate empty permanently — and the generated artwork that
+exists precisely to prevent an empty card is skipped for the one case that needs it most. The
+admin's own browser has it cached, so it looks correct to the only person likely to check.
+
 <!-- Add entries below, most recent first -->
 
 ## 2026-08-21 — Phase 7a: the isolation exercise finally ran, and found what reading the backend would have hidden

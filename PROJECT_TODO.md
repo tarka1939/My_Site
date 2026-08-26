@@ -210,6 +210,22 @@ These are the four "give the backend a real job" candidates from earlier. Build 
 - [ ] Return results via polling or WebSocket rather than a single blocking request — nontrivial audio analysis won't reliably fit inside a normal HTTP timeout window
 - [ ] Tests: reuse the numerical-tolerance validation approach from your standalone DSP project if you're building both
 
+## Phase 8 — Polishing and cleaning (added 2026-08-22)
+
+Opened as the home for work that is neither a new feature nor a bug in something shipped: the hardening Phases 1–3 deferred on purpose, and the visual design the site never had. Not sequenced — these are independent, and each ships on its own PR. Milestone `Phase 8` is number `10`; as everywhere else here, the milestone number does not match the phase number.
+
+**Visual design** — **complete for the public pages** (issue #152, PRs #153/#154/#155).
+- [x] Direction settled *before* any of it was built (#153) — three directions mocked against the real content and compared on both grounds; ADR in `docs/DECISIONS.md`, 2026-08-22. What the site actually had was browser defaults plus accessibility repairs: no type scale (`h2` at 1.1× body), headings inheriting body leading, tag chips in Arial against `system-ui`, and `--color-border: #ccc` drawing 16 strokes at 1.6:1 on white and **11.7:1 on the near-black canvas**
+- [x] A token layer with **every colour defined per scheme and its computed ratio recorded beside it** (#154), plus a completeness test that fails the build if a `--color-*` token exists that the ratio table does not know about. One token declared once and inherited by both grounds is precisely how #116 and the border defect happened — twice, which is why the guard is a test and not a convention
+- [x] Self-hosted `Archivo` + `IBM Plex` rather than the Google Fonts CDN — visitor IPs on an EU-facing site, and #122's CSP keeping `font-src` at `'self'`
+- [x] Per-project generated artwork where no image exists (#155) — deterministic from title and *sorted* tags, kept out of the accessibility tree, reporting its own degraded state via `data-artwork`
+- [ ] **Open follow-up:** #156 — the card chooses artwork on whether an image was *specified*, not whether one *arrived*, so a dead URL leaves an empty plate permanently
+- [ ] **Left as a direction question, not a defect:** `main` is 960px, which puts detail-page prose at roughly 120 characters per line against a comfortable 60–75. Narrowing it is a taste call on a page nobody has re-read since the cards landed
+
+**Security hardening** — deferred from Phases 1–3 deliberately, not overlooked.
+- [ ] #122 — no Content-Security-Policy or security response headers anywhere
+- [ ] #123 — the admin JWT is readable from JavaScript, so any XSS is a full admin session takeover. Wants #122 first: a CSP is the cheaper half of the same problem, and doing the cookie rework without one just moves the exposure
+
 ## Ongoing / meta
 
 - [ ] Treat `SPEC.md` and the OpenAPI contract as source of truth — update them **before** changing code, not after the fact
