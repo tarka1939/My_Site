@@ -43,6 +43,17 @@ export class ProjectsListComponent {
    * notice the edit. Two cards pointing at one dead URL are also genuinely both dead. Nothing
    * clears this on a re-fetch on purpose -- a URL that failed a moment ago has not been fixed by
    * a page change, and re-adding the <img> only to watch it fail again is a visible flicker.
+   *
+   * Two things bound how much that decision can cost, and neither was obvious enough to leave
+   * unsaid. The set belongs to **this component instance, not to the session**: this route carries
+   * no parameters, so the param-only navigation that Angular's default RouteReuseStrategy would
+   * reuse a component across cannot occur here -- opening a project and coming back destroys this
+   * component and builds a new one with an empty set. Nothing recorded here outlives a single
+   * visit to the page, which is most of why holding a failure for the whole of it is safe.
+   * And it does mean a **transient** failure is held for the whole of that visit: a 429 from a
+   * rate-limited host, or a momentary blip, keeps its card on artwork until the visitor leaves the
+   * page. Nothing here can tell a temporary failure from a permanent one, and of the two ways to
+   * be wrong, retrying is the one the visitor watches happen.
    */
   private readonly failedImages = signal<ReadonlySet<string>>(new Set<string>());
 
@@ -54,11 +65,30 @@ export class ProjectsListComponent {
    * have images. `images` is optional content with no upload pipeline, so one imageless project at
    * the top of a createdAt-DESC list would otherwise leave every image on the page lazy.
    *
-   * Equally deliberately, this does *not* read `failedImages`. LCP is decided in the first moments
-   * of the page; by the time an image has failed, promoting the next card's image to eager would
-   * re-create that <img> in the other branch of the template and re-request a picture that has very
-   * likely already arrived. The eager treatment is a bet placed at render time, and a lost bet is
-   * not worth re-placing.
+   * Equally deliberately, this does *not* read `failedImages`, and the consequence of that is
+   * larger than the in-place case it was first written for, so it is set out here in full rather
+   * than in the flattering half.
+   *
+   * The easy case is an image that dies in place: promoting the next card would re-create that
+   * card's <img> in the other branch of the template and re-request a picture already in flight.
+   *
+   * The case that is easy to miss is a rebuild. A tag toggle and a pagination step both destroy the
+   * grid and build every <img> again from nothing, and this still returns the id of a project whose
+   * image is known dead, because it asks only whether a project *has* an image. That card renders
+   * artwork, so nothing matches the id, and **no image on the page carries `eager` or
+   * `fetchpriority="high"` for the rest of this component's life.**
+   *
+   * That behaviour stays. It costs nothing it claims to protect: both paths that rebuild the grid
+   * are clicks, and LCP stops taking candidates at the first user interaction, so by the time
+   * either one runs there is no largest contentful paint left to win. What is given up after a
+   * toggle is a priority hint on an image that can no longer be the thing the hint exists to serve.
+   *
+   * Where it does cost something is a dead image on the *first* paint -- the bet is placed on that
+   * card, lost, and not re-placed, so whichever card inherits the top of the grid loads without
+   * `fetchpriority="high"`. That is a lost priority hint and not a lost image: `loading="lazy"`
+   * withholds nothing at or near the viewport. Buying it back means making this computed reactive
+   * to failure, which tears down and re-creates a *healthy* card's <img> mid-page in order to
+   * change one attribute on it. The hint is not worth the teardown.
    */
   protected readonly firstImageProjectId = computed(
     () => this.projects().find((project) => project.images.length > 0)?.id ?? null,
