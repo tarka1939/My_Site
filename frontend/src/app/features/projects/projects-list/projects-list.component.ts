@@ -5,6 +5,7 @@ import { TagsService } from '../../../core/api/api/tags.service';
 import { Project } from '../../../core/api/model/project';
 import { Tag } from '../../../core/api/model/tag';
 import { DescriptionExcerptPipe } from '../../../shared/description-excerpt/description-excerpt.pipe';
+import { ProjectArtworkComponent } from '../../../shared/project-artwork/project-artwork.component';
 import { ProjectPeriodComponent } from '../../../shared/project-period/project-period.component';
 
 const PAGE_SIZE = 12;
@@ -12,7 +13,7 @@ const PAGE_SIZE = 12;
 @Component({
   selector: 'app-projects-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, ProjectPeriodComponent, DescriptionExcerptPipe],
+  imports: [RouterLink, ProjectArtworkComponent, ProjectPeriodComponent, DescriptionExcerptPipe],
   templateUrl: './projects-list.component.html',
   styleUrl: './projects-list.component.scss',
 })
