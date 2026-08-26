@@ -59,10 +59,20 @@ const VISIBLE = 3;
  * past this a background grid stops being a grid and starts being a cage. */
 const QUIET = 2.5;
 
-/** Captures what a draw emits, without a DOM: colours, and the points of the curve. */
+/**
+ * Captures what a draw emits, without a DOM: the gradient colours, the points of the curve, and
+ * every colour assigned directly to `strokeStyle`.
+ *
+ * The last of those is not incidental. An earlier version of this file recomputed the grid's alpha
+ * and the fill's alpha from constants it declared itself, and mutation testing found both: raising
+ * the grid to `0.9` and the fill to fully opaque each left the suite green, because neither
+ * assertion was reading anything the code did. Everything measured below is now parsed out of a
+ * string the generator actually produced.
+ */
 function capture(seed: number) {
-  const colours: string[] = [];
+  const gradients: string[][] = [];
   const points: number[][] = [];
+  const strokeStyles: unknown[] = [];
   const context = {
     clearRect() {},
     beginPath() {},
@@ -75,23 +85,43 @@ function capture(seed: number) {
     lineTo(x: number, y: number) {
       points.push([x, y]);
     },
-    createLinearGradient: () => ({
-      addColorStop(_stop: number, colour: string) {
-        colours.push(colour);
-      },
-    }),
+    set strokeStyle(value: unknown) {
+      strokeStyles.push(value);
+    },
+    createLinearGradient: () => {
+      // One list per gradient, in creation order, so the area under the curve and the curve itself
+      // are told apart by what they are rather than by what colour they came out.
+      const stops: string[] = [];
+      gradients.push(stops);
+      return {
+        addColorStop(_stop: number, colour: string) {
+          stops.push(colour);
+        },
+      };
+    },
   } as unknown as CanvasRenderingContext2D;
 
   drawProjectArtwork(context, artworkSpec(seed));
-  return { colours, points };
+  return { gradients, points, strokeStyles };
 }
 
-function rgbOf(colour: string): number[] {
+function componentsOf(colour: string): number[] {
   const parts = colour.match(/-?\d+(\.\d+)?/g);
   if (!parts) {
     throw new Error(`unparseable colour ${colour}`);
   }
-  return parts.slice(0, 3).map(Number);
+  return parts.map(Number);
+}
+
+function rgbOf(colour: string): number[] {
+  return componentsOf(colour).slice(0, 3);
+}
+
+/** The alpha the colour was actually written with -- 1 for an `rgb()`, the fourth component of an
+ * `rgba()`. Read rather than assumed; see the note on `capture`. */
+function alphaOf(colour: string): number {
+  const parts = componentsOf(colour);
+  return parts.length > 3 ? parts[3] : 1;
 }
 
 /** Enough seeds to sweep the whole hue circle several times over. */
@@ -134,32 +164,46 @@ describe('drawProjectArtwork', () => {
     // generator now solves for luminance -- this is the assertion that it still does.
     const seen = new Set<string>();
     for (const seed of SEEDS) {
-      for (const colour of capture(seed).colours) {
+      const { gradients } = capture(seed);
+      // Two gradients, in creation order: the area under the curve, then the curve. Asserted so
+      // that a restructure has to come back through this test rather than silently reassigning
+      // which of the two every measurement below is aimed at.
+      expect(gradients.length, `seed ${seed}`).toBe(2);
+      const [area, curve] = gradients;
+
+      for (const colour of curve) {
         if (seen.has(colour)) {
           continue;
         }
         seen.add(colour);
+        expect(alphaOf(colour), `the curve is opaque: ${colour}`).toBe(1);
         const rgb = rgbOf(colour);
-        // The curve is opaque; the area under it is the same colour at 42%, washed toward the
-        // plate, so the fill is measured composited rather than as declared.
-        const isFill = colour.startsWith('rgba');
-        const onLight = isFill ? over(rgb, 0.42, PLATE_LIGHT) : rgb;
-        const onDark = isFill ? over(rgb, 0.42, PLATE_DARK) : rgb;
-        const light = contrastRatio(onLight, PLATE_LIGHT);
-        const dark = contrastRatio(onDark, PLATE_DARK);
+        expect(contrastRatio(rgb, PLATE_LIGHT), `${colour} on the light plate`).toBeGreaterThan(
+          VISIBLE,
+        );
+        expect(contrastRatio(rgb, PLATE_DARK), `${colour} on the dark plate`).toBeGreaterThan(
+          VISIBLE,
+        );
+      }
 
-        if (isFill) {
-          // The area is a wash, so it takes a band rather than a floor: present enough to give the
-          // curve a body, quiet enough that the curve stays the thing you see.
-          expect(light, `${colour} washed onto the light plate`).toBeGreaterThan(1.2);
-          expect(light, `${colour} washed onto the light plate`).toBeLessThan(QUIET);
-          expect(dark, `${colour} washed onto the dark plate`).toBeGreaterThan(1.2);
-          expect(dark, `${colour} washed onto the dark plate`).toBeLessThan(QUIET);
+      for (const colour of area) {
+        if (seen.has(colour)) {
           continue;
         }
-
-        expect(light, `${colour} on the light plate`).toBeGreaterThan(VISIBLE);
-        expect(dark, `${colour} on the dark plate`).toBeGreaterThan(VISIBLE);
+        seen.add(colour);
+        // The area is a wash, so it takes a band rather than a floor: enough to give the curve a
+        // body, quiet enough that the curve stays the thing you see. The alpha is read out of the
+        // colour the generator wrote, never assumed -- an opaque fill has to fail here.
+        const alpha = alphaOf(colour);
+        expect(alpha, `the area under the curve is a wash: ${colour}`).toBeLessThan(0.6);
+        for (const [plate, where] of [
+          [PLATE_LIGHT, 'light'],
+          [PLATE_DARK, 'dark'],
+        ] as const) {
+          const washed = contrastRatio(over(rgbOf(colour), alpha, plate), plate);
+          expect(washed, `${colour} washed onto the ${where} plate`).toBeGreaterThan(1.2);
+          expect(washed, `${colour} washed onto the ${where} plate`).toBeLessThan(QUIET);
+        }
       }
     }
     // A sweep that produced two colours would satisfy every assertion above and prove nothing.
@@ -169,10 +213,25 @@ describe('drawProjectArtwork', () => {
   it('keeps the background grid quiet on both grounds', () => {
     // The grid is a rule behind the artwork, so it takes the ceiling the site's hairline takes
     // rather than a floor: it must be findable, not structural.
-    const grid = over([128, 128, 128], 0.35, PLATE_LIGHT);
-    const gridDark = over([128, 128, 128], 0.35, PLATE_DARK);
-    expect(contrastRatio(grid, PLATE_LIGHT)).toBeLessThan(QUIET);
-    expect(contrastRatio(gridDark, PLATE_DARK)).toBeLessThan(QUIET);
+    //
+    // The colour is read off the strokeStyle the generator assigned, not restated here. Restating
+    // it is what let a mutation raise the grid to alpha 0.9 with this test still green.
+    const { strokeStyles } = capture(1);
+    const flat = strokeStyles.filter((style): style is string => typeof style === 'string');
+    // Exactly one flat colour: the curve's stroke is a gradient object, so a second string here
+    // would mean something else started painting without being measured.
+    expect(flat.length).toBe(1);
+
+    for (const [plate, where] of [
+      [PLATE_LIGHT, 'light'],
+      [PLATE_DARK, 'dark'],
+    ] as const) {
+      const drawn = over(rgbOf(flat[0]), alphaOf(flat[0]), plate);
+      expect(contrastRatio(drawn, plate), `${flat[0]} on the ${where} plate`).toBeLessThan(QUIET);
+      // And not so quiet it is not there at all -- an invisible grid is the same as no grid, and
+      // the "below the ceiling" half of this assertion passes happily for alpha 0.
+      expect(contrastRatio(drawn, plate), `${flat[0]} on the ${where} plate`).toBeGreaterThan(1.2);
+    }
   });
 
   it('keeps every curve inside its box, whatever the seed', () => {
