@@ -114,6 +114,78 @@ export function artworkSpec(seed: number): ArtworkSpec {
   };
 }
 
+/**
+ * The luminance every curve is drawn at, and the reason there is a solver below at all.
+ *
+ * A fixed HSL lightness does *not* give a fixed visual weight: at `l: 62%` the stroke measures
+ * 1.04:1 against the light plate at one hue and 4.20:1 at another, and 2.64:1 to 12.16:1 against
+ * the dark one -- so some cards would have shouted while their neighbours were invisible, and which
+ * was which would have depended on the scheme. HSL lightness is not lightness.
+ *
+ * Solving for sRGB relative luminance instead fixes both at once. The plates composite to a
+ * luminance of 0.716 (light) and 0.021 (dark), so any stroke between 0.162 and 0.205 clears 3:1
+ * against *both*; 0.18 sits in the middle of that window and measures 3.33:1 light / 3.26:1 dark at
+ * every hue. Nothing here is text, so 3:1 is not a WCAG obligation -- it is the threshold at which
+ * a line stops being a suggestion.
+ */
+const STROKE_LUMINANCE = 0.18;
+
+/** Saturation of the curve. High, because luminance is being held fixed; this is what is left to
+ * tell two hues apart. */
+const STROKE_SATURATION = 0.82;
+
+type Rgb = readonly [number, number, number];
+
+function hslToRgb(hue: number, saturation: number, lightness: number): Rgb {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const second = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const base = lightness - chroma / 2;
+  const sector = Math.floor(hue / 60) % 6;
+  const [r, g, b] = [
+    [chroma, second, 0],
+    [second, chroma, 0],
+    [0, chroma, second],
+    [0, second, chroma],
+    [second, 0, chroma],
+    [chroma, 0, second],
+  ][sector];
+  return [(r + base) * 255, (g + base) * 255, (b + base) * 255];
+}
+
+/** sRGB relative luminance, WCAG's definition -- the same one the token comments in styles.scss
+ * quote ratios from. */
+function relativeLuminance([r, g, b]: Rgb): number {
+  const channel = (value: number) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/**
+ * The colour for `hue`, at `STROKE_LUMINANCE`.
+ *
+ * Bisection rather than a closed form: luminance is monotonic in HSL lightness at a fixed hue and
+ * saturation, so twelve halvings land within 1/4096 of the target -- far finer than an 8-bit
+ * channel can express -- and it stays a pure function of the hue, which is what keeps a project's
+ * picture identical between two renders.
+ */
+function strokeFor(hue: number): Rgb {
+  let low = 0;
+  let high = 1;
+  let rgb = hslToRgb(hue, STROKE_SATURATION, 0.5);
+  for (let step = 0; step < 12; step++) {
+    const middle = (low + high) / 2;
+    rgb = hslToRgb(hue, STROKE_SATURATION, middle);
+    if (relativeLuminance(rgb) < STROKE_LUMINANCE) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  return rgb;
+}
+
 /** Magnitude at normalised log-frequency `x`, in arbitrary units -- it is normalised before use. */
 function magnitudeAt(spec: ArtworkSpec, x: number): number {
   let magnitude = spec.tilt * (x - 0.5);
@@ -133,10 +205,10 @@ function magnitudeAt(spec: ArtworkSpec, x: number): number {
  * "empty slot" cannot be the same state -- there is no hole available to leave.
  *
  * It is also what keeps the artwork right in both colour schemes without knowing which one is live.
- * The plate composites against whichever ground is up (`--color-surface-muted`), and the curve is
- * drawn in mid-lightness saturated hues that read on both. Reading the live token values out of the
- * cascade instead would have meant a `prefers-color-scheme` listener, a repaint on scheme change,
- * and output that depends on the environment's theme.
+ * The plate composites against whichever ground is up (`--color-surface-muted`), and every colour
+ * the curve is drawn in is solved to one fixed luminance -- see `strokeFor`. Reading the live token
+ * values out of the cascade instead would have meant a `prefers-color-scheme` listener, a repaint
+ * on scheme change, and output that depends on the environment's theme.
  *
  * Nothing animates, so `prefers-reduced-motion` is not consulted -- there is no motion to reduce. A
  * decorative loop behind twelve cards costs a compositor frame forever in exchange for something
@@ -184,18 +256,24 @@ export function drawProjectArtwork(
   }
   context.stroke();
 
-  // The legacy comma syntax rather than `hsl(h s% l% / a)`. Nothing here catches an exception
-  // thrown while drawing -- that would be a real bug, and swallowing it would leave a half-drawn
-  // picture that still looks deterministic to a spec -- but `addColorStop` throws a SyntaxError on
-  // a colour the browser cannot parse, so the fix is to hand it a syntax that has no floor rather
-  // than to add a catch. Only the *absent* case is degraded to a plain surface; see the component.
+  // One solved colour per stop, used for the curve and, at 42% alpha, for the area under it -- so
+  // the fill is the same colour washed toward the plate rather than a second colour that has to be
+  // checked against two grounds of its own.
+  //
+  // `rgb()`/`rgba()` with commas, rather than `oklch()` (which would make the luminance solver
+  // unnecessary) or the modern space-separated forms. Nothing here catches an exception thrown
+  // while drawing -- that would be a real bug, and swallowing it would leave a half-drawn picture
+  // that still looks deterministic to a spec -- but `addColorStop` throws a SyntaxError on a colour
+  // the browser cannot parse. So the syntax with no floor is the one to hand it; only the *absent*
+  // canvas is degraded to a plain surface, and that is the component's job.
   const fill = context.createLinearGradient(0, 0, width, 0);
   const stroke = context.createLinearGradient(0, 0, width, 0);
   for (let stop = 0; stop <= 4; stop++) {
     const t = stop / 4;
     const hue = (((spec.baseHue + spec.hueSpan * t) % 360) + 360) % 360;
-    fill.addColorStop(t, `hsla(${hue.toFixed(1)}, 72%, 56%, 0.42)`);
-    stroke.addColorStop(t, `hsl(${hue.toFixed(1)}, 82%, 62%)`);
+    const [r, g, b] = strokeFor(hue).map(Math.round);
+    fill.addColorStop(t, `rgba(${r}, ${g}, ${b}, 0.42)`);
+    stroke.addColorStop(t, `rgb(${r}, ${g}, ${b})`);
   }
 
   context.beginPath();
