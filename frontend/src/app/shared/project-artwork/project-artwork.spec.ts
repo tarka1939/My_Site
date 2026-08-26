@@ -71,20 +71,25 @@ const QUIET = 2.5;
  */
 function capture(seed: number) {
   const gradients: string[][] = [];
-  const points: number[][] = [];
+  const paths: number[][][] = [];
   const strokeStyles: unknown[] = [];
+  const point = (x: number, y: number) => {
+    paths[paths.length - 1]?.push([x, y]);
+  };
   const context = {
     clearRect() {},
-    beginPath() {},
+    // Points are grouped by path, and that is not tidiness. Measuring them as one flat list means
+    // the grid's own points satisfy assertions aimed at the curve: a mutation squeezing the curve
+    // into a 10% band in the middle of the slot passed a "uses the full height" test, because the
+    // grid still ran corner to corner.
+    beginPath() {
+      paths.push([]);
+    },
     closePath() {},
     stroke() {},
     fill() {},
-    moveTo(x: number, y: number) {
-      points.push([x, y]);
-    },
-    lineTo(x: number, y: number) {
-      points.push([x, y]);
-    },
+    moveTo: point,
+    lineTo: point,
     set strokeStyle(value: unknown) {
       strokeStyles.push(value);
     },
@@ -102,7 +107,17 @@ function capture(seed: number) {
   } as unknown as CanvasRenderingContext2D;
 
   drawProjectArtwork(context, artworkSpec(seed));
-  return { gradients, points, strokeStyles };
+  // Three paths, in draw order: the grid, the area under the curve, the curve. Named here so a
+  // test asks for the one it means, and asserted below so a restructure cannot quietly renumber
+  // them.
+  return { gradients, paths, strokeStyles };
+}
+
+/** The curve alone -- not the grid, and not the closed outline of the area under it. */
+function curveOf(seed: number): number[][] {
+  const { paths } = capture(seed);
+  expect(paths.length, `seed ${seed} draws three paths`).toBe(3);
+  return paths[2];
 }
 
 function componentsOf(colour: string): number[] {
@@ -239,7 +254,7 @@ describe('drawProjectArtwork', () => {
     // that, a project whose resonances happen to stack draws a curve clipped flat against the top
     // edge -- deterministically, so it would look intentional.
     for (const seed of SEEDS) {
-      for (const [x, y] of capture(seed).points) {
+      for (const [x, y] of curveOf(seed)) {
         expect(x, `seed ${seed}`).toBeGreaterThanOrEqual(0);
         expect(x, `seed ${seed}`).toBeLessThanOrEqual(ARTWORK_WIDTH);
         expect(y, `seed ${seed}`).toBeGreaterThanOrEqual(0);
@@ -252,10 +267,7 @@ describe('drawProjectArtwork', () => {
     // The other half of normalising: a curve that never leaves the middle third is a flat line as
     // far as a reader is concerned, and every card would look the same.
     for (const seed of SEEDS.slice(0, 40)) {
-      const ys = capture(seed)
-        .points.map(([, y]) => y)
-        // The fill path closes through the bottom two corners, which are not part of the curve.
-        .filter((y) => y !== ARTWORK_HEIGHT);
+      const ys = curveOf(seed).map(([, y]) => y);
       expect(Math.min(...ys), `seed ${seed}`).toBeLessThan(ARTWORK_HEIGHT * 0.25);
       expect(Math.max(...ys), `seed ${seed}`).toBeGreaterThan(ARTWORK_HEIGHT * 0.75);
     }
