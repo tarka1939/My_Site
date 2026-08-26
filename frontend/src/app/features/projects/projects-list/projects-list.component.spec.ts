@@ -37,6 +37,15 @@ const OTHER_PROJECT_WITH_IMAGE = {
 /** A second imageless project, so one grid holds two cards that must not draw the same thing. */
 const ARTWORK_NEIGHBOUR = { ...PROJECT, id: 'p7', title: 'Colour Pipeline' };
 
+/**
+ * Two projects the admin pointed at the same URL -- one diagram reused across a pair of related
+ * entries, which is an ordinary thing to do with a field that is a pasted link rather than an
+ * upload. They exist so that one image failure is observable on more than one card.
+ */
+const SHARED_IMAGE = 'https://images.example.com/shared-diagram.svg';
+const SHARES_IMAGE_A = { ...PROJECT, id: 'p8', title: 'Router', images: [SHARED_IMAGE] };
+const SHARES_IMAGE_B = { ...PROJECT, id: 'p9', title: 'Mixer', images: [SHARED_IMAGE] };
+
 const COMPLETED_PROJECT = {
   ...PROJECT,
   id: 'p4',
@@ -536,6 +545,32 @@ describe('ProjectsListComponent', () => {
     // The neighbour that was already drawing its own picture is untouched too -- it never had an
     // <img> to lose, and it must not acquire one.
     expect(mediaSlots(fixture)[2].querySelector('img')).toBeNull();
+  });
+
+  it('falls back on every card showing a URL that failed, not just the one that reported it', async () => {
+    // The failure is recorded against the URL, not against the project that reported it, and this
+    // is the only test in the file that can tell those two implementations apart: no other fixture
+    // shares an image, so keying by project id passes everything else here.
+    //
+    // Why the URL is the right key: one dead link is dead on every card that points at it. The
+    // second card's <img> may never fire an `error` of its own -- a browser that has already failed
+    // this URL can serve the failure from its cache without a second request -- so a card waiting
+    // for its own event would sit broken indefinitely. And when the admin repairs the link the URL
+    // changes, which drops the record for free; a project id would still be marked bad.
+    listProjects.mockReturnValue(pageOf([SHARES_IMAGE_A, SHARES_IMAGE_B]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+    expect(mediaKinds(fixture)).toEqual(['image', 'image']);
+    expect(mediaSlots(fixture)[1].querySelector('img')!.getAttribute('src')).toBe(SHARED_IMAGE);
+
+    // Only the first card is told anything.
+    await failImageOn(fixture, 0);
+
+    expect(mediaKinds(fixture)).toEqual(['artwork-fallback', 'artwork-fallback']);
+    for (const slot of mediaSlots(fixture)) {
+      expect(slot.querySelector('img')).toBeNull();
+      expect(slot.querySelector('app-project-artwork')).not.toBeNull();
+    }
   });
 
   it('shows each card period as month/year, ongoing where there is no end date', () => {
