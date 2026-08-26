@@ -184,13 +184,18 @@ export function drawProjectArtwork(
   }
   context.stroke();
 
+  // The legacy comma syntax rather than `hsl(h s% l% / a)`. Nothing here catches an exception
+  // thrown while drawing -- that would be a real bug, and swallowing it would leave a half-drawn
+  // picture that still looks deterministic to a spec -- but `addColorStop` throws a SyntaxError on
+  // a colour the browser cannot parse, so the fix is to hand it a syntax that has no floor rather
+  // than to add a catch. Only the *absent* case is degraded to a plain surface; see the component.
   const fill = context.createLinearGradient(0, 0, width, 0);
   const stroke = context.createLinearGradient(0, 0, width, 0);
   for (let stop = 0; stop <= 4; stop++) {
     const t = stop / 4;
     const hue = (((spec.baseHue + spec.hueSpan * t) % 360) + 360) % 360;
-    fill.addColorStop(t, `hsl(${hue.toFixed(1)} 72% 56% / 0.42)`);
-    stroke.addColorStop(t, `hsl(${hue.toFixed(1)} 82% 62%)`);
+    fill.addColorStop(t, `hsla(${hue.toFixed(1)}, 72%, 56%, 0.42)`);
+    stroke.addColorStop(t, `hsl(${hue.toFixed(1)}, 82%, 62%)`);
   }
 
   context.beginPath();
