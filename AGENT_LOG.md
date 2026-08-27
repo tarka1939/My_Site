@@ -292,6 +292,96 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-26 — Phase 8's visual design: every failure was a check aimed at the wrong surface
+
+**Task given:** give the site a visual design (#152). What it had was browser defaults plus
+accessibility repairs — no type scale (`h2` at 1.1× body), headings inheriting body leading, tag
+chips in Arial against `system-ui`, and `--color-border: #ccc` drawing **15 strokes** at 1.6:1 on
+white and 11.7:1 on the near-black canvas. (#152, the ADR and `styles.spec.ts` all say 16; that
+figure counts the declaration itself alongside the 15 `var(--color-border)` usages. Corrected here,
+not yet at those three sources.) Shipped as three PRs: #153 direction, #154 token layer and type
+scale and self-hosted faces, #155 card grid and generated artwork. Frontend 260 → 329 tests.
+
+**Agent(s) used:** one frontend agent per PR on Opus, each in its own worktree, with an independent
+cold reviewer per PR. The direction itself was not dispatched — three directions were mocked against
+the real content and compared with the owner before any of it was built.
+
+**What went right:**
+
+**Deciding before dispatching, again.** #152 was a list of measurements, not a design. Turning it
+into an ADR first (#153) meant every later agent had a written answer to "which of these is a taste
+call and which is a defect", and none of them had to guess.
+
+**The cold review is doing the work it was introduced to do.** Every correction below was found by
+someone who had not written the thing they were checking — including this entry, whose first draft
+carried four wrong numbers.
+
+**What went wrong (be specific):**
+
+**The palette I signed off would have shipped an AA failure — my error, not an agent's.** I verified
+it the way #116 taught: ink, muted, accent and hairline each measured against the ground they sit
+on, in both schemes, ratios written into the token comments. Every one passed. I never measured text
+drawn *on* the accent, because "accent" was a stroke and a link colour in my head while the mockups
+had made it a **fill** — primary buttons, the skip link. `#fff` on the dark accent `#e0607f` is
+**3.42:1**. Every primary button in dark mode would have failed exactly the way #116 did, in the PR
+whose entire purpose was to stop that recurring.
+
+**HSL lightness is not lightness.** The artwork generator (#155) first held its curves at a fixed
+HSL lightness, which sounds like "the same visual weight at every hue" and is not. At `l: 62%` the
+stroke measures **1.04:1 against the light plate at one hue and 4.20:1 at another** (2.64:1 to
+12.16:1 against the dark one) — some cards would have shouted while their neighbours were invisible,
+and which did which depended on the scheme.
+
+**Two tests measured their own arithmetic rather than the code.** Same PR. `de41048`: two assertions
+were arithmetic over constants the spec itself declared, so raising the background grid to alpha 0.9
+and making the area under the curve fully opaque both left the suite green — neither read anything
+the generator produced. `b216a33`: a mutation squeezing the response into a 10% band in the middle
+of the slot passed `uses the full height of the slot`, because the fake context kept every point in
+one flat list and the grid, which runs corner to corner regardless, satisfied an assertion aimed at
+the curve.
+
+**A failure I reported was my own harness.** I said a card's image never loaded, `loading="lazy"`
+appearing not to fire. It fires. The Browser pane was not compositing, so nothing entered the
+viewport and the lazy load correctly did nothing; the image reports `complete: true` once the pane
+renders.
+
+**Four wrong numbers in the first draft of this entry.** A milestone dated four days before it
+existed; `5.65:1` given as the ratio of `#fff` on the light accent when 5.65:1 is *accent on
+background* and the right figure is **5.83:1**; the pre-Phase-8 test baseline given as 255, which
+was the count before PR #150 added five more; and "every colour is defined per scheme", which is
+false for the two tokens deliberately not flipped.
+
+**How it was caught:** the AA near-miss and the HSL problem by the implementing agents, both of which
+pushed back on a brief rather than building what it said — the #154 agent went on to find the same
+class one token over (`#7a1f1f`, a strong 9.96:1 boundary on the light ground and **1.92:1** on the
+near-black one, a delete button that is a barely-visible rectangle). The two hollow tests by mutating
+the code they were meant to guard, which is the only reason they were found at all. The harness false
+alarm by checking before filing. The four numbers by a cold reviewer that recomputed every ratio from
+the WCAG formula, counted the `var(--color-border)` usages in the pre-Phase-8 tree, and read PR
+#150's own gate output rather than reconstructing the baseline.
+
+**Fix applied:** `--color-on-accent` and `--color-on-danger` added as per-scheme tokens. The artwork
+solves for sRGB relative luminance instead, by bisection over lightness at fixed hue, which clears
+3:1 at every hue on both plates (~3.3:1 either way). Both hollow tests now read what the generator
+emitted. And `styles.spec.ts` grew `has a check for every colour token that exists`: the set of
+`--color-*` tokens declared in `styles.scss` must equal the set the ratio table knows about, so a
+colour added with no check fails a build instead of waiting for someone to look at it.
+
+**Takeaway for next time:**
+
+- **Recording the ratio of a colour is not recording the ratios of the pairs it takes part in**, and
+  a token's name does not tell you what those pairs are. `--color-accent` had a ratio against the
+  ground and no ratio against the thing painted on it.
+- **A number copied from a comment is not a verified number.** Three of the four wrong figures here
+  were faithful to their source; the source was wrong. `5.65:1` is still wrong in `styles.scss`'s
+  `--color-on-accent` comment, and `16` is still wrong in #152, the ADR and `styles.spec.ts`.
+- **A test cannot see appearance, and this earned another entry.** With the whole suite green,
+  opening the running site produced #156: the card asks whether an image was *specified*
+  (`project.images.length > 0`), never whether one *arrived*. `Project.images` are admin-pasted
+  external URLs, so a dead one leaves the plate empty permanently — and the generated artwork that
+  exists precisely to prevent an empty card is skipped for the one case that needs it most. The
+  admin's own browser has it cached, so it looks correct to the only person likely to check.
+
 ## 2026-08-21 — Phase 7a: the isolation exercise finally ran, and found what reading the backend would have hidden
 
 **Task given:**
