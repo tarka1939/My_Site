@@ -419,8 +419,11 @@ describe('colour tokens', () => {
 
   it('has removed --color-border rather than adjusting it', () => {
     // It was a light-mode value drawing every dark-mode box. The rename is what makes the
-    // replacement visible at all 16 call sites instead of leaving a token whose name says
-    // "any border" and whose value only ever suited one of them.
+    // replacement visible at all 15 call sites -- `var(--color-border)` across 10 stylesheets at
+    // 9cffbb2, the last commit before this work -- instead of leaving a token whose name says
+    // "any border" and whose value only ever suited one of them. The count was published as 16 in
+    // four places (#159); 16 is the 15 strokes plus the `--color-border: #ccc;` declaration, and a
+    // declaration is not a call site.
     expect(tokens().has('--color-border')).toBe(false);
     const offenders = componentStyleSources()
       .filter(({ css }) => css.includes('--color-border'))
