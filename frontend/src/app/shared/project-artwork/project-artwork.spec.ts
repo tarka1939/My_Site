@@ -273,3 +273,51 @@ describe('drawProjectArtwork', () => {
     }
   });
 });
+
+/**
+ * The derivable half of STROKE_LUMINANCE's comment, asserted instead of asserted-by-prose.
+ *
+ * That comment quoted the plates at 0.716/0.021 and the window at 0.162-0.205. All four had
+ * drifted from the constants they are computed off (#159), and nothing failed, because a number in
+ * a comment is checked by nobody. These are pure functions of PLATE_LIGHT, PLATE_DARK and VISIBLE
+ * -- values this file already owns and already measures real output against -- so the arithmetic
+ * behind the choice of 0.18 can be held the same way styles.spec.ts holds its published ratios.
+ */
+describe('the luminance window the stroke is solved into', () => {
+  /**
+   * Below `low` a stroke stops clearing VISIBLE against the dark plate; above `high` it stops
+   * clearing it against the light one. Solving the contrast formula for the unknown side each way.
+   */
+  const low = VISIBLE * (luminance(PLATE_DARK) + 0.05) - 0.05;
+  const high = (luminance(PLATE_LIGHT) + 0.05) / VISIBLE - 0.05;
+
+  it('composites the plates to the luminances the comment quotes', () => {
+    expect(luminance(PLATE_LIGHT)).toBeCloseTo(0.7197, 4);
+    expect(luminance(PLATE_DARK)).toBeCloseTo(0.0195, 4);
+  });
+
+  it('derives the window the comment quotes', () => {
+    expect(low).toBeCloseTo(0.1586, 4);
+    expect(high).toBeCloseTo(0.2066, 4);
+  });
+
+  it('solves every stroke it actually emits into that window', () => {
+    // STROKE_LUMINANCE is not exported and is deliberately not restated here. What is measured is
+    // the luminance of the colours the generator wrote, after the Math.round that turns the
+    // solver's output into 8-bit channels -- which is the whole reason the ratios come out as a
+    // band rather than one pinned value. Restating the constant would assert nothing: see the note
+    // on `capture` for the two mutations that got through a test doing exactly that.
+    let lowest = Infinity;
+    let highest = -Infinity;
+    for (const seed of SEEDS) {
+      const [, curve] = capture(seed).gradients;
+      for (const colour of curve) {
+        const value = luminance(rgbOf(colour));
+        lowest = Math.min(lowest, value);
+        highest = Math.max(highest, value);
+      }
+    }
+    expect(lowest).toBeGreaterThan(low);
+    expect(highest).toBeLessThan(high);
+  });
+});
