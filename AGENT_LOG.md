@@ -327,7 +327,7 @@ painted, and every slot and card height was unchanged.
 
 **My mutation list tested the failure key being too broad and never too narrow.** I asked for
 `.has(url) → .size > 0` and got it. Nobody asked the opposite question, and the answer was that
-replacing `Set<url>` with `Set<projectId>` **passed 24 of 25 tests** — because no two fixtures shared
+replacing `Set<url>` with `Set<projectId>` **passed 24 of the 25 tests in that spec file**, and every one of the other 311 in the suite — because no two fixtures shared
 an image URL and no fixture had two images. URL-keying was one of the two judgement calls the PR
 argued for explicitly, and it was the half with no test behind it.
 
