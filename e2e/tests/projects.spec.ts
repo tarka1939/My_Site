@@ -167,6 +167,11 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   // already the project title -- so it must carry `alt=""` and stay out of the accessibility tree.
   // `getByRole('img')` therefore cannot find it, which is itself the assertion: a non-empty alt here
   // would make the link announce the title twice.
+  //
+  // All three also depend on `stubFixtureImages` having run: since #156 a card image that fails is
+  // replaced by generated artwork, so an unstubbed `images.e2e.invalid` leaves no <img> here at
+  // all and `toHaveCount(1)` is the first thing to go. That is a change in what a missing stub
+  // costs, not in what these assert.
   const alphaThumbnail = alphaItem.locator('img');
   await expect(alphaThumbnail).toHaveCount(1);
   await expect(alphaThumbnail).toHaveAttribute('alt', '');
