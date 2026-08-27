@@ -292,6 +292,87 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-08-27 — #156: the mutation list I wrote tested the key being too broad and never too narrow
+
+**Task given:** a card whose image fails to load shows an empty plate, because the media slot chose
+generated artwork on `@if (project.images.length > 0)` — whether an image was *specified*, never
+whether one *arrived* (#156). Shipped as PR #158. Frontend 329 → 337 tests.
+
+**Agent(s) used:** one frontend agent on Opus in its own worktree, resumed twice — once after a
+session-limit termination that killed it before its first tool call — and one cold reviewer on Opus
+against a detached worktree. Resuming rather than restarting was right both times: the second resume
+carried the whole implementation context into a five-item fix list that would otherwise have needed
+re-deriving.
+
+**What went right:**
+
+**The brief's three named traps all held.** `(error)` as the only signal (no `naturalWidth` polling,
+no timeout — both fire on an image that is merely *slow*); the fixed slot height, so a post-error
+swap cannot move a row; and the LCP image's asserted attribute *ordering*, which the reviewer could
+then explain rather than merely confirm — static attributes and `ɵɵlistener` are emitted in the
+creation block, `[src]` in the update block.
+
+**The agent declined to widen the change, with an argument.** The detail-page gallery has the same
+gap and a different right answer: its images carry real alt text (#87), so a browser already degrades
+meaningfully there, and substituting an `aria-hidden` artwork would replace that text with something
+announced to nobody. Filed as #160 instead.
+
+**It measured instead of reasoning, twice.** It ran `projects.spec.ts` once green, then again with
+`stubFixtureImages` commented out to confirm the predicted failure — which simultaneously proved the
+bundle under test was actually the branch, since the old code would have rendered a broken `<img>`
+and passed. And it verified in a real browser what jsdom cannot see: the swap happened, the artwork
+painted, and every slot and card height was unchanged.
+
+**What went wrong (be specific):**
+
+**My mutation list tested the failure key being too broad and never too narrow.** I asked for
+`.has(url) → .size > 0` and got it. Nobody asked the opposite question, and the answer was that
+replacing `Set<url>` with `Set<projectId>` **passed 24 of the 25 tests in that spec file**, and every one of the other 311 in the suite — because no two fixtures shared
+an image URL and no fixture had two images. URL-keying was one of the two judgement calls the PR
+argued for explicitly, and it was the half with no test behind it.
+
+**My reasoning for the second test was wrong, in a way that would have produced a vacuous test.** I
+told the agent the tag toggle tears the grid down through `@if (loading())`. True of the app; false
+in a spec using `of(...)`, where both writes to `loading` land before change detection runs, the
+`@if` never observes `true`, and `@for`'s `track` quietly reuses the row. The test would have
+asserted survival across a rebuild that never happened — the same hollow shape that had already cost
+this PR a third commit.
+
+**The change silently falsified two comments in a suite nothing runs.** `e2e/support/images.ts` and
+`e2e/README.md` both said omitting `stubFixtureImages` "does not fail anything outright". It does
+now: DNS fails, `(error)` fires, the card swaps to artwork, and three thumbnail assertions break.
+`.github/workflows/` holds only a README, so no CI would ever have said so.
+
+**I described an environment that was not there.** I told the agent a frontend dev server was on
+4200. Nothing was listening.
+
+**How it was caught:** the untested key and the falsified E2E comments by the cold review, neither of
+which any gate would have surfaced — the suite was green in both cases, which is the whole point. The
+`of(...)` problem by the implementing agent, which pushed back on my premise rather than writing the
+test I described. The absent dev server by the agent checking `netstat` instead of trusting me.
+
+**Fix applied:** a fixture pair sharing one URL, and the id-keyed mutation confirmed killed by
+**exactly that one test** and nothing else in the suite. A re-fetch test that leaves the request
+pending on a `Subject` and asserts the grid is empty mid-flight, so the rebuild it claims to survive
+is proven to happen. Both E2E comments corrected and verified by running the suite with the stub
+removed. Two comments extended to argue the cases they actually create rather than the easier ones —
+`firstImageProjectId`'s decision across a re-fetch, and the fact that `failedImages` is per component
+instance, so a transient 429 is held for the visit and no longer.
+
+**Takeaway for next time:**
+
+- **A mutation list has a direction.** Every mutation I named made the behaviour *broader*; a key can
+  also be too narrow, and that is the half that was load-bearing. When a decision has a stated
+  rationale — "keyed by URL, not project id" — the mutation to write is the one that violates the
+  rationale, not the one that violates the mechanism.
+- **A brief's reasoning gets the same scrutiny as its instructions.** Twice now a brief of mine has
+  specified a test that could not test what it claimed. The agent caught both because the brief also
+  demanded mutation testing, which is the only reason either was visible.
+- **A change can falsify documentation in a suite no gate runs.** Nothing in CI runs E2E here, so
+  those comments are the only warning a future reader gets, and they were quietly wrong the moment
+  this merged.
+
+
 ## 2026-08-26 — Phase 8's visual design: every failure was a check aimed at the wrong surface
 
 **Task given:** give the site a visual design (#152). What it had was browser defaults plus
