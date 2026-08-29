@@ -142,9 +142,9 @@ export function artworkSpec(seed: number): ArtworkSpec {
  * is what the constant is for. Nothing here is text, so 3:1 is not a WCAG obligation -- it is the
  * threshold at which a line stops being a suggestion.
  *
- * The plate luminances and the window are re-derived in project-artwork.spec.ts rather than
- * trusted here: the previous set of figures in this comment had drifted from the constants they
- * were computed off (#159).
+ * The plate luminances, the window, and 0.18's position near its centre are all re-derived in
+ * project-artwork.spec.ts rather than trusted here: the previous set of figures in this comment
+ * had drifted from the constants they were computed off (#159).
  */
 const STROKE_LUMINANCE = 0.18;
 
