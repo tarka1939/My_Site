@@ -176,6 +176,82 @@ Both should return `[]`.
 
 **On adding a label rather than forcing a wrong one.** Fixing the backlog surfaced one issue (#49, content migration) that no existing area covered — it is site copy, not backend, frontend, or infra. A `content` label was added for it rather than mislabelling it `documentation`, which would have made the taxonomy lie to keep the checklist green. If a genuine gap appears, widen the taxonomy and say so; do not round to the nearest wrong answer.
 
+## Closing keywords: the three incidents (added 2026-08-29)
+
+`CLAUDE.md` states the rules and points here for the evidence. It pointed here for eighteen days
+before this section existed (#162) — the pointer was written on the assumption someone would follow
+it, and nobody did until someone audited a stale worktree. The rules are in `CLAUDE.md`; what
+follows is why each clause is there, because a rule whose evidence has gone missing is one someone
+will eventually decide to "simplify".
+
+**The mechanism, stated once.** GitHub interprets a closing keyword — `close`/`fix`/`resolve` and
+their inflections — followed by an issue reference, **only when the pull request's base is the
+repository's default branch**. On any other base the keywords are ignored entirely: no link is
+created and merging does nothing to the issue. That single fact is behind the first incident and
+behind the branch model in `docs/DECISIONS.md`, 2026-08-27.
+
+### 1. Every PR's keywords had linked nothing, for three phases (2026-08-02)
+
+The repo's default branch was a stale `master` from creation, while every real PR targeted `main`.
+So PRs #76, #77, #79 and #80 all carried keywords and all linked **zero** issues. The rendered PR
+body looks identical either way; the only way to see it is `closingIssuesReferences` via GraphQL,
+and nobody had thought to check the mechanism at all.
+
+Fixed by switching the default branch to `main` and deleting `master` after confirming it was an
+ancestor. `AGENT_LOG.md`, 2026-08-02.
+
+**A correction to this entry, 2026-08-29.** It originally recorded *two* stacked causes, the second
+being that a comma-separated list links only its first issue. That second cause was never actually
+observed here. PR #77's body reads `Closes #20, #21, #22, #23, #69.` and `closingIssuesReferences`
+returns **zero** issues — not one, which is what the comma theory predicts. PR #76 is the same. Both
+are explained completely by the default branch, and neither is evidence about commas either way.
+The one-keyword-per-issue rule is still correct, because GitHub documents it; what was wrong was
+this project's belief that it had confirmed it. See `PROJECT_TODO.md`'s 2026-08-02 note.
+
+### 2. A keyword fired from inside a sentence denying it (2026-08-10)
+
+PR #100 opened with "Advances #49. **Deliberately does not close it**" and carried no intentional
+keyword. Further down, a sentence explaining what *would* finish the work said that applying it to a
+live site is what would close that issue — and GitHub matched the keyword there. The issue closed on
+merge and had to be reopened.
+
+The parser has no notion of context, negation, or the sentence around it. This is why `CLAUDE.md`
+says to run the check **including on PRs meant not to close anything**: the dangerous case is not
+the PR trying to close an issue, it is the one that isn't.
+
+### 3. The PR documenting incident 2 re-committed it, twice (2026-08-10)
+
+PR #101 was the fix — it added the rule to `CLAUDE.md`. Its own body quoted the offending sentence,
+and its commit message repeated it in prose. `closingIssuesReferences` on that PR returned `49`, so
+merging it would have taken the same issue down a second time. Caught by the independent review, not
+by its author, hours after that author had written the rule.
+
+It was closed unmerged and superseded by PR #102 on a clean branch — the offending commit message
+could not be corrected without a force-push, which `block-protected-branch-ops.sh` denies.
+
+**Two things this established that the rule did not previously say:**
+
+- **Backticks neutralise a keyword; blockquotes do not.** PR #101 was an accidental controlled
+  experiment: one occurrence in a blockquote, one in a code span, same PR, same issue, and its
+  rendered body carries exactly **one** issue-reference marker. The first rewrite of the rule
+  claimed *neither* form neutralises — which was self-refuting, since the document asserting it
+  could not have been written under its own rule.
+- **`closingIssuesReferences` reads only the PR description.** A keyword in a commit message closes
+  an issue on merge without ever appearing in the standard check. Scan commit messages separately;
+  this is the blind spot in the prescribed check, and the check does not announce it.
+
+### What to actually do
+
+The rules in `CLAUDE.md` are the operative version. The habits behind them:
+
+- Run the GraphQL check on **every** PR before merging, including — especially — ones meant to close
+  nothing. Two of the three incidents were PRs that were not trying to close anything.
+- Scan commit messages separately, since the check cannot see them.
+- When writing *about* keywords, put them in backticks. That is verified to be safe, and it is the
+  technique this very section depends on.
+- Apply a rule to the document stating it before shipping that document. Incident 3 is what happens
+  otherwise, and one query would have caught it.
+
 ## AGENT_LOG.md discipline
 
 Log every session, start to finish, for the whole project — not just Phase 4/7 (see `AGENT_LOG.md`'s own header note). During the Phase 7 isolation exercise specifically, flag contract mismatches (endpoint doesn't match the OpenAPI schema, an assumed enum value the backend never validates, pagination shape drift) as their own category, separate from ordinary bugs — that's the actual differentiation artifact `PROJECT_TODO.md` calls out.

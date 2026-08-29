@@ -109,7 +109,7 @@ Six agents were terminated mid-task over 2026-08-07 to 08-10, every one with com
 - Commit each logically complete change as it passes its own check.
 - Commit **before** anything exploratory — a mutation test is when a termination is most expensive.
 - Push at checkpoints: commits survive `git worktree remove` on a named branch, but not in a detached worktree.
-- Do not withhold a commit for tidiness.
+- Do not withhold a commit for tidiness. Branches land here as merge commits rather than squashes, so intermediate commits survive into the integration branch — a reason to write clear messages, not a reason to batch.
 
 ## Project
 
