@@ -29,7 +29,7 @@ Claude Code has three ways to run multiple agents:
 `CLAUDE.md`'s "Never quote a working tree without naming its branch" states the durable rule. These are the specific conditions that prompted it, recorded here rather than there because they expire. **Re-derive before relying on any of it** — `git worktree list`, `git rev-list --left-right --count <branch>...<remote>/<branch>`.
 
 - **`D:\repos\My_Site` is the main checkout and the most obvious place to run a command.** It sat on `phase1/review-followups`, 58 commits behind the remote `main`, with uncommitted edits to `CLAUDE.md` and `docs/DECISIONS.md` on top. Reading a file there could match neither the branch nor `main`.
-- **Local `main` was 85 commits behind `My_Site/main`** — further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current. *(Two later corrections: the hook did **not** in fact deny anything at the time — see "Both of these were dead for eight phases" below — and as of 2026-08-27 the branch most likely to be stale in this way is `dev`, not `main`.)*
+- **Local `main` was 85 commits behind `My_Site/main`** — further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current. *(Two later corrections: the hook did **not** in fact deny anything at the time — see "Both of these were inert from Phase 4 to Phase 8" below — and as of 2026-08-27 the branch most likely to be stale in this way is `dev`, not `main`.)*
 - **Roughly half the checkouts are detached** — every `My_Site-review-NN` worktree created for a PR review, which is exactly where evidence gets quoted into review comments. `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in those, which is why the provenance rule uses the SHA.
 - **`git cherry` and patch-ids can disagree with content.** Two commits on `phase3/frontend-foundation` looked absent from `main` (`git cherry` marked one `+`), but their patch-ids differed only because of surrounding context — the `+`/`-` lines were byte-identical to commits already merged. Confirm with the actual added lines before concluding work is stranded, and beware that a `grep` of lines beginning with `-` will be parsed as options unless you use `grep -e` or `--`.
 - **Worth considering:** a non-blocking `SessionStart` hook emitting branch, SHA, dirty-file count and behind-count would supply this provenance automatically and keep perishable numbers out of prose entirely. Suggested during the PR #95 review; not built.
@@ -48,7 +48,7 @@ Claude Code has three ways to run multiple agents:
 
 Three things follow that are easy to get wrong:
 
-- **Worktrees are cut from `My_Site/dev`.** Every `git worktree add -b <branch> <path> My_Site/main` in older notes on this page should read `My_Site/dev`.
+- **Worktrees are cut from `My_Site/dev`.** The `git worktree add` examples elsewhere on this page do not name a base ref at all, so they are unaffected; it is the base you pass that has to change.
 - **`gh pr create` needs no `--base` for feature work**, because `dev` is the default. The promotion PR is the exception and needs `--base main` explicitly.
 - **`dev` is the default branch specifically so `Closes #N` keeps working.** GitHub links and closes issues only for PRs based on the default branch; that is the mechanism that silently voided the keywords on PRs #76-#80 when the default was a stale `master`. A promotion PR therefore closes nothing and must not carry keywords — its issues closed when each feature PR merged.
 
@@ -80,11 +80,11 @@ Two starter hooks are wired up via `.claude/settings.json`:
 
 Both hooks return a structured `permissionDecision: "deny"` with a human-readable reason on the offending call, rather than silently failing — see the scripts themselves for the exact contract. Extend this pattern (rather than replacing it) if more automatic guardrails come up; it's cheaper to add a new `PreToolUse` matcher than to keep re-explaining a rule in every session's prompt.
 
-### Both of these were dead for eight phases (found 2026-08-27)
+### Both of these were inert from Phase 4 to Phase 8 (found 2026-08-27)
 
 Read this before trusting any hook in this repo, including one you just wrote.
 
-Both parsed their input with **`jq`, which is not installed on the machine this repo is worked on and never has been.** The variable came back empty, and both scripts then hit an explicit `exit 0` — so every command they were written to deny was permitted, from Phase 1 through Phase 8, while this document said "always active" and `README.md` said "denied unconditionally". Confirmed by running `git checkout main --help`, which matches the deny pattern and executed normally.
+Both parsed their input with **`jq`, which is not installed on the machine this repo is worked on and never has been.** The variable came back empty, and both scripts then hit an explicit `exit 0` — so every command they were written to deny was permitted, while this document said "always active" and `README.md` said "denied unconditionally". The window is `7bd9b86` (2026-08-07, partway through Phase 4) to 2026-08-27: about twenty days, five phases. **Not** Phases 1-3, which were finished and merged before these files existed — a first draft of this section said "Phase 1 through Phase 8" and was wrong, which is worth leaving on the record given what the section is about. Confirmed by running `git checkout main --help`, which matches the deny pattern and executed normally.
 
 That is `CLAUDE.md`'s "fails closed, never open" rule broken inside the mechanism meant to enforce it — the same shape as the inverted `@Profile("!prod")` predicate in `AGENT_LOG.md` 2026-08-01, and no easier to see.
 
