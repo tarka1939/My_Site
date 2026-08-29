@@ -310,6 +310,39 @@ The decisive fact: **Googlebot executes JavaScript, but the social scrapers do n
 
 **Not decided here:** whether `lastPushedAt` or archived state surface visually, and the treatment of the admin area, which is not public and does not need the same investment. Both wait until the public pages are done and can be seen.
 
+### 2026-08-27 — `dev` is the integration branch and GitHub's default; `main` is production only
+
+**Context:** every PR to date has merged into `main`, which was simultaneously the integration branch and the thing a fresh clone gets. That was fine while nothing was deployed. It stops being fine the moment Phase 5 lands: with Netlify building the frontend and a VPS running the backend, **every merge to `main` becomes a release**, and there is nowhere for a batch of finished work to sit and be looked at before it ships to a public URL.
+
+**Decision:**
+
+1. **`dev` is the integration branch.** Feature and fix branches are cut from `My_Site/dev` and their PRs target `dev`. This replaces `main` everywhere in the existing workflow — worktree creation, `gh pr create`, and the "one task, one worktree, one branch, one session" rule are otherwise unchanged.
+2. **`main` is production.** The only thing that merges into it is a `dev` → `main` promotion PR. Nothing is cut from `main`.
+3. **`dev` is GitHub's *default* branch.** This is the half that is not obvious, and it is forced rather than chosen — see below.
+4. **Netlify's production branch is `main`**, which is a separate setting from GitHub's default branch and is configured in Netlify's own UI. `dev` gets a branch deploy, which is what turns it into a real staging URL rather than just a ref.
+5. **Promotion PRs carry no closing keywords.** Their issues closed already, when the feature PR merged into `dev`.
+
+**Why `dev` has to be the default branch, and this is not a preference:**
+
+GitHub auto-links a PR's issues in the Development sidebar, and auto-closes them on merge, **only when the PR's base is the repository's default branch.** This project has already paid for that once. `PROJECT_TODO.md`'s 2026-08-02 note records that the default branch was a stale `master` from repo creation onward while every real PR targeted `main` — so `Closes #N` on PRs #76, #77, #79 and #80 silently did nothing, invisible unless someone specifically queried `closingIssuesReferences`.
+
+Introducing `dev` while leaving `main` as the default would recreate that exact failure, on every feature PR, permanently. Making `dev` the default keeps `Closes #N` working unchanged and costs only that a fresh clone checks out `dev` — which is the correct branch to start from anyway.
+
+**Alternatives considered:**
+
+- *Keep `main` as the default and merge features into `dev`.* Rejected on the grounds above. The semantics are arguably nicer — an issue would close when its work reached production rather than when it was merged — but paying for that with a silent, invisible failure on every PR is not a trade this project can make twice.
+- *No `dev` branch; keep merging to `main` and deploy from tags.* Rejected: it makes every merge a release-or-not decision taken at merge time, and tags do not give Netlify a staging deploy to look at. The recurring lesson here is that a test cannot see appearance; a staging URL is the cheapest way to actually look before shipping.
+- *Full git-flow, with `release/*` and `hotfix/*` branches.* Rejected as disproportionate for a single-maintainer portfolio. Two long-lived branches is the smallest thing that separates "merged" from "live".
+
+**Consequences:**
+
+- **`gh pr create` now defaults to `dev`,** so feature PRs need no `--base`. A promotion PR needs `--base main` explicitly, and that is the one place the flag matters.
+- **Phase 5's CI must deploy from `main`, not `dev`.** `PROJECT_TODO.md`'s two "deploy on merge to `main`" bullets were written before this split and happen to be correct — but they are now correct *deliberately*, and a workflow that deploys on merge to the default branch would silently publish every feature.
+- **`.claude/hooks/block-protected-branch-ops.sh` now denies checking out `dev`** alongside `main`/`master`, since `dev` is the branch a session is most likely to reach for by reflex.
+- **Both `PreToolUse` hooks were found to be dead while making this change**, and were rewritten. They parsed their input with `jq`, which is not installed on the machine this repo is worked on, so both fell through to `exit 0` and permitted everything they were written to deny — from `7bd9b86` (2026-08-07, partway through Phase 4) until now, while `README.md` and `docs/AGENT_WORKFLOW.md` described them as always active. That is CLAUDE.md's "fails closed, never open" rule broken inside the mechanism meant to enforce the branch rules. Both now parse with Python, deny when they cannot parse, and `check-worktree-scope.sh` additionally compares real paths rather than string prefixes.
+- **`closingIssuesReferences` must still be checked before merging.** On a promotion PR the field is structurally always empty, because GitHub ignores keywords entirely on a non-default base — so that check is belt-and-braces against the default changing, not a live risk. The live risk it does not cover is a **commit message** keyword, which closes an issue on merge into the default branch without ever appearing in `closingIssuesReferences`; scan those separately.
+- **A stale local `dev` is now the likeliest footgun**, the way a stale local `main` used to be. Fast-forward it explicitly rather than trusting the branch name.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**

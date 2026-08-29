@@ -5,6 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commit conventions
 Never add "Co-Authored-By" lines to commits. Do not include Claude attribution in commit messages, PR descriptions, or any git metadata.
 
+## Branches
+
+`dev` is the integration branch and GitHub's **default**. `main` is production — Netlify and the VPS deploy from it, so a merge to `main` is a release.
+
+- Cut every worktree and branch from `My_Site/dev`. Feature PRs target `dev` and need no `--base`.
+- Only a `dev` → `main` promotion PR merges into `main`: `--base main`, and **no closing keywords** — its issues closed already, when the feature PR merged.
+- `dev` is the default branch *because* `Closes #N` only fires when a PR's base is the default. Leaving `main` default would silently void every feature PR's closing keywords, exactly as the stale `master` did to PRs #76-#80.
+- A hook denies checking `main`/`master`/`dev` out from a session. To refresh one, `git switch <branch> && git merge --ff-only My_Site/<branch>`.
+
+ADR and the reasoning: `docs/DECISIONS.md`, 2026-08-27.
+
 ## Issue and PR conventions
 
 Every **issue** needs **area labels** and a **milestone**. Labels are area-only: `backend`, `frontend`, `infra`, `documentation`, `content` — the stock GitHub set (`bug`, `enhancement`, ...) has never been used here, so don't start. `gh issue create` sets neither by default and warns about neither, so pass `--label` and `--milestone` on the create call itself; 15 issues shipped bare before anyone noticed, because the checklist below said "PR" and was read as covering only PRs.
@@ -15,9 +26,9 @@ After filing, verify rather than assume — an unlabelled issue looks identical 
 gh issue list --state open --limit 200 --json number,labels --jq '[.[]|select(.labels|length==0)|.number]'
 ```
 
-Every **PR** needs: **issues linked** (one `Closes #N` per line — a comma-separated list silently links only the first), **milestone** (look the number up; it does not match the phase number), and **project board** entry with Status.
+Every **PR** needs: **base `dev`** (the default, so no `--base` for feature work), **issues linked** (one `Closes #N` per line — a comma-separated list silently links only the first), **milestone** (look the number up; it does not match the phase number), and **project board** entry with Status.
 
-Closing keywords fire from *anywhere* in the body, including prose explaining or denying them. Backticks neutralise a keyword; blockquotes do not. `closingIssuesReferences` reads only the PR description, so scan commit messages separately. The keywords are `close`/`fix`/`resolve` and their inflections.
+Closing keywords take effect only when the PR's base is the **default** branch, which is `dev`; a PR targeting `main` links nothing. Within that, they fire from *anywhere* in the body, including prose explaining or denying them. Backticks neutralise a keyword; blockquotes do not. `closingIssuesReferences` reads only the PR description, so scan commit messages separately. The keywords are `close`/`fix`/`resolve` and their inflections.
 
 Run `gh api graphql` for `closingIssuesReferences` before merging — including on PRs meant **not** to close anything. See `docs/AGENT_WORKFLOW.md` for the three incidents behind this.
 
@@ -55,12 +66,12 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 ## Never quote a working tree without naming its branch
 
-This repo is worked through many checkouts at once and none is reliably `main`. A path alone is not a reference.
+This repo is worked through many checkouts at once and none is reliably `dev`. A path alone is not a reference.
 
 - Resolve content through an explicit ref: `git show <ref>:<path>`. The remote here is `My_Site`, not `origin`.
 - State provenance as `git rev-parse --short HEAD` **plus** `git status --porcelain`. A branch name is not enough — `--abbrev-ref` returns `HEAD` in the detached worktrees used for review, and says nothing about uncommitted edits.
 - Quote searchable text, not line numbers, in fast-moving files.
-- `git fetch` before comparing against any remote ref, and never assume a local branch matches its remote — including `main`.
+- `git fetch` before comparing against any remote ref, and never assume a local branch matches its remote — including `dev` and `main`.
 
 Current checkout state and the incidents behind this: `docs/AGENT_WORKFLOW.md`.
 

@@ -29,10 +29,28 @@ Claude Code has three ways to run multiple agents:
 `CLAUDE.md`'s "Never quote a working tree without naming its branch" states the durable rule. These are the specific conditions that prompted it, recorded here rather than there because they expire. **Re-derive before relying on any of it** — `git worktree list`, `git rev-list --left-right --count <branch>...<remote>/<branch>`.
 
 - **`D:\repos\My_Site` is the main checkout and the most obvious place to run a command.** It sat on `phase1/review-followups`, 58 commits behind the remote `main`, with uncommitted edits to `CLAUDE.md` and `docs/DECISIONS.md` on top. Reading a file there could match neither the branch nor `main`.
-- **Local `main` was 85 commits behind `My_Site/main`** — further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current.
+- **Local `main` was 85 commits behind `My_Site/main`** — further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current. *(Two later corrections: the hook did **not** in fact deny anything at the time — see "Both of these were inert from Phase 4 to Phase 8" below — and as of 2026-08-27 the branch most likely to be stale in this way is `dev`, not `main`.)*
 - **Roughly half the checkouts are detached** — every `My_Site-review-NN` worktree created for a PR review, which is exactly where evidence gets quoted into review comments. `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in those, which is why the provenance rule uses the SHA.
 - **`git cherry` and patch-ids can disagree with content.** Two commits on `phase3/frontend-foundation` looked absent from `main` (`git cherry` marked one `+`), but their patch-ids differed only because of surrounding context — the `+`/`-` lines were byte-identical to commits already merged. Confirm with the actual added lines before concluding work is stranded, and beware that a `grep` of lines beginning with `-` will be parsed as options unless you use `grep -e` or `--`.
 - **Worth considering:** a non-blocking `SessionStart` hook emitting branch, SHA, dirty-file count and behind-count would supply this provenance automatically and keep perishable numbers out of prose entirely. Suggested during the PR #95 review; not built.
+
+## Branch model (added 2026-08-27)
+
+`dev` integrates, `main` ships. Full reasoning in `docs/DECISIONS.md`, 2026-08-27; the operational shape is:
+
+| | `dev` | `main` |
+|---|---|---|
+| Role | integration | production |
+| GitHub default branch | **yes** | no |
+| Deployed by | Netlify branch deploy (staging) | Netlify production build + the VPS |
+| What merges in | feature and fix PRs | only a `dev` → `main` promotion PR |
+| Cut branches from it | yes | never |
+
+Three things follow that are easy to get wrong:
+
+- **Worktrees are cut from `My_Site/dev`.** The `git worktree add` examples elsewhere on this page do not name a base ref at all, so they are unaffected; it is the base you pass that has to change.
+- **`gh pr create` needs no `--base` for feature work**, because `dev` is the default. The promotion PR is the exception and needs `--base main` explicitly.
+- **`dev` is the default branch specifically so `Closes #N` keeps working.** GitHub links and closes issues only for PRs based on the default branch; that is the mechanism that silently voided the keywords on PRs #76-#80 when the default was a stale `master`. A promotion PR therefore closes nothing and must not carry keywords — its issues closed when each feature PR merged.
 
 ## Preventing repo-access race conditions (added 2026-08-05)
 
@@ -58,9 +76,27 @@ The worktree rule above is easy to state and easy to violate by accident (a sess
 Two starter hooks are wired up via `.claude/settings.json`:
 
 - **`.claude/hooks/check-worktree-scope.sh`** — denies any `Edit`/`Write` call targeting a file outside the session's assigned worktree. Opt a session into this check by exporting `CLAUDE_WORKTREE_ROOT` (its worktree's absolute path) before launching it; if unset, the hook is a no-op, so it doesn't restrict ordinary single-session work on the main checkout.
-- **`.claude/hooks/block-protected-branch-ops.sh`** — always active. Denies force-pushes, `git checkout main`/`master`, and `git reset --hard` from any `Bash` tool call, regardless of worktree. Defense in depth: a task session should never need to touch the shared main branch directly, worktree or not.
+- **`.claude/hooks/block-protected-branch-ops.sh`** — always active. Denies force-pushes, a direct checkout of `main`/`master`/`dev`, and `git reset --hard` from any `Bash` tool call, regardless of worktree. Defense in depth: a task session should never need to touch a shared branch directly, worktree or not. `dev` was added 2026-08-27 when it became the integration branch — it is now the one a session is most likely to reach for by reflex.
 
 Both hooks return a structured `permissionDecision: "deny"` with a human-readable reason on the offending call, rather than silently failing — see the scripts themselves for the exact contract. Extend this pattern (rather than replacing it) if more automatic guardrails come up; it's cheaper to add a new `PreToolUse` matcher than to keep re-explaining a rule in every session's prompt.
+
+### Both of these were inert from Phase 4 to Phase 8 (found 2026-08-27)
+
+Read this before trusting any hook in this repo, including one you just wrote.
+
+Both parsed their input with **`jq`, which is not installed on the machine this repo is worked on and never has been.** The variable came back empty, and both scripts then hit an explicit `exit 0` — so every command they were written to deny was permitted, while this document said "always active" and `README.md` said "denied unconditionally". The window is `7bd9b86` (2026-08-07, partway through Phase 4) to 2026-08-27: about twenty days, five phases. **Not** Phases 1-3, which were finished and merged before these files existed — a first draft of this section said "Phase 1 through Phase 8" and was wrong, which is worth leaving on the record given what the section is about. Confirmed by running `git checkout main --help`, which matches the deny pattern and executed normally.
+
+That is `CLAUDE.md`'s "fails closed, never open" rule broken inside the mechanism meant to enforce it — the same shape as the inverted `@Profile("!prod")` predicate in `AGENT_LOG.md` 2026-08-01, and no easier to see.
+
+What changed:
+
+- **Both hooks parse with Python instead**, chosen because it is actually present rather than because it is nicer.
+- **Neither has a path that permits a call it could not inspect.** Unparseable input is a deny. No interpreter at all is a deny, emitted as hand-written JSON so even that path needs nothing installed.
+- **`check-worktree-scope.sh` compares real paths, not string prefixes.** The old `case "$FILE_PATH" in "$CLAUDE_WORKTREE_ROOT"/*)` accepted `<root>/../My_Site/CLAUDE.md` — straight back into the shared checkout — and rejected a legitimate write whose separators or drive-letter case differed. It now normalises both sides and uses `os.path.commonpath`.
+
+**The general lesson, which is not about `jq`:** a guard that fails open is worse than no guard, because the documentation describing it becomes the thing people trust. Neither hook had a test, and nothing ever tried a command they were supposed to block — so "we have hooks" was load-bearing for eight phases without once being true. If you add a hook, first make it deny something and watch it happen.
+
+**Known false positive, accepted:** `block-protected-branch-ops.sh` matches the whole command string, so a shell heredoc writing documentation that quotes a blocked command is itself blocked. Write files with the `Write`/`Edit` tools rather than heredocs, which is the better habit anyway.
 
 ## Task distribution (added 2026-08-05)
 
