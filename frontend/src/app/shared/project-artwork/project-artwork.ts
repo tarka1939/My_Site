@@ -117,16 +117,34 @@ export function artworkSpec(seed: number): ArtworkSpec {
 /**
  * The luminance every curve is drawn at, and the reason there is a solver below at all.
  *
- * A fixed HSL lightness does *not* give a fixed visual weight: at `l: 62%` the stroke measures
- * 1.04:1 against the light plate at one hue and 4.20:1 at another, and 2.64:1 to 12.16:1 against
- * the dark one -- so some cards would have shouted while their neighbours were invisible, and which
- * was which would have depended on the scheme. HSL lightness is not lightness.
+ * A fixed HSL lightness does *not* give a fixed visual weight: at `l: 62%` the stroke runs from
+ * 1.00:1 to 4.20:1 against the light plate and 2.64:1 to 12.16:1 against the dark one -- so some
+ * cards would have shouted while their neighbours were invisible, and which was which would have
+ * depended on the scheme. That 1.00:1 is not rounding: at hue 79.2, `l: 62%` lands on exactly the
+ * light plate's luminance and the curve vanishes into it. HSL lightness is not lightness.
  *
- * Solving for sRGB relative luminance instead fixes both at once. The plates composite to a
- * luminance of 0.716 (light) and 0.021 (dark), so any stroke between 0.162 and 0.205 clears 3:1
- * against *both*; 0.18 sits in the middle of that window and measures 3.33:1 light / 3.26:1 dark at
- * every hue. Nothing here is text, so 3:1 is not a WCAG obligation -- it is the threshold at which
- * a line stops being a suggestion.
+ * Solving for sRGB relative luminance instead fixes both at once. The plates are
+ * --color-surface-muted composited over --color-surface (not over --color-bg -- a card is what the
+ * artwork sits on), giving a luminance of 0.7197 light and 0.0195 dark. Any stroke between 0.1586
+ * and 0.2066 therefore clears 3:1 against *both*, and 0.18 sits near the middle of that window
+ * (midpoint 0.1826).
+ *
+ * What that buys is a narrow band, not a single pinned ratio: across every hue the drawn stroke
+ * measures 3.32:1 to 3.37:1 on the light plate and 3.28:1 to 3.33:1 on the dark one. The solver
+ * itself is tighter than that -- it holds 3.34-3.35 and 3.30-3.31 -- and almost all of the spread
+ * is the `Math.round` that turns its output into 8-bit channels. The floors are the part that
+ * matters, and there are two of them, at different hues: the light plate bottoms out at 3.3211:1
+ * at hue 45.3, the dark plate at 3.2814:1 at hue 57.4. They cannot coincide. Light contrast is
+ * (plate + 0.05) / (stroke + 0.05) and dark is (stroke + 0.05) / (plate + 0.05), so they are
+ * perfectly anti-correlated in the stroke's luminance: the hue that minimises one maximises the
+ * other, and those two hues are in fact each other's -- hue 45.3 is where the dark plate peaks at
+ * 3.3329:1, and hue 57.4 is where the light plate peaks at 3.3731:1. Both floors clear 3:1, which
+ * is what the constant is for. Nothing here is text, so 3:1 is not a WCAG obligation -- it is the
+ * threshold at which a line stops being a suggestion.
+ *
+ * The plate luminances, the window, and 0.18's position near its centre are all re-derived in
+ * project-artwork.spec.ts rather than trusted here: the previous set of figures in this comment
+ * had drifted from the constants they were computed off (#159).
  */
 const STROKE_LUMINANCE = 0.18;
 

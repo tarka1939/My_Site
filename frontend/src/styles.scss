@@ -194,8 +194,11 @@
   // Text and icons painted ON --color-accent, which is a fill often enough (primary buttons, the
   // skip link) to need its own token. It cannot be #fff in both schemes: #fff on the dark accent
   // #e0607f is 3.42:1, under AA, so every primary button in dark mode would have failed exactly
-  // the way #116 did. On the light accent #fff is 5.65:1; on the dark accent the near-black ground
-  // is 5.79:1.
+  // the way #116 did. On the light accent #fff is 5.83:1; on the dark accent the near-black ground
+  // is 5.79:1 -- and that second number is deliberately the same one the --color-accent row records
+  // above, because in dark mode --color-on-accent IS --color-bg, so the two pairs genuinely
+  // coincide. The light pair does not coincide with anything: 5.65:1 on that row is accent against
+  // the light ground, a different measurement, and copying it down here is the mistake #159 found.
   --color-on-accent: #ffffff;
 
   // Destructive fills -- the delete button, the error toast. Also per scheme, and for a reason the
