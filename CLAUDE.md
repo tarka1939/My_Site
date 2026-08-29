@@ -11,7 +11,7 @@ Never add "Co-Authored-By" lines to commits. Do not include Claude attribution i
 
 - Cut every worktree and branch from `My_Site/dev`. Feature PRs target `dev` and need no `--base`.
 - Only a `dev` → `main` promotion PR merges into `main`: `--base main`, and **no closing keywords** — its issues closed already, when the feature PR merged.
-- `dev` is the default branch *because* `Closes #N` only fires when a PR's base is the default. Leaving `main` default would silently void every feature PR's closing keywords, exactly as the stale `master` did to PRs #76-#80.
+- `dev` is the default branch *because* `Closes #N` only fires when a PR's base is the default. Leaving `main` default would silently void every feature PR's closing keywords, exactly as the stale `master` did to PRs #76, #77 and #79, which are permanently unlinked. (#80 hit the same bug but was repaired while still open and closed its ten issues on merge.)
 - A hook denies checking `main`/`master`/`dev` out from a session. To refresh one, `git switch <branch> && git merge --ff-only My_Site/<branch>`.
 
 ADR and the reasoning: `docs/DECISIONS.md`, 2026-08-27.
@@ -109,7 +109,7 @@ Six agents were terminated mid-task over 2026-08-07 to 08-10, every one with com
 - Commit each logically complete change as it passes its own check.
 - Commit **before** anything exploratory — a mutation test is when a termination is most expensive.
 - Push at checkpoints: commits survive `git worktree remove` on a named branch, but not in a detached worktree.
-- Do not withhold a commit for tidiness.
+- Do not withhold a commit for tidiness. Branches land here as merge commits rather than squashes, so intermediate commits survive into the integration branch — a reason to write clear messages, not a reason to batch.
 
 ## Project
 

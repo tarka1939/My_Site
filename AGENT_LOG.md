@@ -150,6 +150,11 @@ The most dangerous class, because the feedback signal is actively misleading:
   rewriting the PR body to one `Closes #N` per line, re-verifying via `gh api graphql` that all ten
   issues appeared, and writing both rules into `CLAUDE.md`'s PR conventions.
   *(2026-08-02, "PR #80's `Closes #N` list never actually linked anything" — PR #80.)*
+  **Correction 2026-08-29:** "linked nothing since Phase 1" is right for #76, #77 and #79, which
+  were already merged and stay unlinked. #80 was still open, was repaired, and closed all ten of
+  its issues on merge. Both causes recorded here are real — a 2026-08-27 note elsewhere briefly
+  claimed the comma cause was never observed locally, which was itself wrong; see
+  `docs/AGENT_WORKFLOW.md`'s closing-keyword section.
 - **Flyway silently never ran.** `flyway-core` alone compiles fine under Boot 4 but doesn't trigger
   autoconfiguration — no error, no log line, just an empty schema and a confusing "relation does not
   exist" from the first query. **Fixed** by depending on `spring-boot-starter-flyway` instead, which
