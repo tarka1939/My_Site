@@ -132,10 +132,15 @@ export function artworkSpec(seed: number): ArtworkSpec {
  * What that buys is a narrow band, not a single pinned ratio: across every hue the drawn stroke
  * measures 3.32:1 to 3.37:1 on the light plate and 3.28:1 to 3.33:1 on the dark one. The solver
  * itself is tighter than that -- it holds 3.34-3.35 and 3.30-3.31 -- and almost all of the spread
- * is the `Math.round` that turns its output into 8-bit channels. The floor is the part that
- * matters, and it holds: the worst hue is 3.3211:1 light / 3.2814:1 dark, so every hue clears 3:1
- * on both plates. Nothing here is text, so 3:1 is not a WCAG obligation -- it is the threshold at
- * which a line stops being a suggestion.
+ * is the `Math.round` that turns its output into 8-bit channels. The floors are the part that
+ * matters, and there are two of them, at different hues: the light plate bottoms out at 3.3211:1
+ * at hue 45.3, the dark plate at 3.2814:1 at hue 57.4. They cannot coincide. Light contrast is
+ * (plate + 0.05) / (stroke + 0.05) and dark is (stroke + 0.05) / (plate + 0.05), so they are
+ * perfectly anti-correlated in the stroke's luminance: the hue that minimises one maximises the
+ * other, and those two hues are in fact each other's -- hue 45.3 is where the dark plate peaks at
+ * 3.3329:1, and hue 57.4 is where the light plate peaks at 3.3731:1. Both floors clear 3:1, which
+ * is what the constant is for. Nothing here is text, so 3:1 is not a WCAG obligation -- it is the
+ * threshold at which a line stops being a suggestion.
  *
  * The plate luminances and the window are re-derived in project-artwork.spec.ts rather than
  * trusted here: the previous set of figures in this comment had drifted from the constants they
