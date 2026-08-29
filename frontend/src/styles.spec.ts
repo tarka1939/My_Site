@@ -6,7 +6,7 @@ import { join, relative } from 'node:path';
  * (issue #116). Nothing caught it because nothing could: every check on those regions was a DOM
  * assertion, and the DOM was right the whole time -- it was the colour that was wrong. Then it
  * happened again: --color-border shipped as #ccc, a correct 1.61:1 hairline on white and an
- * 11.67:1 white box on the dark canvas, drawing 16 strokes across the site (issue #152).
+ * 11.67:1 white box on the dark canvas, drawing 15 strokes across the site (issue #152).
  *
  * So this file does not assert on rendered output. It reads the stylesheets as text and checks the
  * things that actually failed: that every declared token clears the threshold that applies to what
