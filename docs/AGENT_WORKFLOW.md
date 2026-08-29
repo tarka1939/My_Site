@@ -50,7 +50,7 @@ Three things follow that are easy to get wrong:
 
 - **Worktrees are cut from `My_Site/dev`.** The `git worktree add` examples elsewhere on this page do not name a base ref at all, so they are unaffected; it is the base you pass that has to change.
 - **`gh pr create` needs no `--base` for feature work**, because `dev` is the default. The promotion PR is the exception and needs `--base main` explicitly.
-- **`dev` is the default branch specifically so `Closes #N` keeps working.** GitHub links and closes issues only for PRs based on the default branch; that is the mechanism that silently voided the keywords on PRs #76-#80 when the default was a stale `master`. A promotion PR therefore closes nothing and must not carry keywords — its issues closed when each feature PR merged.
+- **`dev` is the default branch specifically so `Closes #N` keeps working.** GitHub links and closes issues only for PRs based on the default branch; that is the mechanism that silently voided the keywords on PRs #76, #77 and #79 when the default was a stale `master` — see the closing-keyword section below for what happened to #80. A promotion PR therefore closes nothing and must not carry keywords — its issues closed when each feature PR merged.
 
 ## Preventing repo-access race conditions (added 2026-08-05)
 
@@ -178,67 +178,87 @@ Both should return `[]`.
 
 ## Closing keywords: the three incidents (added 2026-08-29)
 
-`CLAUDE.md` states the rules and points here for the evidence. It pointed here for eighteen days
-before this section existed (#162) — the pointer was written on the assumption someone would follow
-it, and nobody did until someone audited a stale worktree. The rules are in `CLAUDE.md`; what
-follows is why each clause is there, because a rule whose evidence has gone missing is one someone
-will eventually decide to "simplify".
+`CLAUDE.md` states the rules and points here for the evidence. It pointed here from 2026-08-15
+(`faa0f3d`) until this section was written — fourteen days in which the one sentence inviting a
+reader to check the evidence led nowhere (#162). It was found by auditing a stale worktree, not by
+anyone following it, which is the thing about a broken pointer.
 
-**The mechanism, stated once.** GitHub interprets a closing keyword — `close`/`fix`/`resolve` and
-their inflections — followed by an issue reference, **only when the pull request's base is the
-repository's default branch**. On any other base the keywords are ignored entirely: no link is
-created and merging does nothing to the issue. That single fact is behind the first incident and
-behind the branch model in `docs/DECISIONS.md`, 2026-08-27.
+The mechanism itself is stated in the **Branch model** section above, and is not repeated here: a
+closing keyword is interpreted **only** when the pull request's base is the repository's default
+branch. What follows is why each clause of the rule exists, because a rule whose evidence has gone
+missing is one someone will eventually decide to simplify.
 
-### 1. Every PR's keywords had linked nothing, for three phases (2026-08-02)
+### 1. Three PRs' keywords linked nothing, and a fourth was caught in time (2026-08-02)
 
 The repo's default branch was a stale `master` from creation, while every real PR targeted `main`.
-So PRs #76, #77, #79 and #80 all carried keywords and all linked **zero** issues. The rendered PR
-body looks identical either way; the only way to see it is `closingIssuesReferences` via GraphQL,
-and nobody had thought to check the mechanism at all.
+PRs #76, #77 and #79 all carried keywords, all linked **zero** issues, and were already merged by the
+time anyone noticed — their issues are permanently unlinked. PR #80 had the same bug and was still
+open, so it is the one that could be repaired.
+
+The rendered PR body looks identical either way. The only way to see it is `closingIssuesReferences`
+via GraphQL, and nobody had thought to check the mechanism at all.
 
 Fixed by switching the default branch to `main` and deleting `master` after confirming it was an
-ancestor. `AGENT_LOG.md`, 2026-08-02.
+ancestor, then rewriting #80's body and re-verifying: it closed all ten of its issues on merge.
+`AGENT_LOG.md`, 2026-08-02. **Superseded 2026-08-27:** the default is now `dev`, for the same
+mechanism — see the Branch model section above and `docs/DECISIONS.md`. Do not "restore" `main` as
+the default on the strength of this paragraph; that would void every feature PR's keywords again.
 
-**A correction to this entry, 2026-08-29.** It originally recorded *two* stacked causes, the second
-being that a comma-separated list links only its first issue. That second cause was never actually
-observed here. PR #77's body reads `Closes #20, #21, #22, #23, #69.` and `closingIssuesReferences`
-returns **zero** issues — not one, which is what the comma theory predicts. PR #76 is the same. Both
-are explained completely by the default branch, and neither is evidence about commas either way.
-The one-keyword-per-issue rule is still correct, because GitHub documents it; what was wrong was
-this project's belief that it had confirmed it. See `PROJECT_TODO.md`'s 2026-08-02 note.
+**What #80 also established, once it was the only variable left.** With the default corrected, #80's
+comma-separated `Closes #24, #25, #26, ...` linked only **#24**; rewriting it one-per-line made all
+ten appear. That is a clean isolated experiment and it is why `CLAUDE.md` requires a keyword before
+each issue number.
+
+> **A correction, 2026-08-29.** A note added to `PROJECT_TODO.md` on 2026-08-27 claimed the comma
+> cause had *never* been confirmed here, reasoning that PRs #76 and #77 link zero issues rather than
+> the one the comma theory predicts. That reasoning was wrong, and the conclusion with it. Both PRs
+> merged *before* the default was fixed, so the default-branch gate short-circuits them: zero is what
+> **both** hypotheses predict, so neither PR bears on the comma question at all. The isolated
+> experiment is #80, after the fix, and `AGENT_LOG.md` recorded it correctly all along. The
+> correction has been corrected; the original entry was right.
 
 ### 2. A keyword fired from inside a sentence denying it (2026-08-10)
 
 PR #100 opened with "Advances #49. **Deliberately does not close it**" and carried no intentional
 keyword. Further down, a sentence explaining what *would* finish the work said that applying it to a
-live site is what would close that issue — and GitHub matched the keyword there. The issue closed on
-merge and had to be reopened.
+live site is what would close that issue — and GitHub matched the keyword there. Issue #49 closed on
+merge at 09:56:51 and was reopened 54 seconds later.
 
 The parser has no notion of context, negation, or the sentence around it. This is why `CLAUDE.md`
-says to run the check **including on PRs meant not to close anything**: the dangerous case is not
-the PR trying to close an issue, it is the one that isn't.
+says to run the check **including on PRs meant not to close anything**: the dangerous case is not the
+PR trying to close an issue, it is the one that isn't.
 
-### 3. The PR documenting incident 2 re-committed it, twice (2026-08-10)
+### 3. The PR documenting incident 2 re-committed it (2026-08-10)
 
-PR #101 was the fix — it added the rule to `CLAUDE.md`. Its own body quoted the offending sentence,
+PR #101 was the fix — it added the rule to `CLAUDE.md`. Its own body quoted the offending sentence
 and its commit message repeated it in prose. `closingIssuesReferences` on that PR returned `49`, so
 merging it would have taken the same issue down a second time. Caught by the independent review, not
-by its author, hours after that author had written the rule.
+by its author, hours after that author had written the rule. It was closed unmerged and superseded by
+PR #102 on a clean branch, because the offending commit message could not be corrected without a
+force-push.
 
-It was closed unmerged and superseded by PR #102 on a clean branch — the offending commit message
-could not be corrected without a force-push, which `block-protected-branch-ops.sh` denies.
+**What this established that the rule did not previously say: backticks neutralise a keyword,
+blockquotes do not.** PR #101 was an accidental controlled experiment — one occurrence in a
+blockquote, one in a code span, same PR, same issue. Its rendered body carries exactly one
+`issue-keyword` marker, on the blockquoted occurrence; the backticked one renders as a plain `code`
+element with no keyword span and no reference. **Check that specific marker**, not the count of issue
+links — a body can carry several links for unrelated reasons, and "one reference" is not what is
+being claimed.
 
-**Two things this established that the rule did not previously say:**
+The first rewrite of the rule claimed *neither* form neutralises, which was self-refuting: the
+document asserting it could not have been written under its own rule. Corrected in `74d02c8`.
 
-- **Backticks neutralise a keyword; blockquotes do not.** PR #101 was an accidental controlled
-  experiment: one occurrence in a blockquote, one in a code span, same PR, same issue, and its
-  rendered body carries exactly **one** issue-reference marker. The first rewrite of the rule
-  claimed *neither* form neutralises — which was self-refuting, since the document asserting it
-  could not have been written under its own rule.
-- **`closingIssuesReferences` reads only the PR description.** A keyword in a commit message closes
-  an issue on merge without ever appearing in the standard check. Scan commit messages separately;
-  this is the blind spot in the prescribed check, and the check does not announce it.
+### The blind spot in the prescribed check
+
+`closingIssuesReferences` reads **only the PR description**. A keyword in a commit message closes an
+issue on merge into the default branch without ever appearing in it, so commit messages must be
+scanned separately.
+
+This is GitHub's documented behaviour rather than something this project has demonstrated: incident 3
+does not isolate it, because #101's body produced a #49 link too, so the two routes were never
+separated. This repo still has no natural experiment that separates them — every keyword-bearing
+commit that has landed on an integration branch arrived in a PR whose body carried the same link.
+Stated here because a check that cannot see one of its inputs should say so.
 
 ### What to actually do
 
@@ -247,8 +267,8 @@ The rules in `CLAUDE.md` are the operative version. The habits behind them:
 - Run the GraphQL check on **every** PR before merging, including — especially — ones meant to close
   nothing. Two of the three incidents were PRs that were not trying to close anything.
 - Scan commit messages separately, since the check cannot see them.
-- When writing *about* keywords, put them in backticks. That is verified to be safe, and it is the
-  technique this very section depends on.
+- When writing *about* keywords, put them in backticks. That is verified safe, and it is the
+  technique this section depends on.
 - Apply a rule to the document stating it before shipping that document. Incident 3 is what happens
   otherwise, and one query would have caught it.
 

@@ -324,7 +324,7 @@ The decisive fact: **Googlebot executes JavaScript, but the social scrapers do n
 
 **Why `dev` has to be the default branch, and this is not a preference:**
 
-GitHub auto-links a PR's issues in the Development sidebar, and auto-closes them on merge, **only when the PR's base is the repository's default branch.** This project has already paid for that once. `PROJECT_TODO.md`'s 2026-08-02 note records that the default branch was a stale `master` from repo creation onward while every real PR targeted `main` — so `Closes #N` on PRs #76, #77, #79 and #80 silently did nothing, invisible unless someone specifically queried `closingIssuesReferences`.
+GitHub auto-links a PR's issues in the Development sidebar, and auto-closes them on merge, **only when the PR's base is the repository's default branch.** This project has already paid for that once. `PROJECT_TODO.md`'s 2026-08-02 note records that the default branch was a stale `master` from repo creation onward while every real PR targeted `main` — so `Closes #N` on PRs #76, #77 and #79 silently did nothing, invisible unless someone specifically queried `closingIssuesReferences`. (#80 was the one caught in time — still open when the default was fixed, so it closed its ten issues on merge.)
 
 Introducing `dev` while leaving `main` as the default would recreate that exact failure, on every feature PR, permanently. Making `dev` the default keeps `Closes #N` working unchanged and costs only that a fresh clone checks out `dev` — which is the correct branch to start from anyway.
 
