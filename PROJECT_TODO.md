@@ -140,6 +140,8 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 
 ## Phase 5 — Infra & deployment (split targets: Netlify for frontend, self-managed VPS for backend)
 
+> **Runbook: `docs/DEPLOYMENT.md`** (added 2026-08-30). Step-by-step commands for the parts that cannot be delegated — provider and domain choices, VPS hardening, Postgres, TLS, and the wiring order that resolves the frontend-needs-backend-host / backend-needs-frontend-origin cycle. It also records the two things that will otherwise surprise you: Netlify defaults its production branch to the repo default, which is now `dev` rather than `main`; and #121 means a freshly migrated production database has an admin account nobody can log in as.
+
 > **Status (2026-08-05):** paused — backend VPS/Coolify setup is still being evaluated (Hetzner Cloud vs. Mikrus vs. reusing a home laptop; see chat history for the trade-off analysis). Per `docs/AUTONOMOUS_WORKFLOW.md`'s task-dependency model, a blocked phase only blocks the tasks that actually depend on it — Phase 6 and Phase 7 are not gated on this and may proceed in the meantime; see the notes added to each below for exactly what can and can't move forward without a live deploy target.
 
 **Frontend (Netlify — adapted 2026-07-25, originally GitHub Pages; see `docs/DECISIONS.md`):**

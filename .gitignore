@@ -26,3 +26,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local operator scripts -- kept out of the repo because they exist to handle
+# credentials on a machine that already has them (setting the seeded admin's
+# password, seeding content through the live API). Ignored rather than
+# committed so they stop showing as untracked forever; if one of them ever
+# needs to be shared, commit a version that takes the secret as a parameter
+# rather than the one that has been run against a real password.
+/set-admin-password.ps1
+/run-seed.ps1
