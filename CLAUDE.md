@@ -221,6 +221,7 @@ Before considering a write endpoint, auth flow, or migration done, check every i
 - `docs/DECISIONS.md` — locked-in technical decisions and why
 - `docs/DATA_MODEL.md` — entities and relationships
 - `PROJECT_TODO.md` — phase-by-phase build plan
+- `docs/DEPLOYMENT.md` — the Phase 5 runbook: what only the owner can do, and the env vars the prod profile actually reads (they are not the ones the local-dev section above lists)
 - `AGENT_LOG.md` — record agent mistakes/fixes here for the whole project, not just Phase 4
 - `docs/AGENT_WORKFLOW.md` — how to run agent sessions (sequential single-agent vs. dispatcher vs. isolated worktrees) and when each applies; see also `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md`
 - `docs/AUTONOMOUS_WORKFLOW.md` — the operative workflow for Phase 4's tail through Phase 6: one persistent "Senior Dev" session, independent fresh-session PR review, ambiguity/escalation handling, and the Phase 5 pre-flight checklist
