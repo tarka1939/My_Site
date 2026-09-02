@@ -65,6 +65,10 @@ start without them.**
 | `GITHUB_SYNC_ENABLED` | `false` | Leave off. Phase 7a is built but not meant to be live yet |
 | `GITHUB_WEBHOOK_SECRET` | empty | Only read when sync is enabled |
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
+| `CORS_ALLOWED_ORIGINS` | `https://krzysztof-tarka.netlify.app` | Issue #44. Comma-separated, **exact** origins — a wildcard entry fails startup. Add a custom domain here alongside the Netlify one during a switchover. Empty means no cross-origin request is answered at all |
+| `TRUSTED_PROXIES` | the two Mikrus proxy `/64`s | Issue #168, and only read in the `prod` profile. CIDRs of peers whose forwarded headers may be believed. **A wrong value degrades to the collapsed-bucket bug, not to a spoofable limiter** — that is the intended failure direction |
+| `CLIENT_IP_HEADER` | `CF-Connecting-IP` | The single-valued header the outermost proxy sets. Clear it if Cloudflare is ever removed from the path |
+| `TRUSTED_HOP_COUNT` | `2` | How many proxies are in front. The visitor is this many entries **from the right** of `X-Forwarded-For` |
 
 > **Note a naming trap.** `CLAUDE.md`'s local-development section tells you to set `DB_NAME`,
 > `DB_USERNAME`, `DB_PASSWORD` — that is the **dev** profile. The **prod** profile takes a full
@@ -384,6 +388,14 @@ That covers issue #47 for the backend half; Netlify handles its own certificate.
 >
 > It also bites immediately: §6 has you retry a login, and the sixth attempt returns **429**, which
 > looks like an unrelated failure rather than a rate limit.
+>
+> **Status: the code half is done** (`ClientIpResolver`, on `phase5/behind-a-proxy`). What is left is
+> making the configuration match whatever proxy you actually run. The `prod` defaults describe the
+> measured `visitor → Cloudflare → Mikrus nginx → container` chain. **If you deploy the Caddy
+> shape written above instead**, those defaults are wrong and must be overridden:
+> `TRUSTED_PROXIES=127.0.0.1/32`, `TRUSTED_HOP_COUNT=1`, `CLIENT_IP_HEADER=` (empty, since there is
+> no Cloudflare to set it). Getting it wrong is not a security hole — an untrusted peer keeps its
+> own address — but it does leave the collapsed bucket in place, silently.
 
 ---
 
@@ -392,14 +404,19 @@ That covers issue #47 for the backend half; Netlify handles its own certificate.
 These are repo changes, not server steps. They are the delegatable part, and none can be written
 until Parts 1 and 2 have produced real names.
 
-1. **CORS (#44)** — allowlist the exact Netlify origin in the backend. Not a wildcard: the site
-   sends an `Authorization` header, so a permissive config is both a real exposure and, with
-   credentials, one browsers reject anyway.
-2. **Trust `X-Forwarded-For`, conditionally (#168)** — required by 4.8, which otherwise collapses
-   both rate limiters into a single `127.0.0.1` bucket. The conditional matters: trust the header
-   only for requests arriving from the proxy, and have Caddy overwrite rather than append it.
-   Unconditional trust is worse than the bug, because a forged header defeats rate limiting
-   entirely instead of merely globalising it.
+1. **CORS (#44)** — **done** on `phase5/behind-a-proxy`: `app.cors.allowed-origins`, exact
+   origins only, defaulting to `https://krzysztof-tarka.netlify.app` and overridable with
+   `CORS_ALLOWED_ORIGINS`. Not a wildcard: the site sends an `Authorization` header, so a permissive
+   config is both a real exposure and, with credentials, one browsers reject anyway. Netlify deploy
+   previews are deliberately not allowlisted.
+2. **Trust `X-Forwarded-For`, conditionally (#168)** — **done** on `phase5/behind-a-proxy`
+   (`ClientIpResolver`). The conditional is the whole point: the header is read only for requests
+   arriving from a peer in `TRUSTED_PROXIES`, and the entry taken from `X-Forwarded-For` is counted
+   from the **right**, never the left, because a caller can only prepend. Unconditional trust is
+   worse than the bug, because a forged header defeats rate limiting entirely instead of merely
+   globalising it. **What remains is configuration** — see the box in §4.8 for the values, which
+   differ between the Caddy shape written above and the Cloudflare+Mikrus shape the `prod` defaults
+   assume.
 3. **`environment.ts`** — replace `https://TBD-vps-host/api/v1` with the real host. It is a
    placeholder that currently guarantees a broken production build.
 4. **`docs/openapi.yaml`** — the production server entry says `TBD-vps-host` too. Contract-first
