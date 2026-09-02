@@ -1,8 +1,13 @@
 # Deployment runbook — Netlify (frontend) + self-managed VPS (backend)
 
-**Status: not yet executed.** This is the plan, written 2026-08-30 against `dev` at `68bdc92`. Every
-fact in the "Verified" table below was read out of the repo rather than remembered; everything else
-is a decision or a step for you.
+**Status: partially executed, 2026-09-02/03.** Done: §4.1–§4.3 (user, firewall, Postgres), the
+subdomain and its firewall rule (§4.8), and the jar built and copied to the host (§4.5). Not yet
+done: §4.4 Java, §4.6 the environment file, §4.7 the systemd unit, §6 the admin password, §7
+end-to-end verification, and all of Part 1 (Netlify).
+
+Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4 and §4.8
+each said something that turned out to be wrong, and the wrongness is left on the record rather than
+quietly replaced, because each one cost time and the reasoning behind it was plausible.
 
 This exists because Phase 5 is the one phase that cannot be delegated — it needs an account, a
 payment method, a domain and a shell on a machine that does not exist yet. What *can* be delegated is
@@ -20,7 +25,7 @@ deferred to Phase 5, and they are still deferred.
 | Decision | Why it blocks | Notes |
 |---|---|---|
 | **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — the JVM plus Postgres will thrash. Pick a region near you, not near nothing. |
-| **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | A subdomain of a domain you own (`api.example.com`) is much easier than a bare IP: Let's Encrypt will not issue for an IP, so without a domain you get no HTTPS, and without HTTPS the Netlify site cannot call it at all (mixed content). **If you do not own a domain, buy one before starting.** |
+| **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled on `tarka1939.tojest.dev`. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
 | **Netlify site name** | Becomes the CORS origin and the canonical URL | `<name>.netlify.app` is free and fine. A custom domain can come later without redoing anything. |
 
 There is a fourth that is not really open: **Postgres runs on the same VPS**, not as a managed
@@ -46,6 +51,16 @@ yourself — it changes only Part 2, step 3.
 | CORS config | **does not exist** | nothing in `/backend` matches `CorsConfiguration`/`addCorsMappings`/`@CrossOrigin` — this is issue #44 |
 | Dockerfile | **does not exist** | issue #41 |
 | CI workflows | **none** — `.github/workflows/` contains only a `README.md` | issues #38, #45 |
+
+### Resolved during the deployment
+
+| | Value |
+|---|---|
+| Backend public URL | `https://tarka1939.tojest.dev` |
+| Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` |
+| Container app port | `8080` — Spring Boot's default, so no `SERVER_PORT` needed |
+| Host | Ubuntu 24.04 LTS, LXC, 2 GB RAM, 25 GB disk |
+| Postgres | 16.15, listening on `127.0.0.1:5432` only |
 
 ### Environment variables the backend actually reads
 
@@ -80,7 +95,9 @@ The two halves each need something the other produces:
 - The frontend build bakes in the backend URL (`environment.ts`).
 - The backend's CORS allowlist needs the exact Netlify origin.
 
-So do **not** try to finish one before starting the other. The sequence that works:
+**Both names are now known** (see the table above), so this section is history rather than a live
+constraint. It is kept because the shape recurs on any redeploy to a new host. The sequence that
+works:
 
 1. Create the Netlify site → you now know the origin.
 2. Provision the VPS and DNS → you now know the backend hostname.
@@ -180,8 +197,27 @@ sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
 sudo ufw enable && sudo ufw status
 ```
 
-**8080 and 5432 must not appear in that list.** The app is reached only through the reverse proxy,
-and Postgres only from localhost.
+**5432 must not appear in that list**, and Postgres should be listening only on localhost anyway.
+
+**8080 is a different story, and 4.2 originally got it wrong.** Whether the app's port must be open
+depends on where the reverse proxy runs. A proxy on this same box reaches it over loopback and 8080
+stays closed; a proxy belonging to your *provider* connects across the network and a default-deny
+firewall silently drops it. See 4.8, which sets the rule this host actually needs.
+
+**Two things about ports on a NAT'd container**, both of which surprised this deployment:
+
+- The forwarded IPv4 port is not the port inside the box. SSH arrives on `10159` from outside and is
+  NAT'd to `22` internally, so `ufw allow 22/tcp` is the correct rule despite `22` being closed from
+  the internet over IPv4.
+- **IPv6 bypasses the port mapping entirely.** The container's public IPv6 exposes ports *directly*,
+  so `22` really is reachable from the internet over IPv6 even though the IPv4 mapping suggests SSH
+  lives somewhere obscure. A high-numbered SSH port buys nothing here, which makes key-only
+  authentication the control that actually matters — confirm it with
+  `sudo sshd -T | grep -iE 'permitrootlogin|passwordauthentication|kbdinteractive'`, and note that
+  `PasswordAuthentication no` alone is not enough while `KbdInteractiveAuthentication` is `yes`.
+
+Rules for `80/tcp` and `443/tcp` are worth omitting on a shared-IP host: those ports belong to the
+provider, so the rules protect nothing and imply a level of control you do not have.
 
 ### 4.3 Postgres
 
@@ -224,8 +260,17 @@ java -version    # must report 25
 `-jre-headless` rather than the full JDK: this box runs a jar, it does not compile one, and the JDK
 is a few hundred megabytes you do not have spare on a 2 GB host.
 
-**This is the step most likely to fail.** Java 25 is recent enough that a stock Ubuntu LTS image may
-have no such package. If `apt` cannot find it, use Adoptium:
+**Check before assuming this fails.** An earlier version of this section called it the step most
+likely to fail, on the reasoning that Java 25 is too recent for a stock LTS image. That proved wrong
+on Ubuntu 24.04, which carries `openjdk-25-jre-headless` at `25.0.4+7-1~24.04` — matching the JDK
+this project builds with. One read-only command settles it without sudo:
+
+```bash
+apt-cache policy openjdk-25-jre-headless
+```
+
+A `Candidate:` line means the plain `apt install` above is all you need. Only if it says
+`(none)` do you need Adoptium:
 
 ```bash
 sudo apt install -y wget gpg ca-certificates
@@ -341,49 +386,113 @@ If it does not come up, the likely causes are: a missing variable from 4.6 (the 
 the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
 rather than an exhaustive one.
 
-### 4.8 TLS and the reverse proxy
+### 4.8 Exposing it to the internet
 
-Point an **A record** for your chosen hostname at the VPS IP and wait for it to resolve before
-continuing — Let's Encrypt validates over HTTP and will fail against stale DNS.
+**Rewritten 2026-09-03, after doing it.** The original version of this section had you install Caddy
+and obtain a Let's Encrypt certificate on ports 80 and 443. That is wrong on this host, and the way
+it is wrong is worth keeping: it assumed a VPS with its own IPv4 address and its own ports. This is a
+NAT'd LXC container on shared infrastructure, and almost every assumption downstream of that changed.
 
-Caddy rather than nginx, because it obtains and renews certificates with no extra tooling. Debian and
-Ubuntu ship a `caddy` package with the systemd unit and `/etc/caddy/Caddyfile` already in place,
-which is why `reload` below works with no prior `start`. It lags upstream, which does not matter
-here; Caddy's own docs pointing at their Cloudsmith repo is not a sign this is wrong:
+#### What the host actually is
 
-```bash
-sudo apt install -y caddy
-sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
-api.example.com {
-    reverse_proxy localhost:8080
-}
-EOF
-sudo systemctl reload caddy
+Measured, not assumed:
+
+- **The container is LXC**, on a private IPv4 (`192.168.1.x`) behind NAT. `systemd-detect-virt`
+  reports `lxc`.
+- **Ports 80 and 443 belong to the provider**, not to you. `curl` against them returns a certificate
+  for the *host* (`CN=srv73.mikr.us`) and a redirect to the host's own page. You cannot bind them and
+  Let's Encrypt cannot validate through them.
+- **You get a handful of forwarded IPv4 ports** — here `10159` (SSH), `20159`, `30159`.
+- **The container has a public, routable IPv6 address**, and this is the important one. It is
+  reachable from the internet directly, on any port the firewall allows.
+- **The provider's HTTP proxy reaches your container over that IPv6**, not over the private IPv4.
+
+The resulting request path has *two* proxies, because the provider fronts its own domains with
+Cloudflare:
+
+```
+visitor → Cloudflare → provider nginx → your container, public IPv6 :8080
 ```
 
+#### Configure the subdomain
+
+The provider panel maps a subdomain to a port inside your container. **Set the port to 8080**, not
+the default 80 — nothing listens on 80 here, and Spring Boot defaults to 8080 with no `server.port`
+in `application.yml`. That also means you need no `SERVER_PORT` in `/etc/mysite/env`.
+
+**The panel probes the port when you save**, so it fails unless something is already listening. Two
+things follow, and the second cost an hour:
+
+1. **Prove the path before deploying the app.** Same principle as preferring the jar to Docker in
+   4.5: separate "is the mapping right" from "does my app work", so a later failure has one meaning.
+2. **The listener must bind IPv6.** `python3 -m http.server 8080` binds `0.0.0.0` — IPv4 only — and
+   fails the probe identically to having nothing there at all, which sends you hunting the wrong
+   problem.
+
 ```bash
-curl -s https://api.example.com/actuator/health    # expect {"status":"UP"} over TLS
+cd /tmp && echo '<h1>mapping test</h1>' > index.html && python3 -m http.server 8080 --bind ::
 ```
 
-That covers issue #47 for the backend half; Netlify handles its own certificate.
+Leave it in the foreground, save the subdomain, then `Ctrl-C`. Verify from **outside** — from your
+own machine, not the server:
 
-> ### This step breaks per-IP rate limiting. Read before continuing.
->
-> `ClientIpHasher` returns `request.getRemoteAddr()` and deliberately ignores `X-Forwarded-For`,
-> because until now nothing set it and a client could forge it. Behind Caddy, `getRemoteAddr()` is
-> **`127.0.0.1` for every request on the internet**, so both limiters collapse into one global
-> bucket:
->
-> - **Login**, 5 attempts per 15 minutes — any stranger can lock *you* out of the admin panel.
-> - **Contact form**, 5 messages per hour — one submitter silences the form for everybody.
->
-> This is a regression introduced by this step, not a pre-existing gap. It needs a code change:
-> trust `X-Forwarded-For` **only** when the request came from the proxy, and configure Caddy to
-> overwrite rather than append it. `CLAUDE.md`'s "trust boundaries" rule is what makes that
-> conditional necessary, and it is exactly the case that rule anticipated.
->
-> It also bites immediately: §6 has you retry a login, and the sixth attempt returns **429**, which
-> looks like an unrelated failure rather than a rate limit.
+```bash
+curl -sS -w '\nstatus=%{http_code}\n' https://<your-sub>.<provider-domain>/
+```
+
+`200` and the test page means DNS, the provider's proxy, TLS, the port mapping and your container
+all work. Anything else is one of those five, and the listener's own log tells you whether the
+request arrived.
+
+#### The firewall rule this needs, which 4.2 got wrong
+
+4.2 said 8080 must not appear in `ufw status`, because "the app is reached only through the reverse
+proxy". That is true when the proxy runs **on the same box**. Here it is external and connects over
+the public IPv6, so a default-deny firewall drops it — the symptom is a connection that times out
+rather than refuses, and the provider panel simply reports no server listening.
+
+Open it, but not to everyone. The listener's log shows the proxy's source addresses; here they were
+`2a01:4f8:c012:8ba::1` and `2a01:4f9:c012:f2aa::1`:
+
+```bash
+sudo ufw allow from 2a01:4f8:c012:8ba::/64 to any port 8080 proto tcp
+sudo ufw allow from 2a01:4f9:c012:f2aa::/64 to any port 8080 proto tcp
+```
+
+`/64` rather than the exact addresses leaves headroom for sibling proxy nodes. **If the subdomain
+starts returning 502 later, a new proxy node outside those ranges is the first thing to check.**
+
+A blanket `ufw allow 8080/tcp` works and should not be left in place: it exposes the app in plaintext
+on the public IPv6, bypassing the provider's TLS entirely.
+
+#### What this means for #168, which is now mandatory
+
+With two proxies in the path, `request.getRemoteAddr()` is one address for the entire internet, so
+both rate limiters collapse into a single bucket — any stranger can lock the owner out of the admin
+panel and silence the contact form. That is no longer a consequence to handle later; the site is
+broken in a way nobody will notice until it bites.
+
+The firewall rule above is also what makes the fix *possible*. A forwarded-for header is only
+trustworthy if nothing can reach the app except through the proxy. With 8080 open to the world,
+anyone could set the header to anything and defeat rate limiting completely — strictly worse than
+the bug being fixed.
+
+#### Certificates
+
+Nothing to do. The provider terminates TLS and renews its own certificate. `openssl s_client` showed
+a valid Google Trust Services certificate for the provider's domain. That covers issue #47 for the
+backend; Netlify handles the frontend's.
+
+#### If you leave this provider
+
+Everything above is provider-shaped, which is the argument for the alternative that was considered
+and not taken: **Cloudflare Tunnel** needs no inbound ports at all, works from behind NAT, and
+follows you to a different host unchanged. It costs a domain, a Cloudflare account and a daemon.
+Worth revisiting if this arrangement ever becomes limiting; not worth paying for up front.
+
+Note that Cloudflare is *already* in the request path here regardless — the provider put it there.
+Choosing the provider's subdomain did not avoid a third-party processor, and an earlier version of
+this document claimed it did.
 
 ---
 

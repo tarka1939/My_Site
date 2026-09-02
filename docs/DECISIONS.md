@@ -343,6 +343,72 @@ Introducing `dev` while leaving `main` as the default would recreate that exact 
 - **`closingIssuesReferences` must still be checked before merging.** On a promotion PR the field is structurally always empty, because GitHub ignores keywords entirely on a non-default base — so that check is belt-and-braces against the default changing, not a live risk. The live risk it does not cover is a **commit message** keyword, which closes an issue on merge into the default branch without ever appearing in `closingIssuesReferences`; scan those separately.
 - **A stale local `dev` is now the likeliest footgun**, the way a stale local `main` used to be. Fast-forward it explicitly rather than trusting the branch name.
 
+### 2026-09-03 — Backend exposure: the provider's subdomain and proxy, not our own TLS
+
+**Context:** Phase 5's plan assumed a VPS with its own IPv4 address and its own ports 80 and 443, on
+which Caddy would obtain a Let's Encrypt certificate. The host actually provisioned is a **NAT'd LXC
+container on shared infrastructure** (Mikrus), and that invalidates the plan rather than complicating
+it. Measured on the host:
+
+- Ports **80 and 443 belong to the provider**. They answer with a certificate for `CN=srv73.mikr.us`
+  and redirect to the provider's own page. They cannot be bound, and neither HTTP-01 nor TLS-ALPN-01
+  can validate through them.
+- IPv4 is NAT'd behind `192.168.1.x`, with three forwarded ports: `10159` (SSH), `20159`, `30159`.
+- The container has a **public, routable IPv6 address**, reachable directly from the internet on any
+  port the firewall permits.
+- The provider's HTTP proxy reaches the container **over that IPv6**, not over the private IPv4.
+
+**Decision:** expose the backend through the provider's subdomain feature — `tarka1939.tojest.dev`,
+mapped to container port 8080 — and let the provider terminate TLS. No Caddy, no Let's Encrypt, no
+certificate management of our own.
+
+Two rules follow and are not optional:
+
+1. **`ufw` permits 8080 only from the provider's proxy addresses**, not the internet. The observed
+   nodes are `2a01:4f8:c012:8ba::/64` and `2a01:4f9:c012:f2aa::/64`. A blanket allow exposes the app
+   in plaintext on the public IPv6, bypassing the provider's TLS entirely.
+2. **#168 becomes part of the deployment**, not a follow-up. See consequences.
+
+**Alternatives considered:**
+
+- *Caddy on a forwarded port (20159) with a DNS-01 challenge.* The only self-managed option that can
+  work, since DNS-01 needs no inbound port. Rejected on two counts: it puts a port number into every
+  API URL forever, on a site whose purpose is to look competent; and DNS-01 requires a registrar API
+  token — a new long-lived secret to store and rotate, for a certificate the provider already issues
+  for free.
+- *Cloudflare Tunnel.* Genuinely elegant here: an outbound connection means **no inbound ports at
+  all**, which is exactly the shape of a NAT'd container, and it is the only option that is
+  **provider-independent** — the tunnel follows the app to a different host unchanged. Rejected for
+  now on cost of moving parts: it needs a domain purchase, a Cloudflare account, and a daemon to keep
+  running, to replace a panel field. Revisit if this arrangement becomes limiting, and note the
+  migration is cheap by design — the backend host appears in exactly three places
+  (`environment.ts`, `docs/openapi.yaml`, the CORS allowlist).
+- *Binding the public IPv6 directly and serving TLS ourselves.* Works, and Let's Encrypt can validate
+  over IPv6. Rejected because **IPv4-only visitors would not reach the API at all**, which a
+  portfolio cannot accept.
+
+**Consequences:**
+
+- **Two proxies are now in the request path**, because the provider fronts its own domains with
+  Cloudflare: `visitor → Cloudflare → provider nginx → container IPv6:8080`. Verified by the
+  `Server: cloudflare` and `CF-RAY` headers on the live subdomain.
+- **Cloudflare sees contact-form submissions.** This is a third-party processor handling personal
+  data, and it is worth stating plainly because it was not chosen — it came with the host. It is also
+  the answer to an argument made while deciding this, that the provider's subdomain avoided
+  introducing a new third party: **it does not, and that argument was wrong.** The decision stands on
+  its other merits. Anyone re-examining the 2026-08-22 fonts ADR's privacy reasoning should know that
+  the API path already crosses Cloudflare regardless.
+- **#168 is mandatory.** With any proxy in front, `request.getRemoteAddr()` returns one address for
+  the entire internet and both rate limiters collapse into a single bucket: a stranger can lock the
+  owner out of the admin panel for 15 minutes and silence the contact form for an hour. The `ufw`
+  restriction above is also what makes the fix *safe* — a forwarded-for header is trustworthy only if
+  nothing can reach the app except through the proxy.
+- **Provider lock-in, deliberately accepted.** The subdomain, the proxy behaviour and the firewall
+  rule are all Mikrus-shaped. The Cloudflare Tunnel alternative exists precisely for the day that
+  matters.
+- **A new failure mode to recognise:** if the subdomain starts returning 502, the first suspect is a
+  provider proxy node outside the two `/64`s currently allowed, not the application.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
