@@ -162,6 +162,23 @@ class ClientIpResolverTest {
     }
 
     @Test
+    void theValuesApplicationProdYmlDefaultsTo_areValidConfiguration() {
+        // Copied literally from application-prod.yml, so this does not track edits to that file --
+        // it does something narrower and still worth having: it proves these particular strings
+        // construct, which is the difference between a CIDR typo showing up here and showing up as
+        // a refusal to boot on the VPS.
+        ClientIpResolver resolver = new ClientIpResolver(
+            "2a01:4f8:c012:8ba::/64,2a01:4f9:c012:f2aa::/64", "CF-Connecting-IP", 2);
+
+        assertThat(resolver.resolve(request("2a01:4f9:c012:f2aa::1", "203.0.113.7", null)))
+            .as("a Mikrus proxy node may speak for a visitor")
+            .isEqualTo("203.0.113.7");
+        assertThat(resolver.resolve(request("2a01:4f9:3051:4119::159", "203.0.113.7", null)))
+            .as("the container's own public address is not one of the proxies")
+            .isEqualTo("2a01:4f9:3051:4119::159");
+    }
+
+    @Test
     void malformedTrustedProxyEntry_failsFastAtConstruction() {
         // Present but wrong, so it must not boot: a typo'd CIDR would otherwise mean the proxy is
         // never trusted and both limiters stay silently collapsed onto one bucket.
