@@ -47,7 +47,7 @@ yourself — it changes only Part 2, step 3.
 | Angular project name | `frontend` | `frontend/angular.json` |
 | Angular build output | `dist/frontend/browser` (no explicit `outputPath`, so the `@angular/build:application` default) | `frontend/angular.json` |
 | SPA fallback | already committed | `frontend/public/_redirects` |
-| Prod API base URL | **`https://TBD-vps-host/api/v1`** — a placeholder that must change | `frontend/src/environments/environment.ts` |
+| Prod API base URL | `https://tarka1939.tojest.dev/api/v1` — was a `TBD` placeholder until 2026-09-03 | `frontend/src/environments/environment.ts` |
 | CORS config | **does not exist** | nothing in `/backend` matches `CorsConfiguration`/`addCorsMappings`/`@CrossOrigin` — this is issue #44 |
 | Dockerfile | **does not exist** | issue #41 |
 | CI workflows | **none** — `.github/workflows/` contains only a `README.md` | issues #38, #45 |
@@ -509,11 +509,11 @@ until Parts 1 and 2 have produced real names.
    only for requests arriving from the proxy, and have Caddy overwrite rather than append it.
    Unconditional trust is worse than the bug, because a forged header defeats rate limiting
    entirely instead of merely globalising it.
-3. **`environment.ts`** — replace `https://TBD-vps-host/api/v1` with the real host. It is a
-   placeholder that currently guarantees a broken production build.
-4. **`docs/openapi.yaml`** — the production server entry says `TBD-vps-host` too. Contract-first
-   means it changes with the code, and **the generated client must be regenerated afterwards**
-   (`cd frontend && npm run generate:api`, then `git status --porcelain` must come back empty).
+3. ~~**`environment.ts`** — replace the placeholder host.~~ **Done 2026-09-03.**
+4. ~~**`docs/openapi.yaml`** — the production server entry.~~ **Done 2026-09-03.** The regenerate
+   produced no client change, and that is a *property* rather than luck: the typescript-angular
+   client embeds no server URL at all — `basePath` is injected at runtime by `provideApi()`. Note
+   the check is `git diff --numstat`, not `git status --porcelain`; see `CLAUDE.md`.
 5. **`<link rel="preconnect">` (#89)** — small, real, and only possible once the origin is known.
 6. **`README.md`** — the "Live URL: (once deployed — Phase 5)" placeholder.
 
