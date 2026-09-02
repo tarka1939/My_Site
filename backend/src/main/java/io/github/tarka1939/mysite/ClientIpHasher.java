@@ -17,19 +17,21 @@ import jakarta.servlet.http.HttpServletRequest;
 @Component
 public class ClientIpHasher {
 
-    public String hashOf(HttpServletRequest request) {
-        return sha256Hex(resolveClientIp(request));
+    private final ClientIpResolver clientIpResolver;
+
+    public ClientIpHasher(ClientIpResolver clientIpResolver) {
+        this.clientIpResolver = clientIpResolver;
     }
 
-    private String resolveClientIp(HttpServletRequest request) {
-        // Deliberately just getRemoteAddr(), not X-Forwarded-For: X-Forwarded-For is
-        // caller-controlled unless the app sits behind a known, trusted reverse proxy that
-        // strips/overwrites client-supplied values before setting its own -- no such proxy
-        // exists yet (Phase 5, VPS hosting, not decided). Trusting it now would let any caller
-        // spoof the header and trivially bypass per-IP rate limiting. Revisit once Phase 5
-        // picks a reverse proxy and wires up Spring's forwarded-header support
-        // (server.forward-headers-strategy / ForwardedHeaderFilter) with a trusted proxy count.
-        return request.getRemoteAddr();
+    public String hashOf(HttpServletRequest request) {
+        // Which address counts as "the requester" is a trust decision, not a hashing one, and it
+        // stopped being a one-liner when Phase 5 put two reverse proxies in front of this app
+        // (issue #168): getRemoteAddr() is now the innermost proxy, identically for the whole
+        // internet. ClientIpResolver owns that decision and the trust boundary it turns on; this
+        // class stays responsible only for never storing a raw address. With no proxy configured
+        // the resolver returns getRemoteAddr(), which is exactly what this method used to do --
+        // the header is read on a deployment that says it has a proxy, and nowhere else.
+        return sha256Hex(clientIpResolver.resolve(request));
     }
 
     private String sha256Hex(String value) {

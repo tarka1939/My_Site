@@ -13,6 +13,32 @@ app:
     # No default -- required. Must be a random value >=32 bytes (HS256's minimum key
     # length), set via the deploy platform's secret store per docs/DECISIONS.md Phase 5.
     secret: ${JWT_SECRET}
+  forwarded-headers:
+    # Issue #168, and the only profile where these are on. The deployed chain, measured rather
+    # than assumed:
+    #
+    #     visitor -> Cloudflare -> Mikrus nginx (srv73.mikr.us) -> this app, public IPv6 :8080
+    #
+    # trusted-proxies: the two /64s the Mikrus proxy nodes were observed connecting from. This is
+    # the app's own check on who may speak for a client, and it is deliberately not the same thing
+    # as the ufw rule restricting port 8080 to those /64s -- a firewall rule is invisible to the
+    # application, so if it is ever removed, or this app is moved to a host without it, the app
+    # must not silently become spoofable. A request from anywhere else keeps its own address and
+    # its headers are ignored. Override with TRUSTED_PROXIES if Mikrus moves its proxy nodes; the
+    # failure mode when it is stale is the collapsed-bucket bug, not a spoofable one.
+    # Quoted: the value is a plain scalar full of colons, and quoting keeps a future edit from
+    # accidentally producing a "key: value" YAML mapping instead of a string.
+    trusted-proxies: '${TRUSTED_PROXIES:2a01:4f8:c012:8ba::/64,2a01:4f9:c012:f2aa::/64}'
+    # Cloudflare sets CF-Connecting-IP to the address it saw and overwrites any client-supplied
+    # value, so it is single-valued and needs no position arithmetic. Preferred over
+    # X-Forwarded-For for that reason, and because it still holds if the Mikrus nginx ever
+    # overwrites X-Forwarded-For rather than appending to it.
+    client-ip-header: ${CLIENT_IP_HEADER:CF-Connecting-IP}
+    # Two proxies in front, each appending the peer it saw, so X-Forwarded-For arrives as
+    # [anything the visitor invented..., visitor, cloudflare-edge] and the visitor is the 2nd
+    # entry FROM THE RIGHT. Neither end of that list is right: the first is caller-controlled,
+    # the last is a Cloudflare edge node. Used only when CF-Connecting-IP is missing.
+    trusted-hop-count: ${TRUSTED_HOP_COUNT:2}
 
 logging:
   level:
