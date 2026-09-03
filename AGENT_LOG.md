@@ -297,6 +297,64 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
+
+**Task given:** add a test that reads the real `frontend/src/index.html` and asserts its
+`preconnect`/`dns-prefetch` hints for the backend agree with `apiBaseUrl` in
+`frontend/src/environments/environment.ts`. The subdomain moved twice in Phase 5, both times by hand
+in both files, and PR #175 exists because one of those edits was missed.
+
+**Agent(s) used:** one frontend agent (Sonnet) in the `phase5/host-agreement-test` worktree.
+
+**What went right:** the brief's demand to break the test deliberately before committing was worth
+more than the test-writing. Four break scenarios were run, not one: stale host in `index.html`,
+stale host in `environment.ts`, the API `preconnect` deleted while an unrelated one remained, and
+`crossorigin` dropped. The third is the one that mattered — it is the check that the test is not
+passing vacuously off some *other* origin hint, and only a deliberate break can distinguish it from
+a real pass.
+
+**What went wrong (be specific):** the natural implementation — `import { environment } from
+'../environments/environment'` and compare against `new URL(environment.apiBaseUrl).origin`, which is
+literally what issue #178 suggests — reads the **development** environment under `ng test`, not the
+production one. angular.json's `development` build configuration carries a `fileReplacements` entry
+swapping `environment.ts` for `environment.development.ts`, and the unit-test builder applies it. So
+inside a spec that import yields `production: false, apiBaseUrl: '/api/v1'`. There is no import
+specifier that reaches the production file, because the replacement is keyed on the *resolved path*,
+not the specifier.
+
+This would not have failed loudly in a useful way. `new URL('/api/v1')` throws, so a first cut would
+have looked like a broken test rather than a wrong one, and the tempting repair — guard the throw,
+or skip when `apiBaseUrl` is relative — produces a test that passes everywhere and checks nothing.
+That is the exact failure mode the issue was filed about, reproduced one level up: a hint nobody
+verifies, replaced by an assertion nobody verifies.
+
+**How it was caught:** not by reasoning about it. Before writing anything, a throwaway spec was run
+that force-failed on `expect(\`prod=${environment.production} url=${environment.apiBaseUrl}\`)`, purely
+to see the value the runner actually resolves. It printed `prod=false url=/api/v1`. Vitest swallows
+`console.log` from a passing test here, so a deliberately failing assertion was the cheap way to read
+a value out of the runner.
+
+**Fix applied:** `frontend/src/api-origin-hints.spec.ts` reads *both* sides off disk —
+`environment.ts` as text, with comments stripped and exactly one `apiBaseUrl` declaration required,
+plus an assertion that the parsed source really says `production: true` so a path mishap onto the
+development file cannot make the rest vacuous. `index.html` is parsed with `DOMParser` (available in
+this jsdom runner) and queried by `rel`, rather than regexed, so the existing font `preload`s and any
+future font-CDN `preconnect` neither break it nor satisfy it. Comparison is origin-to-origin, so a
+trailing slash or path on a hint is not a false failure. Failure messages name both values and both
+files, since the entire point is telling the reader which of the two copies is stale.
+
+**Takeaway for next time:**
+
+- **`fileReplacements` applies under `ng test`, so `environment` in a spec is the development one.**
+  Worth knowing well beyond this test: `error.interceptor.spec.ts` already imports `environment` and
+  is fine only because it uses it to *derive* a URL it then matches against itself. Any spec that
+  asserts something about the deployed configuration has to read the file, not import it.
+- **A test whose subject is "two files must agree" must read both files.** Importing one and
+  hardcoding the other is the same defect the test is for, moved.
+- **Print the value; do not infer it.** The cost of the throwaway force-failing spec was about a
+  minute, against a wrong test that would have passed review because it matches the issue's own
+  suggested shape.
+
 ## 2026-09-03 — The first real deployment, and four times the runbook was wrong about the machine in front of it
 
 **Task given:** execute `docs/DEPLOYMENT.md` against a freshly provisioned VPS, with the Senior Dev
