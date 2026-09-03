@@ -320,7 +320,11 @@ evidence of a content change on this repo when running the generator on Windows;
 **A `servers:` edit provably cannot change the typescript-angular client, and that was verified
 rather than assumed.** The brief was right to insist on the regenerate anyway — the generator inlines
 `summary`/`description` into JSDoc, which is why a description-only edit once produced a real diff.
-But `servers:` is a different case: the generated client embeds no server URL at all. `basePath` is
+But the *production* `servers:` entry is a different case: it never reaches the client. **Be precise
+about this, because the point of recording it is to guide the next contract edit** — the generator
+*does* embed the **first** `servers:` entry, as a compile-time fallback
+(`api.base.service.ts`: `protected basePath = 'http://localhost:8080/api/v1'`), so editing *that*
+one would change the client. Only the second, production entry is inert, because `basePath` is
 runtime-injected through `provideApi(environment.apiBaseUrl)` in `app.config.ts`, and the only
 `basePath` assignment in `configuration.ts` is from its constructor argument. So the empty diff here
 is a confirmed property, not a lucky result. Recording it so the next contract edit does not have to
