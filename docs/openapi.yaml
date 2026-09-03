@@ -471,6 +471,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationProblemDetail'
 
+  /auth/password-reset/validate:
+    post:
+      operationId: validatePasswordResetToken
+      summary: Check whether a password-reset token is still usable
+      description: |
+        Public. Answers whether a reset token is real, unused and unexpired, so the reset page can
+        refuse to render a password form for a link that is already spent instead of letting the
+        visitor compose a new password and only then discover the link is dead.
+
+        **A read, never a consume.** Unlike `POST /auth/password-reset`, this never sets `used_at`.
+        Calling it any number of times leaves the token exactly as usable as it was -- which is the
+        whole point, since the reset page calls it on load.
+
+        **POST with the token in the body, deliberately, not `GET ?token=`.** The deployed backend
+        sits behind Cloudflare and the provider's nginx, both of which log request URLs, so a query
+        string would write live reset tokens into two third parties' access logs. A body does not.
+
+        **Every failure looks the same.** Expired-but-unused, used-but-unexpired, never-issued and
+        malformed tokens all return the same 400; the shape of the failure never says which. This
+        endpoint is deliberately *not* enumeration-safe in the way `POST
+        /auth/password-reset-request` is -- that one always answers 202 because its caller supplies
+        an email address it may not own, whereas this caller already holds the token, and telling
+        them whether their own link still works discloses nothing they could not learn by
+        submitting the reset form itself. It is rate-limited per requester IP under its own bucket
+        regardless, because it is a cheaper validity oracle than that form.
+
+        A token can still expire between this call and the reset submission, so a client must
+        handle the submit path's rejection too rather than treating a 204 here as a guarantee.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetValidateBody'
+      responses:
+        '204':
+          description: The token is real, unused and unexpired -- the reset form may be shown. No body.
+        '400':
+          description: |
+            The token is invalid, expired, already used, or absent from the request. Carries a field
+            error keyed `token`, matching `POST /auth/password-reset`'s rejection shape so a client
+            can branch on both identically.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetail'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   /webhooks/github:
     post:
       operationId: receiveGithubWebhook
@@ -1026,6 +1077,17 @@ components:
           type: string
           format: password
           minLength: 8
+
+    PasswordResetValidateBody:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: |
+            The raw reset token from the emailed link (compared against the stored hash
+            server-side). Carried in the body rather than as a query parameter so it never reaches
+            a proxy or CDN access log.
 
     GithubWebhookAck:
       type: object
