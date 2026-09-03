@@ -152,10 +152,8 @@ it under you. Pin it:
 
 ```bash
 # after the first deploy, from your machine
-curl -s -o /dev/null -w '%{http_code}
-' https://<your-site>.netlify.app             # expect 200
-curl -s -o /dev/null -w '%{http_code}
-' https://<your-site>.netlify.app/projects    # expect 200
+curl -s -o /dev/null -w '%{http_code}\n' https://<your-site>.netlify.app             # expect 200
+curl -s -o /dev/null -w '%{http_code}\n' https://<your-site>.netlify.app/projects    # expect 200
 ```
 
 The second command is the real test — it proves `_redirects` survived the build (issue #39). It has to
@@ -226,6 +224,23 @@ sudo apt update && sudo apt install -y postgresql
 sudo -u postgres psql          # interactive, deliberately -- see below
 ```
 
+What you should see. **`\password` prints nothing on success** — it only speaks up if the two
+entries disagree — so the changing prompt is the one visible sign anything happened:
+
+```
+postgres=# CREATE USER mysite;
+CREATE ROLE
+postgres=# \password mysite
+Enter new password for user "mysite":
+Enter it again:
+postgres=# CREATE DATABASE mysite OWNER mysite;
+CREATE DATABASE
+postgres=# \c mysite
+You are now connected to database "mysite" as user "postgres".
+mysite=# GRANT ALL ON SCHEMA public TO mysite;
+GRANT
+```
+
 ```sql
 CREATE USER mysite;
 \password mysite              -- prompts; never appears on a command line
@@ -244,6 +259,23 @@ anywhere. The same reasoning applies to every `psql -c` you may be tempted to wr
 owner gets `CREATE` on it. The explicit `GRANT` is belt-and-braces for older versions. Without one or
 the other, Flyway fails on `V1__init.sql` with an error that reads like a connection problem.
 
+**Verify before moving on, rather than finding out at 4.7.** The second check is the one that
+matters — a missing `CREATE` on the schema makes Flyway fail with an error that reads like a
+connection problem:
+
+```bash
+psql -h localhost -U mysite -d mysite -c 'SELECT current_user, current_database();'
+```
+
+`-h localhost` forces TCP, so it prompts for the password — which is what actually tests that
+`\password` took. Expect `mysite | mysite`.
+
+```bash
+psql -h localhost -U mysite -d mysite -c "SELECT has_schema_privilege('mysite','public','CREATE');"
+```
+
+Expect `t`. An `f` means the `GRANT` did not land and 4.7 will fail its first migration.
+
 Confirm it is not listening publicly:
 
 ```bash
@@ -254,8 +286,16 @@ sudo ss -tlnp | grep 5432    # expect 127.0.0.1:5432, not 0.0.0.0:5432
 
 ```bash
 sudo apt install -y openjdk-25-jre-headless
-java -version    # must report 25
+java -version
 ```
+
+```
+openjdk version "25.0.4" 2026-07-21
+OpenJDK Runtime Environment (build 25.0.4+7...)
+```
+
+The leading `25` is what matters; the build string varies by vendor. Note `java -version` writes to
+**stderr**, so piping it to `grep` needs `2>&1`.
 
 `-jre-headless` rather than the full JDK: this box runs a jar, it does not compile one, and the JDK
 is a few hundred megabytes you do not have spare on a 2 GB host.
@@ -332,8 +372,7 @@ Then append the JWT secret **without it ever reaching your terminal**, so it can
 `~/.bash_history` or in scrollback you later paste somewhere:
 
 ```bash
-printf 'JWT_SECRET=%s
-' "$(openssl rand -base64 48)" | sudo tee -a /etc/mysite/env >/dev/null
+printf 'JWT_SECRET=%s\n' "$(openssl rand -base64 48)" | sudo tee -a /etc/mysite/env >/dev/null
 sudo chmod 600 /etc/mysite/env    # belt and braces
 ```
 
@@ -368,9 +407,28 @@ sudo systemctl status mysite
 sudo journalctl -u mysite -f      # watch Flyway run the migrations
 ```
 
-```bash
-curl -s localhost:8080/actuator/health    # expect {"status":"UP"}
+`systemctl status` should show `Active: active (running)`. The journal is the useful one — a healthy
+start ends with Flyway reporting the migration count and Tomcat announcing the port:
+
 ```
+Successfully applied 7 migrations to schema "public" ...
+Tomcat started on port 8080 (http) with context path '/'
+Started MySiteApplication in N.NNN seconds
+```
+
+`Successfully validated 7 migrations` on later starts is also correct — Flyway found the schema
+already at the right version and did nothing.
+
+```bash
+curl -s localhost:8080/actuator/health
+```
+
+```
+{"status":"UP"}
+```
+
+Nothing else. `show-details: when-authorized` means an anonymous caller sees only the status, which
+is why it is safe to expose through the provider's proxy in 4.8.
 
 `-Xmx512m` is deliberate. The JVM's default maximum heap is a quarter of RAM, which on a 2 GB box has
 it competing with Postgres; many providers also ship no swap, and the OOM killer takes Postgres as
@@ -569,8 +627,9 @@ the only way back in:
 
 ```sql
 UPDATE admin_user SET email = '<your real address>' WHERE username = 'admin';
-``` Note that
-`#121` is properly fixed by changing how the admin is provisioned, not by this manual step — the
+```
+
+Note that `#121` is properly fixed by changing how the admin is provisioned, not by this manual step — the
 manual step just gets you a working site today.
 
 ## 7. Part 5 — verify end to end
