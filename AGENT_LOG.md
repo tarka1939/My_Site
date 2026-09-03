@@ -346,6 +346,24 @@ re-reading the Modulith ADR and `CLAUDE.md`'s concurrency checklist rather than 
 build could report. The Modulith one is the more interesting: a green `ApplicationModules.verify()`
 is evidence about *legality*, not about whether the dependency graph describes the system honestly.
 
+**A third thing, found by mutation testing after the work looked finished.** Three mutations were
+run against the committed listener:
+
+| Mutation | Result |
+|---|---|
+| Synchronous `@EventListener` (in-transaction), catch kept | **all tests passed** |
+| Synchronous, in-transaction, catch removed — the `requestReset` shape exactly | integration test failed, `expected: 201 CREATED but was: 500`; the listener unit test failed too |
+| `@Async` removed, `AFTER_COMMIT` and the catch kept | **all tests passed** |
+
+The two passes are the finding. The suite as first written could prove the message survives a
+Resend failure, and could not prove the send was off the request thread at all — so a future edit
+dropping `@Async` would have been invisible, and a hanging Resend call would have hung the visitor
+while every test stayed green. The catch is load-bearing enough to mask its own siblings.
+`slowResend_doesNotHoldTheVisitorsResponseOpen` was added to close that: it blocks the stubbed
+client on a latch for 30 seconds and asserts the 201 comes back in under 10. Re-run against the
+`@Async`-removed mutation, it fails after the full 30. That test exists because the mutation run
+happened, not because anyone thought of the case while writing the feature.
+
 **Fix applied:**
 
 - `ContactMessageReceivedEvent` published from `ContactService.submit` inside the transaction, so
@@ -382,11 +400,11 @@ is evidence about *legality*, not about whether the dependency graph describes t
   never had to survive the row being deleted. The first real listener is where that assumption gets
   tested, and copying the shape without re-deriving it would have shipped the race.
 
-**Test count:** 235 → 252. The 17 added break down as 9 on `ContactNotificationListener` (4 on
+**Test count:** 235 → 253. The 18 added break down as 9 on `ContactNotificationListener` (4 on
 escaping and header sanitisation, 2 on its config validation's two halves, 3 on the happy, degraded
 and throwing paths), 3 on `ResendEmailClient` (unconfigured-key degrade, PII silence, and one
 re-asserting that the reset link stays off WARN across the package move), 2 on the
-publish/don't-publish split in `ContactService`, and 3 end-to-end. The end-to-end class is
+publish/don't-publish split in `ContactService`, and 4 end-to-end. The end-to-end class is
 deliberately **not** `@Transactional`: a rolled-back test can never fire an `AFTER_COMMIT` listener
 and would have passed while asserting nothing.
 

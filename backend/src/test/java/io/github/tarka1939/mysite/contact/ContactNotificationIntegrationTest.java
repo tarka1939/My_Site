@@ -2,12 +2,15 @@ package io.github.tarka1939.mysite.contact;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -154,6 +157,38 @@ class ContactNotificationIntegrationTest {
         // with the listener silently never running at all.
         verify(resendEmailClient, timeout(10_000))
             .sendContactNotificationEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void slowResend_doesNotHoldTheVisitorsResponseOpen() {
+        // Guards the @Async half specifically. Without it the listener would still be correct --
+        // AFTER_COMMIT plus the catch keeps the message safe and the status 201 -- but it would run
+        // on the request thread, so a hanging Resend call would hang the visitor. A mutation run
+        // proved the rest of this class cannot tell the difference; this test can.
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            release.await(30, TimeUnit.SECONDS);
+            return null;
+        }).when(resendEmailClient).sendContactNotificationEmail(anyString(), anyString(), anyString());
+
+        try {
+            long startedAt = System.nanoTime();
+            ResponseEntity<String> response = submit("Dave", "dave@example.invalid", "Are you there?");
+            Duration elapsed = Duration.ofNanos(System.nanoTime() - startedAt);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            // Generous: the request itself takes milliseconds, and the stub blocks for 30 seconds.
+            // Anything under this margin means the send was not on the request thread.
+            assertThat(elapsed).isLessThan(Duration.ofSeconds(10));
+            assertThat(contactMessageRepository.count()).isEqualTo(1);
+
+            // ...and it really is in flight on the executor, rather than never having run.
+            verify(resendEmailClient, timeout(10_000))
+                .sendContactNotificationEmail(anyString(), anyString(), anyString());
+        } finally {
+            // Always, or a taskExecutor thread stays blocked for the rest of the suite.
+            release.countDown();
+        }
     }
 
     private ResponseEntity<String> submit(String name, String email, String message) {
