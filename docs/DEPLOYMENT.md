@@ -425,6 +425,34 @@ JWT_SECRET
 -rw------- 1 root root ... /etc/mysite/env
 ```
 
+#### `RESEND_API_KEY`, if and when you want the password-reset flow live
+
+Optional, and deliberately so: with the key unset the flow degrades to warn-and-skip, which is a
+designed no-op rather than a broken state. Add it the same way as the others — the value never
+reaches a command line:
+
+```bash
+unset HISTFILE
+IFS= read -rsp 'Resend API key: ' RESEND; echo
+printf 'RESEND_API_KEY=%s\n' "$RESEND" | sudo tee -a /etc/mysite/env >/dev/null
+unset RESEND
+sudo systemctl restart mysite
+```
+
+Add `RESEND_FROM_ADDRESS` too if you are sending from your own domain; it defaults to
+`onboarding@resend.dev`, which works for testing and is obviously not yours.
+
+**This key is not like the other two, and the difference matters.** A leaked `DB_PASSWORD` is
+useless to anyone who cannot reach `127.0.0.1:5432`; a leaked `JWT_SECRET` is useless without the
+running app. **A leaked Resend key works from anywhere on the internet** and lets the holder send
+mail as your sender identity — phishing that passes SPF and DKIM because it genuinely is you. It is
+the one credential here whose blast radius leaves this host, which makes it the one where the
+handling above is doing real work rather than hygiene. Rotate it in Resend's dashboard if it ever
+reaches a terminal you paste from; revocation there is immediate and free.
+
+See `docs/DECISIONS.md`, 2026-09-03, for why the reset flow exists at all — it is a showcase
+feature rather than an admin tool, and that changes where this key most belongs.
+
 48 random bytes is 64 base64 characters, comfortably over the 32-byte minimum `SecurityConfig`
 enforces for HS256, and the base64 alphabet contains nothing systemd's `EnvironmentFile` parser
 mangles. **The database password is not under that guarantee** — it is whatever you chose in 4.3.
