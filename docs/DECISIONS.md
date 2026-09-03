@@ -358,7 +358,7 @@ it. Measured on the host:
   port the firewall permits.
 - The provider's HTTP proxy reaches the container **over that IPv6**, not over the private IPv4.
 
-**Decision:** expose the backend through the provider's subdomain feature — `tarka1939.tojest.dev`,
+**Decision:** expose the backend through the provider's subdomain feature — `tarka1939.bieda.it`,
 mapped to container port 8080 — and let the provider terminate TLS. No Caddy, no Let's Encrypt, no
 certificate management of our own.
 

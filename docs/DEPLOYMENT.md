@@ -1,7 +1,7 @@
 # Deployment runbook — Netlify (frontend) + self-managed VPS (backend)
 
 **Status: the backend is live, 2026-09-03.** Part 2 is complete — §4.1 through §4.8 have all run on
-the real host, and `https://tarka1939.tojest.dev/actuator/health` answers `{"groups":["liveness","readiness"],"status":"UP"}` from the
+the real host, and `https://tarka1939.bieda.it/actuator/health` answers `{"groups":["liveness","readiness"],"status":"UP"}` from the
 public internet in ~430 ms, with `/api/v1/projects` returning a valid empty page. That proves the
 whole chain: Cloudflare, the provider's nginx, the container over IPv6, Spring Boot, Flyway's
 migrations, and Postgres.
@@ -35,7 +35,7 @@ deferred to Phase 5. **Two of the three are now settled** — see the strikethro
 | Decision | Why it blocks | Notes |
 |---|---|---|
 | **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — the JVM plus Postgres will thrash. Pick a region near you, not near nothing. |
-| **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled on `tarka1939.tojest.dev`. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
+| **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled on `tarka1939.bieda.it`. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
 | **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** — the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. |
 
 There is a fourth that is not really open: **Postgres runs on the same VPS**, not as a managed
@@ -57,7 +57,7 @@ yourself — it changes only Part 2, step 3.
 | Angular project name | `frontend` | `frontend/angular.json` |
 | Angular build output | `dist/frontend/browser` (no explicit `outputPath`, so the `@angular/build:application` default) | `frontend/angular.json` |
 | SPA fallback | already committed | `frontend/public/_redirects` |
-| Prod API base URL | `https://tarka1939.tojest.dev/api/v1` — was a `TBD` placeholder until 2026-09-03 | `frontend/src/environments/environment.ts` |
+| Prod API base URL | `https://tarka1939.bieda.it/api/v1` — was a `TBD` placeholder until 2026-09-03 | `frontend/src/environments/environment.ts` |
 | CORS config | **does not exist** | nothing in `/backend` matches `CorsConfiguration`/`addCorsMappings`/`@CrossOrigin` — this is issue #44 |
 | Dockerfile | **does not exist** | issue #41 |
 | CI workflows | **none** — `.github/workflows/` contains only a `README.md` | issues #38, #45 |
@@ -66,7 +66,7 @@ yourself — it changes only Part 2, step 3.
 
 | | Value |
 |---|---|
-| Backend public URL | `https://tarka1939.tojest.dev` |
+| Backend public URL | `https://tarka1939.bieda.it` |
 | Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` — name settled, site not yet created |
 | Container app port | `8080` — Spring Boot's default, so no `SERVER_PORT` needed |
 | Host | Ubuntu 24.04 LTS, LXC, 2 GB RAM, 25 GB disk |
@@ -680,7 +680,7 @@ UPDATE admin_user SET password_hash = crypt('<the password you chose>', gen_salt
 Then verify from your machine, not from the server, so you are testing the real path:
 
 ```bash
-curl -s -X POST https://tarka1939.tojest.dev/api/v1/auth/login \
+curl -s -X POST https://tarka1939.bieda.it/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<the password>"}'
 ```
