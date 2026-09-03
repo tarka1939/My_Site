@@ -12,7 +12,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 **Phase 8 (polishing and cleaning) has started** with the visual design the site never had (#152) — a token layer where every colour that needs a different value on each ground gets one, with its measured contrast ratio recorded beside it, a real type scale, self-hosted faces rather than the Google Fonts CDN, and a card grid that generates per-project artwork where no image exists. What remains in the milestone is the security hardening deferred from Phases 1-3 — a Content-Security-Policy (#122) and the JavaScript-readable admin JWT (#123) — plus two smaller things the visual work turned up: contrast figures in comments that do not survive recomputation (#159), and an unanswered design question about how a dead image should look on the detail page (#160).
 
-**Phase 5 (deployment) is paused** pending VPS setup, so nothing is deployed yet — `docs/DEPLOYMENT.md` is the runbook for unpausing it. Phase 6 and Phase 7 don't depend on it and are proceeding in the meantime.
+**Phase 5 (deployment) is underway.** The backend now has a real public host — `https://tarka1939.tojest.dev`, a Mikrus VPS subdomain fronted by Cloudflare, confirmed serving over TLS with a valid certificate — and the placeholder host in `docs/openapi.yaml` and the production `environment.ts` has been replaced with it. The frontend is **not** deployed: there is no Netlify site yet, so nothing is live for a visitor. `docs/DEPLOYMENT.md` is the runbook for the rest.
 
 `PROJECT_TODO.md` carries the authoritative per-phase status; this section summarises it and can lag.
 
@@ -20,7 +20,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 - **What it is:** A personal portfolio site (Angular + Spring Boot) hosting a project portfolio, doubling as a deliberate practice ground for multi-agent development workflows (spec-first, parallel agents, documented review).
 - **Who it's for:** Visitors browsing the portfolio and submitting contact messages; a single site-owner admin managing project content.
-- **Live URL:** (once deployed — Phase 5)
+- **Live URL:** none yet — the frontend is not deployed. The backend host exists (`https://tarka1939.tojest.dev`, serving over TLS); the Netlify site that would front it is still pending in Phase 5.
 
 ## How this is built
 
@@ -72,7 +72,7 @@ See `docs/AGENT_WORKFLOW.md` for the mechanics and `docs/AUTONOMOUS_WORKFLOW.md`
 | ORM / migrations | Spring Data JPA + Hibernate; Flyway (never `hibernate.ddl-auto=update` outside local scratch) |
 | API contract | OpenAPI 3.0, written before implementation; Angular client generated via `openapi-generator-cli` |
 | Auth | JWT admin login (1 hour expiry) + password reset via Resend — **confirmed in scope**, gates write endpoints (see `SPEC.md` → Auth scope decision) |
-| Cross-origin | CORS on Spring Boot, allowlisting the Netlify origin — exact `*.netlify.app` subdomain **TBD until the Netlify site is created** (Phase 5) |
+| Cross-origin | CORS on Spring Boot, allowlisting the exact Netlify origin `https://krzysztof-tarka.netlify.app` (`CORS_ALLOWED_ORIGINS` to override). Exact origins rather than patterns, so a fork's deploy preview cannot become a trusted origin |
 | CI/CD | GitHub Actions — separate workflows for Netlify deploy (frontend) and container build/deploy (backend) |
 | Testing | JUnit 5 + Mockito unit tests, Testcontainers integration tests against real Postgres, Vitest component tests, and a deliberately thin Playwright E2E suite (4 journeys — see `PROJECT_TODO.md`'s testing-strategy note on why it stays small) |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done) |
