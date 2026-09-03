@@ -745,10 +745,25 @@ unset there is no working password-reset path, so losing this password means ano
 Then verify from your machine, not from the server, so you are testing the real path:
 
 ```bash
-curl -s -X POST https://tarka1939.bieda.it/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"<the password>"}'
+IFS= read -rsp 'Password to test: ' ADMPW; echo
+export ADMPW
+python3 -c 'import json,os,sys; json.dump({"username":"admin","password":os.environ["ADMPW"]}, sys.stdout)' \
+  | curl -sS -X POST https://tarka1939.bieda.it/api/v1/auth/login \
+      -H 'Content-Type: application/json' --data @-
+unset ADMPW
 ```
+
+**Not `-d '{..."password":"..."}'`,** which an earlier version of this section used. A value passed in
+`-d` is a command-line argument: it lands in shell history and is visible in `ps` to every user on
+the machine you run it from. Here the password reaches `argv` at no point — `read` puts it in a
+variable, and `python3` reads it from the environment, which is `/proc/<pid>/environ` and readable
+only by you and root.
+
+`python3` builds the JSON rather than `printf`, because the password has to be *JSON*-escaped and a
+hand-rolled version of that is where this goes wrong: a password containing `"` or `\` produces a
+malformed body and a `400` or `401` that looks exactly like a bad password, sending you to debug a
+hash that is fine. `json.dump` handles every case, including quotes, backslashes and non-ASCII. On
+Windows the interpreter is usually `python` rather than `python3`.
 
 A `200` with a token proves DNS, TLS, the provider's proxy, the app, the database and the hash. It proves nothing
 about CORS or the frontend build — that is what §7 is for. A `401` means the hash did not take, and
@@ -759,8 +774,15 @@ there is no working password-reset path — so if you lose this password, anothe
 the only way back in:
 
 ```sql
-UPDATE admin_user SET email = '<your real address>' WHERE username = 'admin';
+UPDATE admin_user SET email = '<a recovery address you have never published>' WHERE username = 'admin';
 ```
+
+**A distinct address, not your public one**, per the security-posture ADR in `docs/DECISIONS.md`
+(2026-09-03). It cannot be a secret — a maintainer address sits in most of this repository's
+commits — but `POST /auth/password-reset-request` answers `202` whether or not an address is
+registered, so which mailbox to attack is work an attacker has to do, and an unpublished address
+withholds it. An earlier version of this line said "your real address", which is the opposite
+instruction.
 
 Note that `#121` is properly fixed by changing how the admin is provisioned, not by this manual step — the
 manual step just gets you a working site today.
