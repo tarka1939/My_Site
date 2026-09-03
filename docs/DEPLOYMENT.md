@@ -655,10 +655,35 @@ In a browser, not with curl, because [a test cannot see appearance](../CLAUDE.md
 Part 3's `[code]` changes need a second backend deploy, and so does every change after them. This
 loop is the only thing here you will run more than once:
 
+**Stage, then swap** — do not `scp` over the live jar. Copying straight onto it leaves no way back
+if the new build refuses to start, and the failure happens on a host you are not looking at.
+
 ```bash
-cd backend && mvn clean package && scp target/*.jar deploy@<vps-host>:/home/deploy/mysite.jar
-ssh deploy@<vps-host> 'sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health'
+# on your machine (note the port -- SSH is NAT'd to a high port on this host)
+cd backend && mvn clean package
+scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite-new.jar
 ```
+
+```bash
+# on the host -- neither mv needs sudo, and replacing an open file does not disturb
+# the running JVM, which keeps its own inode until it restarts
+mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar
+mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar
+sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health
+```
+
+Expect `{"status":"UP"}`. If it does not come back, roll back and diagnose afterwards rather than
+in front of a broken deployment:
+
+```bash
+mv /home/deploy/mysite-prev.jar /home/deploy/mysite.jar && sudo systemctl restart mysite
+journalctl -u mysite -n 40      # no sudo needed once deploy is in systemd-journal
+```
+
+Under the `prod` profile the app **fails to start** on configuration that is present but wrong — a
+malformed CIDR in `TRUSTED_PROXIES`, a negative hop count, a trusted-proxy list with no header
+configured to read. That is deliberate (#168), and it is the most likely cause of a redeploy that
+boots fine one build and not the next. The journal names the property.
 
 The frontend needs nothing — Netlify rebuilds on every push to `main`.
 
