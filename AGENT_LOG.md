@@ -297,6 +297,92 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-03 — The first real deployment, and four times the runbook was wrong about the machine in front of it
+
+**Task given:** execute `docs/DEPLOYMENT.md` against a freshly provisioned VPS, with the Senior Dev
+holding SSH and the owner holding sudo. Backend live at `https://tarka1939.bieda.it` by the end.
+
+**Agent(s) used:** one backend agent on Opus for #44/#168, one frontend agent for the host wiring,
+and four cold reviewers. The interesting failures are all the coordinator's.
+
+**What went right:**
+
+**The reviews found things no gate could.** Every defect below was caught by a reviewer or the
+owner, none by a passing test. Both suites stayed green throughout — 235 backend, 341 frontend —
+including while the runbook was telling an operator to do impossible things.
+
+**Proving the path before deploying onto it.** A throwaway `python3 -m http.server 8080 --bind ::`
+established DNS, the provider's proxy, TLS, the port mapping and the firewall as one unit, before
+the app existed. When the real deploy later 404'd, that separation was what made it cheap to
+diagnose.
+
+**What went wrong (be specific):**
+
+**Four times, the document described a machine other than the one in front of it.** Each was
+plausible, each cost real time, and the pattern is the finding rather than any one instance:
+
+- **§4.8 prescribed Caddy and Let's Encrypt on ports 80 and 443.** Those ports belong to the
+  provider on a shared-IP host and answer with its certificate. Neither ACME challenge can work.
+- **§4.2 said port 8080 must never be open.** True for a reverse proxy on the same box, false for a
+  provider proxy that connects across the network — and the symptom is a *timeout*, which reads like
+  anything except a firewall.
+- **§4.4 predicted Java 25 would be unpackaged on Ubuntu 24.04.** It is packaged, at the exact build
+  the project compiles with.
+- **§4.7a told the operator to create swap.** An unprivileged LXC container cannot enable swap;
+  `swapon` fails with `Operation not permitted`. This one is the worst of the four, because
+  `systemd-detect-virt` had reported `lxc` in the *first survey run on the box*, and the section was
+  written afterwards anyway.
+
+**The same secret-handling mistake, in three sections, fixed one at a time.** §4.3 used psql's
+`\password` prompt specifically so a credential never reaches a command line. §4.6 then had the
+operator paste the database password into a heredoc. Corrected — and §6 was still pasting the admin
+password into an `UPDATE`. The operator reported it twice, in two different sections, having already
+reported the first. A principle applied in one section and not carried across the file is not a
+principle, it is a coincidence.
+
+**A correction that made a rule worse.** `CLAUDE.md`'s API-client check was changed from
+`git status --porcelain` to `git diff --numstat` to dodge a CRLF false positive. `git diff` compares
+the working tree to the *index*, so a newly generated model or service file — the exact shape of a
+stale client — is invisible to it. Measured: 0 rows for a new file where `status` shows 1. The rule
+now reads `git add -A && git diff --cached --numstat`.
+
+**Committing before reading a gate.** Pushed a commit and only then looked at `TEST_EXIT=1`, having
+deleted the log in the same command. The failure was environmental (a fresh worktree with no
+`node_modules`, so `ng` did not exist) but that was not known at push time. "Nothing merges on a
+report" is in `README.md` in the coordinator's own words.
+
+**Diagnosing an outage on a hostname that had been retired.** Built a firewall theory out of a 404,
+complete with a suspect and a remediation, without checking that the host still existed. The blocked
+port that "proved" it was the operator's own firewall tightening working exactly as designed.
+
+**A conflict resolution that silently ate work.** `git checkout --theirs -- <path>` takes the entire
+incoming file, not the conflicted hunk, so every cleanly auto-merged change on that branch went with
+it. The merge committed, the tree was clean, nothing errored. Caught only by grepping for content
+that should have been present.
+
+**How it was caught:** the owner, for the three secret-handling repeats and the missing swap section;
+cold reviewers for everything else. Notably the reviewer that checked the live host rather than the
+diff caught four documents claiming the deployed jar lacked CORS while a preflight against that jar
+was answering correctly.
+
+**Fix applied:** each section corrected in place with the original claim left visible, since the
+wrongness is the useful part. `docs/DECISIONS.md` gained an ADR for the exposure decision and a
+correction to its own count of where the backend host appears — it said three places and named the
+wrong third, omitting the one that breaks the deployed site.
+
+**Takeaway for next time:**
+
+- **A runbook is a claim about a specific machine.** Every one of the four errors was a general
+  truth applied to a host it did not describe. `systemd-detect-virt` costs nothing and would have
+  caught two of them before either was written.
+- **Carry a principle across the whole file the moment you apply it once.** Three sections handled
+  credentials three different ways, and the inconsistency was visible on the page.
+- **A fix to a rule needs the same adversarial reading as a fix to code.** The `--numstat` change
+  looked strictly better and was strictly worse on the case that mattered.
+- **Verify the premise before diagnosing from it.** Checking that a hostname still resolves is
+  cheaper than any theory built on the assumption that it does.
+
+
 ## 2026-09-03 — #44 and #168: the header that carries the truth is not the one at either end of the list
 
 **Task given:** Implement CORS (#44) and the conditional forwarded-header client IP (#168) on

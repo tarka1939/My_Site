@@ -381,8 +381,12 @@ Two rules follow and are not optional:
   **provider-independent** — the tunnel follows the app to a different host unchanged. Rejected for
   now on cost of moving parts: it needs a domain purchase, a Cloudflare account, and a daemon to keep
   running, to replace a panel field. Revisit if this arrangement becomes limiting, and note the
-  migration is cheap by design — the backend host appears in exactly three places
-  (`environment.ts`, `docs/openapi.yaml`, the CORS allowlist).
+  migration is cheap by design — the backend host appears in exactly three places:
+  `frontend/src/environments/environment.ts`, the production `servers:` entry in
+  `docs/openapi.yaml`, and the `<link rel="preconnect">` in `frontend/src/index.html`.
+  **Corrected 2026-09-03:** this originally named the CORS allowlist as the third, which is wrong
+  — that holds the *frontend* origin, not the backend host — and omitted `index.html`, one of the
+  two that break the deployed site. A subdomain change the next day proved the undercount.
 - *Binding the public IPv6 directly and serving TLS ourselves.* Works, and Let's Encrypt can validate
   over IPv6. Rejected because **IPv4-only visitors would not reach the API at all**, which a
   portfolio cannot accept.

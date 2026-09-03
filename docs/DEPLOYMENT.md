@@ -9,11 +9,12 @@ migrations, and Postgres.
 **§4.6 was rewritten after that run** and its secret-writing sequence is untested as written — the
 operator used the earlier version, which is what prompted the rewrite.
 
+The jar was redeployed on 2026-09-03 and **CORS (#44) and forwarded-header handling (#168) are both
+live and verified against the host**: an exact-origin preflight is answered, a deploy-preview origin
+is refused with 403, and the login limiter returns 429 on the sixth attempt.
+
 **Not done:** §6 (the admin password — #121, so nobody can log in yet), §7 (end-to-end
-verification, which begins by loading the Netlify site), all of Part 1 (Netlify), and
-a redeploy of the jar, which was built before CORS (#44) and forwarded-header handling (#168)
-merged. Until that redeploy the API answers `curl` but a browser on the Netlify origin would be
-blocked, and both rate limiters are still collapsed into one bucket.
+verification, which begins by loading the Netlify site), and all of Part 1 (Netlify).
 
 Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4 and §4.8
 each said something that turned out to be wrong, and the wrongness is left on the record rather than
@@ -35,7 +36,8 @@ deferred to Phase 5. **Two of the three are now settled** — see the strikethro
 | Decision | Why it blocks | Notes |
 |---|---|---|
 | **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — the JVM plus Postgres will thrash. Pick a region near you, not near nothing. |
-| **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled on `tarka1939.bieda.it`. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
+| **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:**
+ the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled on `tarka1939.bieda.it`. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
 | **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** — the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. |
 
 There is a fourth that is not really open: **Postgres runs on the same VPS**, not as a managed
@@ -58,7 +60,7 @@ yourself — it changes only Part 2, step 3.
 | Angular build output | `dist/frontend/browser` (no explicit `outputPath`, so the `@angular/build:application` default) | `frontend/angular.json` |
 | SPA fallback | already committed | `frontend/public/_redirects` |
 | Prod API base URL | `https://tarka1939.bieda.it/api/v1` — was a `TBD` placeholder until 2026-09-03 | `frontend/src/environments/environment.ts` |
-| CORS config | **does not exist** | nothing in `/backend` matches `CorsConfiguration`/`addCorsMappings`/`@CrossOrigin` — this is issue #44 |
+| CORS config | **exists** since PR #172 — exact origins, no patterns | `SecurityConfig.java`; issue #44, deployed and verified live 2026-09-03 |
 | Dockerfile | **does not exist** | issue #41 |
 | CI workflows | **none** — `.github/workflows/` contains only a `README.md` | issues #38, #45 |
 
@@ -670,10 +672,32 @@ sudo -u postgres psql -d mysite
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-UPDATE admin_user SET password_hash = crypt('<the password you chose>', gen_salt('bf', 10))
-  WHERE username = 'admin';
 \q
 ```
+
+Then set the password **without putting it in the statement**. An earlier version of this section had
+you type it into the `UPDATE`, which is the same mistake §4.3 and §4.6 each go out of their way to
+avoid — reported by the operator, twice, in two different sections.
+
+```bash
+unset HISTFILE
+IFS= read -rsp 'New admin password: ' ADMPW; echo
+```
+
+```bash
+printf "UPDATE admin_user SET password_hash = crypt('%s', gen_salt('bf',10)), email = '%s' WHERE username = 'admin';\\n" \
+  "${ADMPW//\'/\'\'}" "your.real@address.example" \
+  | sudo -u postgres psql -d mysite
+unset ADMPW
+```
+
+The value reaches psql through **stdin**, never argv — so it is not in `ps`, not in `/var/log/auth.log`
+(which sees only `sudo -u postgres psql -d mysite`), and not in shell history, because the command
+line holds `$ADMPW` rather than the password. `${ADMPW//\'/\'\'}` doubles any single quote so a
+password containing one cannot break out of the SQL literal.
+
+Setting the email in the same statement matters: `V2` seeds a placeholder, and with `RESEND_API_KEY`
+unset there is no working password-reset path, so losing this password means another manual `UPDATE`.
 
 `gen_salt('bf')` emits a `$2a$` hash, which is the format Spring's `BCryptPasswordEncoder` verifies.
 
