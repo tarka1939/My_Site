@@ -30,6 +30,7 @@ model/models.ts
 model/pageMeta.ts
 model/passwordResetConfirmBody.ts
 model/passwordResetRequestBody.ts
+model/passwordResetValidateBody.ts
 model/problemDetail.ts
 model/project.ts
 model/projectPageResponse.ts
