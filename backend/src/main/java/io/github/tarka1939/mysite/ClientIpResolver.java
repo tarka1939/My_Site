@@ -2,7 +2,9 @@ package io.github.tarka1939.mysite;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.StringJoiner;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.web.util.matcher.IpAddressMatcher;
@@ -18,9 +20,11 @@ import jakarta.servlet.http.HttpServletRequest;
  * <h2>Why this exists</h2>
  * {@code getRemoteAddr()} is the address of whatever opened the TCP connection. Direct from the
  * internet that is the visitor; behind a proxy it is the <em>proxy</em>, identically for every
- * request on the internet, which collapses both per-IP limiters ({@code AuthService}'s 5
- * logins/15min and {@code ContactService}'s 5 messages/hour) into a single global bucket. Any
- * stranger could then lock the owner out of the admin panel or silence the contact form.
+ * request on the internet, which collapses all three per-IP limiters -- {@code AuthService}'s 5
+ * logins/15min, {@code ContactService}'s 5 messages/hour, and
+ * {@code PasswordResetService.requestReset}'s 5 requests/hour -- into a single global bucket. Any
+ * stranger could then lock the owner out of the admin panel, silence the contact form, or block
+ * the password-reset path that is the way back in from the first.
  *
  * <h2>Why it is conditional, and fails to {@code getRemoteAddr()}</h2>
  * Forwarded headers are caller-controlled: anyone can put {@code X-Forwarded-For: 1.2.3.4} on a
@@ -69,12 +73,28 @@ import jakarta.servlet.http.HttpServletRequest;
  * so that dropping or changing CDN is a config change. It is subject to the same trusted-peer
  * gate: off the proxy path it is exactly as forgeable as anything else.
  *
- * <h2>What this does not defend against</h2>
- * A caller who reaches the app <em>through</em> a trusted proxy while bypassing Cloudflare (by
- * addressing the Mikrus node directly with the right {@code Host}) can forge either header, and
- * no configuration here changes that -- both mechanisms are equally exposed to it, which is why
- * offering the second one costs nothing. Closing that gap is an ingress concern (accept only
- * Cloudflare at the edge), not something the application can verify. Recorded rather than hidden.
+ * <h2>What this does not defend against, and how this class makes it worse</h2>
+ * A caller who reaches the app <em>through</em> a trusted proxy while bypassing Cloudflare -- by
+ * addressing the Mikrus node directly with the right {@code Host}, and the origin hostname is
+ * published in this repository -- can forge either header, and no configuration here changes that.
+ * Both mechanisms are equally exposed to it, which is why offering the second one costs nothing.
+ *
+ * <p><strong>Say the consequence plainly, because this class changes its direction.</strong>
+ * Before, such a caller shared the one global bucket with everybody else and was still capped at 5
+ * login attempts per 15 minutes. After, a fresh {@code CF-Connecting-IP} per request yields a
+ * fresh bucket per request, so the cap on password guessing against the single admin account
+ * becomes <em>unlimited</em>. That is a real regression for that one attack path, accepted because
+ * the alternative -- keeping the collapsed bucket -- hands any stranger on the internet a
+ * five-request lockout of the owner, and because the bypass has an operational fix while the
+ * collapsed bucket does not. Closing it is an ingress concern (accept only Cloudflare's ranges at
+ * the edge); the ufw rule restricting port 8080 to the Mikrus {@code /64}s does <em>not</em> close
+ * it, since a bypassing request still arrives from a Mikrus node. Recorded rather than hidden.
+ *
+ * <p>A second honest limit, not introduced here and not fixable here: an IPv6 visitor holds a
+ * {@code /64} or larger, so rotating the low bits gives unlimited buckets with no forgery at all.
+ * "Login is rate-limited at 5 per 15 minutes" has therefore never been true for IPv6 clients, on
+ * this design or the one before it. Limiting by prefix rather than by address is the fix, and it
+ * is deliberately out of scope for #168.
  *
  * <h2>Why not {@code server.forward-headers-strategy}</h2>
  * Spring Boot's {@code NATIVE}/{@code FRAMEWORK} strategies rewrite {@code getRemoteAddr()} for
@@ -153,12 +173,36 @@ public class ClientIpResolver {
             }
         }
         if (trustedHopCount > 0) {
-            String forwarded = fromForwardedFor(request.getHeader(X_FORWARDED_FOR));
+            String forwarded = fromForwardedFor(allForwardedForValues(request));
             if (forwarded != null) {
                 return forwarded;
             }
         }
         return peerAddress;
+    }
+
+    /**
+     * Every {@code X-Forwarded-For} line, joined with commas.
+     *
+     * <p>{@code getHeader} would return only the FIRST line, and a proxy is free to append a
+     * second line rather than extend the first -- RFC 7230 makes repeated lines of a list-valued
+     * header exactly equivalent to one comma-separated line. Dropping the later lines would
+     * shorten the list, and because the client is indexed from the RIGHT, a shorter list silently
+     * shifts which entry is read. Not exploitable on the chain as documented, where both proxies
+     * extend the single line; joining is unconditionally safe and removes the question.
+     */
+    private static String allForwardedForValues(HttpServletRequest request) {
+        Enumeration<String> lines = request.getHeaders(X_FORWARDED_FOR);
+        // The servlet spec says this is an empty Enumeration, never null, when the header is
+        // absent; the guard is belt and braces and keeps test doubles from having to know that.
+        if (lines == null) {
+            return null;
+        }
+        StringJoiner joined = new StringJoiner(",");
+        while (lines.hasMoreElements()) {
+            joined.add(lines.nextElement());
+        }
+        return joined.toString();
     }
 
     private String fromForwardedFor(String headerValue) {
@@ -236,6 +280,21 @@ public class ClientIpResolver {
                     "app.forwarded-headers.trusted-proxies entry has a non-numeric prefix length: " + cidr, e);
             }
             int maxPrefix = address.indexOf(':') >= 0 ? 128 : 32;
+            // A /0 is "*" written in another notation, and it gets the same answer SecurityConfig
+            // gives a wildcard CORS origin: refused, loudly, at startup. Accepting it would make
+            // every caller a trusted proxy, so a forged forwarded header would become a total and
+            // silent bypass of per-IP rate limiting -- the exposure this list exists to prevent,
+            // reachable from one env-var typo. Rejected separately from the range check below
+            // because the range check's message ("outside 0-32") would read as though 0 were fine.
+            //
+            // Note an IPv4 /0 is NOT inert on this IPv6-only host: Spring Security's
+            // IpAddressMatcher matches 0.0.0.0/0 against IPv6 peers too, so an operator reasoning
+            // "we only speak v6, a v4 /0 can't match anything" would be wrong.
+            if (prefixLength == 0) {
+                throw new IllegalStateException(
+                    "app.forwarded-headers.trusted-proxies must name specific proxies, never a /0 block "
+                        + "that matches every address; got: " + cidr);
+            }
             if (prefixLength < 0 || prefixLength > maxPrefix) {
                 throw new IllegalStateException(
                     "app.forwarded-headers.trusted-proxies entry has a prefix length outside 0-" + maxPrefix

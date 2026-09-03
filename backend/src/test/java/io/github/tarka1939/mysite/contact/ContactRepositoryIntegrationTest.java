@@ -206,7 +206,10 @@ class ContactRepositoryIntegrationTest {
     private HttpServletRequest requestViaProxy(String peerAddress, String forwardedFor) {
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn(peerAddress);
-        when(request.getHeader("X-Forwarded-For")).thenReturn(forwardedFor);
+        // Answered fresh per call, not with one fixed Enumeration: an Enumeration is consumed by
+        // reading it, and these requests are submitted repeatedly to exhaust a rate-limit budget.
+        when(request.getHeaders("X-Forwarded-For"))
+            .thenAnswer(invocation -> java.util.Collections.enumeration(java.util.List.of(forwardedFor)));
         return request;
     }
 

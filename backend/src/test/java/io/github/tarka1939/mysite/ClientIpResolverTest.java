@@ -5,7 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.Collections;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
+import org.springframework.security.web.util.matcher.IpAddressMatcher;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -138,7 +142,30 @@ class ClientIpResolverTest {
         String compressed = resolver.resolve(request(PROXY_ADDRESS, "2001:db8::1", null));
         String expanded = resolver.resolve(request(PROXY_ADDRESS, "2001:0db8:0000:0000:0000:0000:0000:0001", null));
 
-        assertThat(compressed).isEqualTo(expanded);
+        // Pinned to the canonical form on BOTH sides, not merely asserted equal to each other.
+        // Equality alone also holds when the resolver ignores the header entirely and returns
+        // PROXY_ADDRESS for both -- in which case a test named "so one address is not two buckets"
+        // passes having verified nothing whatsoever about buckets. Cold review of PR #172 found
+        // this; it is the third instance tonight of an assertion measuring something adjacent to
+        // what it names.
+        assertThat(compressed).isEqualTo("2001:db8:0:0:0:0:0:1");
+        assertThat(expanded).isEqualTo("2001:db8:0:0:0:0:0:1");
+    }
+
+    @Test
+    void repeatedForwardedForHeaderLines_areJoinedRatherThanTruncatedToTheFirst() {
+        // RFC 7230 makes repeated lines of a list-valued header equivalent to one comma-separated
+        // line, and a proxy may append a line instead of extending one. Reading only the first
+        // line would shorten the list, and because the client is indexed from the RIGHT, a shorter
+        // list silently shifts which entry is read -- here it would yield 203.0.113.99, the entry
+        // the caller supplied.
+        ClientIpResolver resolver = new ClientIpResolver(PROXY_CIDR, "", 2);
+
+        String resolved = resolver.resolve(
+            requestWithForwardedForLines(
+                PROXY_ADDRESS, null, List.of("203.0.113.99", "203.0.113.7, 192.0.2.10")));
+
+        assertThat(resolved).isEqualTo("203.0.113.7");
     }
 
     @Test
@@ -194,6 +221,34 @@ class ClientIpResolverTest {
     }
 
     @Test
+    void aSlashZeroTrustedProxyBlock_failsFastAtConstruction() {
+        // "/0" is "*" in another notation: it would make every caller a trusted proxy, so a forged
+        // header would become a total and silent bypass of per-IP rate limiting -- reachable from
+        // one env-var typo, with no startup complaint. SecurityConfig already refuses a wildcard
+        // CORS origin for the same reason; this closes the asymmetry.
+        assertThatThrownBy(() -> new ClientIpResolver("0.0.0.0/0", CF_HEADER, 0))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("never a /0 block");
+        assertThatThrownBy(() -> new ClientIpResolver("::/0", CF_HEADER, 0))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("never a /0 block");
+        // Rejected even when hidden behind a legitimate entry.
+        assertThatThrownBy(() -> new ClientIpResolver("198.51.100.0/24,0.0.0.0/0", CF_HEADER, 0))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("never a /0 block");
+    }
+
+    @Test
+    void anIpv4SlashZeroWouldHaveMatchedIpv6Peers_whichIsWhyItIsRejectedRatherThanTreatedAsInert() {
+        // The reason the check above is not "harmless on an IPv6-only host". Spring Security's
+        // IpAddressMatcher, driven directly here rather than reasoned about: 0.0.0.0/0 matches an
+        // IPv6 peer, so an operator reasoning "we only speak v6, a v4 /0 cannot match anything"
+        // would be wrong. If this ever stops holding, the /0 rejection is still correct and this
+        // test is what says why it was written.
+        assertThat(new IpAddressMatcher("0.0.0.0/0").matches("2a01:4f9:3051:4119::159")).isTrue();
+    }
+
+    @Test
     void negativeHopCount_failsFastAtConstruction() {
         // Configured so that ONLY the hop-count check can fire: a trusted proxy and a header
         // source are both present, so neither of the two "these properties contradict each other"
@@ -225,10 +280,24 @@ class ClientIpResolverTest {
     }
 
     private static HttpServletRequest request(String remoteAddr, String clientIpHeader, String forwardedFor) {
+        return requestWithForwardedForLines(remoteAddr, clientIpHeader,
+            forwardedFor == null ? List.of() : List.of(forwardedFor));
+    }
+
+    /**
+     * {@code forwardedForLines} is a list because {@code X-Forwarded-For} may legitimately arrive
+     * as several header lines. Answered with a fresh {@code Enumeration} per call rather than a
+     * fixed one, since an Enumeration is consumed by reading it and several tests resolve the same
+     * request twice.
+     */
+    private static HttpServletRequest requestWithForwardedForLines(
+        String remoteAddr, String clientIpHeader, List<String> forwardedForLines
+    ) {
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn(remoteAddr);
         when(request.getHeader(CF_HEADER)).thenReturn(clientIpHeader);
-        when(request.getHeader(ClientIpResolver.X_FORWARDED_FOR)).thenReturn(forwardedFor);
+        when(request.getHeaders(ClientIpResolver.X_FORWARDED_FOR))
+            .thenAnswer(invocation -> Collections.enumeration(forwardedForLines));
         return request;
     }
 }
