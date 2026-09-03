@@ -304,7 +304,8 @@ Copy this block per entry:
 `frontend/src/environments/environment.ts`. The subdomain moved twice in Phase 5, both times by hand
 in both files, and PR #175 exists because one of those edits was missed.
 
-**Agent(s) used:** one frontend agent (Sonnet) in the `phase5/host-agreement-test` worktree.
+**Agent(s) used:** one frontend agent on **Opus** in the `phase5/host-agreement-test` worktree — new
+application code, which `CLAUDE.md` puts on Opus by default.
 
 **What went right:** the brief's demand to break the test deliberately before committing was worth
 more than the test-writing. Four break scenarios were run, not one: stale host in `index.html`,
