@@ -1,9 +1,15 @@
 # Deployment runbook — Netlify (frontend) + self-managed VPS (backend)
 
-**Status: partially executed, 2026-09-02/03.** Done: §4.1–§4.3 (user, firewall, Postgres), the
-subdomain and its firewall rule (§4.8), and the jar built and copied to the host (§4.5). Not yet
-done: §4.4 Java, §4.6 the environment file, §4.7 the systemd unit, §6 the admin password, §7
-end-to-end verification, and all of Part 1 (Netlify).
+**Status: the backend is live, 2026-09-03.** Part 2 is complete — §4.1 through §4.8 have all run on
+the real host, and `https://tarka1939.tojest.dev/actuator/health` answers `{"status":"UP"}` from the
+public internet in ~430 ms, with `/api/v1/projects` returning a valid empty page. That proves the
+whole chain: Cloudflare, the provider's nginx, the container over IPv6, Spring Boot, Flyway's
+migrations, and Postgres.
+
+**Not done:** §6 (the admin password — #121, so nobody can log in yet), all of Part 1 (Netlify), and
+a redeploy of the jar, which was built before CORS (#44) and forwarded-header handling (#168)
+merged. Until that redeploy the API answers `curl` but a browser on the Netlify origin would be
+blocked, and both rate limiters are still collapsed into one bucket.
 
 Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4 and §4.8
 each said something that turned out to be wrong, and the wrongness is left on the record rather than
