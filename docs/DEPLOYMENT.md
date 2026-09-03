@@ -378,12 +378,15 @@ nothing should put them in `~/.bash_history`, in `ps` output, or in scrollback y
 somewhere.
 
 ```bash
-read -rsp 'DB password: ' DBPW; echo
+IFS= read -rsp 'DB password: ' DBPW; echo
 printf 'DB_PASSWORD=%s\n' "$DBPW" | sudo tee -a /etc/mysite/env >/dev/null
 unset DBPW
 ```
 
-`read -s` does not echo; `printf` is a shell builtin, so the value never becomes a process argument
+`IFS=` matters: without it `read` strips leading and trailing whitespace, so a password with an edge
+space would be silently corrupted *before* systemd ever saw it — and the symptom would look exactly
+like the parser problem described below, sending you after the wrong cause. `-r` keeps backslashes
+literal. `read -s` does not echo; `printf` is a shell builtin, so the value never becomes a process argument
 visible in `ps`; and the only thing on a command line is `sudo tee -a /etc/mysite/env`. An earlier
 version of this section had you paste the password straight into the heredoc, which put it in shell
 history — reported from a live run.
@@ -413,12 +416,30 @@ JWT_SECRET
 48 random bytes is 64 base64 characters, comfortably over the 32-byte minimum `SecurityConfig`
 enforces for HS256, and the base64 alphabet contains nothing systemd's `EnvironmentFile` parser
 mangles. **The database password is not under that guarantee** — it is whatever you chose in 4.3.
-If it contains a space, a quote or a backslash, systemd may mangle it, and the symptom is 4.7
-failing to authenticate against Postgres while `psql` with the same password works. Wrap the value
-in double quotes in the file if so.
+If it contains a space or a quote, systemd may mangle it, and the symptom is 4.7 failing to
+authenticate against Postgres while `psql` with the same password works. Wrap the value in **single**
+quotes in the file if so — not double, which is the obvious guess and the wrong one: systemd applies
+C-style escape processing inside double quotes, so a password containing a backslash is mangled *by
+the quoting meant to protect it*.
 
-Before running anything in the next few sections that takes a password as an argument, consider
-`unset HISTFILE` for this shell session.
+Editing the file to add those quotes means typing the value, which is what the rest of this section
+exists to avoid. `sudoedit /etc/mysite/env` is the least-bad way to do it: no shell history, no `ps`,
+no pipeline. It is also a perfectly good alternative to the whole sequence above if you would rather
+have one step than three.
+
+> **If you already ran the earlier version of this section, the password is in your shell history now.**
+> That version pasted it into the heredoc, so it is sitting in plaintext in `~/.bash_history` — a file
+> that gets backed up, and that people paste from. Fixing the instructions does not fix the value.
+> The clean remedy is to rotate it, which costs two minutes:
+>
+> ```bash
+> sudo -u postgres psql -c '\password mysite'    # prompts; sets a new one
+> ```
+>
+> then re-run this section to write the new value, and restart the service. If you would rather not
+> rotate, at minimum scrub the history: `history -d` the offending entry, or truncate the file and
+> `history -c` — remembering that the running shell rewrites it on exit, so do it in *every* session
+> that saw the password.
 
 ### 4.7 Run it under systemd
 
