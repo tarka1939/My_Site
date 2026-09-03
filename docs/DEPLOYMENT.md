@@ -441,13 +441,19 @@ sudo systemctl restart mysite
 Add `RESEND_FROM_ADDRESS` too if you are sending from your own domain; it defaults to
 `onboarding@resend.dev`, which works for testing and is obviously not yours.
 
-**This key is not like the other two, and the difference matters.** A leaked `DB_PASSWORD` is
-useless to anyone who cannot reach `127.0.0.1:5432`; a leaked `JWT_SECRET` is useless without the
-running app. **A leaked Resend key works from anywhere on the internet** and lets the holder send
-mail as your sender identity — phishing that passes SPF and DKIM because it genuinely is you. It is
-the one credential here whose blast radius leaves this host, which makes it the one where the
-handling above is doing real work rather than hygiene. Rotate it in Resend's dashboard if it ever
-reaches a terminal you paste from; revocation there is immediate and free.
+**These three keys do not have the same blast radius, and an earlier version of this paragraph got
+that backwards.** A leaked `DB_PASSWORD` is useless to anyone who cannot reach `127.0.0.1:5432` —
+i.e. to anyone who does not already have the host. **`JWT_SECRET` and `RESEND_API_KEY` both work
+from anywhere on the internet.** The first is an HS256 *symmetric* signing key, so a holder mints an
+admin token offline and presents it to the public API, never calling `/auth/login` and never meeting
+its rate limiter. The second sends mail through this project's Resend account — today from
+`onboarding@resend.dev`, and *as* you with valid SPF and DKIM if a sender domain is ever verified.
+
+So **two** of the three are where the handling above does real work rather than hygiene, not one.
+Rotate either on suspicion: `JWT_SECRET` per §8, which costs only live sessions, and the Resend key
+in its dashboard, where revocation is immediate and free. This paragraph previously said a leaked
+`JWT_SECRET` was "useless without the running app", which is the opposite of true and is corrected
+in `docs/DECISIONS.md`, 2026-09-03, clause 2a.
 
 See `docs/DECISIONS.md`, 2026-09-03, for why the reset flow exists at all — it is a showcase
 feature rather than an admin tool, and that changes where this key most belongs.
@@ -736,6 +742,9 @@ and cost one line. They are themselves logged, harmlessly.
 endpoint deliberately returns 202 whether or not an address is registered (`ifPresent` with no
 `else`), so an unpublished address stays genuinely unknown — which matters, because an attacker
 chooses the weaker of bcrypt and your mailbox, and knowing which mailbox is most of that work.
+It cannot be a *secret* — a maintainer address sits in most of this repository's commits — but
+withholding which mailbox is real is still work an attacker has to do. See the security-posture
+ADR in `docs/DECISIONS.md` (2026-09-03), clause 5.
 
 Setting the email in the same statement matters: `V2` seeds a placeholder, and with `RESEND_API_KEY`
 unset there is no working password-reset path, so losing this password means another manual `UPDATE`.
@@ -746,43 +755,43 @@ Then verify from your machine, not from the server, so you are testing the real 
 
 ```bash
 IFS= read -rsp 'Password to test: ' ADMPW; echo
-export ADMPW
-python3 -c 'import json,os,sys; json.dump({"username":"admin","password":os.environ["ADMPW"]}, sys.stdout)' \
-  | curl -sS -X POST https://tarka1939.bieda.it/api/v1/auth/login \
+ADMPW="$ADMPW" python3 -c 'import json,os,sys; json.dump({"username":"admin","password":os.environ["ADMPW"]}, sys.stdout)' \
+  | curl -sS -o /dev/null -w '%{http_code}\n' -X POST https://tarka1939.bieda.it/api/v1/auth/login \
       -H 'Content-Type: application/json' --data @-
 unset ADMPW
 ```
 
-**Not `-d '{..."password":"..."}'`,** which an earlier version of this section used. A value passed in
-`-d` is a command-line argument: it lands in shell history and is visible in `ps` to every user on
-the machine you run it from. Here the password reaches `argv` at no point — `read` puts it in a
-variable, and `python3` reads it from the environment, which is `/proc/<pid>/environ` and readable
-only by you and root.
+**The password never reaches `argv`, and neither does the token.** Three things are deliberate:
+
+**Not `-d '{..."password":"..."}'`,** which an earlier version of this section used. A value passed
+in `-d` is a command-line argument: it lands in shell history and is visible in `ps` to every user
+on the machine you run it from.
+
+**Not `export ADMPW`,** which an earlier version of *this fix* used. `ADMPW="$ADMPW" python3 ...` is
+a one-shot assignment scoped to that single process. An `export` puts the password in the
+interactive shell's own environment, where every later child inherits it and any subsequent `env`
+or verbose build prints it — and if the pipeline errors or you Ctrl-C, the `unset` never runs and it
+stays there. No other unprivileged user can read a process environment (`/proc/<pid>/environ` is
+owner-only on Linux; on Windows it is readable only within your own user context), but your own
+scrollback is exactly the exposure this runbook is trying to avoid.
+
+**`-o /dev/null -w '%{http_code}\n'`, so only the status code prints.** `-sS` silences the progress
+meter, not the body — and the body of a successful login is a bearer token valid for an hour. The
+prose below reasons only about `200`/`401`/`429`, so printing the token buys nothing and puts admin
+credential material into the scrollback that `docs/DECISIONS.md`'s 2026-09-03 clause 3 prohibits.
+That is not hypothetical here: pasted terminal output is the disclosure route that actually
+occurred during this deployment.
 
 `python3` builds the JSON rather than `printf`, because the password has to be *JSON*-escaped and a
-hand-rolled version of that is where this goes wrong: a password containing `"` or `\` produces a
-malformed body and a `400` or `401` that looks exactly like a bad password, sending you to debug a
-hash that is fine. `json.dump` handles every case, including quotes, backslashes and non-ASCII. On
-Windows the interpreter is usually `python` rather than `python3`.
+hand-rolled version is where this goes wrong: a password containing `"` or `\` produces a malformed
+body and a `400` or `401` that looks exactly like a bad password, sending you to debug a hash that
+is fine. `json.dump` handles every case, including quotes, backslashes and non-ASCII. On Windows the
+interpreter is usually `python` rather than `python3`.
 
-A `200` with a token proves DNS, TLS, the provider's proxy, the app, the database and the hash. It proves nothing
-about CORS or the frontend build — that is what §7 is for. A `401` means the hash did not take, and
+A `200` proves DNS, TLS, the provider's proxy, the app, the database and the hash — and the token
+it would otherwise have printed stays out of your scrollback. It proves nothing about CORS or the
+frontend build — that is what §7 is for. A `401` means the hash did not take, and
 remember from 4.8 that the **sixth** attempt returns 429 rather than 401.
-
-**Set the email while you are in there.** `V2` seeds a placeholder, and with `RESEND_API_KEY` unset
-there is no working password-reset path — so if you lose this password, another manual `UPDATE` is
-the only way back in:
-
-```sql
-UPDATE admin_user SET email = '<a recovery address you have never published>' WHERE username = 'admin';
-```
-
-**A distinct address, not your public one**, per the security-posture ADR in `docs/DECISIONS.md`
-(2026-09-03). It cannot be a secret — a maintainer address sits in most of this repository's
-commits — but `POST /auth/password-reset-request` answers `202` whether or not an address is
-registered, so which mailbox to attack is work an attacker has to do, and an unpublished address
-withholds it. An earlier version of this line said "your real address", which is the opposite
-instruction.
 
 Note that `#121` is properly fixed by changing how the admin is provisioned, not by this manual step — the
 manual step just gets you a working site today.

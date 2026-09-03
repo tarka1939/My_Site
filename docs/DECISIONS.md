@@ -433,9 +433,10 @@ Measured on the deployed host, because the numbers change the answer:
 - `/var/log/auth.log` is **0 bytes** — sudo's command-line logging, cited repeatedly as a reason for
   the above measures, does not apply on this container at all.
 - **One** login user exists. There is no low-privilege local attacker to defend against.
-- `krzysztof.tarka1939@gmail.com` appeared in **290 of 372 commits as of 2026-09-03**, on a
-  public repository — roughly four in five. The figure grows while `user.email` stays set to it,
-  which is the point of changing it rather than a reason to keep restating the count.
+- `krzysztof.tarka1939@gmail.com` appears in **roughly four commits in five** of this public
+  repository (measured 2026-09-03). Deliberately a proportion: an exact count drifts with every
+  push, including the pushes that carry this entry, so restating it is the thing the rule about
+  timestamped facts warns against. Changing `user.email` is the response, not recounting.
 - Postgres listens on `127.0.0.1` only; `/etc/mysite/env` is `600 root:root`.
 
 **Decision:**
@@ -505,14 +506,17 @@ and rejected* the alternative this clause now adopts, "no password reset at all 
 DB/migration recovery only)", on the grounds that being locked out with no recourse but a
 migration cost more than building the flow. **What changed is the premise, not the reasoning:** in
 Phase 0 there was no deployed host, no SSH, and no documented recovery procedure. All three now
-exist, and §6 is the procedure. Its real purpose is to demonstrate a complete flow — single-use tokens, a hash at rest, 30-minute expiry,
+exist, and §6 is the procedure. Its real purpose is to demonstrate a complete flow — single-use
+tokens, a hash at rest, 30-minute expiry,
 enumeration-safe responses, per-IP limiting — as portfolio evidence.
 
 Three things follow:
 
 - **The real admin account does not need it.** SSH plus the direct `UPDATE` in §6 is a strictly
   stronger recovery path: it requires host access rather than mailbox access.
-- **The demo sandbox is where `RESEND_API_KEY` most belongs**, because there the flow is exercised
+- **The demo sandbox is where `RESEND_API_KEY` most belongs** — meaning a public demo instance
+  with throwaway admin accounts, which **does not exist and has no issue yet**; it is named here
+  as a destination, not as a plan of record — because there the flow is exercised
   by anyone evaluating the project, against throwaway accounts, with no bearing on the real admin.
   Setting it for the real admin *before* that exists is a reasonable choice and not forbidden by
   this ADR — it is what makes an untested integration tested — provided clause 5's unpublished
@@ -565,10 +569,11 @@ because `POST /auth/password-reset-request` returns 202 whether or not an addres
   first two prohibitions forbid. An ADR that claims the runbook agrees with it should not leave
   the disagreement in place.
 - **Three things are deliberately outside the scope above, and saying so is the point of the
-  document.** *Cloudflare terminates TLS for every API request*, contact-form submissions
-  included — a third-party processor of personal data that was not chosen but came with the
-  host, per the sibling exposure ADR above; it is accepted, not defended against. *There are no
-  backups* (§9), which means the `systemd-creds` alternative below currently protects an artifact
+  document.** *Cloudflare fronts every API request and terminates the visitor-facing TLS*: the
+  sibling exposure ADR above records the `visitor → Cloudflare → provider nginx → container`
+  path and that Cloudflare therefore sees contact-form submissions. A third-party processor of
+  personal data that was not chosen but came with the host; accepted, not defended against. *There are no
+  backups* (§9), which means the `systemd-creds` alternative above currently protects an artifact
   that does not exist. *`GITHUB_WEBHOOK_SECRET`* is inert while sync is flagged off, so §2a's
   three-secret list is a list of the live ones rather than an exhaustive inventory.
 - **This ADR is the thing to cite when a future change looks like security.** If it does not reduce
