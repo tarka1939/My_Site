@@ -297,6 +297,68 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-02 — Wiring the real hosts (#89): the regenerate that provably could not change anything, and checking that rather than asserting it
+
+**Task given:** replace the `TBD-vps-host` placeholders now that the backend has a real public host
+(`https://tarka1939.tojest.dev`, a Mikrus VPS subdomain fronted by Cloudflare), and close #89 by
+adding a `<link rel="preconnect">` to the API origin. Worktree `My_Site-hosts`, branch
+`phase5/wire-the-hosts`, based on `6a54831`. No PR, no push, `/backend` untouched.
+
+**Agent(s) used:** one frontend agent, own worktree. Frontend suite 341 → 341 (no behaviour change).
+
+**Judgment calls worth recording:**
+
+**The regenerate was run twice, and the first run is the one that mattered.** `CLAUDE.md` says to
+regenerate from the *unmodified* spec first so pre-existing drift is not absorbed into this commit.
+Doing so flagged `frontend/src/app/core/api/.openapi-generator/FILES` as modified — which looks
+exactly like the stale-client problem PR #129 shipped. It was not: `git diff --numstat` returned
+zero rows, and `.gitattributes` (`* text=auto eol=lf`) with `core.autocrlf=true` explains it — the
+generator writes CRLF on Windows, git normalises to LF, so the content is identical. Reverted and
+re-run after the spec edit, with the same result. **`git status --porcelain` is not by itself
+evidence of a content change on this repo when running the generator on Windows; `--numstat` is.**
+
+**A `servers:` edit provably cannot change the typescript-angular client, and that was verified
+rather than assumed.** The brief was right to insist on the regenerate anyway — the generator inlines
+`summary`/`description` into JSDoc, which is why a description-only edit once produced a real diff.
+But the *production* `servers:` entry is a different case: it never reaches the client. **Be precise
+about this, because the point of recording it is to guide the next contract edit** — the generator
+*does* embed the **first** `servers:` entry, as a compile-time fallback
+(`api.base.service.ts`: `protected basePath = 'http://localhost:8080/api/v1'`), so editing *that*
+one would change the client. Only the second, production entry is inert, because `basePath` is
+runtime-injected through `provideApi(environment.apiBaseUrl)` in `app.config.ts`, and the only
+`basePath` assignment in `configuration.ts` is from its constructor argument. So the empty diff here
+is a confirmed property, not a lucky result. Recording it so the next contract edit does not have to
+re-derive which parts of the spec reach the client.
+
+**`crossorigin` on the preconnect, and the `Authorization` header is not the reason.** The brief
+asked whether the bearer token forces `crossorigin`. It does not — that header is an ordinary
+request header, not browser-managed credentials, and does not set the request's credentials mode.
+What decides the socket pool is `withCredentials`, and nothing sets it: `provideApi()` is called with
+a bare base URL, so `Configuration.withCredentials` stays undefined and every API call goes out
+anonymous. A preconnect *without* `crossorigin` warms the credentialed pool, which those calls would
+then never touch — so `crossorigin` is required, for a reason unrelated to the one proposed. The
+token does make admin requests non-simple and therefore preflighted, which strengthens the case: the
+OPTIONS preflight is then what pays for the handshake.
+
+**`dns-prefetch` was added as an honest no-op.** In any browser that supports preconnect it is
+ignored for an origin already being connected to. It earns its line only as a fallback for something
+that supports resolution hints but not preconnect, and the comment says so rather than implying a
+second win. Also noted in the comment: `index.html` is not swapped per build configuration, so under
+`ng serve` — where `apiBaseUrl` is relative and proxied — this is one speculative handshake that goes
+unused. Accepted rather than templating `index.html`.
+
+**The README says less than it could.** The host was confirmed serving TLS with a valid certificate;
+that is not the same as the API being up, and no Netlify site exists. So the Status section says the
+backend host exists and the frontend is not deployed, and the Live URL line says "none yet" instead
+of quietly becoming a link nobody can open. The literal placeholder string was also kept *out* of the
+new prose, so that grepping for it keeps returning only genuinely stale locations.
+
+**Left deliberately undone:** `docs/DEPLOYMENT.md` still names the placeholder in three places
+(the config table, and steps 3-4 of the unpause runbook). Out of scope for this brief and reported
+upward rather than edited — but it is now a runbook instructing someone to make a change that has
+already been made, which is the kind of staleness `CLAUDE.md`'s "Keeping docs current" is about.
+`PROJECT_TODO.md`'s Phase 5 status is untouched for the same reason.
+
 ## 2026-08-27 — #156: the mutation list I wrote tested the key being too broad and never too narrow
 
 **Task given:** a card whose image fails to load shows an empty plate, because the media slot chose

@@ -39,6 +39,37 @@
     />
 
     <!--
+      The API origin (#89). Every page's data comes from this cross-origin backend, and the preload
+      scanner cannot discover it: nothing in this document references it, so the DNS lookup, TCP
+      handshake and TLS negotiation only start once the bundle has loaded and Angular has issued its
+      first request. Warming the connection here moves that entirely off the critical path. It is
+      placed after the font preloads deliberately -- the faces are needed for first paint, this
+      connection is not needed until after bootstrap, and a preconnect is a handshake rather than a
+      byte transfer, so it costs little to sit behind them.
+
+      `crossorigin` is required, and the Authorization header is not the reason. Browsers keep
+      separate socket pools for anonymous and credentialed connections, and a preconnect without
+      `crossorigin` warms the credentialed one. What decides which pool the real request uses is
+      `withCredentials`, which nothing sets -- app.config.ts calls provideApi() with a bare base URL,
+      so the generated client leaves Configuration.withCredentials undefined and every call goes out
+      anonymous. `crossorigin` matches that pool; omitting it would warm a connection the API calls
+      never touch. The bearer token authInterceptor attaches is an ordinary request header, not
+      browser-managed credentials, so it does not change the pool either way. It does make every
+      admin request non-simple and so preflighted -- which only sharpens this, since the OPTIONS
+      preflight is then what pays for the handshake.
+
+      dns-prefetch is a deliberate fallback, not a duplicate: browsers that support preconnect
+      ignore it for an origin they are already connecting to, so it is a no-op in practice and earns
+      its line only for anything that supports resolution hints but not preconnect. Keep this host
+      in sync with apiBaseUrl in src/environments/environment.ts -- a stale origin here is silently
+      useless, warming a connection nothing then uses. Note this file is not swapped per build
+      configuration, so under `ng serve` (where apiBaseUrl is relative and proxied) this is one
+      speculative handshake that goes unused; that is the accepted cost of not templating index.html.
+    -->
+    <link rel="preconnect" href="https://tarka1939.tojest.dev" crossorigin />
+    <link rel="dns-prefetch" href="https://tarka1939.tojest.dev" />
+
+    <!--
       Static SEO / sharing tags -- see the 2026-08-10 SEO ADR in docs/DECISIONS.md.
 
       This app is client-rendered, so these are the ONLY tags a non-JS crawler ever sees. Googlebot
