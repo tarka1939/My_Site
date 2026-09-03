@@ -1,9 +1,19 @@
 # Deployment runbook — Netlify (frontend) + self-managed VPS (backend)
 
-**Status: partially executed, 2026-09-02/03.** Done: §4.1–§4.3 (user, firewall, Postgres), the
-subdomain and its firewall rule (§4.8), and the jar built and copied to the host (§4.5). Not yet
-done: §4.4 Java, §4.6 the environment file, §4.7 the systemd unit, §6 the admin password, §7
-end-to-end verification, and all of Part 1 (Netlify).
+**Status: the backend is live, 2026-09-03.** Part 2 is complete — §4.1 through §4.8 have all run on
+the real host, and `https://tarka1939.tojest.dev/actuator/health` answers `{"groups":["liveness","readiness"],"status":"UP"}` from the
+public internet in ~430 ms, with `/api/v1/projects` returning a valid empty page. That proves the
+whole chain: Cloudflare, the provider's nginx, the container over IPv6, Spring Boot, Flyway's
+migrations, and Postgres.
+
+**§4.6 was rewritten after that run** and its secret-writing sequence is untested as written — the
+operator used the earlier version, which is what prompted the rewrite.
+
+**Not done:** §6 (the admin password — #121, so nobody can log in yet), §7 (end-to-end
+verification, which begins by loading the Netlify site), all of Part 1 (Netlify), and
+a redeploy of the jar, which was built before CORS (#44) and forwarded-header handling (#168)
+merged. Until that redeploy the API answers `curl` but a browser on the Netlify origin would be
+blocked, and both rate limiters are still collapsed into one bucket.
 
 Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4 and §4.8
 each said something that turned out to be wrong, and the wrongness is left on the record rather than
@@ -344,7 +354,7 @@ is not done until this systemd unit is deleted.
 # on your machine -- Docker must be running: twelve test classes use Testcontainers,
 # and this deliberately does not skip them
 cd backend && mvn clean package -DskipTests=false
-scp target/*.jar deploy@<vps-host>:/home/deploy/mysite.jar
+scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite.jar   # SSH is NAT'd to a high port
 ```
 
 `spring-boot-maven-plugin` leaves a `*.jar.original` beside the repackaged jar; the `*.jar` glob does
@@ -482,7 +492,7 @@ curl -s localhost:8080/actuator/health
 ```
 
 ```
-{"status":"UP"}
+{"groups":["liveness","readiness"],"status":"UP"}
 ```
 
 Nothing else. `show-details: when-authorized` means an anonymous caller sees only the status, which
@@ -707,10 +717,41 @@ In a browser, not with curl, because [a test cannot see appearance](../CLAUDE.md
 Part 3's `[code]` changes need a second backend deploy, and so does every change after them. This
 loop is the only thing here you will run more than once:
 
+**Stage, then swap** — do not `scp` over the live jar. Copying straight onto it leaves no way back
+if the new build refuses to start, and the failure happens on a host you are not looking at.
+
 ```bash
-cd backend && mvn clean package && scp target/*.jar deploy@<vps-host>:/home/deploy/mysite.jar
-ssh deploy@<vps-host> 'sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health'
+# on your machine (note the port -- SSH is NAT'd to a high port on this host)
+cd backend && mvn clean package
+scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite-new.jar
 ```
+
+```bash
+# on the host -- neither mv needs sudo, and replacing an open file does not disturb
+# the running JVM, which keeps its own inode until it restarts
+test -s /home/deploy/mysite-new.jar \
+  && mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar \
+  && mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar \
+  && sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health
+```
+
+Chained deliberately: if the `scp` never landed — wrong port, full disk, a typo — an unchained
+first `mv` would rename the working jar away, the second would fail, and `systemctl restart`
+would then run against **no jar at all**.
+
+Expect `{"groups":["liveness","readiness"],"status":"UP"}`. If not, roll back — keeping the
+failed build, because rolling straight over it destroys the thing you were about to diagnose:
+
+```bash
+mv /home/deploy/mysite.jar /home/deploy/mysite-bad.jar          # keep it to diagnose
+mv /home/deploy/mysite-prev.jar /home/deploy/mysite.jar && sudo systemctl restart mysite
+sudo journalctl -u mysite -n 40
+```
+
+Under the `prod` profile the app **fails to start** on configuration that is present but wrong — a
+malformed CIDR in `TRUSTED_PROXIES`, a negative hop count, a trusted-proxy list with no header
+configured to read. That is deliberate (#168), and it is the most likely cause of a redeploy that
+boots fine one build and not the next. The journal names the property.
 
 The frontend needs nothing — Netlify rebuilds on every push to `main`.
 
