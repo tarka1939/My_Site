@@ -10,7 +10,7 @@ each said something that turned out to be wrong, and the wrongness is left on th
 quietly replaced, because each one cost time and the reasoning behind it was plausible.
 
 This exists because Phase 5 is the one phase that cannot be delegated — it needs an account, a
-payment method, a domain and a shell on a machine that does not exist yet. What *can* be delegated is
+payment method, a domain and a shell on a machine that, when this was written, did not exist yet. What *can* be delegated is
 marked **[code]**, and is listed at the end.
 
 Re-verify the table before acting if this file has aged.
@@ -20,13 +20,13 @@ Re-verify the table before acting if this file has aged.
 ## 0. Three decisions only you can make
 
 Nothing below can start until these are settled. They are recorded in `docs/DECISIONS.md` as
-deferred to Phase 5, and they are still deferred.
+deferred to Phase 5. **Two of the three are now settled** — see the strikethroughs below and the ADR of 2026-09-03. The Netlify site name is reserved but the site is not yet created, which is why Part 1 is still outstanding.
 
 | Decision | Why it blocks | Notes |
 |---|---|---|
 | **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — the JVM plus Postgres will thrash. Pick a region near you, not near nothing. |
 | **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled on `tarka1939.tojest.dev`. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
-| **Netlify site name** | Becomes the CORS origin and the canonical URL | `<name>.netlify.app` is free and fine. A custom domain can come later without redoing anything. |
+| **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** — the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. |
 
 There is a fourth that is not really open: **Postgres runs on the same VPS**, not as a managed
 service, because the whole point of the self-managed choice in `docs/DECISIONS.md` was to avoid a
@@ -57,7 +57,7 @@ yourself — it changes only Part 2, step 3.
 | | Value |
 |---|---|
 | Backend public URL | `https://tarka1939.tojest.dev` |
-| Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` |
+| Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` — name settled, site not yet created |
 | Container app port | `8080` — Spring Boot's default, so no `SERVER_PORT` needed |
 | Host | Ubuntu 24.04 LTS, LXC, 2 GB RAM, 25 GB disk |
 | Postgres | 16.15, listening on `127.0.0.1:5432` only |
@@ -193,7 +193,7 @@ recoverable only through the provider's console.
 
 ```bash
 sudo ufw default deny incoming && sudo ufw default allow outgoing
-sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+sudo ufw allow 22/tcp    # NOT 80/443 on a shared-IP host -- see the note below
 sudo ufw enable && sudo ufw status
 ```
 
@@ -294,7 +294,7 @@ the host's, and the error says nothing about why.
 
 Almost nothing is wasted by going this way. What gets deleted later is the systemd unit and one
 `scp`. What is kept is the hardened host, the firewall rules, the Postgres role and grants,
-`/etc/mysite/env` (which a container reuses verbatim via `--env-file`), the Caddyfile, the DNS
+`/etc/mysite/env` (which a container reuses verbatim via `--env-file`), the subdomain mapping, the DNS
 record, and the demonstrated fact that this app runs against this database.
 
 **The real risk is that interim things become permanent**, so state the exit condition now: issue #41
@@ -506,9 +506,13 @@ until Parts 1 and 2 have produced real names.
    credentials, one browsers reject anyway.
 2. **Trust `X-Forwarded-For`, conditionally (#168)** — required by 4.8, which otherwise collapses
    both rate limiters into a single `127.0.0.1` bucket. The conditional matters: trust the header
-   only for requests arriving from the proxy, and have Caddy overwrite rather than append it.
-   Unconditional trust is worse than the bug, because a forged header defeats rate limiting
-   entirely instead of merely globalising it.
+   only for requests arriving from the proxy. **There is no Caddy here and neither proxy is ours to
+   configure**, so "have the proxy overwrite rather than append" is not an available move — whatever
+   `X-Forwarded-For` arrives is what Cloudflare and the provider's nginx chose to send, and a client
+   can prepend to it. The fix therefore has to know *which* element is the real client: prefer
+   Cloudflare's `CF-Connecting-IP`, which it overwrites and is single-valued, and otherwise count
+   **from the right**, since a caller can only prepend. Unconditional trust is worse than the bug,
+   because a forged header defeats rate limiting entirely instead of merely globalising it.
 3. ~~**`environment.ts`** — replace the placeholder host.~~ **Done 2026-09-03.**
 4. ~~**`docs/openapi.yaml`** — the production server entry.~~ **Done 2026-09-03.** The regenerate
    produced no client change, and that is a *property* rather than luck: the typescript-angular
@@ -548,12 +552,12 @@ UPDATE admin_user SET password_hash = crypt('<the password you chose>', gen_salt
 Then verify from your machine, not from the server, so you are testing the real path:
 
 ```bash
-curl -s -X POST https://api.example.com/api/v1/auth/login \
+curl -s -X POST https://tarka1939.tojest.dev/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<the password>"}'
 ```
 
-A `200` with a token proves DNS, TLS, Caddy, the app, the database and the hash. It proves nothing
+A `200` with a token proves DNS, TLS, the provider's proxy, the app, the database and the hash. It proves nothing
 about CORS or the frontend build — that is what §7 is for. A `401` means the hash did not take, and
 remember from 4.8 that the **sixth** attempt returns 429 rather than 401.
 
@@ -595,7 +599,7 @@ The frontend needs nothing — Netlify rebuilds on every push to `main`.
 
 ## 8. Rules for secrets
 
-- Never commit `.env`, a Caddyfile with credentials, or a jar built with values baked in. The root
+- Never commit `.env`, a proxy config with credentials, or a jar built with values baked in. The root
   `.gitignore` already covers `.env` and `.env.*`.
 - `/etc/mysite/env` is `600`, owned by root. That is the store (#46) until CI exists, at which point
   the secrets move to GitHub Actions secrets and the file is generated at deploy time.
