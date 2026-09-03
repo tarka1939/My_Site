@@ -1,12 +1,16 @@
 # Deployment runbook — Netlify (frontend) + self-managed VPS (backend)
 
 **Status: the backend is live, 2026-09-03.** Part 2 is complete — §4.1 through §4.8 have all run on
-the real host, and `https://tarka1939.tojest.dev/actuator/health` answers `{"status":"UP"}` from the
+the real host, and `https://tarka1939.tojest.dev/actuator/health` answers `{"groups":["liveness","readiness"],"status":"UP"}` from the
 public internet in ~430 ms, with `/api/v1/projects` returning a valid empty page. That proves the
 whole chain: Cloudflare, the provider's nginx, the container over IPv6, Spring Boot, Flyway's
 migrations, and Postgres.
 
-**Not done:** §6 (the admin password — #121, so nobody can log in yet), all of Part 1 (Netlify), and
+**§4.6 was rewritten after that run** and its secret-writing sequence is untested as written — the
+operator used the earlier version, which is what prompted the rewrite.
+
+**Not done:** §6 (the admin password — #121, so nobody can log in yet), §7 (end-to-end
+verification, which begins by loading the Netlify site), all of Part 1 (Netlify), and
 a redeploy of the jar, which was built before CORS (#44) and forwarded-header handling (#168)
 merged. Until that redeploy the API answers `curl` but a browser on the Netlify origin would be
 blocked, and both rate limiters are still collapsed into one bucket.
@@ -350,7 +354,7 @@ is not done until this systemd unit is deleted.
 # on your machine -- Docker must be running: twelve test classes use Testcontainers,
 # and this deliberately does not skip them
 cd backend && mvn clean package -DskipTests=false
-scp target/*.jar deploy@<vps-host>:/home/deploy/mysite.jar
+scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite.jar   # SSH is NAT'd to a high port
 ```
 
 `spring-boot-maven-plugin` leaves a `*.jar.original` beside the repackaged jar; the `*.jar` glob does
@@ -430,7 +434,7 @@ curl -s localhost:8080/actuator/health
 ```
 
 ```
-{"status":"UP"}
+{"groups":["liveness","readiness"],"status":"UP"}
 ```
 
 Nothing else. `show-details: when-authorized` means an anonymous caller sees only the status, which
@@ -667,17 +671,23 @@ scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite-new.jar
 ```bash
 # on the host -- neither mv needs sudo, and replacing an open file does not disturb
 # the running JVM, which keeps its own inode until it restarts
-mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar
-mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar
-sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health
+test -s /home/deploy/mysite-new.jar \
+  && mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar \
+  && mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar \
+  && sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health
 ```
 
-Expect `{"status":"UP"}`. If it does not come back, roll back and diagnose afterwards rather than
-in front of a broken deployment:
+Chained deliberately: if the `scp` never landed — wrong port, full disk, a typo — an unchained
+first `mv` would rename the working jar away, the second would fail, and `systemctl restart`
+would then run against **no jar at all**.
+
+Expect `{"groups":["liveness","readiness"],"status":"UP"}`. If not, roll back — keeping the
+failed build, because rolling straight over it destroys the thing you were about to diagnose:
 
 ```bash
+mv /home/deploy/mysite.jar /home/deploy/mysite-bad.jar          # keep it to diagnose
 mv /home/deploy/mysite-prev.jar /home/deploy/mysite.jar && sudo systemctl restart mysite
-journalctl -u mysite -n 40      # no sudo needed once deploy is in systemd-journal
+sudo journalctl -u mysite -n 40
 ```
 
 Under the `prod` profile the app **fails to start** on configuration that is present but wrong — a
