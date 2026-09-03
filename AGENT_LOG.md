@@ -297,6 +297,102 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-03 — #187 backend: the endpoint that must not do the thing its neighbour exists to do
+
+**Task given:** the backend half of #187 — `POST /auth/password-reset/validate`, so the reset page
+can refuse to render a password form for a spent link instead of letting a visitor compose a new
+password and only then discover the link is dead. Contract in `docs/openapi.yaml` first. Three
+constraints named in the brief: do not consume the token, POST with the token in the body rather
+than `GET ?token=`, and rate-limit it under its own namespace. Worktree
+`D:/repos/My_Site-resetvalidate`, branch `feat/reset-token-validate`. Frontend half is #185 and a
+separate task.
+
+**What made this worth logging:** nothing here went wrong, and the reason is that the brief named
+all three traps up front. The entry is about what verifying them actually took, because two of the
+three would have passed a green suite while being wrong.
+
+**The consumption trap, and why one call is not a test.** `confirmReset` consumes through
+`markUsedIfValid`, an atomic conditional `UPDATE`. The natural way to write validation is to reuse
+it and check the row count — and that would have burned the token at page load, breaking exactly
+the flow the endpoint exists to improve. Validation instead goes through a new
+`PasswordResetTokenRepository.existsUsableToken`: a `COUNT(...) > 0` projection with the same
+`WHERE` clause as `markUsedIfValid` character-for-character, no `@Modifying`, no entity loaded that
+a dirty check could flush, called inside a `@Transactional(readOnly = true)` method.
+
+The test for it validates the same token **three times** and then completes a real reset with it.
+Both halves are load-bearing. A single validate followed by an assertion would pass against a
+consuming implementation, since the first call is the one that succeeds — the second call is what
+fails. And `usedAt is null` is necessary but not sufficient; the assertion that means something is
+that the link still works. Confirmed by mutation rather than by reading: swapping the body for
+`markUsedIfValid(...) == 0` made the test error at the *second* validate call
+(`InvalidResetTokenException`), then reverted. Committed the implementation before running that
+mutation, per `CLAUDE.md` — a mutation test is exactly when a termination is most expensive.
+
+**The rate-limit namespace, proven rather than eyeballed.** `InMemoryRateLimiter` is a shared
+singleton keyed only by the string handed to it, and this project has already shipped one bug of
+this shape (login reusing password-reset's unnamespaced key, 2026-08-01 entry below). The new
+caller uses `"password-reset-validate:"`, not `requestReset`'s `"password-reset:"`. Three reasons,
+and only the first is the known bug: sharing the bucket would let a few reset-page loads consume
+the budget for *requesting* a reset email and lock an admin out of recovery; the two want different
+budgets, because sending mail is expensive and rare while loading a page is cheap and repeatable;
+and `InMemoryRateLimiter` documents one window per key, so two callers with different windows
+sharing a key would corrupt both counts.
+
+The non-collision is by construction, not by inspection: every key is a prefix plus a 64-character
+SHA-256 hex hash, so keys built from different prefixes have different total lengths (`login:` 6,
+`password-reset:` 15, `password-reset-validate:` 24) and cannot be equal whatever the hashes are.
+There is also a test that exhausts the validate bucket and then requires `requestReset` and `login`
+to still work on the same IP. Its assertion order is deliberate and commented: the exhaustion
+assertion runs **last**, because it is the only step that throws out of a `@Transactional` service
+method, which marks the surrounding test transaction rollback-only. The bucket is monotonic within
+its window, so proving it exhausted at the end proves it was exhausted before the two assertions
+that depend on that — which is what keeps those assertions from being vacuous. The limiter's own
+Javadoc, which enumerated "both current callers", was updated; leaving it saying two would have
+made the next reader's audit of the namespaces wrong by omission.
+
+**Where the enumeration reasoning landed.** This endpoint answers "is this token real and live",
+which `requestReset` deliberately refuses to do for an email address. The asymmetry is real and is
+written into both the code and the contract rather than left to be re-derived: `requestReset`'s
+caller supplies an address it may not own, so a truthful answer confirms an account exists, whereas
+this caller already holds the token and can learn the same fact by submitting the reset form. What
+the endpoint changes is the *cost* of the oracle, which is what the rate limit is for — the threat
+is not guessing a 32-byte `SecureRandom` token, it is cheap bulk confirmation of tokens harvested
+from a mailbox or a log. Never-issued, already-used, expired and malformed tokens all raise the
+same exception with the same message, and the repository answers with a boolean, so there is
+nothing left at the service layer to tell them apart with; the tests assert the message, not just
+the type, for exactly that reason.
+
+**One judgment call the brief left open.** A blank or absent token is *not* folded into the
+indistinguishable-failure set. It is a bean-validation failure with a different title, and that is
+deliberate: distinguishing "you sent no token" from "your token is dead" discloses nothing about
+any real token. What matters for the client is that both still carry a field error keyed `token`,
+so a reset page that has landed its message on that key renders something either way rather than
+failing silently — which is precisely #185's bug, one endpoint over. That is pinned by a web-layer
+test rather than left as a comment.
+
+**Why a `@WebMvcTest` as well as the integration tests.** The service tests cover behaviour; they
+cannot see what a client receives. The 400's wire shape *is* the contract the frontend branches on
+— same `token` key, same title, same detail as `confirmPasswordReset` — so an
+equivalent-but-differently-shaped 400 would be a silent trap for whoever writes #185's half rather
+than a test failure. `PasswordResetValidateWebTest` pins 204-with-empty-body, the 400 shape, the
+blank-token case reaching a 400 without touching the service, and 429.
+
+Backend 235 tests to 245. The frontend client was deliberately **not** regenerated here:
+`CLAUDE.md` requires the regenerate be verified in the same change that consumes it, which is
+#185's task.
+
+**Takeaway for next time:**
+
+- **A "does not mutate" test needs at least two calls and a real use afterwards.** One call cannot
+  distinguish "never consumes" from "consumes, and this was the call that succeeded", and a
+  column-is-still-null assertion is weaker than actually using the thing.
+- **Prove a key namespace cannot collide, do not observe that it does not.** Fixed-length hashes
+  behind variable-length prefixes give a length argument, which holds for every future caller;
+  reading two string literals and agreeing they differ holds only for today's two.
+- **Ordering matters in a test that mixes throwing service calls with later DB assertions.** An
+  exception out of a `@Transactional` method poisons the surrounding test transaction, so an
+  assertion placed for narrative flow can undermine the assertions after it.
+
 ## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
 
 **Task given:** add a test that reads the real `frontend/src/index.html` and asserts its
