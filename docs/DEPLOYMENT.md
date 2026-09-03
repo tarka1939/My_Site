@@ -718,10 +718,11 @@ IFS= read -rsp 'New admin password: ' ADMPW; echo
 ```
 
 ```bash
-# ADMPW comes from the read -rsp prompt in the block above -- never typed here
+# ADMPW comes from the read -rsp prompt in the block above -- never typed here.
+# Replace the <...> email with a recovery address you have never published -- see below.
 { printf "SET log_statement = 'none'; SET log_min_duration_statement = -1;\n"
   printf "UPDATE admin_user SET password_hash = crypt('%s', gen_salt('bf',10)), email = '%s' WHERE username = 'admin';\n" \
-    "${ADMPW//\'/\'\'}" "<a-recovery-address-you-have-never-published@example.invalid>"
+    "${ADMPW//\'/\'\'}" "<your-unpublished-recovery-address>"
 } | sudo -u postgres psql -d mysite
 unset ADMPW
 ```
@@ -773,8 +774,8 @@ on the machine you run it from.
 a one-shot assignment scoped to that single process. An `export` puts the password in the
 interactive shell's own environment, where every later child inherits it and any subsequent `env`
 or verbose build prints it — and if the pipeline errors or you Ctrl-C, the `unset` never runs and it
-stays there. The variable itself still survives an interrupt either way — `read` set it, so
-re-run `unset ADMPW` if you Ctrl-C; what the one-shot form removes is every later child
+stays there. The variable itself survives an interrupt either way — `read` set it — so run
+`unset ADMPW` yourself if you Ctrl-C; what the one-shot form removes is every later child
 inheriting it. No other unprivileged user can read a process environment (`/proc/<pid>/environ` is
 owner-only on Linux; on Windows it is readable only within your own user context), but your own
 scrollback is exactly the exposure this runbook is trying to avoid.
