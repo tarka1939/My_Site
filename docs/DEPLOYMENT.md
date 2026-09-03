@@ -685,9 +685,10 @@ IFS= read -rsp 'New admin password: ' ADMPW; echo
 ```
 
 ```bash
-printf "UPDATE admin_user SET password_hash = crypt('%s', gen_salt('bf',10)), email = '%s' WHERE username = 'admin';\\n" \
-  "${ADMPW//\'/\'\'}" "your.real@address.example" \
-  | sudo -u postgres psql -d mysite
+{ printf "SET log_statement = 'none'; SET log_min_duration_statement = -1;\n"
+  printf "UPDATE admin_user SET password_hash = crypt('%s', gen_salt('bf',10)), email = '%s' WHERE username = 'admin';\n" \
+    "${ADMPW//\'/\'\'}" "recovery-address-you-have-never-published@example.com"
+} | sudo -u postgres psql -d mysite
 unset ADMPW
 ```
 
@@ -695,6 +696,19 @@ The value reaches psql through **stdin**, never argv — so it is not in `ps`, n
 (which sees only `sudo -u postgres psql -d mysite`), and not in shell history, because the command
 line holds `$ADMPW` rather than the password. `${ADMPW//\'/\'\'}` doubles any single quote so a
 password containing one cannot break out of the SQL literal.
+
+**The two `SET`s close the one vector the shell cannot.** Postgres can be configured to log
+statement text — `log_statement`, or `log_min_duration_statement` catching a slow query — and an
+`UPDATE` carrying a plaintext password would land in the server log verbatim. Ubuntu's defaults
+(`none` and `-1`) do not, and were confirmed on this host, but a default is not a guarantee: someone
+turns statement logging on to debug something and forgets, and the next person to run this section
+leaks a credential into a file nobody is thinking about. The `SET`s make it independent of that,
+and cost one line. They are themselves logged, harmlessly.
+
+**Use a recovery address you have never published**, rather than the one in your git commits. The
+endpoint deliberately returns 202 whether or not an address is registered (`ifPresent` with no
+`else`), so an unpublished address stays genuinely unknown — which matters, because an attacker
+chooses the weaker of bcrypt and your mailbox, and knowing which mailbox is most of that work.
 
 Setting the email in the same statement matters: `V2` seeds a placeholder, and with `RESEND_API_KEY`
 unset there is no working password-reset path, so losing this password means another manual `UPDATE`.
