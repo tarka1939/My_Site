@@ -284,14 +284,14 @@ The decisive fact: **Googlebot executes JavaScript, but the social scrapers do n
 
 ### 2026-08-22 — Visual direction: generated artwork per project, self-hosted type, tokens flipped per scheme
 
-**Context:** the site had no visual design. It had browser defaults plus accessibility repairs — every colour decision to date was driven by a contrast defect (#116) rather than by an aesthetic intent, and the measurable state was: no type scale (`h2` at 1.1× body; `17.6px` and `13.3333px` are unset UA values), headings inheriting body leading at 1.5, the tag chips rendering in Arial 13.3px against `system-ui` 16px, and `--color-border: #ccc` — a hairline at 1.6:1 on white and **11.7:1 on the near-black canvas**, used as a stroke in 16 places. Recorded as #152. Three directions were mocked with the real content and compared on both grounds; the owner chose the third.
+**Context:** the site had no visual design. It had browser defaults plus accessibility repairs — every colour decision to date was driven by a contrast defect (#116) rather than by an aesthetic intent, and the measurable state was: no type scale (`h2` at 1.1× body; `17.6px` and `13.3333px` are unset UA values), headings inheriting body leading at 1.5, the tag chips rendering in Arial 13.3px against `system-ui` 16px, and `--color-border: #ccc` — a hairline at 1.6:1 on white and **11.7:1 on the near-black canvas**, used as a stroke in 15 places across 10 stylesheets. Recorded as #152. (This ADR and #152 both said 16 when written; the count was corrected in #159 — 16 is the 15 `var(--color-border)` usages plus the declaration itself.) Three directions were mocked with the real content and compared on both grounds; the owner chose the third.
 
 **Decision:**
 
 1. **Direction C, "Spectrum".** A card grid where **each project renders its own generated artwork** — a deterministic spectrum derived from that project's own title and tags, so it is stable across reloads and distinct per project. Display face `Archivo` at heavy weights and tight tracking, `IBM Plex Sans` for body, `IBM Plex Mono` for metadata and tags. Cool near-black ground, single warm accent.
 2. **Generated art is a fallback, not the goal.** Where a project has a real image, the image wins. The generator exists because two of five projects have none and a third has architecture diagrams rather than screenshots — it removes the empty-card problem without shipping stock placeholders.
 3. **Typefaces are self-hosted, not loaded from Google Fonts.** Three reasons, in order: the audience is substantially EU, and embedding the Google Fonts CDN sends visitor IPs to a third party — a decision that should not be made silently on a personal site; #122 will add a Content-Security-Policy, and a self-hosted face keeps `font-src` at `'self'` instead of allowlisting two more origins; and the deployment (Netlify static) serves the files at no cost or complexity.
-4. **Every new colour is defined per scheme with its computed ratio recorded**, following the pattern `--color-text-muted` and `--color-error` already set. No new token may be declared once and inherited by both grounds — that is precisely how #116 and the border defect happened, twice.
+4. **Every new colour is defined per scheme with its computed ratio recorded**, following the pattern `--color-text-muted` and `--color-error` already set — unless a single value is *demonstrated* to clear its bar on both grounds, with both ratios written down. Twelve of the fourteen tokens flip. `--color-surface-muted` is a translucent grey and resolves per ground by construction; `--color-on-danger` is a plain `#ffffff` that could flip and does not need to, because it measures 10.28:1 and 5.45:1 on the two danger fills. Neither is a token declared once and *inherited* without checking, which is how #116 and the border defect happened, twice — that remains forbidden. (Clause reworded 2026-08-27: it briefly read "every new colour **that can carry two values**", which is untrue of `--color-on-danger` and would have exempted the one token needing justification.)
 
 **Alternatives considered:**
 
@@ -305,10 +305,113 @@ The decisive fact: **Googlebot executes JavaScript, but the social scrapers do n
 - **Webfonts reintroduce font-swap reflow, which the E2E suite currently relies on not existing.** `projects.spec.ts` asserts a rendered line count to prove the CSS line clamp is laying out — the only check in the project that would fail if `-webkit-box-orient` were deleted again. Its stability argument rests explicitly on `system-ui` with no webfonts, so there is no swap to race. That assumption dies here. **The test must await `document.fonts.ready` before measuring**, and the faces should carry fallback metric overrides (`size-adjust`, `ascent-override`) so a swap moves as little as possible. Getting this wrong turns the project's most valuable layout test flaky, which teaches people to re-run rather than to look.
 - **Two component stylesheets are already over the 2kB budget warning** — `admin-project-form` at 2967 bytes and `projects-list` at 2454, against a 4kB error ceiling — and the card work lands on the second. Either the card styling stays lean or the budget is revisited deliberately; silently raising a budget to fit is how the previous budgets stopped meaning anything (#51 replaced the stock ones for exactly that reason).
 - **Font bytes count against the initial budget** (320kB warn / 400kB error). Subset to Latin, `woff2` only, preload only the face used above the fold.
-- **`--color-border` is replaced rather than patched.** It is a light-mode value drawing every dark-mode box; a per-scheme hairline token supersedes it across all 16 usages.
+- **`--color-border` is replaced rather than patched.** It is a light-mode value drawing every dark-mode box; a per-scheme hairline token supersedes it across all 15 usages.
 - **The generator becomes real code with a real cost** — it must be deterministic, must not run for cards that have an image, and must degrade to a plain surface if canvas is unavailable rather than leaving a blank hole.
 
 **Not decided here:** whether `lastPushedAt` or archived state surface visually, and the treatment of the admin area, which is not public and does not need the same investment. Both wait until the public pages are done and can be seen.
+
+### 2026-08-27 — `dev` is the integration branch and GitHub's default; `main` is production only
+
+**Context:** every PR to date has merged into `main`, which was simultaneously the integration branch and the thing a fresh clone gets. That was fine while nothing was deployed. It stops being fine the moment Phase 5 lands: with Netlify building the frontend and a VPS running the backend, **every merge to `main` becomes a release**, and there is nowhere for a batch of finished work to sit and be looked at before it ships to a public URL.
+
+**Decision:**
+
+1. **`dev` is the integration branch.** Feature and fix branches are cut from `My_Site/dev` and their PRs target `dev`. This replaces `main` everywhere in the existing workflow — worktree creation, `gh pr create`, and the "one task, one worktree, one branch, one session" rule are otherwise unchanged.
+2. **`main` is production.** The only thing that merges into it is a `dev` → `main` promotion PR. Nothing is cut from `main`.
+3. **`dev` is GitHub's *default* branch.** This is the half that is not obvious, and it is forced rather than chosen — see below.
+4. **Netlify's production branch is `main`**, which is a separate setting from GitHub's default branch and is configured in Netlify's own UI. `dev` gets a branch deploy, which is what turns it into a real staging URL rather than just a ref.
+5. **Promotion PRs carry no closing keywords.** Their issues closed already, when the feature PR merged into `dev`.
+
+**Why `dev` has to be the default branch, and this is not a preference:**
+
+GitHub auto-links a PR's issues in the Development sidebar, and auto-closes them on merge, **only when the PR's base is the repository's default branch.** This project has already paid for that once. `PROJECT_TODO.md`'s 2026-08-02 note records that the default branch was a stale `master` from repo creation onward while every real PR targeted `main` — so `Closes #N` on PRs #76, #77 and #79 silently did nothing, invisible unless someone specifically queried `closingIssuesReferences`. (#80 was the one caught in time — still open when the default was fixed, so it closed its ten issues on merge.)
+
+Introducing `dev` while leaving `main` as the default would recreate that exact failure, on every feature PR, permanently. Making `dev` the default keeps `Closes #N` working unchanged and costs only that a fresh clone checks out `dev` — which is the correct branch to start from anyway.
+
+**Alternatives considered:**
+
+- *Keep `main` as the default and merge features into `dev`.* Rejected on the grounds above. The semantics are arguably nicer — an issue would close when its work reached production rather than when it was merged — but paying for that with a silent, invisible failure on every PR is not a trade this project can make twice.
+- *No `dev` branch; keep merging to `main` and deploy from tags.* Rejected: it makes every merge a release-or-not decision taken at merge time, and tags do not give Netlify a staging deploy to look at. The recurring lesson here is that a test cannot see appearance; a staging URL is the cheapest way to actually look before shipping.
+- *Full git-flow, with `release/*` and `hotfix/*` branches.* Rejected as disproportionate for a single-maintainer portfolio. Two long-lived branches is the smallest thing that separates "merged" from "live".
+
+**Consequences:**
+
+- **`gh pr create` now defaults to `dev`,** so feature PRs need no `--base`. A promotion PR needs `--base main` explicitly, and that is the one place the flag matters.
+- **Phase 5's CI must deploy from `main`, not `dev`.** `PROJECT_TODO.md`'s two "deploy on merge to `main`" bullets were written before this split and happen to be correct — but they are now correct *deliberately*, and a workflow that deploys on merge to the default branch would silently publish every feature.
+- **`.claude/hooks/block-protected-branch-ops.sh` now denies checking out `dev`** alongside `main`/`master`, since `dev` is the branch a session is most likely to reach for by reflex.
+- **Both `PreToolUse` hooks were found to be dead while making this change**, and were rewritten. They parsed their input with `jq`, which is not installed on the machine this repo is worked on, so both fell through to `exit 0` and permitted everything they were written to deny — from `7bd9b86` (2026-08-07, partway through Phase 4) until now, while `README.md` and `docs/AGENT_WORKFLOW.md` described them as always active. That is CLAUDE.md's "fails closed, never open" rule broken inside the mechanism meant to enforce the branch rules. Both now parse with Python, deny when they cannot parse, and `check-worktree-scope.sh` additionally compares real paths rather than string prefixes.
+- **`closingIssuesReferences` must still be checked before merging.** On a promotion PR the field is structurally always empty, because GitHub ignores keywords entirely on a non-default base — so that check is belt-and-braces against the default changing, not a live risk. The live risk it does not cover is a **commit message** keyword, which closes an issue on merge into the default branch without ever appearing in `closingIssuesReferences`; scan those separately.
+- **A stale local `dev` is now the likeliest footgun**, the way a stale local `main` used to be. Fast-forward it explicitly rather than trusting the branch name.
+
+### 2026-09-03 — Backend exposure: the provider's subdomain and proxy, not our own TLS
+
+**Context:** Phase 5's plan assumed a VPS with its own IPv4 address and its own ports 80 and 443, on
+which Caddy would obtain a Let's Encrypt certificate. The host actually provisioned is a **NAT'd LXC
+container on shared infrastructure** (Mikrus), and that invalidates the plan rather than complicating
+it. Measured on the host:
+
+- Ports **80 and 443 belong to the provider**. They answer with a certificate for `CN=srv73.mikr.us`
+  and redirect to the provider's own page. They cannot be bound, and neither HTTP-01 nor TLS-ALPN-01
+  can validate through them.
+- IPv4 is NAT'd behind `192.168.1.x`, with three forwarded ports: `10159` (SSH), `20159`, `30159`.
+- The container has a **public, routable IPv6 address**, reachable directly from the internet on any
+  port the firewall permits.
+- The provider's HTTP proxy reaches the container **over that IPv6**, not over the private IPv4.
+
+**Decision:** expose the backend through the provider's subdomain feature — `tarka1939.bieda.it`,
+mapped to container port 8080 — and let the provider terminate TLS. No Caddy, no Let's Encrypt, no
+certificate management of our own.
+
+Two rules follow and are not optional:
+
+1. **`ufw` permits 8080 only from the provider's proxy addresses**, not the internet. The observed
+   nodes are `2a01:4f8:c012:8ba::/64` and `2a01:4f9:c012:f2aa::/64`. A blanket allow exposes the app
+   in plaintext on the public IPv6, bypassing the provider's TLS entirely.
+2. **#168 becomes part of the deployment**, not a follow-up. See consequences.
+
+**Alternatives considered:**
+
+- *Caddy on a forwarded port (20159) with a DNS-01 challenge.* The only self-managed option that can
+  work, since DNS-01 needs no inbound port. Rejected on two counts: it puts a port number into every
+  API URL forever, on a site whose purpose is to look competent; and DNS-01 requires a registrar API
+  token — a new long-lived secret to store and rotate, for a certificate the provider already issues
+  for free.
+- *Cloudflare Tunnel.* Genuinely elegant here: an outbound connection means **no inbound ports at
+  all**, which is exactly the shape of a NAT'd container, and it is the only option that is
+  **provider-independent** — the tunnel follows the app to a different host unchanged. Rejected for
+  now on cost of moving parts: it needs a domain purchase, a Cloudflare account, and a daemon to keep
+  running, to replace a panel field. Revisit if this arrangement becomes limiting, and note the
+  migration is cheap by design — the backend host appears in exactly three places:
+  `frontend/src/environments/environment.ts`, the production `servers:` entry in
+  `docs/openapi.yaml`, and the `<link rel="preconnect">` in `frontend/src/index.html`.
+  **Corrected 2026-09-03:** this originally named the CORS allowlist as the third, which is wrong
+  — that holds the *frontend* origin, not the backend host — and omitted `index.html`, one of the
+  two that break the deployed site. A subdomain change the next day proved the undercount.
+- *Binding the public IPv6 directly and serving TLS ourselves.* Works, and Let's Encrypt can validate
+  over IPv6. Rejected because **IPv4-only visitors would not reach the API at all**, which a
+  portfolio cannot accept.
+
+**Consequences:**
+
+- **Two proxies are now in the request path**, because the provider fronts its own domains with
+  Cloudflare: `visitor → Cloudflare → provider nginx → container IPv6:8080`. Verified by the
+  `Server: cloudflare` and `CF-RAY` headers on the live subdomain.
+- **Cloudflare sees contact-form submissions.** This is a third-party processor handling personal
+  data, and it is worth stating plainly because it was not chosen — it came with the host. It is also
+  the answer to an argument made while deciding this, that the provider's subdomain avoided
+  introducing a new third party: **it does not, and that argument was wrong.** The decision stands on
+  its other merits. Anyone re-examining the 2026-08-22 fonts ADR's privacy reasoning should know that
+  the API path already crosses Cloudflare regardless.
+- **#168 is mandatory.** With any proxy in front, `request.getRemoteAddr()` returns one address for
+  the entire internet and both rate limiters collapse into a single bucket: a stranger can lock the
+  owner out of the admin panel for 15 minutes and silence the contact form for an hour. The `ufw`
+  restriction above is also what makes the fix *safe* — a forwarded-for header is trustworthy only if
+  nothing can reach the app except through the proxy.
+- **Provider lock-in, deliberately accepted.** The subdomain, the proxy behaviour and the firewall
+  rule are all Mikrus-shaped. The Cloudflare Tunnel alternative exists precisely for the day that
+  matters.
+- **A new failure mode to recognise:** if the subdomain starts returning 502, the first suspect is a
+  provider proxy node outside the two `/64`s currently allowed, not the application.
 
 ### [YYYY-MM-DD] — [Decision title]
 

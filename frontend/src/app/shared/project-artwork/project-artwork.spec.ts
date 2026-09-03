@@ -174,8 +174,9 @@ describe('artworkSeed', () => {
 describe('drawProjectArtwork', () => {
   it('draws every colour it can produce visibly on both grounds', () => {
     // The defect this pins is measurable and was live: at a fixed HSL lightness the curve ranged
-    // from 1.04:1 to 4.20:1 against the light plate depending only on hue, so some cards would
-    // have been invisible while their neighbours shouted. HSL lightness is not lightness, and the
+    // from 1.00:1 to 4.20:1 against the light plate depending only on hue -- 1.00:1 at hue 79.2,
+    // where the colour lands on exactly the plate's luminance -- so some cards would have been
+    // literally invisible while their neighbours shouted. HSL lightness is not lightness, and the
     // generator now solves for luminance -- this is the assertion that it still does.
     const seen = new Set<string>();
     for (const seed of SEEDS) {
@@ -270,6 +271,97 @@ describe('drawProjectArtwork', () => {
       const ys = curveOf(seed).map(([, y]) => y);
       expect(Math.min(...ys), `seed ${seed}`).toBeLessThan(ARTWORK_HEIGHT * 0.25);
       expect(Math.max(...ys), `seed ${seed}`).toBeGreaterThan(ARTWORK_HEIGHT * 0.75);
+    }
+  });
+});
+
+/**
+ * The derivable half of STROKE_LUMINANCE's comment, asserted instead of asserted-by-prose.
+ *
+ * That comment quoted the plates at 0.716/0.021 and the window at 0.162-0.205. All four had
+ * drifted from the constants they are computed off (#159), and nothing failed, because a number in
+ * a comment is checked by nobody. These are pure functions of PLATE_LIGHT, PLATE_DARK and VISIBLE
+ * -- values this file already owns and already measures real output against -- so the arithmetic
+ * behind the choice of 0.18 can be held the same way styles.spec.ts holds its published ratios.
+ *
+ * Be clear about what each test below is worth, because two of them are not what they look like.
+ * The first two are *documentation guards*: they pin the numbers written in the comment so it
+ * cannot drift again, and they add no coverage of the generator, which is a legitimate job but not
+ * a mutation-detecting one. The third is provably equivalent to `draws every colour it can produce
+ * visibly on both grounds` -- solve that test's two `> VISIBLE` inequalities for stroke luminance
+ * and `low` and `high` are exactly what falls out, so it fails and passes at identical points and
+ * catches nothing new. It is kept because it names the window the comment argues from.
+ *
+ * The fourth is the one that adds coverage, and it exists because everything above leaves the
+ * actual claim justifying 0.18 -- that it sits near the *middle* of the window, not merely inside
+ * it -- completely unguarded. Any constant from ~0.161 to ~0.204 passes every other test in this
+ * file.
+ */
+describe('the luminance window the stroke is solved into', () => {
+  /**
+   * Below `low` a stroke stops clearing VISIBLE against the dark plate; above `high` it stops
+   * clearing it against the light one. Solving the contrast formula for the unknown side each way.
+   */
+  const low = VISIBLE * (luminance(PLATE_DARK) + 0.05) - 0.05;
+  const high = (luminance(PLATE_LIGHT) + 0.05) / VISIBLE - 0.05;
+
+  /** The middle half of the window -- the band `low`..`high` shrunk to its central 50%. */
+  const middle = (low + high) / 2;
+  const middleHalf = (high - low) / 4;
+
+  // A digit more than the comment quotes, on purpose: at `toBeCloseTo(0.0195, 4)` the real value
+  // 0.019541 sits 82% of the way through the tolerance, which is an assertion one reround from
+  // failing for no reason.
+  it('composites the plates to the luminances the comment quotes', () => {
+    expect(luminance(PLATE_LIGHT)).toBeCloseTo(0.71973, 4);
+    expect(luminance(PLATE_DARK)).toBeCloseTo(0.01954, 4);
+  });
+
+  it('derives the window the comment quotes', () => {
+    expect(low).toBeCloseTo(0.15862, 4);
+    expect(high).toBeCloseTo(0.20658, 4);
+  });
+
+  it('solves every stroke it actually emits into that window', () => {
+    // STROKE_LUMINANCE is not exported and is deliberately not restated here. What is measured is
+    // the luminance of the colours the generator wrote, after the Math.round that turns the
+    // solver's output into 8-bit channels -- which is the whole reason the ratios come out as a
+    // band rather than one pinned value. Restating the constant would assert nothing: see the note
+    // on `capture` for the two mutations that got through a test doing exactly that.
+    let lowest = Infinity;
+    let highest = -Infinity;
+    for (const seed of SEEDS) {
+      const [, curve] = capture(seed).gradients;
+      for (const colour of curve) {
+        const value = luminance(rgbOf(colour));
+        lowest = Math.min(lowest, value);
+        highest = Math.max(highest, value);
+      }
+    }
+    expect(lowest).toBeGreaterThan(low);
+    expect(highest).toBeLessThan(high);
+  });
+
+  it('centres them in the window rather than merely fitting them inside it', () => {
+    // The claim this pins is the one the comment makes for the value 0.18: not "it clears 3:1 on
+    // both plates" -- half the window does that -- but that it clears them by roughly equal
+    // margins, so neither scheme is the one carrying the compromise. Sitting at an end of the
+    // window would satisfy every other assertion in this file while making the artwork nearly
+    // invisible in one scheme and nearly at full contrast in the other.
+    //
+    // The tolerance is the window's own middle half, not a chosen number, so it rescales if a
+    // plate changes. The emitted strokes use 37% of it (max deviation 0.0044 against a tolerance
+    // of 0.0120), which is slack enough not to be brittle and tight enough to bite: mutating
+    // STROKE_LUMINANCE to 0.165, 0.170, 0.195 or 0.200 fails here while every other test in this
+    // file still passes.
+    for (const seed of SEEDS) {
+      const [, curve] = capture(seed).gradients;
+      for (const colour of curve) {
+        expect(
+          Math.abs(luminance(rgbOf(colour)) - middle),
+          `${colour} sits off-centre in the ${low.toFixed(4)}..${high.toFixed(4)} window`,
+        ).toBeLessThan(middleHalf);
+      }
     }
   });
 });

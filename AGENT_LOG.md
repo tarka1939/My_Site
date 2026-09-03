@@ -150,6 +150,11 @@ The most dangerous class, because the feedback signal is actively misleading:
   rewriting the PR body to one `Closes #N` per line, re-verifying via `gh api graphql` that all ten
   issues appeared, and writing both rules into `CLAUDE.md`'s PR conventions.
   *(2026-08-02, "PR #80's `Closes #N` list never actually linked anything" — PR #80.)*
+  **Correction 2026-08-29:** "linked nothing since Phase 1" is right for #76, #77 and #79, which
+  were already merged and stay unlinked. #80 was still open, was repaired, and closed all ten of
+  its issues on merge. Both causes recorded here are real — a 2026-08-27 note elsewhere briefly
+  claimed the comma cause was never observed locally, which was itself wrong; see
+  `docs/AGENT_WORKFLOW.md`'s closing-keyword section.
 - **Flyway silently never ran.** `flyway-core` alone compiles fine under Boot 4 but doesn't trigger
   autoconfiguration — no error, no log line, just an empty schema and a confusing "relation does not
   exist" from the first query. **Fixed** by depending on `spring-boot-starter-flyway` instead, which
@@ -291,6 +296,333 @@ Copy this block per entry:
 ## Entries
 
 <!-- Add entries below, most recent first -->
+
+## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
+
+**Task given:** add a test that reads the real `frontend/src/index.html` and asserts its
+`preconnect`/`dns-prefetch` hints for the backend agree with `apiBaseUrl` in
+`frontend/src/environments/environment.ts`. The subdomain moved twice in Phase 5, both times by hand
+in both files, and PR #175 exists because one of those edits was missed.
+
+**Agent(s) used:** one frontend agent on **Opus** in the `phase5/host-agreement-test` worktree — new
+application code, which `CLAUDE.md` puts on Opus by default.
+
+**What went right:** the brief's demand to break the test deliberately before committing was worth
+more than the test-writing. Five break scenarios were run, not one: stale host in `index.html`,
+stale host in `environment.ts`, the API `preconnect` deleted while an unrelated one remained, and
+`crossorigin` dropped. The third is the one that mattered — it is the check that the test is not
+passing vacuously off some *other* origin hint, and only a deliberate break can distinguish it from
+a real pass.
+
+**What went wrong (be specific):** the natural implementation — `import { environment } from
+'../environments/environment'` and compare against `new URL(environment.apiBaseUrl).origin`, which is
+literally what issue #178 suggests — reads the **development** environment under `ng test`, not the
+production one. angular.json's `development` build configuration carries a `fileReplacements` entry
+swapping `environment.ts` for `environment.development.ts`, and the unit-test builder applies it. So
+inside a spec that import yields `production: false, apiBaseUrl: '/api/v1'`. There is no import
+specifier that reaches the production file, because the replacement is keyed on the *resolved path*,
+not the specifier.
+
+This would not have failed loudly in a useful way. `new URL('/api/v1')` throws, so a first cut would
+have looked like a broken test rather than a wrong one, and the tempting repair — guard the throw,
+or skip when `apiBaseUrl` is relative — produces a test that passes everywhere and checks nothing.
+That is the exact failure mode the issue was filed about, reproduced one level up: a hint nobody
+verifies, replaced by an assertion nobody verifies.
+
+**How it was caught:** not by reasoning about it. Before writing anything, a throwaway spec was run
+that force-failed on `expect(\`prod=${environment.production} url=${environment.apiBaseUrl}\`)`, purely
+to see the value the runner actually resolves. It printed `prod=false url=/api/v1`. Vitest swallows
+`console.log` from a passing test here, so a deliberately failing assertion was the cheap way to read
+a value out of the runner.
+
+**Fix applied:** `frontend/src/api-origin-hints.spec.ts` reads *both* sides off disk —
+`environment.ts` as text, with comments stripped and exactly one `apiBaseUrl` declaration required,
+plus an assertion that the parsed source really says `production: true` so a path mishap onto the
+development file cannot make the rest vacuous. `index.html` is parsed with `DOMParser` (available in
+this jsdom runner) and queried by `rel`, rather than regexed, so the existing font `preload`s and any
+future font-CDN `preconnect` neither break it nor satisfy it. Comparison is origin-to-origin, so a
+trailing slash or path on a hint is not a false failure. Failure messages name both values and both
+files, since the entire point is telling the reader which of the two copies is stale.
+
+**Takeaway for next time:**
+
+- **`fileReplacements` applies under `ng test`, so `environment` in a spec is the development one.**
+  Worth knowing well beyond this test: `error.interceptor.spec.ts` already imports `environment` and
+  is fine only because it uses it to *derive* a URL it then matches against itself. Any spec that
+  asserts something about the deployed configuration has to read the file, not import it.
+- **A test whose subject is "two files must agree" must read both files.** Importing one and
+  hardcoding the other is the same defect the test is for, moved.
+- **Print the value; do not infer it.** The cost of the throwaway force-failing spec was about a
+  minute, against a wrong test that would have passed review because it matches the issue's own
+  suggested shape.
+
+## 2026-09-03 — The first real deployment, and four times the runbook was wrong about the machine in front of it
+
+**Task given:** execute `docs/DEPLOYMENT.md` against a freshly provisioned VPS, with the Senior Dev
+holding SSH and the owner holding sudo. Backend live at `https://tarka1939.bieda.it` by the end.
+
+**Agent(s) used:** one backend agent on Opus for #44/#168, one frontend agent for the host wiring,
+and four cold reviewers. The interesting failures are all the coordinator's.
+
+**What went right:**
+
+**The reviews found things no gate could.** Every defect below was caught by a reviewer or the
+owner, none by a passing test. Both suites stayed green throughout — 235 backend, 341 frontend —
+including while the runbook was telling an operator to do impossible things.
+
+**Proving the path before deploying onto it.** A throwaway `python3 -m http.server 8080 --bind ::`
+established DNS, the provider's proxy, TLS, the port mapping and the firewall as one unit, before
+the app existed. When the real deploy later 404'd, that separation was what made it cheap to
+diagnose.
+
+**What went wrong (be specific):**
+
+**Four times, the document described a machine other than the one in front of it.** Each was
+plausible, each cost real time, and the pattern is the finding rather than any one instance:
+
+- **§4.8 prescribed Caddy and Let's Encrypt on ports 80 and 443.** Those ports belong to the
+  provider on a shared-IP host and answer with its certificate. Neither ACME challenge can work.
+- **§4.2 said port 8080 must never be open.** True for a reverse proxy on the same box, false for a
+  provider proxy that connects across the network — and the symptom is a *timeout*, which reads like
+  anything except a firewall.
+- **§4.4 predicted Java 25 would be unpackaged on Ubuntu 24.04.** It is packaged, at the exact build
+  the project compiles with.
+- **§4.7a told the operator to create swap.** An unprivileged LXC container cannot enable swap;
+  `swapon` fails with `Operation not permitted`. This one is the worst of the four, because
+  `systemd-detect-virt` had reported `lxc` in the *first survey run on the box*, and the section was
+  written afterwards anyway.
+
+**The same secret-handling mistake, in three sections, fixed one at a time.** §4.3 used psql's
+`\password` prompt specifically so a credential never reaches a command line. §4.6 then had the
+operator paste the database password into a heredoc. Corrected — and §6 was still pasting the admin
+password into an `UPDATE`. The operator reported it twice, in two different sections, having already
+reported the first. A principle applied in one section and not carried across the file is not a
+principle, it is a coincidence.
+
+**A correction that made a rule worse.** `CLAUDE.md`'s API-client check was changed from
+`git status --porcelain` to `git diff --numstat` to dodge a CRLF false positive. `git diff` compares
+the working tree to the *index*, so a newly generated model or service file — the exact shape of a
+stale client — is invisible to it. Measured: 0 rows for a new file where `status` shows 1. The rule
+now reads `git add -A && git diff --cached --numstat`.
+
+**Committing before reading a gate.** Pushed a commit and only then looked at `TEST_EXIT=1`, having
+deleted the log in the same command. The failure was environmental (a fresh worktree with no
+`node_modules`, so `ng` did not exist) but that was not known at push time. "Nothing merges on a
+report" is in `README.md` in the coordinator's own words.
+
+**Diagnosing an outage on a hostname that had been retired.** Built a firewall theory out of a 404,
+complete with a suspect and a remediation, without checking that the host still existed. The blocked
+port that "proved" it was the operator's own firewall tightening working exactly as designed.
+
+**A conflict resolution that silently ate work.** `git checkout --theirs -- <path>` takes the entire
+incoming file, not the conflicted hunk, so every cleanly auto-merged change on that branch went with
+it. The merge committed, the tree was clean, nothing errored. Caught only by grepping for content
+that should have been present.
+
+**How it was caught:** the owner, for the three secret-handling repeats and the missing swap section;
+cold reviewers for everything else. Notably the reviewer that checked the live host rather than the
+diff caught four documents claiming the deployed jar lacked CORS while a preflight against that jar
+was answering correctly.
+
+**Fix applied:** each section corrected in place with the original claim left visible, since the
+wrongness is the useful part. `docs/DECISIONS.md` gained an ADR for the exposure decision and a
+correction to its own count of where the backend host appears — it said three places and named the
+wrong third, omitting the one that breaks the deployed site.
+
+**Takeaway for next time:**
+
+- **A runbook is a claim about a specific machine.** Every one of the four errors was a general
+  truth applied to a host it did not describe. `systemd-detect-virt` costs nothing and would have
+  caught two of them before either was written.
+- **Carry a principle across the whole file the moment you apply it once.** Three sections handled
+  credentials three different ways, and the inconsistency was visible on the page.
+- **A fix to a rule needs the same adversarial reading as a fix to code.** The `--numstat` change
+  looked strictly better and was strictly worse on the case that mattered.
+- **Verify the premise before diagnosing from it.** Checking that a hostname still resolves is
+  cheaper than any theory built on the assumption that it does.
+
+
+## 2026-09-03 — #44 and #168: the header that carries the truth is not the one at either end of the list
+
+**Task given:** Implement CORS (#44) and the conditional forwarded-header client IP (#168) on
+`phase5/behind-a-proxy`, off `6a54831`. Backend only.
+
+**Agent(s) used:** backend-agent (Opus) — auth, shared mutable state and a trust boundary, all on
+`CLAUDE.md`'s "Opus regardless" list.
+
+**What went right:** `ClientIpResolver` reads a forwarded address only when the request's immediate
+peer matches a configured trusted proxy, and returns `getRemoteAddr()` in every other case,
+including "no configuration at all" — so the pre-#168 behaviour is what an unconfigured environment
+still gets. **235 tests, up from 202** — the entry first said 231, which was true when it was written and stale two commits later; a count is a fact with a timestamp, so it gets re-read at the end rather than carried forward.
+
+**What went wrong (be specific):** two things, neither of which a first pass would have flagged.
+
+1. **The obvious `X-Forwarded-For` rules are both wrong for this chain.** The deployed shape is
+   `visitor → Cloudflare → Mikrus nginx → app`, so the header arrives as
+   `[anything the visitor invented..., visitor, cloudflare-edge]`. Taking `entries[0]` — the rule
+   most examples show — reads a value the caller supplied, and hands unlimited rate-limit evasion to
+   anyone willing to change it per request. Taking `entries[length - 1]` reads a Cloudflare edge
+   node, which buckets the whole internet into a handful of addresses and is nearly the bug being
+   fixed. Neither end is the answer; the visitor is the *N*th entry counted **from the right**,
+   where *N* is the number of proxies in front. Counting from the right is what makes it
+   unforgeable — a caller can only prepend, and prepending does not move the right-hand end.
+2. **Tomcat's `RemoteIpValve` cannot express this**, so `server.forward-headers-strategy` was the
+   wrong reach even though issue #168 itself suggested `NATIVE`. Its rule is "walk from the right,
+   discard entries matching `internalProxies`, take the first that does not match" — which stops at
+   the Cloudflare edge address unless every Cloudflare range is in the trusted set. That list is
+   large, changes, and is not something this app can keep current. It also rewrites `getRemoteAddr()`
+   and the scheme/host used to build URLs for every request, a far wider blast radius than two rate
+   limiters need.
+
+**How it was caught:** by working out what this specific chain produces instead of applying a
+general rule, and then by mutation testing. Two mutations that a "take the first element"
+implementation would have passed — `index := 0` and `index := entries.length - 1` — each fail
+`multiEntryForwardedFor_resolvesToTheEntryCountedFromTheRightNotEitherEnd` and the contact-form
+integration test that asserts the stored `requester_ip_hash` is the middle entry and not the other
+two.
+
+One mutation **survived** on the first pass and had to be fixed: disabling the negative
+`trusted-hop-count` guard still threw, from a *different* validation whose message also contains the
+string `trusted-hop-count`, so `hasMessageContaining` passed for the wrong reason. The test now
+configures the case so only that guard can fire, and asserts on `"must not be negative"`. This is
+the same failure mode as the 2026-08-27 entry below: an assertion that measures something adjacent
+to what it claims.
+
+**Then cold review of PR #172 found a third instance of that same shape, in a test I had already
+mutated.** `forwardedAddressIsCanonicalised_soOneAddressIsNotTwoBuckets` asserted only
+`assertThat(compressed).isEqualTo(expanded)` — neither side pinned to anything. Make the resolver
+ignore the header and return the peer address for both, and the two results are still equal, so a
+test named for buckets passes having verified nothing about buckets. My own mutation round missed it
+because I mutated the *canonicalisation* (which the test does detect) and never the *header read*
+(which it did not). Both sides are now pinned to `"2001:db8:0:0:0:0:0:1"`, and disabling the header
+read fails it.
+
+Three times in one session stops being bad luck: **an assertion comparing two computed values to
+each other, with neither pinned to an expected constant, is the recurring defect.** The general form
+— "does this assertion still fail if the feature is inert?" — is the question to ask of every
+equality assertion, rather than a thing to rediscover per test.
+
+Review also found a real fail-open that the whole constructor-validation exercise had missed: `/0`
+passed `matcherFor`, because the range check rejected only a prefix length `< 0` or `> maxPrefix`. A
+`/0` is `"*"` in another notation — every caller becomes a trusted proxy, so a forged header is a
+total, silent bypass, from one env-var typo and with no startup complaint. The asymmetry is the
+tell: `parseAllowedOrigins`, in a file I edited in the same session, refuses `"*"` with a comment
+about "a silent downgrade to the exposure this allowlist exists to prevent", and I did not carry
+that same reading across to the CIDR notation for the same idea. Review measured the consequence on
+the real matcher instead of reasoning about it: `0.0.0.0/0` matches IPv6 peers, so "we are IPv6-only,
+a v4 /0 is inert" would have been wrong. There is now a test driving `IpAddressMatcher` directly to
+record that.
+
+**Fix applied:**
+
+- `ClientIpResolver`, a new root-package component, with three properties under
+  `app.forwarded-headers`: `trusted-proxies` (CIDRs of peers allowed to speak for a client),
+  `client-ip-header` (a single-valued header set by the outermost proxy — `CF-Connecting-IP` in
+  prod, preferred because it needs no position arithmetic), and `trusted-hop-count` (2, the
+  right-hand index into `X-Forwarded-For`). `ClientIpHasher` delegates to it and keeps only the
+  don't-store-a-raw-address job.
+- All three are off in the base `application.yml` and set only in `application-prod.yml`, so dev,
+  test and no-profile keep today's behaviour.
+- Config that is *absent* degrades; config that is *present but wrong* fails at bean creation — a
+  malformed CIDR, a negative hop count, a header named with no trusted proxy to have set it, or a
+  trusted-proxy list with nothing configured to read a header. The last two are the interesting
+  ones: both are harmless at runtime, which is exactly why they need to fail loudly. They look
+  configured and do nothing.
+- CORS as an exact-match allowlist from `app.cors.allowed-origins`, wired via
+  `.cors(Customizer.withDefaults())` inside the security filter chain so a credential-free preflight
+  is answered before authorization would 401 it. Not `allowedOriginPatterns`: a pattern such as
+  `https://*--<site>.netlify.app` would admit a deploy preview built from a fork's pull request,
+  i.e. arbitrary third-party JavaScript on an origin this API answers. There is a test that says so.
+- The CORS integration tests needed a second `RestTemplate` on the JDK HTTP client.
+  `HttpURLConnection` silently drops `Origin` and `Access-Control-Request-Method` — they are on its
+  restricted-header list — so a CORS test written on the existing `SimpleClientHttpRequestFactory`
+  client sends no preflight at all and measures nothing. That is the "a test that cannot fail on the
+  thing it names" shape from the index above, met head-on rather than after the fact.
+
+**Takeaway for next time:**
+
+- **A general rule for reading a proxy header is not a rule for *your* chain.** How many proxies,
+  and whether each appends or overwrites, decides which element is the truth. Write the observed
+  header down before choosing an index.
+- **Both halves fail safe or neither is worth having.** A request from an untrusted peer keeps its
+  own address; a list shorter than the hop count falls back rather than settling for a nearby
+  element; missing config means the old behaviour. Unconditional trust would have been worse than
+  the bug it fixes, because a forged header defeats rate limiting outright instead of globalising
+  it.
+- **Config that silently does nothing deserves a startup failure**, not just config that is
+  malformed. "Trusted proxies set, nothing configured to read a header" boots fine and leaves both
+  limiters collapsed — indistinguishable from working, from outside.
+- **A fix can flip the direction of a known residual risk, and that has to be said out loud.** The
+  Cloudflare bypass was disclosed accurately and its *consequence* was not: before this change such
+  a caller shared the global bucket and was still capped at 5 logins per 15 minutes; after it, a
+  fresh `CF-Connecting-IP` per request means unlimited guessing against the single admin account.
+  Disclosing a risk is not the same as disclosing what you did to it.
+- **Neither this nor the firewall closes a Cloudflare bypass.** A caller who reaches the Mikrus node
+  directly with the right `Host` arrives from a trusted peer and can forge either header. Both
+  mechanisms are equally exposed to it, which is why offering the second cost nothing. That is an
+  ingress concern; it is written down on `ClientIpResolver` rather than left for someone to discover.
+
+## 2026-09-02 — Wiring the real hosts (#89): the regenerate that provably could not change anything, and checking that rather than asserting it
+
+**Task given:** replace the `TBD-vps-host` placeholders now that the backend has a real public host
+(`https://tarka1939.tojest.dev`, a Mikrus VPS subdomain fronted by Cloudflare), and close #89 by
+adding a `<link rel="preconnect">` to the API origin. Worktree `My_Site-hosts`, branch
+`phase5/wire-the-hosts`, based on `6a54831`. No PR, no push, `/backend` untouched.
+
+**Agent(s) used:** one frontend agent, own worktree. Frontend suite 341 → 341 (no behaviour change).
+
+**Judgment calls worth recording:**
+
+**The regenerate was run twice, and the first run is the one that mattered.** `CLAUDE.md` says to
+regenerate from the *unmodified* spec first so pre-existing drift is not absorbed into this commit.
+Doing so flagged `frontend/src/app/core/api/.openapi-generator/FILES` as modified — which looks
+exactly like the stale-client problem PR #129 shipped. It was not: `git diff --numstat` returned
+zero rows, and `.gitattributes` (`* text=auto eol=lf`) with `core.autocrlf=true` explains it — the
+generator writes CRLF on Windows, git normalises to LF, so the content is identical. Reverted and
+re-run after the spec edit, with the same result. **`git status --porcelain` is not by itself
+evidence of a content change on this repo when running the generator on Windows; `--numstat` is.**
+
+**A `servers:` edit provably cannot change the typescript-angular client, and that was verified
+rather than assumed.** The brief was right to insist on the regenerate anyway — the generator inlines
+`summary`/`description` into JSDoc, which is why a description-only edit once produced a real diff.
+But the *production* `servers:` entry is a different case: it never reaches the client. **Be precise
+about this, because the point of recording it is to guide the next contract edit** — the generator
+*does* embed the **first** `servers:` entry, as a compile-time fallback
+(`api.base.service.ts`: `protected basePath = 'http://localhost:8080/api/v1'`), so editing *that*
+one would change the client. Only the second, production entry is inert, because `basePath` is
+runtime-injected through `provideApi(environment.apiBaseUrl)` in `app.config.ts`, and the only
+`basePath` assignment in `configuration.ts` is from its constructor argument. So the empty diff here
+is a confirmed property, not a lucky result. Recording it so the next contract edit does not have to
+re-derive which parts of the spec reach the client.
+
+**`crossorigin` on the preconnect, and the `Authorization` header is not the reason.** The brief
+asked whether the bearer token forces `crossorigin`. It does not — that header is an ordinary
+request header, not browser-managed credentials, and does not set the request's credentials mode.
+What decides the socket pool is `withCredentials`, and nothing sets it: `provideApi()` is called with
+a bare base URL, so `Configuration.withCredentials` stays undefined and every API call goes out
+anonymous. A preconnect *without* `crossorigin` warms the credentialed pool, which those calls would
+then never touch — so `crossorigin` is required, for a reason unrelated to the one proposed. The
+token does make admin requests non-simple and therefore preflighted, which strengthens the case: the
+OPTIONS preflight is then what pays for the handshake.
+
+**`dns-prefetch` was added as an honest no-op.** In any browser that supports preconnect it is
+ignored for an origin already being connected to. It earns its line only as a fallback for something
+that supports resolution hints but not preconnect, and the comment says so rather than implying a
+second win. Also noted in the comment: `index.html` is not swapped per build configuration, so under
+`ng serve` — where `apiBaseUrl` is relative and proxied — this is one speculative handshake that goes
+unused. Accepted rather than templating `index.html`.
+
+**The README says less than it could.** The host was confirmed serving TLS with a valid certificate;
+that is not the same as the API being up, and no Netlify site exists. So the Status section says the
+backend host exists and the frontend is not deployed, and the Live URL line says "none yet" instead
+of quietly becoming a link nobody can open. The literal placeholder string was also kept *out* of the
+new prose, so that grepping for it keeps returning only genuinely stale locations.
+
+**Left deliberately undone:** `docs/DEPLOYMENT.md` still names the placeholder in three places
+(the config table, and steps 3-4 of the unpause runbook). Out of scope for this brief and reported
+upward rather than edited — but it is now a runbook instructing someone to make a change that has
+already been made, which is the kind of staleness `CLAUDE.md`'s "Keeping docs current" is about.
+`PROJECT_TODO.md`'s Phase 5 status is untouched for the same reason.
 
 ## 2026-08-27 — #156: the mutation list I wrote tested the key being too broad and never too narrow
 

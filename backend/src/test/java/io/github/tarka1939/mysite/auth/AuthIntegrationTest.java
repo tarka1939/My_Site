@@ -107,6 +107,54 @@ class AuthIntegrationTest {
     }
 
     @Test
+    void loginRateLimit_behindATrustedProxy_bucketsPerVisitorNotPerProxy() {
+        // Issue #168. Deployed, every request reaches this app from the same proxy address, so
+        // before ClientIpResolver existed all six attempts below shared one bucket and any
+        // stranger could lock the owner out of the admin panel in five requests. The test profile
+        // configures 198.51.100.0/24 as the trusted proxy block.
+        createAdminUser("proxied-admin", "proxied-admin@example.com", "correct-password");
+        HttpServletRequest firstVisitor = requestViaProxy("198.51.100.7", "203.0.113.30");
+        HttpServletRequest secondVisitor = requestViaProxy("198.51.100.7", "203.0.113.31");
+
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> authService.login(
+                new LoginRequest("proxied-admin", "wrong-password"), firstVisitor))
+                .isInstanceOf(InvalidCredentialsException.class);
+        }
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("proxied-admin", "wrong-password"), firstVisitor))
+            .isInstanceOf(RateLimitExceededException.class);
+
+        // The load-bearing assertion: a different visitor arriving through the SAME proxy has an
+        // untouched budget. InvalidCredentials, not RateLimitExceeded, is the whole fix.
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("proxied-admin", "wrong-password"), secondVisitor))
+            .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void loginRateLimit_forwardedHeaderFromAnUntrustedPeer_isIgnored() {
+        // The other half of #168, and the half that would make the fix worse than the bug if it
+        // were missing. 203.0.113.41 is not in the configured trusted-proxy block, so it is
+        // someone reaching the app directly. Each attempt claims a different visitor address; if
+        // the header were believed, each would get its own bucket and rate limiting would be
+        // defeated outright rather than merely globalised. All six must land on one bucket keyed
+        // on the peer's own address.
+        createAdminUser("direct-admin", "direct-admin@example.com", "correct-password");
+
+        for (int i = 0; i < 5; i++) {
+            HttpServletRequest forged = requestViaProxy("203.0.113.41", "192.0.2." + (10 + i));
+            assertThatThrownBy(() -> authService.login(
+                new LoginRequest("direct-admin", "wrong-password"), forged))
+                .isInstanceOf(InvalidCredentialsException.class);
+        }
+        HttpServletRequest forged = requestViaProxy("203.0.113.41", "192.0.2.99");
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("direct-admin", "wrong-password"), forged))
+            .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
     void requestReset_forKnownEmail_createsHashedTokenNotRawToken() {
         var adminUser = createAdminUser("reset-admin", "reset-admin@example.com", "irrelevant");
         HttpServletRequest httpRequest = requestFrom("203.0.113.9");
@@ -228,6 +276,19 @@ class AuthIntegrationTest {
     private HttpServletRequest requestFrom(String remoteAddr) {
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn(remoteAddr);
+        return request;
+    }
+
+    /**
+     * A request whose TCP peer is {@code peerAddress} and which claims, via the header the test
+     * profile names as {@code app.forwarded-headers.client-ip-header}, to be on behalf of
+     * {@code claimedVisitorAddress}. Whether that claim is believed is the point of the tests
+     * that use it.
+     */
+    private HttpServletRequest requestViaProxy(String peerAddress, String claimedVisitorAddress) {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getRemoteAddr()).thenReturn(peerAddress);
+        when(request.getHeader("CF-Connecting-IP")).thenReturn(claimedVisitorAddress);
         return request;
     }
 

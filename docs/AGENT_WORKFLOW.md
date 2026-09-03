@@ -29,10 +29,28 @@ Claude Code has three ways to run multiple agents:
 `CLAUDE.md`'s "Never quote a working tree without naming its branch" states the durable rule. These are the specific conditions that prompted it, recorded here rather than there because they expire. **Re-derive before relying on any of it** — `git worktree list`, `git rev-list --left-right --count <branch>...<remote>/<branch>`.
 
 - **`D:\repos\My_Site` is the main checkout and the most obvious place to run a command.** It sat on `phase1/review-followups`, 58 commits behind the remote `main`, with uncommitted edits to `CLAUDE.md` and `docs/DECISIONS.md` on top. Reading a file there could match neither the branch nor `main`.
-- **Local `main` was 85 commits behind `My_Site/main`** — further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current.
+- **Local `main` was 85 commits behind `My_Site/main`** — further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current. *(Two later corrections: the hook did **not** in fact deny anything at the time — see "Both of these were inert from Phase 4 to Phase 8" below — and as of 2026-08-27 the branch most likely to be stale in this way is `dev`, not `main`.)*
 - **Roughly half the checkouts are detached** — every `My_Site-review-NN` worktree created for a PR review, which is exactly where evidence gets quoted into review comments. `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in those, which is why the provenance rule uses the SHA.
 - **`git cherry` and patch-ids can disagree with content.** Two commits on `phase3/frontend-foundation` looked absent from `main` (`git cherry` marked one `+`), but their patch-ids differed only because of surrounding context — the `+`/`-` lines were byte-identical to commits already merged. Confirm with the actual added lines before concluding work is stranded, and beware that a `grep` of lines beginning with `-` will be parsed as options unless you use `grep -e` or `--`.
 - **Worth considering:** a non-blocking `SessionStart` hook emitting branch, SHA, dirty-file count and behind-count would supply this provenance automatically and keep perishable numbers out of prose entirely. Suggested during the PR #95 review; not built.
+
+## Branch model (added 2026-08-27)
+
+`dev` integrates, `main` ships. Full reasoning in `docs/DECISIONS.md`, 2026-08-27; the operational shape is:
+
+| | `dev` | `main` |
+|---|---|---|
+| Role | integration | production |
+| GitHub default branch | **yes** | no |
+| Deployed by | Netlify branch deploy (staging) | Netlify production build + the VPS |
+| What merges in | feature and fix PRs | only a `dev` → `main` promotion PR |
+| Cut branches from it | yes | never |
+
+Three things follow that are easy to get wrong:
+
+- **Worktrees are cut from `My_Site/dev`.** The `git worktree add` examples elsewhere on this page do not name a base ref at all, so they are unaffected; it is the base you pass that has to change.
+- **`gh pr create` needs no `--base` for feature work**, because `dev` is the default. The promotion PR is the exception and needs `--base main` explicitly.
+- **`dev` is the default branch specifically so `Closes #N` keeps working.** GitHub links and closes issues only for PRs based on the default branch; that is the mechanism that silently voided the keywords on PRs #76, #77 and #79 when the default was a stale `master` — see the closing-keyword section below for what happened to #80. A promotion PR therefore closes nothing and must not carry keywords — its issues closed when each feature PR merged.
 
 ## Preventing repo-access race conditions (added 2026-08-05)
 
@@ -58,9 +76,27 @@ The worktree rule above is easy to state and easy to violate by accident (a sess
 Two starter hooks are wired up via `.claude/settings.json`:
 
 - **`.claude/hooks/check-worktree-scope.sh`** — denies any `Edit`/`Write` call targeting a file outside the session's assigned worktree. Opt a session into this check by exporting `CLAUDE_WORKTREE_ROOT` (its worktree's absolute path) before launching it; if unset, the hook is a no-op, so it doesn't restrict ordinary single-session work on the main checkout.
-- **`.claude/hooks/block-protected-branch-ops.sh`** — always active. Denies force-pushes, `git checkout main`/`master`, and `git reset --hard` from any `Bash` tool call, regardless of worktree. Defense in depth: a task session should never need to touch the shared main branch directly, worktree or not.
+- **`.claude/hooks/block-protected-branch-ops.sh`** — always active. Denies force-pushes, a direct checkout of `main`/`master`/`dev`, and `git reset --hard` from any `Bash` tool call, regardless of worktree. Defense in depth: a task session should never need to touch a shared branch directly, worktree or not. `dev` was added 2026-08-27 when it became the integration branch — it is now the one a session is most likely to reach for by reflex.
 
 Both hooks return a structured `permissionDecision: "deny"` with a human-readable reason on the offending call, rather than silently failing — see the scripts themselves for the exact contract. Extend this pattern (rather than replacing it) if more automatic guardrails come up; it's cheaper to add a new `PreToolUse` matcher than to keep re-explaining a rule in every session's prompt.
+
+### Both of these were inert from Phase 4 to Phase 8 (found 2026-08-27)
+
+Read this before trusting any hook in this repo, including one you just wrote.
+
+Both parsed their input with **`jq`, which is not installed on the machine this repo is worked on and never has been.** The variable came back empty, and both scripts then hit an explicit `exit 0` — so every command they were written to deny was permitted, while this document said "always active" and `README.md` said "denied unconditionally". The window is `7bd9b86` (2026-08-07, partway through Phase 4) to 2026-08-27: about twenty days, five phases. **Not** Phases 1-3, which were finished and merged before these files existed — a first draft of this section said "Phase 1 through Phase 8" and was wrong, which is worth leaving on the record given what the section is about. Confirmed by running `git checkout main --help`, which matches the deny pattern and executed normally.
+
+That is `CLAUDE.md`'s "fails closed, never open" rule broken inside the mechanism meant to enforce it — the same shape as the inverted `@Profile("!prod")` predicate in `AGENT_LOG.md` 2026-08-01, and no easier to see.
+
+What changed:
+
+- **Both hooks parse with Python instead**, chosen because it is actually present rather than because it is nicer.
+- **Neither has a path that permits a call it could not inspect.** Unparseable input is a deny. No interpreter at all is a deny, emitted as hand-written JSON so even that path needs nothing installed.
+- **`check-worktree-scope.sh` compares real paths, not string prefixes.** The old `case "$FILE_PATH" in "$CLAUDE_WORKTREE_ROOT"/*)` accepted `<root>/../My_Site/CLAUDE.md` — straight back into the shared checkout — and rejected a legitimate write whose separators or drive-letter case differed. It now normalises both sides and uses `os.path.commonpath`.
+
+**The general lesson, which is not about `jq`:** a guard that fails open is worse than no guard, because the documentation describing it becomes the thing people trust. Neither hook had a test, and nothing ever tried a command they were supposed to block — so "we have hooks" was load-bearing for eight phases without once being true. If you add a hook, first make it deny something and watch it happen.
+
+**Known false positive, accepted:** `block-protected-branch-ops.sh` matches the whole command string, so a shell heredoc writing documentation that quotes a blocked command is itself blocked. Write files with the `Write`/`Edit` tools rather than heredocs, which is the better habit anyway.
 
 ## Task distribution (added 2026-08-05)
 
@@ -139,6 +175,102 @@ gh issue list --state open --limit 200 --json number,milestone --jq '[.[]|select
 Both should return `[]`.
 
 **On adding a label rather than forcing a wrong one.** Fixing the backlog surfaced one issue (#49, content migration) that no existing area covered — it is site copy, not backend, frontend, or infra. A `content` label was added for it rather than mislabelling it `documentation`, which would have made the taxonomy lie to keep the checklist green. If a genuine gap appears, widen the taxonomy and say so; do not round to the nearest wrong answer.
+
+## Closing keywords: the three incidents (added 2026-08-29)
+
+`CLAUDE.md` states the rules and points here for the evidence. It pointed here from 2026-08-15
+(`faa0f3d`) until this section was written — fourteen days in which the one sentence inviting a
+reader to check the evidence led nowhere (#162). It was found by auditing a stale worktree, not by
+anyone following it, which is the thing about a broken pointer.
+
+The mechanism itself is stated in the **Branch model** section above, and is not repeated here: a
+closing keyword is interpreted **only** when the pull request's base is the repository's default
+branch. What follows is why each clause of the rule exists, because a rule whose evidence has gone
+missing is one someone will eventually decide to simplify.
+
+### 1. Three PRs' keywords linked nothing, and a fourth was caught in time (2026-08-02)
+
+The repo's default branch was a stale `master` from creation, while every real PR targeted `main`.
+PRs #76, #77 and #79 all carried keywords, all linked **zero** issues, and were already merged by the
+time anyone noticed — their issues are permanently unlinked. PR #80 had the same bug and was still
+open, so it is the one that could be repaired.
+
+The rendered PR body looks identical either way. The only way to see it is `closingIssuesReferences`
+via GraphQL, and nobody had thought to check the mechanism at all.
+
+Fixed by switching the default branch to `main` and deleting `master` after confirming it was an
+ancestor, then rewriting #80's body and re-verifying: it closed all ten of its issues on merge.
+`AGENT_LOG.md`, 2026-08-02. **Superseded 2026-08-27:** the default is now `dev`, for the same
+mechanism — see the Branch model section above and `docs/DECISIONS.md`. Do not "restore" `main` as
+the default on the strength of this paragraph; that would void every feature PR's keywords again.
+
+**What #80 also established, once it was the only variable left.** With the default corrected, #80's
+comma-separated `Closes #24, #25, #26, ...` linked only **#24**; rewriting it one-per-line made all
+ten appear. That is a clean isolated experiment and it is why `CLAUDE.md` requires a keyword before
+each issue number.
+
+> **A correction, 2026-08-29.** A note added to `PROJECT_TODO.md` on 2026-08-27 claimed the comma
+> cause had *never* been confirmed here, reasoning that PRs #76 and #77 link zero issues rather than
+> the one the comma theory predicts. That reasoning was wrong, and the conclusion with it. Both PRs
+> merged *before* the default was fixed, so the default-branch gate short-circuits them: zero is what
+> **both** hypotheses predict, so neither PR bears on the comma question at all. The isolated
+> experiment is #80, after the fix, and `AGENT_LOG.md` recorded it correctly all along. The
+> correction has been corrected; the original entry was right.
+
+### 2. A keyword fired from inside a sentence denying it (2026-08-10)
+
+PR #100 opened with "Advances #49. **Deliberately does not close it**" and carried no intentional
+keyword. Further down, a sentence explaining what *would* finish the work said that applying it to a
+live site is what would close that issue — and GitHub matched the keyword there. Issue #49 closed on
+merge at 09:56:51 and was reopened 54 seconds later.
+
+The parser has no notion of context, negation, or the sentence around it. This is why `CLAUDE.md`
+says to run the check **including on PRs meant not to close anything**: the dangerous case is not the
+PR trying to close an issue, it is the one that isn't.
+
+### 3. The PR documenting incident 2 re-committed it (2026-08-10)
+
+PR #101 was the fix — it added the rule to `CLAUDE.md`. Its own body quoted the offending sentence
+and its commit message repeated it in prose. `closingIssuesReferences` on that PR returned `49`, so
+merging it would have taken the same issue down a second time. Caught by the independent review, not
+by its author, hours after that author had written the rule. It was closed unmerged and superseded by
+PR #102 on a clean branch, because the offending commit message could not be corrected without a
+force-push.
+
+**What this established that the rule did not previously say: backticks neutralise a keyword,
+blockquotes do not.** PR #101 was an accidental controlled experiment — one occurrence in a
+blockquote, one in a code span, same PR, same issue. Its rendered body carries exactly one
+`issue-keyword` marker, on the blockquoted occurrence; the backticked one renders as a plain `code`
+element with no keyword span and no reference. **Check that specific marker**, not the count of issue
+links — a body can carry several links for unrelated reasons, and "one reference" is not what is
+being claimed.
+
+The first rewrite of the rule claimed *neither* form neutralises, which was self-refuting: the
+document asserting it could not have been written under its own rule. Corrected in `74d02c8`.
+
+### The blind spot in the prescribed check
+
+`closingIssuesReferences` reads **only the PR description**. A keyword in a commit message closes an
+issue on merge into the default branch without ever appearing in it, so commit messages must be
+scanned separately.
+
+This is GitHub's documented behaviour rather than something this project has demonstrated: incident 3
+does not isolate it, because #101's body produced a #49 link too, so the two routes were never
+separated. This repo still has no natural experiment that separates them — every keyword-bearing
+commit that has landed on an integration branch arrived in a PR whose body carried the same link.
+Stated here because a check that cannot see one of its inputs should say so.
+
+### What to actually do
+
+The rules in `CLAUDE.md` are the operative version. The habits behind them:
+
+- Run the GraphQL check on **every** PR before merging, including — especially — ones meant to close
+  nothing. Two of the three incidents were PRs that were not trying to close anything.
+- Scan commit messages separately, since the check cannot see them.
+- When writing *about* keywords, put them in backticks. That is verified safe, and it is the
+  technique this section depends on.
+- Apply a rule to the document stating it before shipping that document. Incident 3 is what happens
+  otherwise, and one query would have caught it.
 
 ## AGENT_LOG.md discipline
 

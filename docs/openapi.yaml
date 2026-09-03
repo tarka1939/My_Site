@@ -38,8 +38,8 @@ info:
 servers:
   - url: http://localhost:8080/api/v1
     description: Local development
-  - url: https://TBD-vps-host/api/v1
-    description: Production (VPS provider not yet chosen -- see docs/DECISIONS.md)
+  - url: https://tarka1939.bieda.it/api/v1
+    description: Production (Mikrus VPS, subdomain fronted by Cloudflare -- see docs/DECISIONS.md)
 
 tags:
   - name: Projects

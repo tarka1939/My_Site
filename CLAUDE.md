@@ -5,6 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commit conventions
 Never add "Co-Authored-By" lines to commits. Do not include Claude attribution in commit messages, PR descriptions, or any git metadata.
 
+## Branches
+
+`dev` is the integration branch and GitHub's **default**. `main` is production — Netlify and the VPS deploy from it, so a merge to `main` is a release.
+
+- Cut every worktree and branch from `My_Site/dev`. Feature PRs target `dev` and need no `--base`.
+- Only a `dev` → `main` promotion PR merges into `main`: `--base main`, and **no closing keywords** — its issues closed already, when the feature PR merged.
+- `dev` is the default branch *because* `Closes #N` only fires when a PR's base is the default. Leaving `main` default would silently void every feature PR's closing keywords, exactly as the stale `master` did to PRs #76, #77 and #79, which are permanently unlinked. (#80 hit the same bug but was repaired while still open and closed its ten issues on merge.)
+- A hook denies checking `main`/`master`/`dev` out from a session. To refresh one, `git switch <branch> && git merge --ff-only My_Site/<branch>`.
+
+ADR and the reasoning: `docs/DECISIONS.md`, 2026-08-27.
+
 ## Issue and PR conventions
 
 Every **issue** needs **area labels** and a **milestone**. Labels are area-only: `backend`, `frontend`, `infra`, `documentation`, `content` — the stock GitHub set (`bug`, `enhancement`, ...) has never been used here, so don't start. `gh issue create` sets neither by default and warns about neither, so pass `--label` and `--milestone` on the create call itself; 15 issues shipped bare before anyone noticed, because the checklist below said "PR" and was read as covering only PRs.
@@ -15,9 +26,9 @@ After filing, verify rather than assume — an unlabelled issue looks identical 
 gh issue list --state open --limit 200 --json number,labels --jq '[.[]|select(.labels|length==0)|.number]'
 ```
 
-Every **PR** needs: **issues linked** (one `Closes #N` per line — a comma-separated list silently links only the first), **milestone** (look the number up; it does not match the phase number), and **project board** entry with Status.
+Every **PR** needs: **base `dev`** (the default, so no `--base` for feature work), **issues linked** (one `Closes #N` per line — a comma-separated list silently links only the first), **milestone** (look the number up; it does not match the phase number), and **project board** entry with Status.
 
-Closing keywords fire from *anywhere* in the body, including prose explaining or denying them. Backticks neutralise a keyword; blockquotes do not. `closingIssuesReferences` reads only the PR description, so scan commit messages separately. The keywords are `close`/`fix`/`resolve` and their inflections.
+Closing keywords take effect only when the PR's base is the **default** branch, which is `dev`; a PR targeting `main` links nothing. Within that, they fire from *anywhere* in the body, including prose explaining or denying them. Backticks neutralise a keyword; blockquotes do not. `closingIssuesReferences` reads only the PR description, so scan commit messages separately. The keywords are `close`/`fix`/`resolve` and their inflections.
 
 Run `gh api graphql` for `closingIssuesReferences` before merging — including on PRs meant **not** to close anything. See `docs/AGENT_WORKFLOW.md` for the three incidents behind this.
 
@@ -29,7 +40,7 @@ client's JSDoc, so a **description-only** contract edit still produces a real di
 two description strings, was merged on the correct reasoning that no generated *type* could change,
 and left the client stale anyway — the two claims are not the same claim.
 
-Run the regenerate and require `git status --porcelain` to come back empty. When starting contract
+Run the regenerate and require **`git add -A && git diff --cached --numstat`** to come back empty. Neither simpler check works alone: `git status --porcelain` reports a false positive on Windows, and `git diff --numstat` gives a false *negative* on the case that matters most — it compares the working tree to the index, so a **newly generated** model or service file is invisible to it, which is exactly the shape of a stale client after a schema is added. Staging first normalises the line endings away and makes new files visible at once. (Warnings go to stderr; "empty" means stdout.) `.gitattributes` is `* text=auto eol=lf` while `core.autocrlf` is `true`, so the generator's CRLF output makes `.openapi-generator/FILES` show as modified when its content is byte-identical after normalisation. That looks exactly like the PR #129 stale-client bug and is not it. When starting contract
 work, regenerate from the *unmodified* spec first: any drift that surfaces belongs to an earlier
 merge, and baselining is what keeps it from being absorbed into your commit and misattributed.
 
@@ -55,12 +66,12 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 ## Never quote a working tree without naming its branch
 
-This repo is worked through many checkouts at once and none is reliably `main`. A path alone is not a reference.
+This repo is worked through many checkouts at once and none is reliably `dev`. A path alone is not a reference.
 
 - Resolve content through an explicit ref: `git show <ref>:<path>`. The remote here is `My_Site`, not `origin`.
 - State provenance as `git rev-parse --short HEAD` **plus** `git status --porcelain`. A branch name is not enough — `--abbrev-ref` returns `HEAD` in the detached worktrees used for review, and says nothing about uncommitted edits.
 - Quote searchable text, not line numbers, in fast-moving files.
-- `git fetch` before comparing against any remote ref, and never assume a local branch matches its remote — including `main`.
+- `git fetch` before comparing against any remote ref, and never assume a local branch matches its remote — including `dev` and `main`.
 
 Current checkout state and the incidents behind this: `docs/AGENT_WORKFLOW.md`.
 
@@ -98,7 +109,7 @@ Six agents were terminated mid-task over 2026-08-07 to 08-10, every one with com
 - Commit each logically complete change as it passes its own check.
 - Commit **before** anything exploratory — a mutation test is when a termination is most expensive.
 - Push at checkpoints: commits survive `git worktree remove` on a named branch, but not in a detached worktree.
-- Do not withhold a commit for tidiness.
+- Do not withhold a commit for tidiness. Branches land here as merge commits rather than squashes, so intermediate commits survive into the integration branch — a reason to write clear messages, not a reason to batch.
 
 ## Project
 
@@ -210,6 +221,7 @@ Before considering a write endpoint, auth flow, or migration done, check every i
 - `docs/DECISIONS.md` — locked-in technical decisions and why
 - `docs/DATA_MODEL.md` — entities and relationships
 - `PROJECT_TODO.md` — phase-by-phase build plan
+- `docs/DEPLOYMENT.md` — the Phase 5 runbook: what only the owner can do, and the env vars the prod profile actually reads (they are not the ones the local-dev section above lists)
 - `AGENT_LOG.md` — record agent mistakes/fixes here for the whole project, not just Phase 4
 - `docs/AGENT_WORKFLOW.md` — how to run agent sessions (sequential single-agent vs. dispatcher vs. isolated worktrees) and when each applies; see also `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md`
 - `docs/AUTONOMOUS_WORKFLOW.md` — the operative workflow for Phase 4's tail through Phase 6: one persistent "Senior Dev" session, independent fresh-session PR review, ambiguity/escalation handling, and the Phase 5 pre-flight checklist
