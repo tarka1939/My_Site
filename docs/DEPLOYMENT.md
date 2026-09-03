@@ -498,9 +498,35 @@ curl -s localhost:8080/actuator/health
 Nothing else. `show-details: when-authorized` means an anonymous caller sees only the status, which
 is why it is safe to expose through the provider's proxy in 4.8.
 
-`-Xmx512m` is deliberate. The JVM's default maximum heap is a quarter of RAM, which on a 2 GB box has
-it competing with Postgres; many providers also ship no swap, and the OOM killer takes Postgres as
-readily as the JVM. If `free -h` shows none, add some:
+`-Xmx512m` is deliberate: the JVM's default maximum heap is a quarter of RAM, which on a 2 GB box
+leaves it competing with Postgres. It is half of the answer; the other half is the next step.
+
+If it does not come up, the likely causes are: a missing variable from 4.6 (the app names which),
+the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
+rather than an exhaustive one.
+
+### 4.7a Swap — do this, it is not optional here
+
+**Check what you have:**
+
+```bash
+free -h
+```
+
+A `Swap:` row of `0B` is the common case on a small VPS, and on this host it is actively dangerous
+rather than merely tight. **The provider runs `earlyoom`, configured to kill `java` first:**
+
+```
+/usr/bin/earlyoom -r 3600 -m 15,8 --avoid (^|/)(sshd|systemd|init|bash)$ --prefer ^(node|python|php|java|chrome)$
+```
+
+Read the `--prefer` list. Under memory pressure your application is not *a* candidate, it is **the**
+designated victim — chosen ahead of Postgres, ahead of everything. With `Restart=on-failure` in the
+unit, the visible symptom is an app that restarts every few minutes for no reason found in its own
+logs, because the kill is recorded by `earlyoom` rather than by the JVM. That is a genuinely
+miserable thing to debug without knowing this.
+
+Add a swapfile:
 
 ```bash
 sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile
@@ -508,9 +534,22 @@ sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-If it does not come up, the likely causes are: a missing variable from 4.6 (the app names which),
-the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
-rather than an exhaustive one.
+The `fstab` line is what makes it survive a reboot — without it `swapon` lasts until the host
+restarts and the problem returns silently. Confirm:
+
+```bash
+free -h && swapon --show
+```
+
+```
+               total        used        free      shared  buff/cache   available
+Swap:          1.0Gi          0B       1.0Gi
+NAME      TYPE SIZE USED PRIO
+/swapfile file   1G   0B   -2
+```
+
+Swap on a container is not free — it is disk, and the provider may account for it — but 1 GB against
+25 GB is cheap insurance against a process kill that looks like an application bug.
 
 ### 4.8 Exposing it to the internet
 
@@ -732,12 +771,21 @@ scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite-new.jar
 test -s /home/deploy/mysite-new.jar \
   && mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar \
   && mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar \
-  && sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health
+  && sudo systemctl restart mysite
+
+# then wait for it, rather than guessing how long it needs
+until curl -sf localhost:8080/actuator/health; do sleep 2; done
 ```
 
 Chained deliberately: if the `scp` never landed — wrong port, full disk, a typo — an unchained
 first `mv` would rename the working jar away, the second would fail, and `systemctl restart`
 would then run against **no jar at all**.
+
+**Poll rather than sleep.** An earlier version waited a fixed 5 seconds and then curled once, which
+on this host reports *nothing at all*: startup takes about 26 seconds, so `curl` hit a closed port
+and `-s` swallowed the error. The operator is left staring at a silent prompt with no way to tell
+success from failure — reported from a live run. The loop above exits the moment it is healthy and
+keeps waiting if it is not; `Ctrl-C` if it never comes.
 
 Expect `{"groups":["liveness","readiness"],"status":"UP"}`. If not, roll back — keeping the
 failed build, because rolling straight over it destroys the thing you were about to diagnose:
