@@ -3,3 +3,18 @@ app:
     # Fixed test secret so @SpringBootTest contexts can resolve app.jwt.secret without an
     # env var -- deliberately not the dev default, to keep test config self-contained.
     secret: test-only-jwt-secret-not-for-production-0123456789
+  forwarded-headers:
+    # Turned ON in the test profile so the integration tests exercise the real bean wiring --
+    # AuthService and ContactService reaching a ClientIpResolver that is actually configured for
+    # a proxy -- rather than a resolver constructed by hand in the test. Getting the wiring wrong
+    # is exactly the failure this is meant to catch.
+    #
+    # The proxy block is TEST-NET-2 (198.51.100.0/24) and the simulated clients are TEST-NET-3
+    # (203.0.113.0/24), deliberately different blocks: every pre-existing test stubs a
+    # 203.0.113.x remote address, and those must keep resolving to their own address rather than
+    # becoming trusted peers whose headers are read.
+    trusted-proxies: 198.51.100.0/24
+    client-ip-header: CF-Connecting-IP
+    # Two, matching prod's two-proxy chain, so the "which entry of X-Forwarded-For" arithmetic is
+    # tested at the value production actually uses.
+    trusted-hop-count: 2
