@@ -12,7 +12,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 **Phase 8 (polishing and cleaning) has started** with the visual design the site never had (#152) — a token layer where every colour that needs a different value on each ground gets one, with its measured contrast ratio recorded beside it, a real type scale, self-hosted faces rather than the Google Fonts CDN, and a card grid that generates per-project artwork where no image exists. What remains in the milestone is the security hardening deferred from Phases 1-3 — a Content-Security-Policy (#122) and the JavaScript-readable admin JWT (#123) — plus two smaller things the visual work turned up: contrast figures in comments that do not survive recomputation (#159), and an unanswered design question about how a dead image should look on the detail page (#160).
 
-**Phase 5 (deployment) is underway, and the backend is live.** `https://tarka1939.tojest.dev/actuator/health` answers from the public internet, with Flyway's migrations applied against Postgres on a self-managed VPS. The host is a NAT'd LXC container whose ports 80 and 443 belong to the provider, so TLS is terminated upstream rather than by us — the reasoning, and the Caddy/Let's-Encrypt plan it replaced, are an ADR in `docs/DECISIONS.md`. The frontend is still not deployed, nobody can log in to the admin panel yet (#121), and the running jar predates CORS (#44) and forwarded-header handling (#168) — so a browser on the Netlify origin would still be blocked, and both rate limiters remain collapsed into one bucket until it is redeployed.
+**Phase 5 (deployment) is underway, and the backend is live.** `https://tarka1939.bieda.it/actuator/health` answers from the public internet, with Flyway's migrations applied against Postgres on a self-managed VPS. The host is a NAT'd LXC container whose ports 80 and 443 belong to the provider, so TLS is terminated upstream rather than by us — the reasoning, and the Caddy/Let's-Encrypt plan it replaced, are an ADR in `docs/DECISIONS.md`. CORS (#44) and forwarded-header handling (#168) are deployed and verified against the live host — a preflight from the Netlify origin is answered, an unlisted origin is refused with 403, and the login limiter returns 429 on the sixth attempt. The frontend is still not deployed, and nobody can log in to the admin panel yet (#121).
 
 `PROJECT_TODO.md` carries the authoritative per-phase status; this section summarises it and can lag.
 
@@ -20,7 +20,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 - **What it is:** A personal portfolio site (Angular + Spring Boot) hosting a project portfolio, doubling as a deliberate practice ground for multi-agent development workflows (spec-first, parallel agents, documented review).
 - **Who it's for:** Visitors browsing the portfolio and submitting contact messages; a single site-owner admin managing project content.
-- **Live URL:** none yet — the frontend is not deployed. The backend is live and public at `https://tarka1939.tojest.dev` (health and read endpoints answer; there is no content in it yet).
+- **Live URL:** none yet — the frontend is not deployed. The backend is live and public at `https://tarka1939.bieda.it` (health and read endpoints answer; there is no content in it yet).
 
 ## How this is built
 

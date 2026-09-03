@@ -297,6 +297,229 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-04 — four numbers I did not measure, and a review I priced wrong
+
+**Task given:** coordinate the Phase 5 promotion and the follow-up fixes — #175, #178/#180, #179's
+release, #177's security ADR, and the contact/reset-link defects the owner found on the live site.
+
+**Agent(s) used:** two backend agents and one frontend agent on Opus, five cold reviewers. Every
+failure below is the coordinator's.
+
+**What went right:** the dispatched work was strong, and it was strong in a specific way — three
+separate agents verified a claim by *breaking* it rather than by reading. #180 force-failed a
+throwaway spec to observe what `fileReplacements` actually resolves to under `ng test`. #187's
+backend swapped in `markUsedIfValid` and confirmed the test failed before reverting. #186 mutated
+its own listener three ways and found that two of the three mutations passed the whole suite —
+the tests could prove a message survives a Resend failure but not that the send was off the
+request thread. None of those were asked for in that form.
+
+**What went wrong (be specific):**
+
+**Four claims stated as fact, none of them measured.**
+
+- **"The backend suite is 213 tests."** I ran `mvn -q test`, which suppresses the summary line, then
+  reconstructed a total by regexing `target/surefire-reports`. The real number is 235. I published
+  213 as a *finding against an accurate log entry*, opened a correction branch, and put a hold on
+  the release PR. A raw count of `@Test`-family annotations gives 224 — a floor, since parameterized
+  cases expand — so 213 was arithmetically impossible and one `grep` would have caught it before I
+  said anything.
+- **"The admin password is not set."** I probed the login endpoint, got `401`, and recorded it as
+  fact. `401` is also what a *wrong* password returns, and I had no credentials — the observation
+  could not distinguish the two. It went into a PR body and several status tables before the owner
+  corrected it.
+- **"The contact form sends no POST."** My click missed the button, which sits at y=521 in a 519px
+  viewport. I was one message from filing it as a defect.
+- **"The commit count is 290 of 372."** Stale at the commit that introduced it.
+
+The shape is the same each time: an observation that *could* mean two things, resolved toward the
+one I already expected, then repeated until someone else checked.
+
+**Three near-misses from testing the wrong target.** A dev server started from the session's
+working directory rather than the branch's worktree, so a footer screenshot showed the old text. A
+click at a stale coordinate. A backend that failed to start with *"Port 8080 was already in use"*
+while a nine-day-old process answered my health check and 404'd the new endpoint. Each looked
+exactly like a real defect.
+
+**A review priced for the wrong job.** A scoped check of a 19-line documentation diff went to Opus
+under `CLAUDE.md`'s "cold PR review → Opus, never cheapen". That rule is written for full reviews of
+unfamiliar code; this was a bounded delta closer to "running a gate and reporting real output →
+Sonnet". It cost ~93k tokens, and the floor was fixed overhead rather than the diff: `CLAUDE.md` is
+227 lines and ~5,750 tokens, charged to every dispatch, with no nested files to scope it. Filed as
+#188.
+
+**Saying a thing would be logged, instead of logging it.** I twice told the owner a finding
+"belongs in `AGENT_LOG`" and moved on. Both times they had to ask. An intention announced reads as
+work done, which is worse than silence.
+
+**A citation merged before its target.** #175 shipped a runbook line citing a 2026-09-03 ADR that
+was sitting unmerged in #177, leaving a dangling pointer in production docs — the exact defect class
+as #162, which was fixed earlier the same day. Holding a PR through four review rounds is not free.
+
+**How it was caught:** the owner caught the password claim, the plaintext fragments and both
+unwritten log entries. Cold reviewers caught the rest. No gate caught any of it, because none of
+these are the kind of thing a gate can see.
+
+**Fix applied:** the 213 correction was reverted and its branch deleted before merge; the release
+PR carries the correction. #177's four rounds are merged and the dangling pointer resolves. #188
+covers the dispatch overhead.
+
+**Takeaway for next time:**
+
+- **A number that agrees with what you expected still has to be measured.** All four bad claims
+  confirmed a prior. That is when to check, not when to stop.
+- **Read the tool's own summary, not a derived artifact.** `mvn` prints the total; `-q` hides it,
+  and parsing the reports directory instead is how 213 happened.
+- **Sanity-check against a floor before reporting.** 224 annotations made 213 impossible for free.
+- **Name the target before believing the result.** Which worktree, which process, which coordinate.
+  Three of this session's near-misses were one identity check away from being obvious.
+- **The model allowlist prices the job, not the diff — but a bounded delta is a different job.**
+- **Do not announce that something belongs in the log. Put it there.**
+
+## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
+
+**Task given:** add a test that reads the real `frontend/src/index.html` and asserts its
+`preconnect`/`dns-prefetch` hints for the backend agree with `apiBaseUrl` in
+`frontend/src/environments/environment.ts`. The subdomain moved twice in Phase 5, both times by hand
+in both files, and PR #175 exists because one of those edits was missed.
+
+**Agent(s) used:** one frontend agent on **Opus** in the `phase5/host-agreement-test` worktree — new
+application code, which `CLAUDE.md` puts on Opus by default.
+
+**What went right:** the brief's demand to break the test deliberately before committing was worth
+more than the test-writing. Five break scenarios were run, not one: stale host in `index.html`,
+stale host in `environment.ts`, the API `preconnect` deleted while an unrelated one remained, and
+`crossorigin` dropped. The third is the one that mattered — it is the check that the test is not
+passing vacuously off some *other* origin hint, and only a deliberate break can distinguish it from
+a real pass.
+
+**What went wrong (be specific):** the natural implementation — `import { environment } from
+'../environments/environment'` and compare against `new URL(environment.apiBaseUrl).origin`, which is
+literally what issue #178 suggests — reads the **development** environment under `ng test`, not the
+production one. angular.json's `development` build configuration carries a `fileReplacements` entry
+swapping `environment.ts` for `environment.development.ts`, and the unit-test builder applies it. So
+inside a spec that import yields `production: false, apiBaseUrl: '/api/v1'`. There is no import
+specifier that reaches the production file, because the replacement is keyed on the *resolved path*,
+not the specifier.
+
+This would not have failed loudly in a useful way. `new URL('/api/v1')` throws, so a first cut would
+have looked like a broken test rather than a wrong one, and the tempting repair — guard the throw,
+or skip when `apiBaseUrl` is relative — produces a test that passes everywhere and checks nothing.
+That is the exact failure mode the issue was filed about, reproduced one level up: a hint nobody
+verifies, replaced by an assertion nobody verifies.
+
+**How it was caught:** not by reasoning about it. Before writing anything, a throwaway spec was run
+that force-failed on `expect(\`prod=${environment.production} url=${environment.apiBaseUrl}\`)`, purely
+to see the value the runner actually resolves. It printed `prod=false url=/api/v1`. Vitest swallows
+`console.log` from a passing test here, so a deliberately failing assertion was the cheap way to read
+a value out of the runner.
+
+**Fix applied:** `frontend/src/api-origin-hints.spec.ts` reads *both* sides off disk —
+`environment.ts` as text, with comments stripped and exactly one `apiBaseUrl` declaration required,
+plus an assertion that the parsed source really says `production: true` so a path mishap onto the
+development file cannot make the rest vacuous. `index.html` is parsed with `DOMParser` (available in
+this jsdom runner) and queried by `rel`, rather than regexed, so the existing font `preload`s and any
+future font-CDN `preconnect` neither break it nor satisfy it. Comparison is origin-to-origin, so a
+trailing slash or path on a hint is not a false failure. Failure messages name both values and both
+files, since the entire point is telling the reader which of the two copies is stale.
+
+**Takeaway for next time:**
+
+- **`fileReplacements` applies under `ng test`, so `environment` in a spec is the development one.**
+  Worth knowing well beyond this test: `error.interceptor.spec.ts` already imports `environment` and
+  is fine only because it uses it to *derive* a URL it then matches against itself. Any spec that
+  asserts something about the deployed configuration has to read the file, not import it.
+- **A test whose subject is "two files must agree" must read both files.** Importing one and
+  hardcoding the other is the same defect the test is for, moved.
+- **Print the value; do not infer it.** The cost of the throwaway force-failing spec was about a
+  minute, against a wrong test that would have passed review because it matches the issue's own
+  suggested shape.
+
+## 2026-09-03 — The first real deployment, and four times the runbook was wrong about the machine in front of it
+
+**Task given:** execute `docs/DEPLOYMENT.md` against a freshly provisioned VPS, with the Senior Dev
+holding SSH and the owner holding sudo. Backend live at `https://tarka1939.bieda.it` by the end.
+
+**Agent(s) used:** one backend agent on Opus for #44/#168, one frontend agent for the host wiring,
+and four cold reviewers. The interesting failures are all the coordinator's.
+
+**What went right:**
+
+**The reviews found things no gate could.** Every defect below was caught by a reviewer or the
+owner, none by a passing test. Both suites stayed green throughout — 235 backend, 341 frontend —
+including while the runbook was telling an operator to do impossible things.
+
+**Proving the path before deploying onto it.** A throwaway `python3 -m http.server 8080 --bind ::`
+established DNS, the provider's proxy, TLS, the port mapping and the firewall as one unit, before
+the app existed. When the real deploy later 404'd, that separation was what made it cheap to
+diagnose.
+
+**What went wrong (be specific):**
+
+**Four times, the document described a machine other than the one in front of it.** Each was
+plausible, each cost real time, and the pattern is the finding rather than any one instance:
+
+- **§4.8 prescribed Caddy and Let's Encrypt on ports 80 and 443.** Those ports belong to the
+  provider on a shared-IP host and answer with its certificate. Neither ACME challenge can work.
+- **§4.2 said port 8080 must never be open.** True for a reverse proxy on the same box, false for a
+  provider proxy that connects across the network — and the symptom is a *timeout*, which reads like
+  anything except a firewall.
+- **§4.4 predicted Java 25 would be unpackaged on Ubuntu 24.04.** It is packaged, at the exact build
+  the project compiles with.
+- **§4.7a told the operator to create swap.** An unprivileged LXC container cannot enable swap;
+  `swapon` fails with `Operation not permitted`. This one is the worst of the four, because
+  `systemd-detect-virt` had reported `lxc` in the *first survey run on the box*, and the section was
+  written afterwards anyway.
+
+**The same secret-handling mistake, in three sections, fixed one at a time.** §4.3 used psql's
+`\password` prompt specifically so a credential never reaches a command line. §4.6 then had the
+operator paste the database password into a heredoc. Corrected — and §6 was still pasting the admin
+password into an `UPDATE`. The operator reported it twice, in two different sections, having already
+reported the first. A principle applied in one section and not carried across the file is not a
+principle, it is a coincidence.
+
+**A correction that made a rule worse.** `CLAUDE.md`'s API-client check was changed from
+`git status --porcelain` to `git diff --numstat` to dodge a CRLF false positive. `git diff` compares
+the working tree to the *index*, so a newly generated model or service file — the exact shape of a
+stale client — is invisible to it. Measured: 0 rows for a new file where `status` shows 1. The rule
+now reads `git add -A && git diff --cached --numstat`.
+
+**Committing before reading a gate.** Pushed a commit and only then looked at `TEST_EXIT=1`, having
+deleted the log in the same command. The failure was environmental (a fresh worktree with no
+`node_modules`, so `ng` did not exist) but that was not known at push time. "Nothing merges on a
+report" is in `README.md` in the coordinator's own words.
+
+**Diagnosing an outage on a hostname that had been retired.** Built a firewall theory out of a 404,
+complete with a suspect and a remediation, without checking that the host still existed. The blocked
+port that "proved" it was the operator's own firewall tightening working exactly as designed.
+
+**A conflict resolution that silently ate work.** `git checkout --theirs -- <path>` takes the entire
+incoming file, not the conflicted hunk, so every cleanly auto-merged change on that branch went with
+it. The merge committed, the tree was clean, nothing errored. Caught only by grepping for content
+that should have been present.
+
+**How it was caught:** the owner, for the three secret-handling repeats and the missing swap section;
+cold reviewers for everything else. Notably the reviewer that checked the live host rather than the
+diff caught four documents claiming the deployed jar lacked CORS while a preflight against that jar
+was answering correctly.
+
+**Fix applied:** each section corrected in place with the original claim left visible, since the
+wrongness is the useful part. `docs/DECISIONS.md` gained an ADR for the exposure decision and a
+correction to its own count of where the backend host appears — it said three places and named the
+wrong third, omitting the one that breaks the deployed site.
+
+**Takeaway for next time:**
+
+- **A runbook is a claim about a specific machine.** Every one of the four errors was a general
+  truth applied to a host it did not describe. `systemd-detect-virt` costs nothing and would have
+  caught two of them before either was written.
+- **Carry a principle across the whole file the moment you apply it once.** Three sections handled
+  credentials three different ways, and the inconsistency was visible on the page.
+- **A fix to a rule needs the same adversarial reading as a fix to code.** The `--numstat` change
+  looked strictly better and was strictly worse on the case that mattered.
+- **Verify the premise before diagnosing from it.** Checking that a hostname still resolves is
+  cheaper than any theory built on the assumption that it does.
+
+
 ## 2026-09-03 — #44 and #168: the header that carries the truth is not the one at either end of the list
 
 **Task given:** Implement CORS (#44) and the conditional forwarded-header client IP (#168) on
