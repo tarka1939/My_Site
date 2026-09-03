@@ -505,51 +505,61 @@ If it does not come up, the likely causes are: a missing variable from 4.6 (the 
 the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
 rather than an exhaustive one.
 
-### 4.7a Swap — do this, it is not optional here
+### 4.7a Memory pressure, and why swap probably will not help you
 
-**Check what you have:**
+**Check what kind of host you are on first.** This determines whether the usual answer is even
+available:
 
 ```bash
-free -h
+systemd-detect-virt && free -h
 ```
 
-A `Swap:` row of `0B` is the common case on a small VPS, and on this host it is actively dangerous
-rather than merely tight. **The provider runs `earlyoom`, configured to kill `java` first:**
+**If that says `lxc` (or `openvz`), swap is not available to you and you should not try.** An
+unprivileged container cannot enable its own swap — swap is a host-level resource, and the kernel
+refuses. Confirmed on this deployment:
 
 ```
-/usr/bin/earlyoom -r 3600 -m 15,8 --avoid (^|/)(sshd|systemd|init|bash)$ --prefer ^(node|python|php|java|chrome)$
+$ sudo swapon /swapfile
+swapon: /swapfile: swapon failed: Operation not permitted
 ```
 
-Read the `--prefer` list. Under memory pressure your application is not *a* candidate, it is **the**
-designated victim — chosen ahead of Postgres, ahead of everything. With `Restart=on-failure` in the
-unit, the visible symptom is an app that restarts every few minutes for no reason found in its own
-logs, because the kill is recorded by `earlyoom` rather than by the JVM. That is a genuinely
-miserable thing to debug without knowing this.
+The file is created, `mkswap` succeeds, the `fstab` line is accepted, and `swapon` fails at the last
+step — so you end up with a gigabyte of disk doing nothing and, worse, a `free -h` you might not
+re-check. If you already made one: `sudo rm /swapfile` and drop the `fstab` line.
 
-Add a swapfile:
+On a real VM the usual three commands do work, and are worth running:
 
 ```bash
 sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h && swapon --show      # verify -- do not assume the fstab line means it is active
 ```
 
-The `fstab` line is what makes it survive a reboot — without it `swapon` lasts until the host
-restarts and the problem returns silently. Confirm:
+#### Which matters because of what the provider runs
 
-```bash
-free -h && swapon --show
-```
+Read this even if you skipped the above. On this host:
 
 ```
-               total        used        free      shared  buff/cache   available
-Swap:          1.0Gi          0B       1.0Gi
-NAME      TYPE SIZE USED PRIO
-/swapfile file   1G   0B   -2
+/usr/bin/earlyoom -r 3600 -m 15,8 --avoid (^|/)(sshd|systemd|init|bash)$ --prefer ^(node|python|php|java|chrome)$
 ```
 
-Swap on a container is not free — it is disk, and the provider may account for it — but 1 GB against
-25 GB is cheap insurance against a process kill that looks like an application bug.
+Look at `--prefer`. Under memory pressure your application is not *a* candidate for the OOM killer,
+it is **the designated victim** — chosen ahead of Postgres and ahead of everything else on the box.
+
+**The symptom is the expensive part.** With `Restart=on-failure` in the unit, an `earlyoom` kill
+looks like an application restarting every few minutes for no reason found anywhere in its own
+logs — because the kill is recorded by `earlyoom`, not by the JVM. Without knowing the above you
+would look for a bug in the application, and there would not be one.
+
+So on a container, where swap is unavailable, the risk is **managed rather than removed**:
+
+- **`-Xmx512m` in the unit is the main lever**, and it is the reason it is there rather than a
+  round number. The JVM's default ceiling is a quarter of RAM and it will happily grow into it.
+- **Know the signature.** `journalctl -k` is empty in a container, so the kill leaves no trace you
+  can see. Repeated restarts with a clean application log *are* the evidence.
+- **Watch the headroom** occasionally with `free -h`. This deployment idles around 1.3 GB free of
+  2 GB, which is comfortable; if that shrinks, lower `-Xmx` before something else decides for you.
 
 ### 4.8 Exposing it to the internet
 
