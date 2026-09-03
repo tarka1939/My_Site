@@ -308,7 +308,7 @@ in both files, and PR #175 exists because one of those edits was missed.
 application code, which `CLAUDE.md` puts on Opus by default.
 
 **What went right:** the brief's demand to break the test deliberately before committing was worth
-more than the test-writing. Four break scenarios were run, not one: stale host in `index.html`,
+more than the test-writing. Five break scenarios were run, not one: stale host in `index.html`,
 stale host in `environment.ts`, the API `preconnect` deleted while an unrelated one remained, and
 `crossorigin` dropped. The third is the one that mattered — it is the check that the test is not
 passing vacuously off some *other* origin hint, and only a deliberate break can distinguish it from

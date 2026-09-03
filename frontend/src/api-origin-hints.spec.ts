@@ -104,11 +104,19 @@ const parsedIndex = new DOMParser().parseFromString(html, 'text/html');
  * `preload`s) and may gain more -- a `preconnect` to a font CDN or an analytics host is an ordinary
  * thing to add. A regex loose enough to find "the preconnect" would start matching one of those the
  * day it appears; querying by `rel` and then comparing origins cannot.
+ *
+ * The price of that tolerance, stated plainly so nobody assumes coverage this does not have:
+ * a *superseded* hint left alongside the correct one -- the additive half of a rename -- passes.
+ * Both hosts are hinted, one of them pointlessly, and that is the exact waste this file exists
+ * to prevent, in the one shape it cannot see.
  */
-function hints(rel: string): { href: string; crossorigin: boolean }[] {
+function hints(rel: string): { href: string; crossorigin: string | null }[] {
   return [...parsedIndex.querySelectorAll('link[rel="' + rel + '"]')].map((link) => ({
     href: link.getAttribute('href') ?? '',
-    crossorigin: link.hasAttribute('crossorigin'),
+    // The *value*, not just presence. `crossorigin="use-credentials"` is a real attribute and
+    // warms the wrong socket pool -- exactly the defect the assertion below describes -- so
+    // hasAttribute() would wave through the thing being guarded against.
+    crossorigin: link.getAttribute('crossorigin'),
   }));
 }
 
@@ -121,6 +129,26 @@ function originOf(href: string): string | null {
   }
 }
 
+/**
+ * Fails with the offending value rather than letting `new URL()` throw a bare `Invalid URL`.
+ * A relative production `apiBaseUrl` is not absurd -- it becomes correct the day the API is
+ * fronted same-origin -- and when it happens the reader needs to be told which file to look in,
+ * not handed a TypeError naming neither.
+ */
+function requireOrigin(apiBaseUrl: string): string {
+  const origin = originOf(apiBaseUrl);
+  if (origin === null) {
+    throw new Error(
+      'production apiBaseUrl is not absolute, so no index.html origin hint can match it: ' +
+        apiBaseUrl +
+        ' (' +
+        PROD_ENVIRONMENT +
+        ')',
+    );
+  }
+  return origin;
+}
+
 function mismatchMessage(rel: string, apiBaseUrl: string, found: { href: string }[]): string {
   return (
     'index.html has no <link rel="' +
@@ -129,7 +157,7 @@ function mismatchMessage(rel: string, apiBaseUrl: string, found: { href: string 
     '  environment.ts apiBaseUrl: ' +
     apiBaseUrl +
     '  (origin ' +
-    new URL(apiBaseUrl).origin +
+    (originOf(apiBaseUrl) ?? '(not an absolute URL)') +
     ')\n' +
     '  index.html ' +
     rel +
@@ -161,7 +189,7 @@ describe('index.html resource hints agree with the production API origin', () =>
 
   it('preconnects to the origin apiBaseUrl actually names', () => {
     const apiBaseUrl = productionApiBaseUrl();
-    const apiOrigin = new URL(apiBaseUrl).origin;
+    const apiOrigin = requireOrigin(apiBaseUrl);
     const preconnects = hints('preconnect');
 
     expect(preconnects.length, 'index.html declares no preconnect at all').toBeGreaterThan(0);
@@ -172,16 +200,26 @@ describe('index.html resource hints agree with the production API origin', () =>
     );
 
     // Browsers keep separate socket pools for anonymous and credentialed connections. Nothing sets
-    // withCredentials, so every API call goes out anonymous; a preconnect without `crossorigin`
-    // warms the credentialed pool instead and is as wasted as a stale hostname would be.
+    // withCredentials, so every API call goes out anonymous. A preconnect that is not
+    // anonymous-CORS warms the credentialed pool instead and is as wasted as a stale hostname.
+    // A bare `crossorigin` parses as the empty string, which is the anonymous keyword.
     for (const hint of matching) {
-      expect(hint.crossorigin, 'preconnect to ' + hint.href + ' is missing crossorigin').toBe(true);
+      expect(
+        ['', 'anonymous'],
+        'preconnect to ' +
+          hint.href +
+          ' must be anonymous-CORS to warm the pool the app actually uses, but has ' +
+          (hint.crossorigin === null
+            ? 'no crossorigin attribute'
+            : 'crossorigin="' + hint.crossorigin + '"') +
+          '.',
+      ).toContain(hint.crossorigin);
     }
   });
 
   it('dns-prefetches the origin apiBaseUrl actually names', () => {
     const apiBaseUrl = productionApiBaseUrl();
-    const apiOrigin = new URL(apiBaseUrl).origin;
+    const apiOrigin = requireOrigin(apiBaseUrl);
     const prefetches = hints('dns-prefetch');
 
     expect(prefetches.length, 'index.html declares no dns-prefetch at all').toBeGreaterThan(0);
