@@ -21,6 +21,7 @@ import io.github.tarka1939.mysite.ClientIpHasher;
 import io.github.tarka1939.mysite.InMemoryRateLimiter;
 import io.github.tarka1939.mysite.InvalidResetTokenException;
 import io.github.tarka1939.mysite.RateLimitExceededException;
+import io.github.tarka1939.mysite.ResendEmailClient;
 
 import jakarta.servlet.http.HttpServletRequest;
 

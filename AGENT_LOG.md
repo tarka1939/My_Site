@@ -297,6 +297,99 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-03 — #186: the contact form notified nobody, and the fix had a documented way to go wrong
+
+**Task given:** Implement issue #186 — publish a domain event from `ContactService.submit` and email
+the owner via the existing `ResendEmailClient`, with the destination in a new environment variable.
+The brief named the constraint up front: notification is best-effort, persistence is not.
+
+**Agent(s) used:** backend-agent (Opus), in the `My_Site-notify` worktree on
+`feat/contact-notification`.
+
+**What went right:**
+
+The brief pointed at `PasswordResetService.requestReset` and the 2026-08-01 entry above *before*
+asking for a design, and that is the reason this entry has no bug in it. That entry records
+`resendEmailClient.sendPasswordResetEmail(...)` running uncaught inside a `@Transactional` method,
+so a non-2xx from Resend propagated out and changed the HTTP response. The same shape was available
+here and would have been worse: the visitor's message is the product, and losing one because a third
+party had a bad minute is the worst outcome the feature has. Naming the prior incident in the brief
+turned "design an event listener" into "do not reproduce this specific failure", which is a much
+easier instruction to follow.
+
+**What went wrong (be specific):**
+
+Nothing that reached a commit, but two judgement calls are worth recording because neither was
+forced by the brief and both could reasonably have gone the other way.
+
+1. **`ResendEmailClient` lived in `auth/`, and `contact` needed it.** The tempting move was to
+   inject it as-is. `ApplicationModules.verify()` would have **passed**: the class sits in the auth
+   module's base package, which makes it part of that module's public API, so a `contact → auth`
+   dependency is legal. It is also false — email delivery has nothing to do with authentication, and
+   the graph would have said the contact form depends on the login system. This is a case where the
+   enforcement test cannot be the thing that catches the problem, because the problem is not a
+   violation. Moved the class to the application's base package instead, where `ClientIpHasher` and
+   `InMemoryRateLimiter` already live for the identical reason: shared infrastructure that outgrew
+   one module. No new Modulith module was introduced.
+2. **The event carries the submission, not just the id.** `ProjectCreatedEvent` is the precedent and
+   carries only a `UUID`. Copying it would have meant re-reading the row in the listener, after the
+   commit — a read the admin can race by deleting the message, silently losing the notification for
+   the one message the owner most needs. `CLAUDE.md`'s concurrency rule says accepting a race is a
+   legitimate answer and not noticing one is not; here the race was avoidable outright, so it was
+   avoided rather than accepted. The cost is that the event holds visitor PII, which is fine in
+   memory and would **not** be fine if `spring-modulith-events` durable publication is ever adopted
+   (`docs/DECISIONS.md` still lists that as undecided). Written on the event's javadoc so the
+   trade-off is visible at the point where it would change.
+
+**How it was caught:** Neither by a test. Both were design decisions taken before code, prompted by
+re-reading the Modulith ADR and `CLAUDE.md`'s concurrency checklist rather than by anything the
+build could report. The Modulith one is the more interesting: a green `ApplicationModules.verify()`
+is evidence about *legality*, not about whether the dependency graph describes the system honestly.
+
+**Fix applied:**
+
+- `ContactMessageReceivedEvent` published from `ContactService.submit` inside the transaction, so
+  Spring holds it to `AFTER_COMMIT` and drops it entirely on rollback.
+- `ContactNotificationListener`: `@TransactionalEventListener(phase = AFTER_COMMIT)` plus
+  `@Async("taskExecutor")` — the executor `AsyncConfig` has provisioned unused since Phase 1, whose
+  javadoc said the DSP demo would be its first consumer; this is. It catches its own
+  `RuntimeException`s and logs.
+- `CONTACT_NOTIFICATION_EMAIL`. Absent is a designed no-op (warn, skip, message still saved and
+  still 201); present-but-malformed throws from the listener's constructor and the app refuses to
+  start. Both halves of `CLAUDE.md`'s config-validation rule are in play in one variable, and the
+  comment says which is which. No default address, and deliberately not an RFC 2606 `.invalid`
+  placeholder either: a placeholder that *parses* would make every environment attempt a send to a
+  domain that cannot receive, which reads as a delivery bug rather than as "nobody configured this".
+- Visitor content in the email is escaped where it is interpolated. The body is HTML-escaped
+  (escape first, *then* introduce `<br>`, or a visitor's typed `<br>` survives). The subject has all
+  control characters stripped, because it is the one value that becomes a MIME header — Jackson
+  would encode a newline safely into the JSON request, but it would arrive at Resend as a literal
+  newline in a value bound for `Subject:`, which is the classic header-injection primitive.
+- Nothing about the visitor is logged at **any** level — not DEBUG either. The message UUID is
+  logged instead, and it points at a row the admin panel already shows.
+
+**Takeaway for next time:**
+
+- **A brief that names the prior incident is worth more than a brief that names the rule.** "Do not
+  call a third party inside the transaction" is a rule anyone would agree with and still violate;
+  "`requestReset` did exactly this on 2026-08-01 and here is what broke" is not.
+- **`ApplicationModules.verify()` passing is not the same as the boundary being right.** Types in a
+  module's base package are its API, so the test is silent about whether a legal dependency is a
+  sensible one. The verify test catches reaching into internals; it cannot catch a module depending
+  on the wrong module correctly.
+- **A no-op reference implementation sets a precedent it was never load-tested for.**
+  `ProjectCreatedEventListener` logs and returns, so `ProjectCreatedEvent` carrying only an id has
+  never had to survive the row being deleted. The first real listener is where that assumption gets
+  tested, and copying the shape without re-deriving it would have shipped the race.
+
+**Test count:** 235 → 252. The 17 added break down as 9 on `ContactNotificationListener` (4 on
+escaping and header sanitisation, 2 on its config validation's two halves, 3 on the happy, degraded
+and throwing paths), 3 on `ResendEmailClient` (unconfigured-key degrade, PII silence, and one
+re-asserting that the reset link stays off WARN across the package move), 2 on the
+publish/don't-publish split in `ContactService`, and 3 end-to-end. The end-to-end class is
+deliberately **not** `@Transactional`: a rolled-back test can never fire an `AFTER_COMMIT` listener
+and would have passed while asserting nothing.
+
 ## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
 
 **Task given:** add a test that reads the real `frontend/src/index.html` and asserts its

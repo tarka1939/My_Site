@@ -413,6 +413,69 @@ Two rules follow and are not optional:
 - **A new failure mode to recognise:** if the subdomain starts returning 502, the first suspect is a
   provider proxy node outside the two `/64`s currently allowed, not the application.
 
+### 2026-09-03 — Contact-form notification, and what it does to `RESEND_API_KEY`
+
+**Context:** `ContactService.submit` persisted a `ContactMessage` and notified nobody (issue #186).
+The visitor was told *"I'll get back to you soon"*, and the only thing making that true was the
+owner remembering to open `/admin/messages`. This was never scoped — `SPEC.md` promises "Contact
+form, with basic rate limiting" and the visitor-side user story is satisfied — so it is a hole
+nobody wrote down rather than a regression.
+
+**Decision:** `ContactService.submit` publishes a `ContactMessageReceivedEvent`; a
+`ContactNotificationListener` in the same module emails the owner via `ResendEmailClient`. The
+destination is a new environment variable, `CONTACT_NOTIFICATION_EMAIL`.
+
+Three things about the listener are load-bearing rather than stylistic:
+
+- **`@TransactionalEventListener(phase = AFTER_COMMIT)`**, so the row is durable before anything is
+  sent and a send failure has no transaction left to roll back.
+- **`@Async("taskExecutor")`**, the executor `AsyncConfig` has provisioned since Phase 1, so a slow
+  or hanging Resend call cannot hold the visitor's response open.
+- **The listener catches its own `RuntimeException`s and logs them.** Notification is best-effort;
+  persistence is not. A contact message is the product, and losing one because a third party had a
+  bad minute is the worst outcome available here.
+
+`AGENT_LOG.md` (2026-08-01) records this exact shape shipping once already, in
+`PasswordResetService.requestReset`: an uncaught Resend call inside a `@Transactional` method, where
+a non-2xx propagated out and changed the HTTP response.
+
+**Alternatives considered:**
+
+- *Send inline in `submit`.* Rejected outright — it is the bug above, with the visitor's message at
+  stake instead of an enumeration side channel.
+- *Carry only the message id in the event and re-read the row in the listener.* Rejected: the admin
+  can delete a message between commit and listener, and the notification would silently vanish for
+  the one message the owner most needs to see. The event carries the submitted values instead.
+- *Leave `ResendEmailClient` in `auth/`.* Rejected. See consequences.
+
+**Consequences:**
+
+- **`RESEND_API_KEY` is no longer demo-only.** Password reset is a showcase feature the real admin
+  does not need, which is why `docs/DEPLOYMENT.md` treats the key as optional and sandbox-shaped.
+  Contact notification is an operational need for the live site, so the key is now load-bearing.
+  It stays *optional* — unset still degrades to warn-and-skip, and the message is still saved and
+  still answered with 201 — but "unset" now means the owner is not told about real enquiries, not
+  merely that a demo is unavailable.
+- **`ResendEmailClient` moved from `auth/` to the application's base package.** It now has callers
+  in two modules. Leaving it in `auth` would have made `contact` depend on the auth module purely to
+  send mail — a dependency `ApplicationModules.verify()` *permits* (it is a base-package type of
+  that module, hence part of its API), which is exactly why the boundary had to be fixed by design
+  rather than left for the test to catch. Email delivery is shared infrastructure, and the base
+  package is already where this project keeps that: `ClientIpHasher` and `InMemoryRateLimiter` are
+  there for the same reason. No new Spring Modulith module was introduced.
+- **The notification email contains visitor-submitted content**, which is escaped where it is
+  interpolated: HTML-escaped in the body, and all control characters stripped from the subject,
+  since the subject is the one value that becomes a MIME header and a smuggled CRLF is the classic
+  header-injection primitive.
+- **Nothing about the visitor is logged, at any level** — not the name, email or message body. The
+  message's UUID is logged instead, which points at a row the admin panel can already show.
+- **A dangling cross-reference was found, not fixed.** `docs/DEPLOYMENT.md` says "See
+  `docs/DECISIONS.md`, 2026-09-03, for why the reset flow exists at all — it is a showcase feature
+  rather than an admin tool". No such text exists in this file; the only other 2026-09-03 entry is
+  the backend-exposure ADR above, which is about TLS. The reasoning it cites is real and is stated
+  in `DEPLOYMENT.md` itself, but the ADR it points at was never written. Flagged rather than
+  invented, since guessing at what an absent decision said is worse than an obviously broken link.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**

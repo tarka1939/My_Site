@@ -65,6 +65,22 @@ app:
     trusted-proxies: ${TRUSTED_PROXIES:}
     client-ip-header: ${CLIENT_IP_HEADER:}
     trusted-hop-count: ${TRUSTED_HOP_COUNT:0}
+  contact:
+    # Issue #186. Where a new contact-form submission is announced. Before this existed the form
+    # notified nobody and messages sat in the database until someone opened the admin panel.
+    #
+    # No default address, and deliberately not an RFC 2606 .invalid placeholder either -- a
+    # placeholder that parses would make every environment attempt a send to a domain that cannot
+    # receive, which looks like a delivery bug rather than "nobody configured this". Empty means
+    # off: ContactNotificationListener warns and skips, and the visitor's message is still
+    # persisted and still answered with 201. That is the designed no-op, the same call as
+    # RESEND_API_KEY's absence below.
+    #
+    # Present but malformed is the other half and is NOT tolerated -- the listener's constructor
+    # throws and the application refuses to start. A typo'd address would otherwise be invisible:
+    # sends fail one at a time in a log nobody reads, and the owner concludes nobody is writing in.
+    # Fail fast on wrong, degrade on unused.
+    notification-email: ${CONTACT_NOTIFICATION_EMAIL:}
   resend:
     api-key: ${RESEND_API_KEY:}
     from-address: ${RESEND_FROM_ADDRESS:onboarding@resend.dev}
