@@ -36,8 +36,7 @@ deferred to Phase 5. **Two of the three are now settled** — see the strikethro
 
 | Decision | Why it blocks | Notes |
 |---|---|---|
-| **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — with no swap on this class of host the JVM plus Postgres does not thrash, it gets
-killed (§4.7a). Pick a region near you, not near nothing. |
+| **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — with no swap on this class of host the JVM plus Postgres does not thrash, it gets killed (§4.7a). Pick a region near you, not near nothing. |
 | **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled that day on `tarka1939.tojest.dev`, and **moved to `tarka1939.bieda.it` on 2026-09-03** — both provider domains, and the change cost only a redeploy, which is why `AGENT_LOG.md`'s 2026-09-02 entry names the older one. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
 | **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** — the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. |
 
@@ -536,7 +535,7 @@ Nothing else. `show-details: when-authorized` means an anonymous caller sees onl
 is why it is safe to expose through the provider's proxy in 4.8.
 
 `-Xmx512m` is deliberate, and it is load-bearing for a reason that is not the obvious one — on
-this host the JVM believes it has 120 GB and would size its heap for a 30 GB ceiling without it.
+this host the JVM believes it has 120 GiB and would size its heap for a 30 GiB ceiling without it.
 §4.7a has the measurement. Do not drop the flag, and do not run the jar by hand without it.
 
 If it does not come up, the likely causes are: a missing variable from 4.6 (the app names which),
@@ -598,10 +597,13 @@ $ java -XX:+PrintFlagsFinal -version | grep -E "MaxHeapSize|MaxRAMPercentage"
    double MaxRAMPercentage = 25.000000     {product} {default}
 ```
 
-**32210157568 bytes is 30 GiB.** At the default 25%, the JVM believes this machine has **120 GiB**.
-It has 2. Container memory detection is not working here — `lxcfs` virtualises `/proc/meminfo`, so
-`free` correctly reports 2 GiB, but the JVM's own container support reads cgroup limits and finds
-none, then falls back to the physical host's figure.
+**32210157568 bytes is almost exactly 30 GiB** (2 MiB under). At the default 25%, the JVM believes this machine has **120 GiB**.
+It has 2. Container memory detection is not working here — that much *is* measured, and it is the
+part that matters. **The explanation below is not measured**, and is marked as such because the
+rest of this section is: the most plausible account is that `lxcfs` virtualises `/proc/meminfo`,
+so `free` reads 2 GiB correctly, while the JVM's own container support looks for a cgroup memory
+limit, finds none, and falls back to the physical host's figure. `cat /sys/fs/cgroup/memory.max`
+on the host would settle it; nobody has run it.
 
 So the flag is not trimming a default that was nearly right. **Without it the JVM would size its heap
 against a ceiling fifteen times the size of the box**, and would grow into it until earlyoom
@@ -623,12 +625,13 @@ Read this even if you skipped the rest. On this host:
 single consumer here, so under pressure it is selected first in practice. (`--prefer` biases the
 ranking; it does not impose an order, and a second `java` or `node` process would compete.)
 
-`-m 15,8` are percentages of **MemAvailable**, so on 2048 MiB:
+`-m 15,8` set the minimum available memory as a percentage of **total** RAM, and earlyoom acts
+when `MemAvailable` falls below it. On 2048 MiB total:
 
 | threshold | signal | what it does to the service |
 |---|---|---|
 | 15% ≈ **307 MiB** | `SIGTERM` | the JVM runs shutdown hooks and exits **143** |
-| 8% ≈ **163 MiB** | `SIGKILL` | the JVM dies outright, `signal=KILL` |
+| 8% ≈ **164 MiB** | `SIGKILL` | the JVM dies outright, `signal=KILL` |
 
 **The two produce opposite symptoms, and an earlier draft only described one.** The unit carries
 `SuccessExitStatus=143` and `Restart=on-failure`, so systemd treats 143 as a *clean* exit and does
@@ -964,7 +967,8 @@ test -s /home/deploy/mysite-new.jar \
   && mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar \
   && mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar \
   && sudo systemctl restart mysite \
-  && for i in $(seq 30); do curl -sf localhost:8080/actuator/health && break; sleep 2; done
+  && { ok=; for i in $(seq 30); do curl -sf localhost:8080/actuator/health && { ok=1; break; }; sleep 2; done
+       [ "$ok" ] || { echo 'health never passed after 60s' >&2; false; }; }
 ```
 
 Chained deliberately: if the `scp` never landed — wrong port, full disk, a typo — an unchained
@@ -1027,8 +1031,8 @@ sudo journalctl -t earlyoom --since -1d       # the OOM daemon -- see 4.7a
 sudo journalctl -u postgresql -n 50
 ```
 
-**`journalctl -k` returns nothing here**, and that is expected rather than broken: an LXC container
-has no kernel ring buffer of its own. It is also why 4.7a reads earlyoom's own journal instead.
+**`journalctl -k` is expected to return nothing on this host** — an LXC container has no kernel
+ring buffer of its own. (A general fact about containers, not something measured here.) It is also why 4.7a reads earlyoom's own journal instead.
 
 #### Check whether the journal survives a reboot
 
