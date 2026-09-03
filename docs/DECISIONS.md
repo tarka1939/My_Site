@@ -507,8 +507,8 @@ DB/migration recovery only)", on the grounds that being locked out with no recou
 migration cost more than building the flow. **What changed is the premise, not the reasoning:** in
 Phase 0 there was no deployed host, no SSH, and no documented recovery procedure. All three now
 exist, and §6 is the procedure. Its real purpose is to demonstrate a complete flow — single-use
-tokens, a hash at rest, 30-minute expiry,
-enumeration-safe responses, per-IP limiting — as portfolio evidence.
+tokens, a hash at rest, 30-minute expiry, enumeration-safe responses, per-IP limiting — as
+portfolio evidence.
 
 Three things follow:
 
@@ -532,7 +532,8 @@ Three things follow:
   environment, so the half that a visitor could exercise is the untested half.
 
 **5. The admin recovery address is a distinct address that has never been published.** Not a secret
-— it cannot be, when an author email sits in 290 public commits — but a real layer nonetheless,
+— it cannot be, when an author email sits in most of this repository's public commits — but a
+real layer nonetheless,
 because `POST /auth/password-reset-request` returns 202 whether or not an address is registered
 (`ifPresent` with no `else`). An attacker attacks the weaker of bcrypt and the mailbox; knowing
 *which* mailbox is most of that work, and an unpublished address withholds it.
@@ -548,7 +549,8 @@ because `POST /auth/password-reset-request` returns 202 whether or not an addres
 - *Postgres `peer` authentication over the unix socket, eliminating the database password entirely.*
   The only option here that removes a class rather than protecting an instance. Rejected for now
   because JDBC needs `junixsocket` — a real dependency change, not a configuration one.
-- *Rewriting git history to remove the author email.* Rejected: 372 commits on a repository whose
+- *Rewriting git history to remove the author email.* Rejected: rewriting the entire history of a
+  repository whose
   value is its documented record, to redact an address already scraped. Setting `git config
   user.email` to GitHub's noreply stops the count growing and is the recommended action; at the
   time of writing it is still the real address, so this is a recommendation rather than a record.
@@ -566,13 +568,15 @@ because `POST /auth/password-reset-request` returns 202 whether or not an addres
 - **§6 of the runbook needs two edits to match clause 5 and clause 3**, and they are made in the
   same change as this entry: it told the operator to set "your real address", which clause 5
   forbids, and it still passed the new password to `curl` on a command line, which clause 3's
-  first two prohibitions forbid. An ADR that claims the runbook agrees with it should not leave
+  first two prohibitions forbid, and printed the bearer token that came back into a pasteable
+  scrollback, which its fourth does. An ADR that claims the runbook agrees with it should not leave
   the disagreement in place.
 - **Three things are deliberately outside the scope above, and saying so is the point of the
   document.** *Cloudflare fronts every API request and terminates the visitor-facing TLS*: the
   sibling exposure ADR above records the `visitor → Cloudflare → provider nginx → container`
   path and that Cloudflare therefore sees contact-form submissions. A third-party processor of
-  personal data that was not chosen but came with the host; accepted, not defended against. *There are no
+  personal data that was not chosen but came with the host; accepted, not defended against.
+  *There are no
   backups* (§9), which means the `systemd-creds` alternative above currently protects an artifact
   that does not exist. *`GITHUB_WEBHOOK_SECRET`* is inert while sync is flagged off, so §2a's
   three-secret list is a list of the live ones rather than an exhaustive inventory.

@@ -718,9 +718,10 @@ IFS= read -rsp 'New admin password: ' ADMPW; echo
 ```
 
 ```bash
+# ADMPW comes from the read -rsp prompt in the block above -- never typed here
 { printf "SET log_statement = 'none'; SET log_min_duration_statement = -1;\n"
   printf "UPDATE admin_user SET password_hash = crypt('%s', gen_salt('bf',10)), email = '%s' WHERE username = 'admin';\n" \
-    "${ADMPW//\'/\'\'}" "recovery-address-you-have-never-published@example.com"
+    "${ADMPW//\'/\'\'}" "<a-recovery-address-you-have-never-published@example.invalid>"
 } | sudo -u postgres psql -d mysite
 unset ADMPW
 ```
@@ -761,7 +762,8 @@ ADMPW="$ADMPW" python3 -c 'import json,os,sys; json.dump({"username":"admin","pa
 unset ADMPW
 ```
 
-**The password never reaches `argv`, and neither does the token.** Three things are deliberate:
+**The password never reaches `argv`, and the token never reaches your scrollback.** Four things
+are deliberate:
 
 **Not `-d '{..."password":"..."}'`,** which an earlier version of this section used. A value passed
 in `-d` is a command-line argument: it lands in shell history and is visible in `ps` to every user
@@ -771,7 +773,9 @@ on the machine you run it from.
 a one-shot assignment scoped to that single process. An `export` puts the password in the
 interactive shell's own environment, where every later child inherits it and any subsequent `env`
 or verbose build prints it — and if the pipeline errors or you Ctrl-C, the `unset` never runs and it
-stays there. No other unprivileged user can read a process environment (`/proc/<pid>/environ` is
+stays there. The variable itself still survives an interrupt either way — `read` set it, so
+re-run `unset ADMPW` if you Ctrl-C; what the one-shot form removes is every later child
+inheriting it. No other unprivileged user can read a process environment (`/proc/<pid>/environ` is
 owner-only on Linux; on Windows it is readable only within your own user context), but your own
 scrollback is exactly the exposure this runbook is trying to avoid.
 
@@ -782,7 +786,8 @@ credential material into the scrollback that `docs/DECISIONS.md`'s 2026-09-03 cl
 That is not hypothetical here: pasted terminal output is the disclosure route that actually
 occurred during this deployment.
 
-`python3` builds the JSON rather than `printf`, because the password has to be *JSON*-escaped and a
+**`python3` builds the JSON rather than `printf`,** because the password has to be *JSON*-escaped
+and a
 hand-rolled version is where this goes wrong: a password containing `"` or `\` produces a malformed
 body and a `400` or `401` that looks exactly like a bad password, sending you to debug a hash that
 is fine. `json.dump` handles every case, including quotes, backslashes and non-ASCII. On Windows the
