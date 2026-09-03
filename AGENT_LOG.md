@@ -297,6 +297,72 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-04 — #185/#187 frontend: a rejection with no destination, and the two states that are not "dead link"
+
+**Task given:** the frontend half of both issues in one branch. #187 — validate the token on route
+entry and replace the form with a dead-link state plus a "Request a new link" action, staying on
+the page rather than redirecting. #185 — make the submit-time `token` rejection visible instead of
+swallowed, following `contact-form.component.ts`'s `hasUnclaimedRejection` pattern, and fix the
+false comment that was the bug. Worktree `D:/repos/My_Site-resetux`, branch `feat/reset-link-ux`,
+cut from the backend branch so `POST /auth/password-reset/validate` was already in the contract.
+
+**The defect, restated because the shape is the transferable part.** Three correct decisions
+combined into a silence. The backend reports a spent token as a field error keyed `token`; the
+reset form has no `token` input, because the token comes from the query string; and
+`error.interceptor.ts` deliberately suppresses the global toast whenever field errors are present,
+on the assumption that a field error renders inline. So the rejection was suppressed as "will be
+shown inline" by a form structurally unable to show it. Pressing the button did nothing at all.
+`reset-password-confirm.component.ts` carried a comment asserting the opposite — "Surfaced globally
+by errorInterceptor (invalid/expired token -> 400, no field errors)" — and every word after the
+parenthesis was false. That comment is why nobody looked.
+
+**The judgement call worth recording: a 429 is not a dead link, and neither is a 500.** The obvious
+implementation validates on load and shows the dead-link state on any failure. That is wrong twice.
+The validate endpoint is rate-limited per requester IP under its own bucket, so a 429 says something
+about how often *this network* has asked and nothing whatever about *this token* — and a 5xx or a
+dropped connection says even less. Failing closed on either would tell someone holding a perfectly
+good link that it was spent, sending them to request links they do not need, and behind a shared NAT
+it would deny the reset outright with no way through. So `linkState` distinguishes six cases, and
+only a literal 400 produces `dead`. `rateLimited` and `unavailable` both **fail open**: they show
+the form under a plainly-worded notice saying the link has not been checked yet and will be checked
+on submit. That is safe only because the submit path is now honest, which is #185 — the two issues
+are load-bearing for each other in both directions, not just the one the issues describe.
+
+**The in-flight state is not cosmetic.** `checking` is the initial value of `linkState`, so the form
+is never the first thing on screen. A form that appears and is then replaced reads as the app
+changing its mind, which is not much better than the bug being fixed. The spec asserts this with an
+observable that never emits, and asserts the *absence of a form* rather than the presence of a
+message — the presence of a message is satisfied by a component that renders both.
+
+**Two destinations, then a catch-all, following the contact form rather than inventing a second
+pattern.** `token` is claimed by the dead-link panel; `newPassword` got a real message slot beside
+its input (it had none, so a server `@Size` rejection of the password had nowhere to land either);
+`hasUnclaimedRejection` catches anything else, including `confirmPassword`, which exists only on the
+client and whose arrival from the server would mean the contract had moved. Slot keys are declared
+once and subtracted once, so a new slot cannot be added without leaving the catch-all, and the
+lookup is `Object.keys().includes()` rather than `in` for the reason the contact form records:
+`'toString' in slots` is true, which would re-create the silent drop through the prototype chain.
+There is a test for exactly that key.
+
+**What the tests can and cannot claim.** 15 new tests; the suite went 345 -> 360. Running the new
+spec against the *unmodified* component was the check that mattered: 13 of the 15 fail, and the
+#185 regression test fails by finding `null` where the dead-link panel should be — nothing rendered,
+which is the defect's actual signature. But `CLAUDE.md`'s standing warning applies in full here.
+Every state in this change is a thing a person looks at, the DOM was correct throughout the original
+bug, and no assertion in this file can tell whether the copy reads right or the notice reads as a
+warning rather than an error. A browser checklist went back with the report instead of a claim that
+it looks correct.
+
+**Left deliberately undone:** `admin-project-form.component.ts` and `admin-projects-list.component.ts`
+have the same latent gap — they read `fieldErrors` with no catch-all — and were left alone on the
+brief's instruction. They are a separate issue and should be filed as one.
+
+**Takeaway for next time:** when an interceptor decides centrally that "something else will render
+this", every component it defers to is silently on the hook for a contract it never signed. The
+audit that found four components and only one guard is the artifact worth repeating, not the fix.
+
+---
+
 ## 2026-09-03 — #187 backend: the endpoint that must not do the thing its neighbour exists to do
 
 **Task given:** the backend half of #187 — `POST /auth/password-reset/validate`, so the reset page
