@@ -459,6 +459,84 @@ Backend 235 tests to 245. The frontend client was deliberately **not** regenerat
   exception out of a `@Transactional` method poisons the surrounding test transaction, so an
   assertion placed for narrative flow can undermine the assertions after it.
 
+## 2026-09-04 — four numbers I did not measure, and a review I priced wrong
+
+**Task given:** coordinate the Phase 5 promotion and the follow-up fixes — #175, #178/#180, #179's
+release, #177's security ADR, and the contact/reset-link defects the owner found on the live site.
+
+**Agent(s) used:** two backend agents and one frontend agent on Opus, five cold reviewers. Every
+failure below is the coordinator's.
+
+**What went right:** the dispatched work was strong, and it was strong in a specific way — three
+separate agents verified a claim by *breaking* it rather than by reading. #180 force-failed a
+throwaway spec to observe what `fileReplacements` actually resolves to under `ng test`. #187's
+backend swapped in `markUsedIfValid` and confirmed the test failed before reverting. #186 mutated
+its own listener three ways and found that two of the three mutations passed the whole suite —
+the tests could prove a message survives a Resend failure but not that the send was off the
+request thread. None of those were asked for in that form.
+
+**What went wrong (be specific):**
+
+**Four claims stated as fact, none of them measured.**
+
+- **"The backend suite is 213 tests."** I ran `mvn -q test`, which suppresses the summary line, then
+  reconstructed a total by regexing `target/surefire-reports`. The real number is 235. I published
+  213 as a *finding against an accurate log entry*, opened a correction branch, and put a hold on
+  the release PR. A raw count of `@Test`-family annotations gives 224 — a floor, since parameterized
+  cases expand — so 213 was arithmetically impossible and one `grep` would have caught it before I
+  said anything.
+- **"The admin password is not set."** I probed the login endpoint, got `401`, and recorded it as
+  fact. `401` is also what a *wrong* password returns, and I had no credentials — the observation
+  could not distinguish the two. It went into a PR body and several status tables before the owner
+  corrected it.
+- **"The contact form sends no POST."** My click missed the button, which sits at y=521 in a 519px
+  viewport. I was one message from filing it as a defect.
+- **"The commit count is 290 of 372."** Stale at the commit that introduced it.
+
+The shape is the same each time: an observation that *could* mean two things, resolved toward the
+one I already expected, then repeated until someone else checked.
+
+**Three near-misses from testing the wrong target.** A dev server started from the session's
+working directory rather than the branch's worktree, so a footer screenshot showed the old text. A
+click at a stale coordinate. A backend that failed to start with *"Port 8080 was already in use"*
+while a nine-day-old process answered my health check and 404'd the new endpoint. Each looked
+exactly like a real defect.
+
+**A review priced for the wrong job.** A scoped check of a 19-line documentation diff went to Opus
+under `CLAUDE.md`'s "cold PR review → Opus, never cheapen". That rule is written for full reviews of
+unfamiliar code; this was a bounded delta closer to "running a gate and reporting real output →
+Sonnet". It cost ~93k tokens, and the floor was fixed overhead rather than the diff: `CLAUDE.md` is
+227 lines and ~5,750 tokens, charged to every dispatch, with no nested files to scope it. Filed as
+#188.
+
+**Saying a thing would be logged, instead of logging it.** I twice told the owner a finding
+"belongs in `AGENT_LOG`" and moved on. Both times they had to ask. An intention announced reads as
+work done, which is worse than silence.
+
+**A citation merged before its target.** #175 shipped a runbook line citing a 2026-09-03 ADR that
+was sitting unmerged in #177, leaving a dangling pointer in production docs — the exact defect class
+as #162, which was fixed earlier the same day. Holding a PR through four review rounds is not free.
+
+**How it was caught:** the owner caught the password claim, the plaintext fragments and both
+unwritten log entries. Cold reviewers caught the rest. No gate caught any of it, because none of
+these are the kind of thing a gate can see.
+
+**Fix applied:** the 213 correction was reverted and its branch deleted before merge; the release
+PR carries the correction. #177's four rounds are merged and the dangling pointer resolves. #188
+covers the dispatch overhead.
+
+**Takeaway for next time:**
+
+- **A number that agrees with what you expected still has to be measured.** All four bad claims
+  confirmed a prior. That is when to check, not when to stop.
+- **Read the tool's own summary, not a derived artifact.** `mvn` prints the total; `-q` hides it,
+  and parsing the reports directory instead is how 213 happened.
+- **Sanity-check against a floor before reporting.** 224 annotations made 213 impossible for free.
+- **Name the target before believing the result.** Which worktree, which process, which coordinate.
+  Three of this session's near-misses were one identity check away from being obvious.
+- **The model allowlist prices the job, not the diff — but a bounded delta is a different job.**
+- **Do not announce that something belongs in the log. Put it there.**
+
 ## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
 
 **Task given:** add a test that reads the real `frontend/src/index.html` and asserts its
