@@ -359,26 +359,63 @@ the seconds between the heredoc and a later `chmod`.
 ```bash
 sudo mkdir -p /etc/mysite
 sudo install -m 600 -o root -g root /dev/null /etc/mysite/env
+```
+
+Write the non-secret keys first. Nothing here is worth hiding:
+
+```bash
 sudo tee /etc/mysite/env >/dev/null <<'EOF'
 DB_URL=jdbc:postgresql://localhost:5432/mysite
 DB_USERNAME=mysite
-DB_PASSWORD=<the password you set in 4.3>
 FRONTEND_URL=https://<your-site>.netlify.app
 SPRING_PROFILES_ACTIVE=prod
 EOF
 ```
 
-Then append the JWT secret **without it ever reaching your terminal**, so it cannot land in
-`~/.bash_history` or in scrollback you later paste somewhere:
+**Then the two secrets, neither of which you type into a command.** The file has to hold them in
+plaintext — that is what systemd's `EnvironmentFile` reads, and why it is `600 root:root` — but
+nothing should put them in `~/.bash_history`, in `ps` output, or in scrollback you later paste
+somewhere.
+
+```bash
+read -rsp 'DB password: ' DBPW; echo
+printf 'DB_PASSWORD=%s\n' "$DBPW" | sudo tee -a /etc/mysite/env >/dev/null
+unset DBPW
+```
+
+`read -s` does not echo; `printf` is a shell builtin, so the value never becomes a process argument
+visible in `ps`; and the only thing on a command line is `sudo tee -a /etc/mysite/env`. An earlier
+version of this section had you paste the password straight into the heredoc, which put it in shell
+history — reported from a live run.
+
+The JWT secret is generated straight into the file and never reaches your terminal at all:
 
 ```bash
 printf 'JWT_SECRET=%s\n' "$(openssl rand -base64 48)" | sudo tee -a /etc/mysite/env >/dev/null
-sudo chmod 600 /etc/mysite/env    # belt and braces
+```
+
+**Verify without printing a single value:**
+
+```bash
+sudo awk -F= '{print $1}' /etc/mysite/env && sudo ls -l /etc/mysite/env
+```
+
+```
+DB_URL
+DB_USERNAME
+FRONTEND_URL
+SPRING_PROFILES_ACTIVE
+DB_PASSWORD
+JWT_SECRET
+-rw------- 1 root root ... /etc/mysite/env
 ```
 
 48 random bytes is 64 base64 characters, comfortably over the 32-byte minimum `SecurityConfig`
 enforces for HS256, and the base64 alphabet contains nothing systemd's `EnvironmentFile` parser
-mangles.
+mangles. **The database password is not under that guarantee** — it is whatever you chose in 4.3.
+If it contains a space, a quote or a backslash, systemd may mangle it, and the symptom is 4.7
+failing to authenticate against Postgres while `psql` with the same password works. Wrap the value
+in double quotes in the file if so.
 
 Before running anything in the next few sections that takes a password as an argument, consider
 `unset HISTFILE` for this shell session.
