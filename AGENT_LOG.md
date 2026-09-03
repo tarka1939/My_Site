@@ -308,7 +308,7 @@ Copy this block per entry:
 **What went right:** `ClientIpResolver` reads a forwarded address only when the request's immediate
 peer matches a configured trusted proxy, and returns `getRemoteAddr()` in every other case,
 including "no configuration at all" — so the pre-#168 behaviour is what an unconfigured environment
-still gets. 231 tests, up from 202.
+still gets. **235 tests, up from 202** — the entry first said 231, which was true when it was written and stale two commits later; a count is a fact with a timestamp, so it gets re-read at the end rather than carried forward.
 
 **What went wrong (be specific):** two things, neither of which a first pass would have flagged.
 
@@ -342,6 +342,31 @@ string `trusted-hop-count`, so `hasMessageContaining` passed for the wrong reaso
 configures the case so only that guard can fire, and asserts on `"must not be negative"`. This is
 the same failure mode as the 2026-08-27 entry below: an assertion that measures something adjacent
 to what it claims.
+
+**Then cold review of PR #172 found a third instance of that same shape, in a test I had already
+mutated.** `forwardedAddressIsCanonicalised_soOneAddressIsNotTwoBuckets` asserted only
+`assertThat(compressed).isEqualTo(expanded)` — neither side pinned to anything. Make the resolver
+ignore the header and return the peer address for both, and the two results are still equal, so a
+test named for buckets passes having verified nothing about buckets. My own mutation round missed it
+because I mutated the *canonicalisation* (which the test does detect) and never the *header read*
+(which it did not). Both sides are now pinned to `"2001:db8:0:0:0:0:0:1"`, and disabling the header
+read fails it.
+
+Three times in one session stops being bad luck: **an assertion comparing two computed values to
+each other, with neither pinned to an expected constant, is the recurring defect.** The general form
+— "does this assertion still fail if the feature is inert?" — is the question to ask of every
+equality assertion, rather than a thing to rediscover per test.
+
+Review also found a real fail-open that the whole constructor-validation exercise had missed: `/0`
+passed `matcherFor`, because the range check rejected only a prefix length `< 0` or `> maxPrefix`. A
+`/0` is `"*"` in another notation — every caller becomes a trusted proxy, so a forged header is a
+total, silent bypass, from one env-var typo and with no startup complaint. The asymmetry is the
+tell: `parseAllowedOrigins`, in a file I edited in the same session, refuses `"*"` with a comment
+about "a silent downgrade to the exposure this allowlist exists to prevent", and I did not carry
+that same reading across to the CIDR notation for the same idea. Review measured the consequence on
+the real matcher instead of reasoning about it: `0.0.0.0/0` matches IPv6 peers, so "we are IPv6-only,
+a v4 /0 is inert" would have been wrong. There is now a test driving `IpAddressMatcher` directly to
+record that.
 
 **Fix applied:**
 
@@ -382,6 +407,11 @@ to what it claims.
 - **Config that silently does nothing deserves a startup failure**, not just config that is
   malformed. "Trusted proxies set, nothing configured to read a header" boots fine and leaves both
   limiters collapsed — indistinguishable from working, from outside.
+- **A fix can flip the direction of a known residual risk, and that has to be said out loud.** The
+  Cloudflare bypass was disclosed accurately and its *consequence* was not: before this change such
+  a caller shared the global bucket and was still capped at 5 logins per 15 minutes; after it, a
+  fresh `CF-Connecting-IP` per request means unlimited guessing against the single admin account.
+  Disclosing a risk is not the same as disclosing what you did to it.
 - **Neither this nor the firewall closes a Cloudflare bypass.** A caller who reaches the Mikrus node
   directly with the right `Host` arrives from a trusted peer and can forge either header. Both
   mechanisms are equally exposed to it, which is why offering the second cost nothing. That is an
