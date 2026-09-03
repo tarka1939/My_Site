@@ -155,7 +155,7 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 - [ ] Multi-stage Dockerfile for the Spring Boot app
 - [ ] `docker-compose.yml` for local dev (backend + Postgres) — frontend can run via `ng serve` locally against this, since it's not part of the Netlify deploy
 - [ ] Set up Postgres on the VPS (self-hosted, not a managed add-on — see `docs/DECISIONS.md`)
-- [ ] CORS configuration explicitly allowlisting your Netlify origin (`*.netlify.app` subdomain, exact value determined when the Netlify site is created above) — do this before you spend a session debugging "why do all my API calls fail from the deployed frontend"
+- [x] CORS configuration explicitly allowlisting the Netlify origin — done (#44, PR #172). `app.cors.allowed-origins` takes **exact** origins, defaulting to `https://krzysztof-tarka.netlify.app`; deliberately not `allowedOriginPatterns`, since a pattern like `https://*--<site>.netlify.app` would admit a deploy preview built from a fork's pull request — arbitrary third-party JavaScript on an origin this API answers. A test asserts a deploy-preview origin is refused
 - [ ] GitHub Actions workflow: run backend tests, build Docker image, deploy to the platform on merge to `main` — same caveat as the frontend workflow above: pin the branch to `main` explicitly, because it is no longer the default
 - [ ] Secrets via CI/CD secret store and the platform's own secret manager — never commit `.env` files, even to a private repo
 - [ ] Confirm HTTPS/TLS on both the Netlify domain (automatic) and the backend host (usually automatic, but verify)

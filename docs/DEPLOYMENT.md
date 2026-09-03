@@ -472,6 +472,8 @@ both rate limiters collapse into a single bucket — any stranger can lock the o
 panel and silence the contact form. That is no longer a consequence to handle later; the site is
 broken in a way nobody will notice until it bites.
 
+**Status: the code half is done** (#168, `ClientIpResolver`). The `prod` profile already defaults to this measured chain — the two provider `/64`s as trusted proxies, `CF-Connecting-IP` as the client-ip header, and a hop count of 2 — so nothing extra goes in `/etc/mysite/env`. Override with `TRUSTED_PROXIES`, `CLIENT_IP_HEADER` and `TRUSTED_HOP_COUNT` only if the provider moves its proxy nodes; a stale list is not a security hole (an untrusted peer keeps its own address) but it does silently restore the collapsed bucket.
+
 The firewall rule above is also what makes the fix *possible*. A forwarded-for header is only
 trustworthy if nothing can reach the app except through the proxy. With 8080 open to the world,
 anyone could set the header to anything and defeat rate limiting completely — strictly worse than

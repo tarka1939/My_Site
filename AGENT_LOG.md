@@ -297,6 +297,126 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-03 — #44 and #168: the header that carries the truth is not the one at either end of the list
+
+**Task given:** Implement CORS (#44) and the conditional forwarded-header client IP (#168) on
+`phase5/behind-a-proxy`, off `6a54831`. Backend only.
+
+**Agent(s) used:** backend-agent (Opus) — auth, shared mutable state and a trust boundary, all on
+`CLAUDE.md`'s "Opus regardless" list.
+
+**What went right:** `ClientIpResolver` reads a forwarded address only when the request's immediate
+peer matches a configured trusted proxy, and returns `getRemoteAddr()` in every other case,
+including "no configuration at all" — so the pre-#168 behaviour is what an unconfigured environment
+still gets. **235 tests, up from 202** — the entry first said 231, which was true when it was written and stale two commits later; a count is a fact with a timestamp, so it gets re-read at the end rather than carried forward.
+
+**What went wrong (be specific):** two things, neither of which a first pass would have flagged.
+
+1. **The obvious `X-Forwarded-For` rules are both wrong for this chain.** The deployed shape is
+   `visitor → Cloudflare → Mikrus nginx → app`, so the header arrives as
+   `[anything the visitor invented..., visitor, cloudflare-edge]`. Taking `entries[0]` — the rule
+   most examples show — reads a value the caller supplied, and hands unlimited rate-limit evasion to
+   anyone willing to change it per request. Taking `entries[length - 1]` reads a Cloudflare edge
+   node, which buckets the whole internet into a handful of addresses and is nearly the bug being
+   fixed. Neither end is the answer; the visitor is the *N*th entry counted **from the right**,
+   where *N* is the number of proxies in front. Counting from the right is what makes it
+   unforgeable — a caller can only prepend, and prepending does not move the right-hand end.
+2. **Tomcat's `RemoteIpValve` cannot express this**, so `server.forward-headers-strategy` was the
+   wrong reach even though issue #168 itself suggested `NATIVE`. Its rule is "walk from the right,
+   discard entries matching `internalProxies`, take the first that does not match" — which stops at
+   the Cloudflare edge address unless every Cloudflare range is in the trusted set. That list is
+   large, changes, and is not something this app can keep current. It also rewrites `getRemoteAddr()`
+   and the scheme/host used to build URLs for every request, a far wider blast radius than two rate
+   limiters need.
+
+**How it was caught:** by working out what this specific chain produces instead of applying a
+general rule, and then by mutation testing. Two mutations that a "take the first element"
+implementation would have passed — `index := 0` and `index := entries.length - 1` — each fail
+`multiEntryForwardedFor_resolvesToTheEntryCountedFromTheRightNotEitherEnd` and the contact-form
+integration test that asserts the stored `requester_ip_hash` is the middle entry and not the other
+two.
+
+One mutation **survived** on the first pass and had to be fixed: disabling the negative
+`trusted-hop-count` guard still threw, from a *different* validation whose message also contains the
+string `trusted-hop-count`, so `hasMessageContaining` passed for the wrong reason. The test now
+configures the case so only that guard can fire, and asserts on `"must not be negative"`. This is
+the same failure mode as the 2026-08-27 entry below: an assertion that measures something adjacent
+to what it claims.
+
+**Then cold review of PR #172 found a third instance of that same shape, in a test I had already
+mutated.** `forwardedAddressIsCanonicalised_soOneAddressIsNotTwoBuckets` asserted only
+`assertThat(compressed).isEqualTo(expanded)` — neither side pinned to anything. Make the resolver
+ignore the header and return the peer address for both, and the two results are still equal, so a
+test named for buckets passes having verified nothing about buckets. My own mutation round missed it
+because I mutated the *canonicalisation* (which the test does detect) and never the *header read*
+(which it did not). Both sides are now pinned to `"2001:db8:0:0:0:0:0:1"`, and disabling the header
+read fails it.
+
+Three times in one session stops being bad luck: **an assertion comparing two computed values to
+each other, with neither pinned to an expected constant, is the recurring defect.** The general form
+— "does this assertion still fail if the feature is inert?" — is the question to ask of every
+equality assertion, rather than a thing to rediscover per test.
+
+Review also found a real fail-open that the whole constructor-validation exercise had missed: `/0`
+passed `matcherFor`, because the range check rejected only a prefix length `< 0` or `> maxPrefix`. A
+`/0` is `"*"` in another notation — every caller becomes a trusted proxy, so a forged header is a
+total, silent bypass, from one env-var typo and with no startup complaint. The asymmetry is the
+tell: `parseAllowedOrigins`, in a file I edited in the same session, refuses `"*"` with a comment
+about "a silent downgrade to the exposure this allowlist exists to prevent", and I did not carry
+that same reading across to the CIDR notation for the same idea. Review measured the consequence on
+the real matcher instead of reasoning about it: `0.0.0.0/0` matches IPv6 peers, so "we are IPv6-only,
+a v4 /0 is inert" would have been wrong. There is now a test driving `IpAddressMatcher` directly to
+record that.
+
+**Fix applied:**
+
+- `ClientIpResolver`, a new root-package component, with three properties under
+  `app.forwarded-headers`: `trusted-proxies` (CIDRs of peers allowed to speak for a client),
+  `client-ip-header` (a single-valued header set by the outermost proxy — `CF-Connecting-IP` in
+  prod, preferred because it needs no position arithmetic), and `trusted-hop-count` (2, the
+  right-hand index into `X-Forwarded-For`). `ClientIpHasher` delegates to it and keeps only the
+  don't-store-a-raw-address job.
+- All three are off in the base `application.yml` and set only in `application-prod.yml`, so dev,
+  test and no-profile keep today's behaviour.
+- Config that is *absent* degrades; config that is *present but wrong* fails at bean creation — a
+  malformed CIDR, a negative hop count, a header named with no trusted proxy to have set it, or a
+  trusted-proxy list with nothing configured to read a header. The last two are the interesting
+  ones: both are harmless at runtime, which is exactly why they need to fail loudly. They look
+  configured and do nothing.
+- CORS as an exact-match allowlist from `app.cors.allowed-origins`, wired via
+  `.cors(Customizer.withDefaults())` inside the security filter chain so a credential-free preflight
+  is answered before authorization would 401 it. Not `allowedOriginPatterns`: a pattern such as
+  `https://*--<site>.netlify.app` would admit a deploy preview built from a fork's pull request,
+  i.e. arbitrary third-party JavaScript on an origin this API answers. There is a test that says so.
+- The CORS integration tests needed a second `RestTemplate` on the JDK HTTP client.
+  `HttpURLConnection` silently drops `Origin` and `Access-Control-Request-Method` — they are on its
+  restricted-header list — so a CORS test written on the existing `SimpleClientHttpRequestFactory`
+  client sends no preflight at all and measures nothing. That is the "a test that cannot fail on the
+  thing it names" shape from the index above, met head-on rather than after the fact.
+
+**Takeaway for next time:**
+
+- **A general rule for reading a proxy header is not a rule for *your* chain.** How many proxies,
+  and whether each appends or overwrites, decides which element is the truth. Write the observed
+  header down before choosing an index.
+- **Both halves fail safe or neither is worth having.** A request from an untrusted peer keeps its
+  own address; a list shorter than the hop count falls back rather than settling for a nearby
+  element; missing config means the old behaviour. Unconditional trust would have been worse than
+  the bug it fixes, because a forged header defeats rate limiting outright instead of globalising
+  it.
+- **Config that silently does nothing deserves a startup failure**, not just config that is
+  malformed. "Trusted proxies set, nothing configured to read a header" boots fine and leaves both
+  limiters collapsed — indistinguishable from working, from outside.
+- **A fix can flip the direction of a known residual risk, and that has to be said out loud.** The
+  Cloudflare bypass was disclosed accurately and its *consequence* was not: before this change such
+  a caller shared the global bucket and was still capped at 5 logins per 15 minutes; after it, a
+  fresh `CF-Connecting-IP` per request means unlimited guessing against the single admin account.
+  Disclosing a risk is not the same as disclosing what you did to it.
+- **Neither this nor the firewall closes a Cloudflare bypass.** A caller who reaches the Mikrus node
+  directly with the right `Host` arrives from a trusted peer and can forge either header. Both
+  mechanisms are equally exposed to it, which is why offering the second cost nothing. That is an
+  ingress concern; it is written down on `ClientIpResolver` rather than left for someone to discover.
+
 ## 2026-09-02 — Wiring the real hosts (#89): the regenerate that provably could not change anything, and checking that rather than asserting it
 
 **Task given:** replace the `TBD-vps-host` placeholders now that the backend has a real public host

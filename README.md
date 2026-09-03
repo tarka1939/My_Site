@@ -72,7 +72,7 @@ See `docs/AGENT_WORKFLOW.md` for the mechanics and `docs/AUTONOMOUS_WORKFLOW.md`
 | ORM / migrations | Spring Data JPA + Hibernate; Flyway (never `hibernate.ddl-auto=update` outside local scratch) |
 | API contract | OpenAPI 3.0, written before implementation; Angular client generated via `openapi-generator-cli` |
 | Auth | JWT admin login (1 hour expiry) + password reset via Resend — **confirmed in scope**, gates write endpoints (see `SPEC.md` → Auth scope decision) |
-| Cross-origin | CORS on Spring Boot, allowlisting the Netlify origin — exact `*.netlify.app` subdomain **TBD until the Netlify site is created** (Phase 5) |
+| Cross-origin | CORS on Spring Boot, allowlisting the exact Netlify origin `https://krzysztof-tarka.netlify.app` (`CORS_ALLOWED_ORIGINS` to override). Exact origins rather than patterns, so a fork's deploy preview cannot become a trusted origin |
 | CI/CD | GitHub Actions — separate workflows for Netlify deploy (frontend) and container build/deploy (backend) |
 | Testing | JUnit 5 + Mockito unit tests, Testcontainers integration tests against real Postgres, Vitest component tests, and a deliberately thin Playwright E2E suite (4 journeys — see `PROJECT_TODO.md`'s testing-strategy note on why it stays small) |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done) |

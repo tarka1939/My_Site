@@ -41,6 +41,30 @@ app:
     # never match a delivery and would silently mean a repository the owner believes is synced
     # is not. Fail fast on wrong, degrade on unused.
     synced-repositories: ${GITHUB_SYNC_REPOSITORIES:}
+  cors:
+    # Issue #44. Exact origins, comma-separated -- no wildcards, and a wildcard entry fails
+    # startup rather than being quietly honoured (SecurityConfig#parseAllowedOrigins). The
+    # deployed Netlify origin is the default because it is deployment data rather than a secret,
+    # and hardcoding it in Java would make the eventual custom-domain switchover a code change
+    # instead of an env-var one; during that switchover both origins are listed here at once.
+    # Netlify DEPLOY PREVIEWS are deliberately absent -- see the reasoning on the
+    # corsConfigurationSource bean. Empty means "answer no cross-origin request", which is the
+    # closed default and what dev gets in practice anyway, since ng serve proxies /api and so is
+    # same-origin.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://krzysztof-tarka.netlify.app}
+  forwarded-headers:
+    # Issue #168. All three OFF here, in the base config, so any environment that has not said it
+    # is behind a proxy -- dev, test, no profile at all -- keeps the pre-#168 behaviour of trusting
+    # nothing but getRemoteAddr(). Trusting a forwarded header by default would be worse than the
+    # bug it fixes: the header is caller-supplied, and a forged one with a fresh value per request
+    # defeats per-IP rate limiting outright rather than merely globalising it.
+    #
+    # Absent is a designed no-op; present-but-wrong fails startup (a malformed CIDR, a negative
+    # hop count, or a header/hop-count set with no trusted proxy to make it meaningful). Set for
+    # real in application-prod.yml, where the proxies actually exist.
+    trusted-proxies: ${TRUSTED_PROXIES:}
+    client-ip-header: ${CLIENT_IP_HEADER:}
+    trusted-hop-count: ${TRUSTED_HOP_COUNT:0}
   resend:
     api-key: ${RESEND_API_KEY:}
     from-address: ${RESEND_FROM_ADDRESS:onboarding@resend.dev}
