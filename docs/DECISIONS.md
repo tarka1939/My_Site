@@ -409,6 +409,130 @@ Two rules follow and are not optional:
 - **A new failure mode to recognise:** if the subdomain starts returning 502, the first suspect is a
   provider proxy node outside the two `/64`s currently allowed, not the application.
 
+### 2026-09-03 — Security posture: what this project defends against, and what it deliberately does not
+
+**Context:** three sections of `docs/DEPLOYMENT.md` handled credentials three different ways — §4.3
+prompted with psql's `\password`, §4.6 pasted the database password into a heredoc, §6 pasted the
+admin password into an `UPDATE`. The owner caught the second and third separately, *after* the first
+had already been established as the pattern. That is not three mistakes; it is one missing document.
+Each section was reasoned about from instinct because there was nothing to reason from.
+
+The same gap produced a worse error one layer up. An argument was made to never enable
+`RESEND_API_KEY`, on the grounds that email password reset adds an attack surface to solve a problem
+SSH already solves. That reasoning is sound and the conclusion was wrong, because the 2026-07-25 ADR
+records the reset flow as *operational recovery* when its actual purpose is **capability
+demonstration** for the portfolio. A rationale that lives only in the author's head cannot survive
+contact with anyone else, including a future reader of this file.
+
+Measured on the deployed host, because the numbers change the answer:
+
+- `/var/log/auth.log` is **0 bytes** — sudo's command-line logging, cited repeatedly as a reason for
+  the above measures, does not apply on this container at all.
+- **One** login user exists. There is no low-privilege local attacker to defend against.
+- `krzysztof.tarka1939@gmail.com` appears in **290 of 372 commits** on a public repository.
+- Postgres listens on `127.0.0.1` only; `/etc/mysite/env` is `600 root:root`.
+
+**Decision:**
+
+**1. What this project defends against, in priority order:**
+
+- **Accidental disclosure.** A secret in a commit, a paste, a screenshot, a backup, an AI
+  conversation. This is the one that actually happens: it happened during the deployment itself,
+  when the password went into a heredoc, and terminal output was pasted into a chat session a dozen
+  times over the following hours.
+- **Automated abuse.** Credential stuffing against the login endpoint, contact-form spam. This is
+  what the per-IP limiters (#168) exist for, and they are live.
+- **Admin session takeover via XSS** (#123). The JWT is readable from JavaScript, so any injection
+  is a full session. This is the only genuine *attack* path into the data.
+
+**2. What it explicitly does not defend against, and will not try to:**
+
+**A live root compromise of the VPS.** Nothing on the host can. An attacker with root has the
+environment file, the JVM's heap, the loopback socket to Postgres, and the ability to modify the
+running code. Encryption at rest does not help, because the key must be present for the app to boot.
+
+This is not resignation, it is scoping. It has a direct operative consequence: **a secret-handling
+measure is judged by whether it reduces accidental disclosure, never by whether it would stop an
+attacker who already has the box.** Measures that fail that test are hygiene at best and theatre at
+worst, and should be argued as hygiene rather than dressed as security.
+
+**2a. Not every secret here has the same blast radius, and the rule should not pretend otherwise.**
+
+- `DB_PASSWORD` is useless to anyone who cannot reach `127.0.0.1:5432` — i.e. to anyone who does
+  not already have the host, at which point they do not need it.
+- `JWT_SECRET` is useless without the running application.
+- **`RESEND_API_KEY` works from anywhere on the internet.** A holder can send mail as the owner's
+  sender identity, passing SPF and DKIM because it genuinely is them.
+
+So the Resend key is the one credential where careful handling is doing real work rather than
+hygiene, and the one worth rotating on suspicion rather than on schedule. The other two are
+protected mainly against the operator, which is the honest framing.
+
+**3. The operative rule, which replaces per-section instinct:**
+
+A secret must not reach **shell history**, **process arguments** (`ps`), **any log file**, or **a
+terminal whose scrollback gets pasted**. It may live in a `600 root:root` file on the host, because
+that is the boundary the application itself requires.
+
+Applied consistently, that yields `\password` in §4.3, `IFS= read -rsp` piped through stdin in §4.6
+and §6, and `SET log_statement = 'none'` where a statement would otherwise carry a credential into
+Postgres's own log. Those are now the same decision three times, rather than three decisions.
+
+**4. Password reset is a showcase feature, not an admin tool.** This corrects the 2026-07-25 ADR,
+which recorded only that "there was no way to recover a forgotten `AdminUser` password". Its real
+purpose is to demonstrate a complete flow — single-use tokens, a hash at rest, 30-minute expiry,
+enumeration-safe responses, per-IP limiting — as portfolio evidence.
+
+Three things follow:
+
+- **The real admin account does not need it.** SSH plus the direct `UPDATE` in §6 is a strictly
+  stronger recovery path: it requires host access rather than mailbox access.
+- **The demo sandbox is where `RESEND_API_KEY` most belongs**, because there the flow is exercised
+  by anyone evaluating the project, against throwaway accounts, with no bearing on the real admin.
+  Setting it for the real admin *before* that exists is a reasonable choice and not forbidden by
+  this ADR — it is what makes an untested integration tested — provided clause 5's unpublished
+  recovery address is used. The cost is that the owner's mailbox becomes a recovery path for the
+  live admin account; the benefit is a showcase feature that has actually run. Either way the
+  unset state is a designed no-op rather than an unfinished one.
+- **A showcase feature is not finished until it has run.** The token logic is tested; the Resend
+  integration has never executed. A demonstration whose only third-party integration has never
+  fired is demonstrating the easy half.
+
+**5. The admin recovery address is a distinct address that has never been published.** Not a secret
+— it cannot be, when an author email sits in 290 public commits — but a real layer nonetheless,
+because `POST /auth/password-reset-request` returns 202 whether or not an address is registered
+(`ifPresent` with no `else`). An attacker attacks the weaker of bcrypt and the mailbox; knowing
+*which* mailbox is most of that work, and an unpublished address withholds it.
+
+**Alternatives considered:**
+
+- *Treating the recovery email as a secret.* Rejected: it cannot be one if it is also the git author
+  address. The answer is to make it a different address, not to guard the wrong one.
+- *`systemd-creds` with TPM binding for `/etc/mysite/env`.* Genuinely stronger than `600 root:root`
+  — but against an **offline** disk, a stolen snapshot or a copied backup, not against live root.
+  Disproportionate for a single-operator container today; recorded as the upgrade path if the
+  backup story ever changes.
+- *Postgres `peer` authentication over the unix socket, eliminating the database password entirely.*
+  The only option here that removes a class rather than protecting an instance. Rejected for now
+  because JDBC needs `junixsocket` — a real dependency change, not a configuration one.
+- *Rewriting git history to remove the author email.* Rejected: 372 commits on a repository whose
+  value is its documented record, to redact an address already scraped. Setting `git config
+  user.email` to GitHub's noreply stops the count growing and is the recommended action; at the
+  time of writing it is still the real address, so this is a recommendation rather than a record.
+
+**Consequences:**
+
+- **Some of what this project does about secrets is hygiene, and should say so.** The §4.6 rewrite
+  does not protect against an attacker with the box; it protects against the operator pasting
+  scrollback. That is a real and common failure mode, and a weaker claim than "security".
+- **`#123` rises in priority relative to secret handling.** It is the only item on the defend-against
+  list that is an actual attack path into the data, and it is still open.
+- **The deployment runbook's three credential sections now agree**, and a fourth will inherit the
+  rule rather than re-derive it.
+- **This ADR is the thing to cite when a future change looks like security.** If it does not reduce
+  accidental disclosure, limit blast radius, or close an abuse path, it is decoration, and saying so
+  is cheaper than implementing it.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
