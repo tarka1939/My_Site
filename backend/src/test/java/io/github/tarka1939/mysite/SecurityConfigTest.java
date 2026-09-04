@@ -24,7 +24,7 @@ class SecurityConfigTest {
 
         var key = securityConfig.jwtSecretKey(secret);
 
-        assertThat(key.getAlgorithm()).isEqualTo("DELIBERATELY-WRONG-PROVING-CI-FAILS");
+        assertThat(key.getAlgorithm()).isEqualTo("HmacSHA256");
     }
 
     @Test
