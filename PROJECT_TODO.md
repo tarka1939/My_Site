@@ -140,6 +140,13 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 
 ## Phase 5 — Infra & deployment (split targets: Netlify for frontend, self-managed VPS for backend)
 
+> **Plan for what remains: `docs/CI_PLAN.md`** (added 2026-09-04). The six unticked items below
+> are not six independent tasks, and their issue numbers are not their order — two of them bundle
+> "run the tests" with "build and deploy", which have different risk profiles, and two assume a
+> containerised production this project deliberately does not have. That file carries the
+> sequence and the acceptance criteria; the decisions behind it are an ADR in
+> `docs/DECISIONS.md`, 2026-09-04.
+
 > **Runbook: `docs/DEPLOYMENT.md`** (added 2026-08-30). Step-by-step commands for the parts that cannot be delegated — provider and domain choices, VPS hardening, Postgres, TLS, and the wiring order that resolves the frontend-needs-backend-host / backend-needs-frontend-origin cycle. It also records the two things that will otherwise surprise you: Netlify defaults its production branch to the repo default, which is now `dev` rather than `main`; and #121 means a freshly migrated production database has an admin account nobody can log in as.
 
 > **Status (2026-09-04):** **both halves are live; the automation is entirely unbuilt.** The backend answers on `https://tarka1939.bieda.it` and the Netlify site serves the promoted frontend against it, so the deploy *works* end to end — CORS (#44) and forwarded headers (#168) verified against the live host, TLS valid on both, the SPA fallback confirmed on the deployed artifact, and the admin password set. What has not been built is every item below that is still unticked: **there is no CI at all.** `.github/workflows/` holds a placeholder README, every deploy has been `mvn package` + `scp` + `systemctl restart` by hand, and no pull request in this repository has ever had its gates run by anything but a person remembering to run them. Six open issues, none started: #38, #45 (the two pipelines), #41, #42 (Dockerfile, compose), #46 (secrets out of `/etc/mysite/env` into a CI store), #48 (structured logging). Treat "Phase 5 is nearly done" as false — the manual half is done, which is the half that proves the other half is worth automating.
