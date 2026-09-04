@@ -156,6 +156,25 @@ class ContactNotificationListenerTest {
     }
 
     @Test
+    void anAssignedCharacterWhoseLowHalfLooksLikeASurrogateSurvives() {
+        // U+1D800 SIGNWRITING HAND-FIST INDEX is assigned, and 0x1D800 & 0xFFFF == 0xD800. An
+        // earlier fix tested for surrogates with Character.isSurrogate((char) codePoint), and that
+        // cast is lossy: every code point in U+1D800-U+1DAAF -- the whole SignWriting block, plus
+        // U+2D800.. and beyond -- was misread as an unpaired surrogate and silently dropped from
+        // the subject. The surrogate guard exists to stop half a character reaching Resend, not to
+        // delete whole ones.
+        //
+        // U+1F600 cannot catch this: its low half is 0xF600, outside the surrogate range, so the
+        // existing astral test passes against the bug.
+        String signWriting = Character.toString(0x1D800);
+
+        listener(OWNER).onContactMessageReceived(
+            event("N" + signWriting, "a@example.invalid", "Hi"));
+
+        assertThat(sentSubject()).isEqualTo("New contact message from N" + signWriting);
+    }
+
+    @Test
     void anUnpairedSurrogateInTheNameIsDroppedRatherThanForwarded() {
         // Not reachable through a well-formed JSON body, but this sanitizer is the last thing
         // between visitor input and a MIME header, and that is the wrong place to assume the

@@ -163,7 +163,12 @@ public class ContactNotificationListener {
             // partner. A well-formed pair never reaches this branch -- it arrives already
             // combined into a single code point -- so this only ever removes something that was
             // already broken on the way in.
-            if (codePoint >= ' ' && codePoint != 0x7F && !Character.isSurrogate((char) codePoint)) {
+            // Compared as an int, not via Character.isSurrogate((char) codePoint): that cast is
+            // lossy, so any code point whose low 16 bits land in D800-DFFF was misread as an
+            // unpaired surrogate and dropped -- U+1D800 (Sutton SignWriting) among them.
+            boolean isSurrogate =
+                codePoint >= Character.MIN_SURROGATE && codePoint <= Character.MAX_SURROGATE;
+            if (codePoint >= ' ' && codePoint != 0x7F && !isSurrogate) {
                 sanitized.appendCodePoint(codePoint);
                 kept++;
             }

@@ -24,9 +24,12 @@ import ch.qos.logback.core.read.ListAppender;
  * {@code TaskRejectedException}, and for an {@code @Async} method that throw happens on the
  * <em>caller's</em> thread at dispatch time, before the method body and therefore before any
  * try/catch inside it. For {@code ContactNotificationListener} the caller is the transaction
- * manager committing the visitor's request, so the throw becomes a 500 on a message that is
- * already saved. This class pins the executor's half of that; the end-to-end consequence is
- * pinned by {@code ContactNotificationIntegrationTest#saturatedExecutor_stillReturns201}.
+ * manager committing the visitor's request. Measured, Spring swallows it there rather than
+ * returning a 500 -- the dispatch happens in {@code afterCompletion}, which catches
+ * {@code Throwable} -- so the observable cost of losing this handler is a stack trace at ERROR
+ * per drop, not a failed submission. This class pins the executor's half; the end-to-end
+ * consequence is pinned by {@code ContactNotificationIntegrationTest
+ * #saturatedExecutor_dropsTheNotificationQuietlyAndStillReturns201}.
  */
 class AsyncConfigTest {
 

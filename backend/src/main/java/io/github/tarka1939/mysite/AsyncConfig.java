@@ -26,13 +26,25 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * cannot protect the {@code @Async} <em>dispatch</em>, which happens before the method body runs:
  * {@code AsyncExecutionAspectSupport#doSubmit} calls {@code executor.submit(...)} outside any
  * try/catch of ours. With the JDK default {@link ThreadPoolExecutor.AbortPolicy}, a full pool plus
- * a full queue makes that submit throw {@code TaskRejectedException}, and nothing on the way back
- * out swallows it — {@code TransactionalApplicationListenerSynchronization#processEventWithCallbacks}
- * rethrows, and so does {@code AbstractPlatformTransactionManager#processCommit} around
- * {@code triggerAfterCommit}. It escapes {@code commit()}, escapes {@code ContactService.submit},
- * reaches {@code GlobalExceptionHandler}, and the visitor gets a 500 for a message that is already
- * durable in the database — the exact outcome #186, this class and the listener all claim is
- * impossible.
+ * a full queue makes that submit throw {@code TaskRejectedException}, and the listener's own
+ * {@code catch} cannot cover it because the dispatch happens before the method body runs.
+ *
+ * <p><b>Measured, that does not reach the visitor on Spring Framework 7.0.8.</b> A review
+ * predicted it would — escaping {@code commit()} and returning a 500 for a message already durable
+ * in the database — and the trace was wrong about the phase.
+ * {@code TransactionalApplicationListenerSynchronization$PlatformSynchronization} declares no
+ * {@code afterCommit()} at all; it dispatches {@code AFTER_COMMIT} from {@code afterCompletion(int)},
+ * and {@code TransactionSynchronizationUtils#invokeAfterCompletion} catches {@code Throwable} where
+ * its neighbour {@code invokeAfterCommit} does not. With the handler removed, all 70 submissions in
+ * {@code ContactNotificationIntegrationTest} still returned 201; the cost was twelve
+ * {@code TaskRejectedException} stack traces at ERROR.
+ *
+ * <p><b>The handler stays anyway, for three reasons that survive that correction.</b> A saturated
+ * queue is a capacity condition, not an error, and should not page anyone by logging as one. The
+ * swallow is an incidental implementation detail — one overridden hook away from the prediction
+ * being exactly right. And {@code taskExecutor} is shared: the Phase 7d DSP demo is its other
+ * planned consumer, and a caller invoked from a request thread with no transaction machinery
+ * between it and the response would take the throw with nothing catching it.
  *
  * <p>So overflow drops the task and logs it. A dropped notification is the correct trade: the
  * message is saved and readable in the admin panel either way, and telling the visitor their
