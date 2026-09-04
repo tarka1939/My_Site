@@ -27,14 +27,14 @@ describe('SeoService', () => {
   }
 
   it('writes a page description into the description, og and twitter tags together', () => {
-    createService().applyPage({ title: 'My Site - Contact', description: 'Say hello.' });
+    createService().applyPage({ title: 'Krzysztof Tarka - Contact', description: 'Say hello.' });
 
     expect(content('meta[name="description"]')).toBe('Say hello.');
     expect(content('meta[property="og:description"]')).toBe('Say hello.');
     expect(content('meta[name="twitter:description"]')).toBe('Say hello.');
-    expect(document.title).toBe('My Site - Contact');
-    expect(content('meta[property="og:title"]')).toBe('My Site - Contact');
-    expect(content('meta[name="twitter:title"]')).toBe('My Site - Contact');
+    expect(document.title).toBe('Krzysztof Tarka - Contact');
+    expect(content('meta[property="og:title"]')).toBe('Krzysztof Tarka - Contact');
+    expect(content('meta[name="twitter:title"]')).toBe('Krzysztof Tarka - Contact');
   });
 
   it('rewrites the static tags in place rather than appending a second set', () => {
@@ -42,13 +42,13 @@ describe('SeoService', () => {
     // the static tag first in the document and the fresh one after it. A scraper reads the first,
     // so the page would silently keep advertising the site-level description forever.
     seedStaticTags();
-    createService().applyPage({ title: 'My Site - Projects', description: 'The portfolio.' });
+    createService().applyPage({ title: 'Krzysztof Tarka - Projects', description: 'The portfolio.' });
 
     expect(seoTagCount('meta[name="description"]')).toBe(1);
     expect(seoTagCount('meta[property="og:description"]')).toBe(1);
     expect(seoTagCount('meta[name="twitter:description"]')).toBe(1);
     expect(content('meta[name="description"]')).toBe('The portfolio.');
-    expect(content('meta[property="og:title"]')).toBe('My Site - Projects');
+    expect(content('meta[property="og:title"]')).toBe('Krzysztof Tarka - Projects');
 
     // Tags the runtime does not own must survive untouched -- they are the ones a non-JS scraper
     // relies on, and og:type/twitter:card are only ever declared statically.
@@ -80,7 +80,7 @@ describe('SeoService', () => {
     seo.applyPage({ description: 'A specific project.' });
     expect(content('meta[name="description"]')).toBe('A specific project.');
 
-    seo.applyPage({ title: 'My Site - Contact' });
+    seo.applyPage({ title: 'Krzysztof Tarka - Contact' });
     expect(content('meta[name="description"]')).toBe('STATIC SITE DESCRIPTION');
     expect(content('meta[property="og:description"]')).toBe('STATIC SITE DESCRIPTION');
   });
@@ -100,7 +100,7 @@ describe('SeoService', () => {
     expect(document.querySelectorAll('script').length).toBe(scriptsBefore);
 
     seo.applyPage({ description: 'A specific project.' });
-    seo.applyPage({ title: 'My Site - Contact' });
+    seo.applyPage({ title: 'Krzysztof Tarka - Contact' });
 
     expect(content('meta[name="description"]')).toBe(nasty);
   });
@@ -108,7 +108,7 @@ describe('SeoService', () => {
   it('falls back to the built-in description only when the document declares none', () => {
     // No seeded tags: the harness page has no description, which is the only case the constant is
     // for. It exists so tests and any non-index.html host still get a sentence rather than ''.
-    createService().applyPage({ title: 'My Site' });
+    createService().applyPage({ title: 'Krzysztof Tarka' });
 
     expect(content('meta[name="description"]')).toBe(SITE_DESCRIPTION);
   });
@@ -218,17 +218,17 @@ describe('SeoService', () => {
     // leftover noindex tells the crawler the public landing page is off limits.
     const seo = createService();
 
-    seo.applyPage({ title: 'My Site - Admin login', robots: 'noindex, nofollow' });
+    seo.applyPage({ title: 'Krzysztof Tarka - Admin login', robots: 'noindex, nofollow' });
     expect(content('meta[name="robots"]')).toBe('noindex, nofollow');
 
-    seo.applyPage({ title: 'My Site - Projects' });
+    seo.applyPage({ title: 'Krzysztof Tarka - Projects' });
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
   });
 
   it('falls back to the site’s own title when a page declares no title', () => {
     const seo = createService();
 
-    seo.applyPage({ title: 'My Site - Contact' });
+    seo.applyPage({ title: 'Krzysztof Tarka - Contact' });
     seo.applyPage({});
 
     // The same string index.html ships in <title>, og:title and twitter:title -- so a page that
