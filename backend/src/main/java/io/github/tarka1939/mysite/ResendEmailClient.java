@@ -1,5 +1,7 @@
 package io.github.tarka1939.mysite;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -7,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -34,6 +38,18 @@ public class ResendEmailClient {
     private static final Logger log = LoggerFactory.getLogger(ResendEmailClient.class);
     private static final String RESEND_API_URL = "https://api.resend.com/emails";
 
+    /**
+     * Long enough to survive a slow TCP handshake to a healthy Resend, short enough that a
+     * blackholed connection fails in seconds rather than never. See the class comment.
+     */
+    static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
+
+    /**
+     * Resend's send API answers in well under a second in normal operation; ten seconds is
+     * generous headroom, not a working budget.
+     */
+    static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(10);
+
     private final RestClient restClient;
     private final String apiKey;
     private final String fromAddress;
@@ -42,14 +58,63 @@ public class ResendEmailClient {
         @Value("${app.resend.api-key:}") String apiKey,
         @Value("${app.resend.from-address}") String fromAddress
     ) {
+        this(apiKey, fromAddress, RESEND_API_URL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT);
+    }
+
+    /**
+     * Package-private seam for tests, which need to point the client at a local socket. The base
+     * URL is not configurable in production on purpose: there is exactly one Resend, and a
+     * settable API endpoint is an exfiltration target for anyone who can influence configuration.
+     */
+    ResendEmailClient(
+        String apiKey,
+        String fromAddress,
+        String apiUrl,
+        Duration connectTimeout,
+        Duration readTimeout
+    ) {
         // Built directly via RestClient.builder() rather than an injected RestClient.Builder
         // bean: RestClientAutoConfiguration didn't register one in this Boot 4.1.0 setup
         // (another instance of the test-artifact/autoconfig fragmentation AGENT_LOG.md
         // documents elsewhere) -- the static factory sidesteps that entirely and needs
         // nothing but spring-web, which spring-boot-starter-web already provides.
-        this.restClient = RestClient.builder().baseUrl(RESEND_API_URL).build();
+        //
+        // The corollary, and the reason for the explicit request factory below: Boot's
+        // spring.http.client.* settings are applied by the auto-configured builder, so a client
+        // built this way inherits NONE of them. spring-boot-http-client is not even on this
+        // project's classpath, which is also why Boot 4's ClientHttpRequestFactoryBuilder is
+        // unavailable here. Without this, both timeouts are infinite.
+        this.restClient = RestClient.builder()
+            .baseUrl(apiUrl)
+            .requestFactory(requestFactory(connectTimeout, readTimeout))
+            .build();
         this.apiKey = apiKey;
         this.fromAddress = fromAddress;
+    }
+
+    /**
+     * Bounds every call to Resend in both directions.
+     *
+     * <p>An infinite timeout was survivable while the only caller was {@code requestReset} on the
+     * request thread — the visitor was already waiting, and a hung request eventually met the
+     * container's own limits. It is not survivable now. Since #186, {@code ResendEmailClient} is
+     * called from {@code ContactNotificationListener} on the shared {@code taskExecutor}: if
+     * Resend blackholes connections rather than refusing them, those threads hang forever, the
+     * queue behind them fills and never drains, and every subsequent contact-form notification is
+     * dropped until the process restarts. Nothing throws, so the listener's
+     * {@code catch (RuntimeException)} never fires — the failure is invisible as well as
+     * permanent.
+     *
+     * <p>The connect timeout lives on the JDK {@link HttpClient} (the only place it can) and the
+     * read timeout on the factory. Both surface to the caller as a
+     * {@code ResourceAccessException}, a {@code RuntimeException}, which is what the listener
+     * already catches.
+     */
+    private static ClientHttpRequestFactory requestFactory(Duration connectTimeout, Duration readTimeout) {
+        JdkClientHttpRequestFactory factory =
+            new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(connectTimeout).build());
+        factory.setReadTimeout(readTimeout);
+        return factory;
     }
 
     public void sendPasswordResetEmail(String toEmail, String resetLink) {
