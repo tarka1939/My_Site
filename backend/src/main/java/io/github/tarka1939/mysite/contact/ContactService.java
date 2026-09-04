@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -27,10 +28,16 @@ public class ContactService {
 
     private final ContactMessageRepository contactMessageRepository;
     private final ClientIpHasher clientIpHasher;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public ContactService(ContactMessageRepository contactMessageRepository, ClientIpHasher clientIpHasher) {
+    public ContactService(
+        ContactMessageRepository contactMessageRepository,
+        ClientIpHasher clientIpHasher,
+        ApplicationEventPublisher eventPublisher
+    ) {
         this.contactMessageRepository = contactMessageRepository;
         this.clientIpHasher = clientIpHasher;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -46,6 +53,14 @@ public class ContactService {
         // saveAndFlush: same @CreationTimestamp flush-timing reason as ProjectService — the
         // ack DTO needs createdAt populated before it's built, not deferred to commit.
         ContactMessage saved = contactMessageRepository.saveAndFlush(message);
+
+        // Published inside the transaction on purpose: ContactNotificationListener is an
+        // @TransactionalEventListener bound to AFTER_COMMIT, so Spring holds this until the row is
+        // durable and drops it entirely if the transaction rolls back. Nothing about notifying the
+        // owner may affect what the visitor gets back -- see that listener's class comment, and
+        // AGENT_LOG.md 2026-08-01 for the time this project got it wrong in requestReset.
+        eventPublisher.publishEvent(ContactMessageReceivedEvent.from(saved));
+
         return ContactMessageAck.from(saved);
     }
 

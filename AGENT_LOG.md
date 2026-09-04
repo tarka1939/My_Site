@@ -297,6 +297,143 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-04 — #190 review round: the review was right about the bug and wrong about what it cost
+
+**Task given:** apply four blocking findings from a cold review of PR #190 (issue #186, contact-form
+notification). Two were called concurrency defects in the async dispatch path, with an instruction
+to treat them as such and to verify rather than assume. Findings 1 and 2 each had to come with a
+test that fails without its fix.
+
+**Agent(s) used:** backend-agent (Opus), worktree `My_Site-notify` on `feat/contact-notification`.
+
+**What went right:**
+
+Both fixes were real and both are in. The review's central mechanical claim on finding 1 is correct
+and was worth the round on its own: `ContactNotificationListener`'s `try/catch (RuntimeException)`
+**cannot** protect the `@Async` dispatch, because `AsyncExecutionAspectSupport#doSubmit` calls
+`executor.submit(...)` on the caller's thread before the method body exists. `AsyncConfig` set no
+rejection handler, so `AbortPolicy` applied and a full pool plus a full queue threw
+`TaskRejectedException` at whoever was committing.
+
+**What went wrong (be specific):**
+
+1. **The review's stated impact was false, and the fix's own justification had to be rewritten
+   around the measurement.** The review traced the throw out through
+   `TransactionalApplicationListenerSynchronization.processEventWithCallbacks` and
+   `AbstractPlatformTransactionManager#processCommit`'s handling of `triggerAfterCommit`, and
+   concluded the visitor gets a **500** on an already-committed message — "the exact outcome the
+   ADR, the class comment and #186 all declare impossible".
+
+   It is not what happens on Spring Framework 7.0.8. `PlatformSynchronization`, the concrete
+   `TransactionSynchronization` that Spring registers here, **has no `afterCommit()` override at
+   all** — `javap -c` shows it declaring exactly `beforeCommit(boolean)` and `afterCompletion(int)`,
+   with `AFTER_COMMIT` dispatched from the latter under a `status == 0` check. And
+   `TransactionSynchronizationUtils#invokeAfterCompletion` catches `Throwable` and logs it, where
+   its neighbour `invokeAfterCommit` does not. So the throw never reaches `commit()`.
+
+   Measured, with the handler removed: **all 70 submissions still returned 201.** The observed cost
+   was 12 `TaskRejectedException` stack traces at ERROR — one per dropped notification — logged by
+   `TransactionSynchronizationUtils` from the Tomcat request thread.
+
+   The first version of the end-to-end test asserted exactly what the review predicted ("every
+   response is still 201") and therefore **passed with the fix removed**. It was committed, then
+   caught by the mutation run the brief insisted on, then rebuilt: it now asserts that saturation
+   produces no ERROR-level logging (which does fail without the fix) and that the executor really
+   filled (so it cannot pass vacuously if the pool is ever resized), keeping the 201 loop as the
+   regression guard it always was. `AsyncConfigTest` carries the deterministic before/after: it
+   saturates the real bean and asserts the submit does not throw.
+
+   The handler stays, on three reasons that survive the correction: a saturated queue is a capacity
+   condition and logging it at ERROR buries the signal; the swallow is an incidental Spring
+   implementation detail one hook away from the review being right, and nothing here would notice
+   the day it moved; and `taskExecutor` is shared, so the next `@Async` caller invoked straight from
+   a request thread — Phase 7d's DSP demo — gets the throw back with nothing catching anything.
+
+2. **Adding a test seam to `ResendEmailClient` broke every Spring context, and javac plus the unit
+   tests were both happy.** Finding 2's fix needed a way to point the client at a local socket, so a
+   package-private constructor was added alongside the `@Value` one. That made it a class with two
+   candidate constructors and none annotated, at which point Spring stops guessing and looks for a
+   no-arg constructor: **every `@SpringBootTest` in the suite** failed with "No default constructor
+   found". `mvn compile`, `mvn test-compile` and the three non-Spring `ResendEmailClientTest` cases
+   all passed first. Fixed with `@Autowired` on the injection constructor, and the reason is now a
+   javadoc on it rather than folklore.
+
+3. **The review's suggested API for finding 2 does not exist in this project.** It proposed
+   `ClientHttpRequestFactoryBuilder.detect().build(ClientHttpRequestFactorySettings...)`. That type
+   lives in `spring-boot-http-client`, which is not on this classpath — checked by unzipping all 166
+   classpath jars and grepping, not by trusting the import to resolve. Its absence is the *same*
+   reason `RestClient.Builder` has no bean here, which is the thing the class comment already
+   documents. Used `JdkClientHttpRequestFactory` over a `java.net.http.HttpClient` from spring-web
+   instead: `HttpClient.newBuilder().connectTimeout(...)` for connect, `factory.setReadTimeout(...)`
+   for read, both verified present via `javap` before being written.
+
+4. **A new test asserted something false about Unicode and looked like a code defect.** The
+   surrogate-pair check first used `subject.chars().noneMatch(Character::isSurrogate)`. `chars()`
+   walks UTF-16 code units, so **both halves of a perfectly valid pair** are surrogates by that
+   measure and the assertion failed against correct output. `codePoints()` is the one that draws the
+   intended distinction — it combines a valid pair into one non-surrogate code point and yields an
+   unpaired one as itself.
+
+   Worse, the first version of that test could not have failed against the bug at all: 120 emoji is
+   240 chars, so the old char-based cut at 100 landed on a **pair boundary** — 50 whole emoji, no
+   split. One leading `"N"` shifts everything by a char and puts the cut inside the 50th pair, which
+   is the case that was broken. Both new tests now fail against the old implementation.
+
+5. **A tooling trap worth recording: `\\uD83D` written into a Python heredoc arrived as a real
+   surrogate.** Something between the Bash tool and Python collapses the doubled backslash, so what
+   was meant as the six characters `\uD83D` became the unpaired surrogate itself. Python then
+   refused to encode it — **after** `open(path, 'w')` had already truncated the target to 0 bytes.
+   `ContactNotificationListener.java` was momentarily empty; restored with `git checkout`, which
+   worked only because the file was committed. The rewrite was redone with the `Edit` tool, and the
+   Java source avoids escapes entirely (`Character.toString(0x1F600)`,
+   `String.valueOf((char) 0xD83D)`) so the test source cannot contain the half-character it forbids.
+
+**Finding 3 was correct and is the one with a real blast radius.** `application-test.yml` pinned
+`app.jwt.secret` and nothing else, so every other `${ENV_VAR:default}` in the base config resolved
+from whoever's shell ran the suite. `app.resend.api-key` is `${RESEND_API_KEY:}`, and
+`ContactNotificationIntegrationTest` uses `@MockitoSpyBean`, which calls **through** to the real
+client — so with that variable exported, which this branch's own `docs/DEPLOYMENT.md` tells the
+owner to do, two tests POSTed to `api.resend.com` against the real account and a third failed on a
+warn-and-skip log line that never appeared. The class javadoc asserted the opposite. Pinned, along
+with `app.contact.notification-email` and `app.github-sync.enabled`, which have the same hole.
+
+`app.cors.allowed-origins` was deliberately **left** unpinned: `SecurityIntegrationTest` inherits it
+on purpose so a typo in the production default fails there rather than at a browser, and an exported
+`CORS_ALLOWED_ORIGINS` breaks that test loudly instead of causing a silent third-party side effect.
+Same hole, different severity, different call — and worth saying out loud rather than pinning
+everything reflexively.
+
+**Finding 4 was correct.** The new ADR's closing bullet claimed a dangling `docs/DEPLOYMENT.md`
+cross-reference had been "found, not fixed". Both halves were false on the branch: the sentence
+existed on `dev` (`git show dev:docs/DEPLOYMENT.md`, line 458), *this PR deleted it*, and the
+replacement points at the ADR this PR created. A consequences list describing a tree it is not on is
+worse than none, because it reads as verified. Rewritten to say what happened, including that it was
+wrong.
+
+**Takeaway for next time:**
+
+- **A traced call path is a hypothesis.** The review's trace was careful, cited real class and method
+  names, and was wrong about one hop — `AFTER_COMMIT` dispatches from `afterCompletion`, not
+  `afterCommit`, and only one of those two swallows. Thirty seconds of `javap -c` settled what no
+  amount of re-reading the argument would have.
+- **A test written to a review's predicted symptom inherits the review's errors.** The 201 assertion
+  was copied from the finding's own wording and passed against the unfixed code. The instruction to
+  run the mutation is what caught it; without that step, this round would have shipped a test that
+  proved nothing while reading as proof.
+- **Keep the fix and change the reason, when the reason turns out to be wrong.** The correct response
+  to "the impact claim is false" was not to drop the rejection handler — it was to write down what
+  actually happens and re-derive whether the fix earns its place. It does, for different reasons.
+- **A second constructor is an API change to Spring, not just to callers.** Two unannotated
+  candidates is a startup failure that no amount of compiling or unit-testing will surface.
+- **`git checkout` is only a safety net for committed work.** Committing before the exploratory step,
+  per `CLAUDE.md`, is what made a 0-byte source file a non-event.
+
+**Test count:** 253 → 260 (`Tests run: 260, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS). The
+7 added: 1 on `AsyncConfig`'s saturation behaviour, 2 on `ResendEmailClient`'s timeouts (a blackhole
+server that accepts and never answers, plus a guard that the production durations are finite), 2 on
+`ContactNotificationIntegrationTest` (saturation end to end, and that the test profile really does
+pin the Resend key blank), and 2 on code-point-safe subject truncation.
+
 ## 2026-09-04 — #185/#187 frontend: a rejection with no destination, and the two states that are not "dead link"
 
 **Task given:** the frontend half of both issues in one branch. #187 — validate the token on route
@@ -588,6 +725,117 @@ covers the dispatch overhead.
   Three of this session's near-misses were one identity check away from being obvious.
 - **The model allowlist prices the job, not the diff — but a bounded delta is a different job.**
 - **Do not announce that something belongs in the log. Put it there.**
+
+## 2026-09-03 — #186: the contact form notified nobody, and the fix had a documented way to go wrong
+
+**Task given:** Implement issue #186 — publish a domain event from `ContactService.submit` and email
+the owner via the existing `ResendEmailClient`, with the destination in a new environment variable.
+The brief named the constraint up front: notification is best-effort, persistence is not.
+
+**Agent(s) used:** backend-agent (Opus), in the `My_Site-notify` worktree on
+`feat/contact-notification`.
+
+**What went right:**
+
+The brief pointed at `PasswordResetService.requestReset` and the 2026-08-01 entry above *before*
+asking for a design, and that is the reason this entry has no bug in it. That entry records
+`resendEmailClient.sendPasswordResetEmail(...)` running uncaught inside a `@Transactional` method,
+so a non-2xx from Resend propagated out and changed the HTTP response. The same shape was available
+here and would have been worse: the visitor's message is the product, and losing one because a third
+party had a bad minute is the worst outcome the feature has. Naming the prior incident in the brief
+turned "design an event listener" into "do not reproduce this specific failure", which is a much
+easier instruction to follow.
+
+**What went wrong (be specific):**
+
+Nothing that reached a commit, but two judgement calls are worth recording because neither was
+forced by the brief and both could reasonably have gone the other way.
+
+1. **`ResendEmailClient` lived in `auth/`, and `contact` needed it.** The tempting move was to
+   inject it as-is. `ApplicationModules.verify()` would have **passed**: the class sits in the auth
+   module's base package, which makes it part of that module's public API, so a `contact → auth`
+   dependency is legal. It is also false — email delivery has nothing to do with authentication, and
+   the graph would have said the contact form depends on the login system. This is a case where the
+   enforcement test cannot be the thing that catches the problem, because the problem is not a
+   violation. Moved the class to the application's base package instead, where `ClientIpHasher` and
+   `InMemoryRateLimiter` already live for the identical reason: shared infrastructure that outgrew
+   one module. No new Modulith module was introduced.
+2. **The event carries the submission, not just the id.** `ProjectCreatedEvent` is the precedent and
+   carries only a `UUID`. Copying it would have meant re-reading the row in the listener, after the
+   commit — a read the admin can race by deleting the message, silently losing the notification for
+   the one message the owner most needs. `CLAUDE.md`'s concurrency rule says accepting a race is a
+   legitimate answer and not noticing one is not; here the race was avoidable outright, so it was
+   avoided rather than accepted. The cost is that the event holds visitor PII, which is fine in
+   memory and would **not** be fine if `spring-modulith-events` durable publication is ever adopted
+   (`docs/DECISIONS.md` still lists that as undecided). Written on the event's javadoc so the
+   trade-off is visible at the point where it would change.
+
+**How it was caught:** Neither by a test. Both were design decisions taken before code, prompted by
+re-reading the Modulith ADR and `CLAUDE.md`'s concurrency checklist rather than by anything the
+build could report. The Modulith one is the more interesting: a green `ApplicationModules.verify()`
+is evidence about *legality*, not about whether the dependency graph describes the system honestly.
+
+**A third thing, found by mutation testing after the work looked finished.** Three mutations were
+run against the committed listener:
+
+| Mutation | Result |
+|---|---|
+| Synchronous `@EventListener` (in-transaction), catch kept | **all tests passed** |
+| Synchronous, in-transaction, catch removed — the `requestReset` shape exactly | integration test failed, `expected: 201 CREATED but was: 500`; the listener unit test failed too |
+| `@Async` removed, `AFTER_COMMIT` and the catch kept | **all tests passed** |
+
+The two passes are the finding. The suite as first written could prove the message survives a
+Resend failure, and could not prove the send was off the request thread at all — so a future edit
+dropping `@Async` would have been invisible, and a hanging Resend call would have hung the visitor
+while every test stayed green. The catch is load-bearing enough to mask its own siblings.
+`slowResend_doesNotHoldTheVisitorsResponseOpen` was added to close that: it blocks the stubbed
+client on a latch for 30 seconds and asserts the 201 comes back in under 10. Re-run against the
+`@Async`-removed mutation, it fails after the full 30. That test exists because the mutation run
+happened, not because anyone thought of the case while writing the feature.
+
+**Fix applied:**
+
+- `ContactMessageReceivedEvent` published from `ContactService.submit` inside the transaction, so
+  Spring holds it to `AFTER_COMMIT` and drops it entirely on rollback.
+- `ContactNotificationListener`: `@TransactionalEventListener(phase = AFTER_COMMIT)` plus
+  `@Async("taskExecutor")` — the executor `AsyncConfig` has provisioned unused since Phase 1, whose
+  javadoc said the DSP demo would be its first consumer; this is. It catches its own
+  `RuntimeException`s and logs.
+- `CONTACT_NOTIFICATION_EMAIL`. Absent is a designed no-op (warn, skip, message still saved and
+  still 201); present-but-malformed throws from the listener's constructor and the app refuses to
+  start. Both halves of `CLAUDE.md`'s config-validation rule are in play in one variable, and the
+  comment says which is which. No default address, and deliberately not an RFC 2606 `.invalid`
+  placeholder either: a placeholder that *parses* would make every environment attempt a send to a
+  domain that cannot receive, which reads as a delivery bug rather than as "nobody configured this".
+- Visitor content in the email is escaped where it is interpolated. The body is HTML-escaped
+  (escape first, *then* introduce `<br>`, or a visitor's typed `<br>` survives). The subject has all
+  control characters stripped, because it is the one value that becomes a MIME header — Jackson
+  would encode a newline safely into the JSON request, but it would arrive at Resend as a literal
+  newline in a value bound for `Subject:`, which is the classic header-injection primitive.
+- Nothing about the visitor is logged at **any** level — not DEBUG either. The message UUID is
+  logged instead, and it points at a row the admin panel already shows.
+
+**Takeaway for next time:**
+
+- **A brief that names the prior incident is worth more than a brief that names the rule.** "Do not
+  call a third party inside the transaction" is a rule anyone would agree with and still violate;
+  "`requestReset` did exactly this on 2026-08-01 and here is what broke" is not.
+- **`ApplicationModules.verify()` passing is not the same as the boundary being right.** Types in a
+  module's base package are its API, so the test is silent about whether a legal dependency is a
+  sensible one. The verify test catches reaching into internals; it cannot catch a module depending
+  on the wrong module correctly.
+- **A no-op reference implementation sets a precedent it was never load-tested for.**
+  `ProjectCreatedEventListener` logs and returns, so `ProjectCreatedEvent` carrying only an id has
+  never had to survive the row being deleted. The first real listener is where that assumption gets
+  tested, and copying the shape without re-deriving it would have shipped the race.
+
+**Test count:** 235 → 253. The 18 added break down as 9 on `ContactNotificationListener` (4 on
+escaping and header sanitisation, 2 on its config validation's two halves, 3 on the happy, degraded
+and throwing paths), 3 on `ResendEmailClient` (unconfigured-key degrade, PII silence, and one
+re-asserting that the reset link stays off WARN across the package move), 2 on the
+publish/don't-publish split in `ContactService`, and 4 end-to-end. The end-to-end class is
+deliberately **not** `@Transactional`: a rolled-back test can never fire an `AFTER_COMMIT` listener
+and would have passed while asserting nothing.
 
 ## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
 

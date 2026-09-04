@@ -1,4 +1,43 @@
 app:
+  # Every entry below pins a value the base application.yml reads from an environment variable.
+  # The test profile is not isolated from the developer's shell -- ${FOO:default} resolves FOO if
+  # it happens to be exported. docs/DEPLOYMENT.md writes these to /etc/mysite/env rather
+  # than exporting them, but the owner holds the real values and a shell that has them set
+  # is one `export` away. Anything the suite's correctness depends on is pinned here rather
+  # than inherited, the same call as app.jwt.secret below.
+  resend:
+    # THE IMPORTANT ONE. Without this, an exported RESEND_API_KEY makes the suite send real email
+    # through the real Resend account: ContactNotificationIntegrationTest uses @MockitoSpyBean,
+    # which calls THROUGH to the genuine client, and two of its tests would POST to
+    # api.resend.com while a third failed on a warn-and-skip log line that never appeared --
+    # reading as a regression rather than as a misconfiguration. Blank is also the state the
+    # tests are written against: the designed warn-and-skip no-op.
+    api-key: ""
+    # Not a secret, but keeping the real Resend sandbox sender out of test-generated content
+    # costs one line, and an RFC 2606 .invalid address cannot accidentally be a real one.
+    from-address: noreply@example.invalid
+  contact:
+    # Empty is the "nobody configured a destination" degrade path the tests assert. An exported
+    # CONTACT_NOTIFICATION_EMAIL would silently replace it -- and a malformed one would fail
+    # every Spring context at startup, since the listener's constructor validates eagerly.
+    # ContactNotificationIntegrationTest sets its own via @SpringBootTest(properties = ...),
+    # which outranks this.
+    notification-email: ""
+  # The password-reset link's host. No test asserts the link today, so an exported FRONTEND_URL
+  # changes nothing that is checked -- pinned because that is luck rather than design, and the
+  # day a test does assert it, the failure would be baffling.
+  frontend-url: http://localhost:4200
+  github-sync:
+    # Off, explicitly. An exported GITHUB_SYNC_ENABLED=true with no matching webhook secret makes
+    # GithubSignatureVerifier's constructor throw, which fails not one test but every
+    # @SpringBootTest context in the suite. The githubsync tests that need it on set it
+    # per-context, which outranks this.
+    enabled: false
+    # Empty allowlist, pinned. The githubsync integration tests enable sync per-context and set
+    # no allowlist, relying on "recorded, nothing written". An exported GITHUB_SYNC_REPOSITORIES
+    # would switch them to creating real Project rows -- and they would still pass, which is the
+    # bad half.
+    synced-repositories: ""
   jwt:
     # Fixed test secret so @SpringBootTest contexts can resolve app.jwt.secret without an
     # env var -- deliberately not the dev default, to keep test config self-contained.

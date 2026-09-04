@@ -584,6 +584,104 @@ because `POST /auth/password-reset-request` returns 202 whether or not an addres
   accidental disclosure, limit blast radius, or close an abuse path, it is decoration, and saying so
   is cheaper than implementing it.
 
+### 2026-09-03 — Contact-form notification, and what it does to `RESEND_API_KEY`
+
+**Context:** `ContactService.submit` persisted a `ContactMessage` and notified nobody (issue #186).
+The visitor was told *"I'll get back to you soon"*, and the only thing making that true was the
+owner remembering to open `/admin/messages`. This was never scoped — `SPEC.md` promises "Contact
+form, with basic rate limiting" and the visitor-side user story is satisfied — so it is a hole
+nobody wrote down rather than a regression.
+
+**Decision:** `ContactService.submit` publishes a `ContactMessageReceivedEvent`; a
+`ContactNotificationListener` in the same module emails the owner via `ResendEmailClient`. The
+destination is a new environment variable, `CONTACT_NOTIFICATION_EMAIL`.
+
+Three things about the listener are load-bearing rather than stylistic:
+
+- **`@TransactionalEventListener(phase = AFTER_COMMIT)`**, so the row is durable before anything is
+  sent and a send failure has no transaction left to roll back.
+- **`@Async("taskExecutor")`**, the executor `AsyncConfig` has provisioned since Phase 1, so a slow
+  or hanging Resend call cannot hold the visitor's response open.
+- **The listener catches its own `RuntimeException`s and logs them.** Notification is best-effort;
+  persistence is not. A contact message is the product, and losing one because a third party had a
+  bad minute is the worst outcome available here.
+
+`AGENT_LOG.md` (2026-08-01) records this exact shape shipping once already, in
+`PasswordResetService.requestReset`: an uncaught Resend call inside a `@Transactional` method, where
+a non-2xx propagated out and changed the HTTP response.
+
+**Alternatives considered:**
+
+- *Send inline in `submit`.* Rejected outright — it is the bug above, with the visitor's message at
+  stake instead of an enumeration side channel.
+- *Carry only the message id in the event and re-read the row in the listener.* Rejected: the admin
+  can delete a message between commit and listener, and the notification would silently vanish for
+  the one message the owner most needs to see. The event carries the submitted values instead.
+- *Leave `ResendEmailClient` in `auth/`.* Rejected. See consequences.
+
+**Consequences:**
+
+- **`RESEND_API_KEY` is no longer demo-only.** Password reset is a showcase feature the real admin
+  does not need, which is why `docs/DEPLOYMENT.md` treats the key as optional and sandbox-shaped.
+  Contact notification is an operational need for the live site, so the key is now load-bearing.
+  It stays *optional* — unset still degrades to warn-and-skip, and the message is still saved and
+  still answered with 201 — but "unset" now means the owner is not told about real enquiries, not
+  merely that a demo is unavailable.
+- **`ResendEmailClient` moved from `auth/` to the application's base package.** It now has callers
+  in two modules. Leaving it in `auth` would have made `contact` depend on the auth module purely to
+  send mail — a dependency `ApplicationModules.verify()` *permits* (it is a base-package type of
+  that module, hence part of its API), which is exactly why the boundary had to be fixed by design
+  rather than left for the test to catch. Email delivery is shared infrastructure, and the base
+  package is already where this project keeps that: `ClientIpHasher` and `InMemoryRateLimiter` are
+  there for the same reason. No new Spring Modulith module was introduced.
+- **The notification email contains visitor-submitted content**, which is escaped where it is
+  interpolated: HTML-escaped in the body, and all control characters stripped from the subject,
+  since the subject is the one value that becomes a MIME header and a smuggled CRLF is the classic
+  header-injection primitive.
+- **Nothing about the visitor is logged, at any level** — not the name, email or message body. The
+  message's UUID is logged instead, which points at a row the admin panel can already show.
+- **The shared `@Async` executor now drops and logs on overflow instead of aborting.** The
+  listener's `catch` cannot cover the `@Async` *dispatch*, which happens on the caller's thread
+  before the method body — so with `AbortPolicy` a full pool plus a full queue threw
+  `TaskRejectedException` at whoever was committing the visitor's transaction. Measured, that does
+  **not** become a 500 on Spring Framework 7.0.8: `PlatformSynchronization` has no `afterCommit()`
+  override and dispatches `AFTER_COMMIT` from `afterCompletion`, which
+  `TransactionSynchronizationUtils` wraps in a catch-and-log. The cost was an ERROR-level stack
+  trace per dropped notification, not a broken response. The handler is still right — a saturated
+  queue is a capacity condition rather than an error, the swallow is an incidental Spring detail one
+  hook away from being a 500, and `taskExecutor` is shared with future callers that will have no
+  transaction machinery to save them. **Not `CallerRunsPolicy`**, which would put the send back on
+  the request thread.
+- **`ResendEmailClient` has explicit connect and read timeouts (5s / 10s).** It builds its own
+  `RestClient` from the static factory, so Boot's `spring.http.client.*` settings never applied and
+  both timeouts were infinite. Tolerable while the only caller was `requestReset` on the request
+  thread; not once sends moved onto a shared pool, where a Resend that blackholes connections
+  instead of refusing them parks every thread forever, fills the queue behind them and makes the
+  bullet above permanent — with nothing thrown, so nothing caught and nothing logged. Wired with
+  `JdkClientHttpRequestFactory` over a `java.net.http.HttpClient`, because Boot 4's
+  `ClientHttpRequestFactoryBuilder` lives in `spring-boot-http-client`, which is not on this
+  classpath — the same absence that denies this class a `RestClient.Builder` bean.
+- **The test profile pins `app.resend.api-key` blank**, along with `app.contact.notification-email`
+  and `app.github-sync.enabled`. `application-test.yml` had overridden only `app.jwt.secret`, so
+  every other `${ENV_VAR:default}` resolved from the developer's shell — and the contact-notification
+  integration test spies on the *real* client, so an exported `RESEND_API_KEY` made the suite send
+  real email through the real account. `app.cors.allowed-origins` is deliberately left inherited:
+  `SecurityIntegrationTest` asserts the production default on purpose, and an exported override
+  breaks that test loudly rather than causing a silent third-party side effect.
+- **A dangling cross-reference is fixed here, not merely noted.** On `dev`,
+  `docs/DEPLOYMENT.md` ended its `RESEND_API_KEY` section with "See `docs/DECISIONS.md`,
+  2026-09-03, for why the reset flow exists at all — it is a showcase feature rather than an admin
+  tool". Nothing in this file said that: the only 2026-09-03 entry was the backend-exposure ADR
+  above, which is about TLS. This change deletes that sentence, and its replacement points at
+  *this* entry, which does say it — so the link resolves.
+
+  Recording the correction rather than quietly making it, because the first draft of this bullet
+  claimed the reference had been found and left alone. That was true of `dev` and false of the
+  branch the bullet was written on, where the sentence it described no longer existed and the ADR
+  it called absent had just been added two hundred lines above. Review caught it. A consequences
+  list describing the branch it is not on is worse than no consequences list, because it reads as
+  verified.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**

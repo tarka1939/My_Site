@@ -87,8 +87,9 @@ start without them.**
 | **`SPRING_PROFILES_ACTIVE`** | none | Must be `prod`. Without it none of the four below is read at all — they exist only in `application-prod.yml` — and the failure is a confusing one about a missing datasource rather than a missing variable |
 | **`JWT_SECRET`** | none | Must be ≥32 bytes. Deliberately has no default — the app refuses to boot rather than run on a guessable key |
 | `FRONTEND_URL` | `http://localhost:4200` | Used to build password-reset links. Set it to the Netlify URL or reset emails will point at localhost |
-| `RESEND_API_KEY` | empty | Empty is a *designed* no-op: password-reset emails are skipped with a warning rather than failing. Fine to leave unset at first |
+| `RESEND_API_KEY` | empty | Empty is a *designed* no-op: emails are skipped with a warning rather than failing. Fine to leave unset at first, but note it is no longer only about password reset — since #186 it also gates contact-form notification, which is an operational need rather than a demo |
 | `RESEND_FROM_ADDRESS` | `onboarding@resend.dev` | Only matters once `RESEND_API_KEY` is set |
+| `CONTACT_NOTIFICATION_EMAIL` | empty | #186. Where contact-form submissions are announced. Empty is a designed no-op — the message is still saved and still answered with 201, nobody is just told about it. A **malformed** value is not tolerated and the app refuses to start, because a typo'd address fails one silent notification at a time and reads as "nobody is writing in" |
 | `GITHUB_SYNC_ENABLED` | `false` | Leave off. Phase 7a is built but not meant to be live yet |
 | `GITHUB_WEBHOOK_SECRET` | empty | Only read when sync is enabled |
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
@@ -425,9 +426,9 @@ JWT_SECRET
 -rw------- 1 root root ... /etc/mysite/env
 ```
 
-#### `RESEND_API_KEY`, if and when you want the password-reset flow live
+#### `RESEND_API_KEY`, if and when you want email to actually leave the host
 
-Optional, and deliberately so: with the key unset the flow degrades to warn-and-skip, which is a
+Optional, and deliberately so: with the key unset every send degrades to warn-and-skip, which is a
 designed no-op rather than a broken state. Add it the same way as the others — the value never
 reaches a command line:
 
@@ -456,8 +457,10 @@ in its dashboard, where revocation is immediate and free. This paragraph previou
 `JWT_SECRET` was "useless without the running app", which is the opposite of true and is corrected
 in `docs/DECISIONS.md`, 2026-09-03, clause 2a.
 
-See `docs/DECISIONS.md`, 2026-09-03, for why the reset flow exists at all — it is a showcase
-feature rather than an admin tool, and that changes where this key most belongs.
+**Two flows depend on this key now, not one.** Password reset is a showcase feature rather than an
+admin tool, which is what made the key sandbox-shaped. **Contact-form notification (#186) is not** —
+it is how the owner learns a real person wrote in, and it needs a destination as well, which is the
+next subsection. See `docs/DECISIONS.md`, 2026-09-03, "Contact-form notification".
 
 48 random bytes is 64 base64 characters, comfortably over the 32-byte minimum `SecurityConfig`
 enforces for HS256, and the base64 alphabet contains nothing systemd's `EnvironmentFile` parser
@@ -486,6 +489,24 @@ have one step than three.
 > rotate, at minimum scrub the history: `history -d` the offending entry, or truncate the file and
 > `history -c` — remembering that the running shell rewrites it on exit, so do it in *every* session
 > that saw the password.
+
+#### `CONTACT_NOTIFICATION_EMAIL`, so you find out someone wrote in
+
+Not a secret — it is your own address — so it needs none of the history-suppressing care above,
+and it goes in its own step rather than alongside the two keys, which is why it is down here:
+
+```bash
+sudoedit /etc/mysite/env    # add: CONTACT_NOTIFICATION_EMAIL=you@yourdomain.example
+sudo systemctl restart mysite
+```
+
+**Get it right the first time.** A malformed value is refused at startup rather than tolerated, so
+a typo here means the service fails to come back up with an `IllegalStateException` naming
+`app.contact.notification-email` — deliberate, and much easier to diagnose than notifications that
+silently never arrive. Check `journalctl -u mysite -n 50` if the restart does not settle.
+
+Leaving it unset is a supported state: messages are saved and answered with `201` regardless, and
+`/admin/messages` still shows them. It just means nobody is told.
 
 ### 4.7 Run it under systemd
 
