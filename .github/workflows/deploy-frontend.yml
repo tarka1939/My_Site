@@ -1,0 +1,106 @@
+# Deploys the Angular build to Netlify on merge to `main`. Issue #38, item 4 of docs/CI_PLAN.md.
+#
+# THIS WORKFLOW REPLACES NETLIFY'S OWN GIT BUILD. It does not sit alongside it.
+#
+# Before enabling this, switch the Netlify git integration off (Site configuration -> Build & deploy
+# -> Continuous deployment -> Build settings -> Stop builds). Running both means two builds racing
+# for one site, potentially from different commits, with a "which one won" failure that is
+# miserable to diagnose.
+#
+# Netlify's native build already does this job. The reason to move it here is uniformity and
+# portfolio evidence of a complete pipeline -- the same reasoning docs/DECISIONS.md records for the
+# password-reset flow -- plus two things the native build cannot do: verify the SPA fallback made it
+# into the artifact, and ship the artifact that was actually tested.
+#
+# Known cost, accepted: per-PR deploy previews stop existing. The backend deliberately does not
+# allowlist their origins anyway -- see the CORS bean on SecurityConfig.
+
+name: Deploy frontend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, verify, publish
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Built here rather than by Netlify, so the artifact that ships is the one the checks below
+      # ran against. `npm run build` uses the production configuration by default, which is what
+      # bakes the real backend host into environment.ts.
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      # The SPA fallback is what makes a deep link work: without it, refreshing /projects/<id>
+      # returns 404 because no such file exists. It lives in frontend/public/_redirects and is
+      # copied into the bundle by the build -- which is a property of the build, not a guarantee,
+      # so it is asserted rather than assumed. "Confirm the _redirects SPA fallback survives the
+      # build" is an unticked Phase 5 checklist item, and this is what ticks it.
+      - name: Verify the SPA fallback survived the build
+        working-directory: frontend
+        run: |
+          out=dist/frontend/browser
+          test -f "$out/index.html" || { echo "no index.html in $out" >&2; exit 1; }
+          test -f "$out/_redirects" || {
+            echo "_redirects is missing from $out." >&2
+            echo "Deploying without it means every deep link 404s on refresh (issue #39)." >&2
+            exit 1
+          }
+          grep -q '/index.html' "$out/_redirects" || {
+            echo "_redirects exists but does not route to /index.html:" >&2
+            cat "$out/_redirects" >&2
+            exit 1
+          }
+          echo "SPA fallback present: $(cat "$out/_redirects")"
+
+      # The official CLI rather than a third-party action: fewer links in the supply chain of a job
+      # that holds a deploy token. Both values are read from the environment, never passed as
+      # arguments, because an argument is visible in `ps` to anything else on the runner.
+      - name: Publish to Netlify
+        working-directory: frontend
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: npx --yes netlify-cli@latest deploy --prod --dir=dist/frontend/browser --message="${{ github.sha }}"
+
+      # Proves the deploy is actually serving, and that the fallback works through Netlify rather
+      # than only existing in the artifact. A path that cannot exist as a file must still return
+      # 200, because _redirects rewrites it to index.html.
+      - name: Verify the deployed site
+        run: |
+          for i in $(seq 10); do
+            root=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://krzysztof-tarka.netlify.app/ || echo 000)
+            deep=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://krzysztof-tarka.netlify.app/projects/does-not-exist || echo 000)
+            if [ "$root" = "200" ] && [ "$deep" = "200" ]; then
+              echo "root 200, deep link 200 -- the SPA fallback is live"
+              exit 0
+            fi
+            echo "attempt $i: root=$root deep=$deep"; sleep 6
+          done
+          echo "The site did not answer as expected after publishing." >&2
+          echo "A deep link returning 404 means _redirects did not reach Netlify." >&2
+          exit 1
