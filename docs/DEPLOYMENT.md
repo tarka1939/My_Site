@@ -16,7 +16,8 @@ is refused with 403, and the login limiter returns 429 on the sixth attempt.
 **Not done:** §6 (the admin password — #121, so nobody can log in yet), §7 (end-to-end
 verification, which begins by loading the Netlify site), and all of Part 1 (Netlify).
 
-Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4 and §4.8
+Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4, §4.7,
+§4.7a and §4.8
 each said something that turned out to be wrong, and the wrongness is left on the record rather than
 quietly replaced, because each one cost time and the reasoning behind it was plausible.
 
@@ -35,7 +36,7 @@ deferred to Phase 5. **Two of the three are now settled** — see the strikethro
 
 | Decision | Why it blocks | Notes |
 |---|---|---|
-| **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — the JVM plus Postgres will thrash. Pick a region near you, not near nothing. |
+| **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — with no swap on this class of host the JVM plus Postgres does not thrash, it gets killed (§4.7a). Pick a region near you, not near nothing. |
 | **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled that day on `tarka1939.tojest.dev`, and **moved to `tarka1939.bieda.it` on 2026-09-03** — both provider domains, and the change cost only a redeploy, which is why `AGENT_LOG.md`'s 2026-09-02 entry names the older one. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
 | **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** — the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. |
 
@@ -533,19 +534,150 @@ curl -s localhost:8080/actuator/health
 Nothing else. `show-details: when-authorized` means an anonymous caller sees only the status, which
 is why it is safe to expose through the provider's proxy in 4.8.
 
-`-Xmx512m` is deliberate. The JVM's default maximum heap is a quarter of RAM, which on a 2 GB box has
-it competing with Postgres; many providers also ship no swap, and the OOM killer takes Postgres as
-readily as the JVM. If `free -h` shows none, add some:
+`-Xmx512m` is deliberate, and it is load-bearing for a reason that is not the obvious one — on
+this host the JVM believes it has 120 GiB and would size its heap for a 30 GiB ceiling without it.
+§4.7a has the measurement. Do not drop the flag, and do not run the jar by hand without it.
+
+If it does not come up, the likely causes are: a missing variable from 4.6 (the app names which),
+the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
+rather than an exhaustive one.
+
+### 4.7a Memory pressure — swap is not available here, and `-Xmx` is doing more than it looks
+
+**Corrected 2026-09-04, after measuring the host.** An earlier version of this section told you to
+create a swapfile. You cannot, on this host. A later version then claimed `-Xmx512m` was mostly
+decorative and that an OOM kill leaves no trace. Both of those were wrong too, and the measurements
+below are why. This section is now written from output rather than from what is usually true of a
+Linux box.
+
+**Check what kind of host you are on first**, because it decides whether the usual answer even
+exists:
+
+```bash
+systemd-detect-virt; free -h
+```
+
+Semicolon, not `&&`: `systemd-detect-virt` exits **non-zero when it finds no virtualization**, so on
+bare metal `&&` would swallow the `free -h` that is half the point.
+
+#### Swap is unavailable, not merely unhelpful
+
+**If that says `lxc` (or `openvz`), you cannot enable swap and should not try.** An LXC container,
+privileged or not, cannot enable its own — swap is a host-level resource. On an unprivileged one the
+kernel refuses outright, which is what happened here:
+
+```
+$ sudo swapon /swapfile
+swapon: /swapfile: swapon failed: Operation not permitted
+```
+
+The trap is that everything before the last step *succeeds*: the file is created, `mkswap` works, the
+`fstab` line is accepted. You end up with a gigabyte of disk doing nothing and an `fstab` entry that
+looks like it worked. If you already made one: `sudo rm /swapfile`, drop the `fstab` line.
+
+On a real VM the usual three commands do work. **Untested here, for the reason above:**
 
 ```bash
 sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h && swapon --show      # verify -- do not assume the fstab line means it is active
 ```
 
-If it does not come up, the likely causes are: a missing variable from 4.6 (the app names which),
-the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
-rather than an exhaustive one.
+#### `-Xmx512m` is not a round number, and not the reason an earlier draft gave
+
+The unit sets `-Xmx512m`. A previous version of this section justified it as "the JVM defaults to a
+quarter of RAM, which on a 2 GB box competes with Postgres". The arithmetic is right and the premise
+is wrong — and on this host it is wrong by a factor of sixty. Measured, as `deploy`, inside the
+container:
+
+```
+$ java -XX:+PrintFlagsFinal -version | grep -E "MaxHeapSize|MaxRAMPercentage"
+   size_t MaxHeapSize     = 32210157568    {product} {ergonomic}
+   double MaxRAMPercentage = 25.000000     {product} {default}
+```
+
+**32210157568 bytes is almost exactly 30 GiB** (2 MiB under). At the default 25%, the JVM believes this machine has **120 GiB**.
+It has 2. Container memory detection is not working here — that much *is* measured, and it is the
+part that matters. **The explanation below is not measured**, and is marked as such because the
+rest of this section is: the most plausible account is that `lxcfs` virtualises `/proc/meminfo`,
+so `free` reads 2 GiB correctly, while the JVM's own container support looks for a cgroup memory
+limit, finds none, and falls back to the physical host's figure. `cat /sys/fs/cgroup/memory.max`
+on the host would settle it; nobody has run it.
+
+So the flag is not trimming a default that was nearly right. **Without it the JVM would size its heap
+against a ceiling fifteen times the size of the box**, and would grow into it until earlyoom
+intervened. Do not remove it, and do not "simplify" it to match a general guide that assumes
+container awareness works.
+
+This also means: if you ever run the jar by hand to debug something, `java -jar mysite.jar` **without
+`-Xmx`** is not the same program the unit runs. Pass it.
+
+#### What the provider runs, and why it matters more than swap
+
+Read this even if you skipped the rest. On this host:
+
+```
+/usr/bin/earlyoom -r 3600 -m 15,8 --avoid (^|/)(sshd|systemd|init|bash)$ --prefer ^(node|python|php|java|chrome)$
+```
+
+`--prefer` adds a large badness penalty to any process named `java`, and the JVM is also the largest
+single consumer here, so under pressure it is selected first in practice. (`--prefer` biases the
+ranking; it does not impose an order, and a second `java` or `node` process would compete.)
+
+`-m 15,8` set the minimum available memory as a percentage of **total** RAM, and earlyoom acts
+when `MemAvailable` falls below it. On 2048 MiB total:
+
+| threshold | signal | what it does to the service |
+|---|---|---|
+| 15% ≈ **307 MiB** | `SIGTERM` | the JVM runs shutdown hooks and exits **143** |
+| 8% ≈ **164 MiB** | `SIGKILL` | the JVM dies outright, `signal=KILL` |
+
+**The two produce opposite symptoms, and an earlier draft only described one.** The unit carries
+`SuccessExitStatus=143` and `Restart=on-failure`, so systemd treats 143 as a *clean* exit and does
+**not** restart. The common case — a `SIGTERM` at 15% — therefore looks like the service stopping
+dead and staying stopped, with `systemctl status` reporting `Result: success` and nothing in the
+application log explaining why it shut down. That is a far nastier diagnosis than a restart loop, and
+it is the one you are most likely to meet. Only the `SIGKILL` case produces the restart-every-few-
+minutes pattern.
+
+#### The kill does leave a trace — read earlyoom's own log
+
+An earlier draft said the kill was invisible because `journalctl -k` is empty in a container. That
+reasoning does not hold: `journalctl -k` reads the *kernel* ring buffer, where the *kernel's* OOM
+killer logs. **earlyoom is a userspace daemon** — it polls `MemAvailable`, sends the signal itself,
+and writes to the journal like any other service:
+
+```bash
+journalctl -t earlyoom --since -1d | tail -20
+```
+
+Its `-r 3600` flag means it writes a memory report every hour even when nothing is killed, so this
+command also tells you the log is reachable at all. Real output from this deployment:
+
+```
+Sep 03 19:07:00 lee159 earlyoom[248]: mem avail: 1543 of 2048 MiB (75.37%), swap free: 0 of 0 MiB (0.00%)
+```
+
+#### Watch `available`, not `free`
+
+`free -h` prints both and they differ a lot on a box with page cache. earlyoom watches
+**`available`**. On this deployment:
+
+```
+               total        used        free      shared  buff/cache   available
+Mem:           2.0Gi       505Mi       481Mi        27Mi       1.1Gi       1.5Gi
+Swap:             0B          0B          0B
+```
+
+The `free` column reads **481 MiB**, which looks alarmingly close to the 307 MiB trigger. The number
+that matters is `available` at **1.5 GiB**, roughly five times the threshold. Reading the wrong
+column here is how a comfortable box looks like a failing one.
+
+For a sense of scale: earlyoom's hourly reports show `mem avail` sitting at 1977 MiB before the
+backend starts and 1547 MiB after, so **the application's real footprint is about 430 MiB** —
+comfortably inside its 512 MiB heap cap plus overhead. If that figure climbs toward the 307 MiB
+margin, lower `-Xmx` before earlyoom decides for you.
 
 ### 4.8 Exposing it to the internet
 
@@ -834,12 +966,20 @@ scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite-new.jar
 test -s /home/deploy/mysite-new.jar \
   && mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar \
   && mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar \
-  && sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health
+  && sudo systemctl restart mysite \
+  && { ok=; for i in $(seq 30); do curl -sf localhost:8080/actuator/health && { ok=1; break; }; sleep 2; done
+       [ "$ok" ] || { echo 'health never passed after 60s' >&2; false; }; }
 ```
 
 Chained deliberately: if the `scp` never landed — wrong port, full disk, a typo — an unchained
 first `mv` would rename the working jar away, the second would fail, and `systemctl restart`
 would then run against **no jar at all**.
+
+**Poll rather than sleep.** An earlier version waited a fixed 5 seconds and then curled once, which
+on this host reports *nothing at all*: startup takes about 26 seconds, so `curl` hit a closed port
+and `-s` swallowed the error. The operator is left staring at a silent prompt with no way to tell
+success from failure — reported from a live run. The loop above exits the moment it is healthy and
+keeps waiting if it is not; `Ctrl-C` if it never comes.
 
 Expect `{"groups":["liveness","readiness"],"status":"UP"}`. If not, roll back — keeping the
 failed build, because rolling straight over it destroys the thing you were about to diagnose:
@@ -856,6 +996,55 @@ configured to read. That is deliberate (#168), and it is the most likely cause o
 boots fine one build and not the next. The journal names the property.
 
 The frontend needs nothing — Netlify rebuilds on every push to `main`.
+
+---
+
+## 7b. Reading the logs
+
+Added 2026-09-04, because `journalctl` appeared in three scattered places in this document — during
+migrations, in the verify checklist, and in the rollback path — and nowhere that told you the unit
+name or that there is no log file to `tail`.
+
+The service runs as the systemd unit **`mysite`**, and Spring Boot writes to stdout, so everything
+goes to journald. There is nothing under `/var/log` to open.
+
+```bash
+sudo journalctl -u mysite -f                  # follow live; the one to keep open during a redeploy
+sudo journalctl -u mysite -n 200 --no-pager   # last 200 lines
+sudo journalctl -u mysite -p err --since today
+sudo journalctl -u mysite --since "10 min ago" | grep -iE "exception|caused by"
+```
+
+`--no-pager` matters: without it you land in `less` and need `q` to get out, which is the same trap
+as 4.8's foreground listener.
+
+For state rather than output — running or dead, uptime, restart count, and the last few lines:
+
+```bash
+systemctl status mysite
+```
+
+Other logs on this host:
+
+```bash
+sudo journalctl -t earlyoom --since -1d       # the OOM daemon -- see 4.7a
+sudo journalctl -u postgresql -n 50
+```
+
+**`journalctl -k` is expected to return nothing on this host** — an LXC container has no kernel
+ring buffer of its own. (A general fact about containers, not something measured here.) It is also why 4.7a reads earlyoom's own journal instead.
+
+#### Check whether the journal survives a reboot
+
+In a container the journal is often **volatile** — held in RAM and lost on restart, which is the
+worst possible property for diagnosing a crash after the fact:
+
+```bash
+journalctl --disk-usage; ls -d /var/log/journal 2>/dev/null || echo "VOLATILE -- logs die on reboot"
+```
+
+If it reports volatile, `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald`
+makes it persistent. Worth knowing before you need the history rather than after.
 
 ---
 
