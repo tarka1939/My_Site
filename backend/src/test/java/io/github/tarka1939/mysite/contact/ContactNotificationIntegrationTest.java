@@ -37,6 +37,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -209,14 +210,24 @@ class ContactNotificationIntegrationTest {
     }
 
     @Test
-    void saturatedExecutor_stillReturns201() {
+    void saturatedExecutor_dropsTheNotificationQuietlyAndStillReturns201() {
         // The listener's try/catch cannot protect the @Async DISPATCH, which happens before the
         // method body: AsyncExecutionAspectSupport calls executor.submit() on the caller's thread,
-        // and under AFTER_COMMIT that caller is the transaction manager committing the visitor's
-        // request. With the JDK default AbortPolicy a full pool plus a full queue made that submit
-        // throw TaskRejectedException, which nothing between there and GlobalExceptionHandler
-        // swallows -- so a message that was already durable came back to the visitor as a 500.
-        // AsyncConfigTest pins the executor's half of this; this pins the consequence.
+        // and under AFTER_COMMIT that caller is the thread committing the visitor's request. With
+        // the JDK default AbortPolicy that submit threw TaskRejectedException there.
+        //
+        // What that costs was MEASURED rather than reasoned about, and the answer is not the one
+        // PR #190's review expected. It does not become a 500: Spring 7.0.8's
+        // PlatformSynchronization has no afterCommit() override and dispatches AFTER_COMMIT from
+        // afterCompletion(), which TransactionSynchronizationUtils wraps in a catch-and-log. So
+        // the 201 assertions below held before the fix too, and are a regression guard rather
+        // than the thing this test proves.
+        //
+        // What it costs is the ERROR-level stack trace per dropped notification, asserted against
+        // below -- a saturated queue is a capacity condition, and logging it as an error buries
+        // the signal that would matter. AsyncConfigTest pins the executor's own behaviour, which
+        // is where the deterministic before/after difference lives.
+        ListAppender<ILoggingEvent> everything = attachToRootLogger();
         CountDownLatch release = new CountDownLatch(1);
         doAnswer(invocation -> {
             release.await(60, TimeUnit.SECONDS);
@@ -242,11 +253,28 @@ class ContactNotificationIntegrationTest {
                         + "the notification is even dispatched", i)
                     .isEqualTo(HttpStatus.CREATED);
             }
+
+            // Asserted before the saturation check below so that a regression here reports the
+            // defect rather than its symptom: with no rejection handler this list holds one
+            // TaskRejectedException stack trace per dropped notification, logged by
+            // TransactionSynchronizationUtils.
+            assertThat(eventsAtLevel(everything, Level.ERROR))
+                .as("overflow is a capacity condition, not an error -- nothing here should be "
+                    + "logged at a level that reads as 'something is broken, go and look'")
+                .isEmpty();
+
+            // ...and the test is only meaningful if it actually filled the executor. Without this
+            // it would keep passing after a pool-size change that made 70 submissions absorbable,
+            // asserting nothing at all.
+            assertThat(messagesAtLevel(everything, Level.WARN))
+                .as("70 submissions against an 8-thread, 50-slot executor must overflow it")
+                .anyMatch(m -> m.contains("Async task executor saturated"));
         } finally {
             release.countDown();
             // Drain before returning, or the ~50 queued tasks land on the spy after Mockito has
             // reset it and break a later test's verify() count. Cheap once the latch is open.
             awaitExecutorIdle();
+            detachFromRootLogger(everything);
         }
     }
 
@@ -259,6 +287,25 @@ class ContactNotificationIntegrationTest {
             .as("app.resend.api-key must be pinned blank in the test profile -- the spy above calls "
                 + "through to the real client, so a resolvable key means this suite emails people")
             .isBlank();
+    }
+
+    private static ListAppender<ILoggingEvent> attachToRootLogger() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        ((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).addAppender(appender);
+        return appender;
+    }
+
+    private static void detachFromRootLogger(ListAppender<ILoggingEvent> appender) {
+        ((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).detachAppender(appender);
+    }
+
+    private static List<ILoggingEvent> eventsAtLevel(ListAppender<ILoggingEvent> appender, Level level) {
+        return List.copyOf(appender.list).stream().filter(e -> e.getLevel().equals(level)).toList();
+    }
+
+    private static List<String> messagesAtLevel(ListAppender<ILoggingEvent> appender, Level level) {
+        return eventsAtLevel(appender, level).stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
 
     private void awaitExecutorIdle() {
