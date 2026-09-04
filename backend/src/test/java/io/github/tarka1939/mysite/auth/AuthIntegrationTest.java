@@ -248,6 +248,131 @@ class AuthIntegrationTest {
             .isInstanceOf(InvalidResetTokenException.class);
     }
 
+    @Test
+    void validateToken_withUsableToken_returnsAndLeavesTheTokenUsable() {
+        var adminUser = createAdminUser("validate-admin", "validate-admin@example.com", "old-password");
+        PasswordResetToken token = new PasswordResetToken(
+            adminUser.getId(), sha256Hex("validate-live-token"), Instant.now().plus(30, ChronoUnit.MINUTES));
+        passwordResetTokenRepository.saveAndFlush(token);
+        HttpServletRequest httpRequest = requestFrom("203.0.113.50");
+
+        // The load-bearing test for issue #187. Validation is a read; if it ever went through
+        // markUsedIfValid (confirmReset's atomic conditional UPDATE), opening the reset link would
+        // burn the token and the feature would break the very flow it exists to improve. Called
+        // three times deliberately -- a single call cannot distinguish "does not consume" from
+        // "consumes, and the first call happens to be the one that succeeds".
+        passwordResetService.validateToken(new PasswordResetValidateBody("validate-live-token"), httpRequest);
+        passwordResetService.validateToken(new PasswordResetValidateBody("validate-live-token"), httpRequest);
+        passwordResetService.validateToken(new PasswordResetValidateBody("validate-live-token"), httpRequest);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(passwordResetTokenRepository.findById(token.getId()).orElseThrow().getUsedAt()).isNull();
+
+        // usedAt being null is necessary but not sufficient -- this is the assertion that proves
+        // the link a visitor was just shown a form for still actually works.
+        passwordResetService.confirmReset(new PasswordResetConfirmBody("validate-live-token", "new-password-123"));
+        entityManager.flush();
+        entityManager.clear();
+
+        var reloadedUser = adminUserRepository.findById(adminUser.getId()).orElseThrow();
+        assertThat(passwordEncoder.matches("new-password-123", reloadedUser.getPasswordHash())).isTrue();
+    }
+
+    @Test
+    void validateToken_withAlreadyUsedToken_throwsInvalidResetToken() {
+        var adminUser = createAdminUser("validate-used-admin", "validate-used-admin@example.com", "old-password");
+        PasswordResetToken token = new PasswordResetToken(
+            adminUser.getId(), sha256Hex("validate-used-token"), Instant.now().plus(30, ChronoUnit.MINUTES));
+        token.setUsedAt(Instant.now().minus(1, ChronoUnit.MINUTES));
+        passwordResetTokenRepository.saveAndFlush(token);
+
+        assertThatThrownBy(() -> passwordResetService.validateToken(
+            new PasswordResetValidateBody("validate-used-token"), requestFrom("203.0.113.51")))
+            .isInstanceOf(InvalidResetTokenException.class)
+            .hasMessage("Invalid or expired reset token");
+    }
+
+    @Test
+    void validateToken_withExpiredToken_throwsInvalidResetToken() {
+        var adminUser = createAdminUser("validate-exp-admin", "validate-exp-admin@example.com", "old-password");
+        PasswordResetToken token = new PasswordResetToken(
+            adminUser.getId(), sha256Hex("validate-expired-token"), Instant.now().minus(1, ChronoUnit.MINUTES));
+        passwordResetTokenRepository.saveAndFlush(token);
+
+        assertThatThrownBy(() -> passwordResetService.validateToken(
+            new PasswordResetValidateBody("validate-expired-token"), requestFrom("203.0.113.52")))
+            .isInstanceOf(InvalidResetTokenException.class)
+            // Same type AND same message as the used-token and never-issued cases either side of
+            // this one: the endpoint must not let the shape of the failure say which it was. The
+            // message is what reaches the client as both detail and the token field error.
+            .hasMessage("Invalid or expired reset token");
+    }
+
+    @Test
+    void validateToken_withUnknownToken_throwsInvalidResetToken() {
+        assertThatThrownBy(() -> passwordResetService.validateToken(
+            new PasswordResetValidateBody("never-issued-validate-token"), requestFrom("203.0.113.53")))
+            .isInstanceOf(InvalidResetTokenException.class)
+            .hasMessage("Invalid or expired reset token");
+    }
+
+    @Test
+    void validateToken_pastItsRateLimit_throwsRateLimitExceeded() {
+        var adminUser = createAdminUser("validate-rl-admin", "validate-rl-admin@example.com", "old-password");
+        PasswordResetToken token = new PasswordResetToken(
+            adminUser.getId(), sha256Hex("validate-rl-token"), Instant.now().plus(30, ChronoUnit.MINUTES));
+        passwordResetTokenRepository.saveAndFlush(token);
+        HttpServletRequest httpRequest = requestFrom("203.0.113.54");
+
+        // Ten succeed (which also re-confirms the read never consumes), the eleventh does not.
+        // Unlimited, this endpoint would be a cheaper validity oracle than the reset form itself.
+        for (int i = 0; i < 10; i++) {
+            passwordResetService.validateToken(new PasswordResetValidateBody("validate-rl-token"), httpRequest);
+        }
+
+        assertThatThrownBy(() -> passwordResetService.validateToken(
+            new PasswordResetValidateBody("validate-rl-token"), httpRequest))
+            .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
+    void validateTokenRateLimit_isItsOwnBucket_notRequestResetsOrLogins() {
+        // The namespace-collision regression test. InMemoryRateLimiter is a shared singleton keyed
+        // only by the string it is handed, and this project has already shipped one bug of exactly
+        // this shape (login reusing password-reset's unnamespaced key -- see CLAUDE.md). If
+        // validation shared "password-reset:", a handful of reset-page loads would silently
+        // consume the budget for requesting a reset email and lock an admin out of recovery.
+        var adminUser = createAdminUser("validate-ns-admin", "validate-ns-admin@example.com", "old-password");
+        PasswordResetToken token = new PasswordResetToken(
+            adminUser.getId(), sha256Hex("validate-ns-token"), Instant.now().plus(30, ChronoUnit.MINUTES));
+        passwordResetTokenRepository.saveAndFlush(token);
+        HttpServletRequest httpRequest = requestFrom("203.0.113.55");
+
+        for (int i = 0; i < 10; i++) {
+            passwordResetService.validateToken(new PasswordResetValidateBody("validate-ns-token"), httpRequest);
+        }
+
+        // Same IP, neighbouring endpoints: both must still have untouched budgets. requestReset
+        // adds a second token row for this admin; login gets as far as checking the password.
+        passwordResetService.requestReset(new PasswordResetRequestBody("validate-ns-admin@example.com"), httpRequest);
+        entityManager.flush();
+        assertThat(passwordResetTokenRepository.findAll().stream()
+            .filter(t -> t.getAdminUserId().equals(adminUser.getId()))
+            .toList()).hasSize(2);
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("validate-ns-admin", "wrong-password"), httpRequest))
+            .isInstanceOf(InvalidCredentialsException.class);
+
+        // Asserted last, on purpose: it is the only step here that throws out of a @Transactional
+        // service method, which marks this test's surrounding transaction rollback-only. The
+        // bucket is monotonic within its 15-minute window, so being exhausted here proves it was
+        // already exhausted above -- which is what makes the two assertions above mean anything.
+        assertThatThrownBy(() -> passwordResetService.validateToken(
+            new PasswordResetValidateBody("validate-ns-token"), httpRequest))
+            .isInstanceOf(RateLimitExceededException.class);
+    }
+
     private AdminUser createAdminUser(String username, String email, String rawPassword) {
         AdminUser adminUser = instantiateAdminUser(username, email, passwordEncoder.encode(rawPassword));
         return adminUserRepository.saveAndFlush(adminUser);

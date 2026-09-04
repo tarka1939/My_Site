@@ -9,6 +9,7 @@ export * from './loginResponse';
 export * from './pageMeta';
 export * from './passwordResetConfirmBody';
 export * from './passwordResetRequestBody';
+export * from './passwordResetValidateBody';
 export * from './problemDetail';
 export * from './project';
 export * from './projectPageResponse';
