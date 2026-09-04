@@ -21,12 +21,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.RestClientException;
@@ -49,10 +51,16 @@ import io.github.tarka1939.mysite.ResendEmailClient;
  * asserting nothing. Rows therefore survive each test, which is also why {@link #reset()} empties
  * the table — the contact rate limiter counts rows, so leftovers from one test would 429 the next.
  *
- * <p>{@link MockitoSpyBean} rather than a mock: the spy calls through to the real client, whose
- * {@code RESEND_API_KEY} is blank in the test profile, so the genuine warn-and-skip path runs and
- * nothing touches the network. That makes the unconfigured-key degrade a real assertion here
- * rather than something stubbed away, while still allowing the failure injection below.
+ * <p>{@link MockitoSpyBean} rather than a mock: the spy calls THROUGH to the real client, so the
+ * genuine warn-and-skip path runs and the unconfigured-key degrade is a real assertion here rather
+ * than something stubbed away, while the failure injection below still works.
+ *
+ * <p>That calling-through is only safe because {@code application-test.yml} now pins
+ * {@code app.resend.api-key} blank. It previously did not: the base config reads
+ * {@code ${RESEND_API_KEY:}}, so with that variable exported — which this branch's own
+ * {@code docs/DEPLOYMENT.md} tells the owner to do — two of these tests would have POSTed to
+ * api.resend.com against the real account and a third would have failed looking like a
+ * regression. {@link #testProfilePinsTheResendKeyBlank_soTheSuiteCannotSendRealEmail()} guards it.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -62,6 +70,9 @@ import io.github.tarka1939.mysite.ResendEmailClient;
 class ContactNotificationIntegrationTest {
 
     private static final String OWNER = "owner@example.invalid";
+
+    /** Mirrors ContactService's MAX_MESSAGES_PER_WINDOW. */
+    private static final int MAX_MESSAGES_PER_IP_PER_HOUR = 5;
 
     @Container
     @ServiceConnection
@@ -75,6 +86,12 @@ class ContactNotificationIntegrationTest {
 
     @MockitoSpyBean
     private ResendEmailClient resendEmailClient;
+
+    @Autowired
+    private Environment environment;
+
+    @Autowired
+    private ThreadPoolTaskExecutor taskExecutor;
 
     /**
      * Plain RestTemplate with the errors turned off rather than TestRestTemplate, matching
@@ -188,6 +205,75 @@ class ContactNotificationIntegrationTest {
         } finally {
             // Always, or a taskExecutor thread stays blocked for the rest of the suite.
             release.countDown();
+        }
+    }
+
+    @Test
+    void saturatedExecutor_stillReturns201() {
+        // The listener's try/catch cannot protect the @Async DISPATCH, which happens before the
+        // method body: AsyncExecutionAspectSupport calls executor.submit() on the caller's thread,
+        // and under AFTER_COMMIT that caller is the transaction manager committing the visitor's
+        // request. With the JDK default AbortPolicy a full pool plus a full queue made that submit
+        // throw TaskRejectedException, which nothing between there and GlobalExceptionHandler
+        // swallows -- so a message that was already durable came back to the visitor as a 500.
+        // AsyncConfigTest pins the executor's half of this; this pins the consequence.
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            release.await(60, TimeUnit.SECONDS);
+            return null;
+        }).when(resendEmailClient).sendContactNotificationEmail(anyString(), anyString(), anyString());
+
+        try {
+            // 8 max threads + a 50-slot queue = 58 tasks absorbed, so submissions from the 59th on
+            // are the ones that can be rejected. 70 leaves margin without being slow.
+            for (int i = 0; i < 70; i++) {
+                if (i % MAX_MESSAGES_PER_IP_PER_HOUR == 0) {
+                    // ContactService's rate limiter counts rows, so emptying the table refunds the
+                    // quota. Relied on deliberately here: the limiter caps a single IP at five an
+                    // hour, and every request in this test comes from 127.0.0.1, so there is no
+                    // other way to reach saturation over real HTTP. (That the refund exists at all
+                    // is a known, accepted weakness -- see this PR's description.)
+                    contactMessageRepository.deleteAll();
+                }
+                ResponseEntity<String> response =
+                    submit("Visitor " + i, "visitor" + i + "@example.invalid", "Message " + i);
+                assertThat(response.getStatusCode())
+                    .as("submission %d must still be a 201 -- the message is committed by the time "
+                        + "the notification is even dispatched", i)
+                    .isEqualTo(HttpStatus.CREATED);
+            }
+        } finally {
+            release.countDown();
+            // Drain before returning, or the ~50 queued tasks land on the spy after Mockito has
+            // reset it and break a later test's verify() count. Cheap once the latch is open.
+            awaitExecutorIdle();
+        }
+    }
+
+    @Test
+    void testProfilePinsTheResendKeyBlank_soTheSuiteCannotSendRealEmail() {
+        // Reads the RESOLVED property rather than the yml file, because the hole this guards is
+        // precisely that an environment variable outranks a file that stays silent. This assertion
+        // fails in exactly the environment where the bug bit: RESEND_API_KEY exported, pin gone.
+        assertThat(environment.getProperty("app.resend.api-key"))
+            .as("app.resend.api-key must be pinned blank in the test profile -- the spy above calls "
+                + "through to the real client, so a resolvable key means this suite emails people")
+            .isBlank();
+    }
+
+    private void awaitExecutorIdle() {
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (taskExecutor.getThreadPoolExecutor().getQueue().isEmpty()
+                && taskExecutor.getActiveCount() == 0) {
+                return;
+            }
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
         }
     }
 

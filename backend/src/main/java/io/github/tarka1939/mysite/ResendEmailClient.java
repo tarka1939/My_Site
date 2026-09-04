@@ -7,6 +7,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequestFactory;
@@ -54,6 +55,14 @@ public class ResendEmailClient {
     private final String apiKey;
     private final String fromAddress;
 
+    /**
+     * {@code @Autowired} is load-bearing, not decoration. Adding the second constructor below made
+     * this a class with two candidate constructors and no annotated one, at which point Spring
+     * stops guessing and looks for a no-arg constructor it will not find — every application
+     * context in the suite failed to start with "No default constructor found" until this was
+     * added. Compilation and the non-Spring unit tests were both perfectly happy.
+     */
+    @Autowired
     public ResendEmailClient(
         @Value("${app.resend.api-key:}") String apiKey,
         @Value("${app.resend.from-address}") String fromAddress

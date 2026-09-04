@@ -1,4 +1,33 @@
 app:
+  # Every entry below pins a value the base application.yml reads from an environment variable.
+  # The test profile is not isolated from the developer's shell -- ${FOO:default} resolves FOO if
+  # it happens to be exported -- and docs/DEPLOYMENT.md tells the owner to export several of
+  # these for real. Anything the suite's correctness depends on is therefore pinned here rather
+  # than inherited, the same call as app.jwt.secret below.
+  resend:
+    # THE IMPORTANT ONE. Without this, an exported RESEND_API_KEY makes the suite send real email
+    # through the real Resend account: ContactNotificationIntegrationTest uses @MockitoSpyBean,
+    # which calls THROUGH to the genuine client, and two of its tests would POST to
+    # api.resend.com while a third failed on a warn-and-skip log line that never appeared --
+    # reading as a regression rather than as a misconfiguration. Blank is also the state the
+    # tests are written against: the designed warn-and-skip no-op.
+    api-key: ""
+    # Not a secret, but keeping the real Resend sandbox sender out of test-generated content
+    # costs one line, and an RFC 2606 .invalid address cannot accidentally be a real one.
+    from-address: noreply@example.invalid
+  contact:
+    # Empty is the "nobody configured a destination" degrade path the tests assert. An exported
+    # CONTACT_NOTIFICATION_EMAIL would silently replace it -- and a malformed one would fail
+    # every Spring context at startup, since the listener's constructor validates eagerly.
+    # ContactNotificationIntegrationTest sets its own via @SpringBootTest(properties = ...),
+    # which outranks this.
+    notification-email: ""
+  github-sync:
+    # Off, explicitly. An exported GITHUB_SYNC_ENABLED=true with no matching webhook secret makes
+    # GithubSignatureVerifier's constructor throw, which fails not one test but every
+    # @SpringBootTest context in the suite. The githubsync tests that need it on set it
+    # per-context, which outranks this.
+    enabled: false
   jwt:
     # Fixed test secret so @SpringBootTest contexts can resolve app.jwt.secret without an
     # env var -- deliberately not the dev default, to keep test config self-contained.
