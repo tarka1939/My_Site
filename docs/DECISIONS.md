@@ -682,6 +682,97 @@ a non-2xx propagated out and changed the HTTP response.
   list describing the branch it is not on is worse than no consequences list, because it reads as
   verified.
 
+### 2026-09-04 — Deploy automation: CI first, the jar not a container, and a key that can only deploy
+
+**Context:** Phase 5's manual half is finished — both halves live, verified against the running host
+— and its automated half does not exist at all. `.github/workflows/` holds a placeholder README.
+Every deploy has been `mvn package`, `scp`, `systemctl restart` by hand, and **no pull request in
+this repository has ever had its gates run by anything but a person remembering to run them**, which
+is uncomfortable in a project whose own `README.md` says nothing merges on a report.
+
+Six issues cover the gap — #38, #45, #41, #42, #46, #48 — and they are not six independent tasks.
+Two of them (#38, #45) each bundle "run the tests" with "build and deploy", which have completely
+different risk profiles, and two (#41, #42) assume a containerised production this project
+deliberately does not have. Written 2026-07, before the deploy existed, so several of them describe
+a system that was never built.
+
+**Decision:**
+
+**1. CI is extracted as its own first piece, ahead of any deploy work.** A workflow that runs
+`mvn test` and `npm test` on every pull request needs no secrets, no deploy target, and cannot break
+production. It is the highest-value and lowest-risk item here, and today it exists only as a clause
+inside two CD issues. It ships first and alone.
+
+**2. Production stays a plain jar under systemd. The automation replaces the hands, not the shape.**
+The pipeline will build, `scp` and restart exactly what a person does now.
+
+This is the runbook's own argument applied a second time: a first deploy should introduce one new
+variable rather than two, and the same holds for a first *automated* deploy. Containerising at the
+same time would change the deploy mechanism, the systemd unit, and §4.7a's memory section — which
+was measured on this host only yesterday and would need re-measuring, since a Docker container
+usually gets a real memory cgroup where this LXC container does not. That is a reason to containerise
+eventually, not a reason to do it while also automating.
+
+**3. GitHub holds a deploy key that can deploy and nothing else.** A dedicated key for the `deploy`
+user, restricted in `authorized_keys` with `command="..."` and `restrict`, so possession of it
+permits running the deploy script and no other command, no port forwarding, no shell. **Not root,
+not a general-purpose key.**
+
+The threat this addresses is specific: a workflow is a piece of software that runs with the
+repository's secrets, and its supply chain is every action it invokes. An unrestricted key would let
+a compromised third-party action do anything to the server. A restricted one bounds that to
+"triggered a deploy", which is a bad day rather than a lost host.
+
+**4. #38 ships, and it replaces Netlify's build rather than joining it.** Netlify's git integration
+already deploys `main`. Automating it in Actions is not necessary; it is done for uniformity and as
+portfolio evidence of a complete pipeline, the same reasoning the 2026-09-03 security ADR records
+for the password-reset flow.
+
+Two conditions make it worth doing rather than merely redundant. **Netlify's native build is switched
+off**, so there is exactly one deploy path — running both would mean two builds racing for one site,
+possibly from different commits. And it delivers two things the native build does not: `_redirects`
+verified in the CI build, which is an unticked Phase 5 checklist item, and the artifact that was
+tested being the artifact that ships.
+
+**5. #42 is local-dev only and independent of all of the above.** A `docker-compose.yml` for backend
+plus Postgres is useful whether or not production is containerised, and would remove `CLAUDE.md`'s
+"point `DB_*` at whatever Postgres you have locally, or run one yourself" step. It does not wait on
+anything.
+
+**Alternatives considered:**
+
+- *Containerise production now — build an image, push to GHCR, have the host pull it (#41 as
+  written).* The better end state, and probably where this goes. Rejected for now on sequencing: it
+  changes what is deployed at the same moment as changing who deploys it, so a failure would have two
+  candidate causes. Revisit once automated deploys of the jar are boring.
+- *An unrestricted SSH key, or deploying as root.* Simpler, and the thing most guides show. Rejected:
+  it converts a compromised workflow into a compromised server, and the whole cost of the restricted
+  form is a `command=` prefix and a script on the host.
+- *Leave #38 undone and let Netlify keep building.* Genuinely defensible — it is the option with less
+  machinery, and it keeps per-PR deploy previews, which an Actions deploy does not reproduce.
+  Rejected because the owner wants the pipeline visible and complete, and because building in CI is
+  what verifies `_redirects`. **The lost deploy previews are accepted, not overlooked**; the backend
+  deliberately does not allowlist their origins anyway (see `SecurityConfig`).
+- *Doing these in issue-number order.* Would have built CD before CI and containers before either.
+
+**Consequences:**
+
+- **SSH hardening becomes a prerequisite, not a cleanup.** Adding a machine credential to a host
+  while `PermitRootLogin yes` is set would be the wrong order. §4.2's hardening step has to be true
+  again before #45 lands.
+- **GitHub Actions secrets become a second secret store** (#46), so `/etc/mysite/env` stops being the
+  only one. The 2026-09-03 security posture ADR's clause 3 — no secret in shell history, process
+  arguments, log files, or a pasted scrollback — now has to hold in workflow YAML too, where the
+  failure mode is `echo`ing a secret into a build log that is public on a public repository.
+- **The deploy script on the host becomes part of the security boundary.** With `command=`, that
+  script is what the key can run, so it deserves the same review as the workflow that calls it —
+  including what happens if it is invoked with arguments the workflow never sends.
+- **GitHub's runners are IPv4 and reach SSH through the provider's forwarded port**, which works, but
+  means the SSH port must accept connections from GitHub's runner ranges. Those ranges are large and
+  change; narrowing `ufw` to them is not obviously better than leaving the port open with key-only
+  auth, and that trade should be decided explicitly rather than by default.
+- **Structured logging (#48) stays independent** and can land at any point.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
