@@ -26,8 +26,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * cannot protect the {@code @Async} <em>dispatch</em>, which happens before the method body runs:
  * {@code AsyncExecutionAspectSupport#doSubmit} calls {@code executor.submit(...)} outside any
  * try/catch of ours. With the JDK default {@link ThreadPoolExecutor.AbortPolicy}, a full pool plus
- * a full queue makes that submit throw {@code TaskRejectedException}, and the listener's own
- * {@code catch} cannot cover it because the dispatch happens before the method body runs.
+ * a full queue makes that submit throw {@code TaskRejectedException}.
  *
  * <p><b>Measured, that does not reach the visitor on Spring Framework 7.0.8.</b> A review
  * predicted it would — escaping {@code commit()} and returning a 500 for a message already durable

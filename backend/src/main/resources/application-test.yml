@@ -3,7 +3,7 @@ app:
   # The test profile is not isolated from the developer's shell -- ${FOO:default} resolves FOO if
   # it happens to be exported. docs/DEPLOYMENT.md writes these to /etc/mysite/env rather
   # than exporting them, but the owner holds the real values and a shell that has them set
-  # is one `export` away. Anything the suite's correctness depends on is pinned here
+  # is one `export` away. Anything the suite's correctness depends on is pinned here rather
   # than inherited, the same call as app.jwt.secret below.
   resend:
     # THE IMPORTANT ONE. Without this, an exported RESEND_API_KEY makes the suite send real email
