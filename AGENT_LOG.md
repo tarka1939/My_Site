@@ -459,6 +459,58 @@ Backend 235 tests to 245. The frontend client was deliberately **not** regenerat
   exception out of a `@Transactional` method poisons the surrounding test transaction, so an
   assertion placed for narrative flow can undermine the assertions after it.
 
+## 2026-09-04 — #176: a review finding that was right about JVMs and wrong about this box
+
+**Task given:** fix the four blocking defects a cold review found in `docs/DEPLOYMENT.md`'s memory
+section, using diagnostic output the owner ran on the live host.
+
+**Agent(s) used:** one reviewer on Opus for round one, one on Sonnet for round two.
+
+**What went right:** the round-one reviewer measured `MaxHeapSize` **on its own machine**, got
+exactly 512 MiB — a quarter of 2 GiB — and concluded `-Xmx512m` was byte-identical to the JVM
+default and therefore decorative. It then wrote down the condition under which it would be wrong:
+*"if lxcfs/cgroup detection is not working, the JVM would see the physical host's RAM… in which case
+the flag matters a great deal."* It is not working. The host reports `MaxHeapSize = 32210157568` —
+almost exactly 30 GiB — so the JVM believes the box has 120 GiB and the flag is holding back a
+fifteen-fold overshoot. **The finding was reversed by the very check its own caveat asked for.** A
+reviewer that states its uncertainty converts a wrong conclusion into a right question.
+
+**What went wrong (be specific):** the section had the right conclusion — keep `-Xmx512m` — via a
+false premise: "a quarter of RAM, which on a 2 GB box competes with Postgres". Right arithmetic,
+wrong RAM, off by sixty. That is worse than being plainly wrong, because it reads as verified and
+nobody re-checks a conclusion they agree with.
+
+**Then the fixes introduced three more.** Round two found all of them, and all three were written in
+the commit that was supposed to be cleaning up:
+
+- Rewording section 0's "will thrash" left a **raw newline inside a markdown table cell**, which
+  terminates the row. This is the third time scripted string replacement has broken a table or a
+  code block in this document, and the second time in one session by the same person who logged the
+  first.
+- The bounded health-check loop replacing the escaped `&&` chain **reported success when the
+  application never came up**: on a failing run the loop's last executed command is `sleep`, which
+  exits 0, so the whole chain exits 0. Verified by reproduction rather than by reading, in both
+  directions.
+- The `lxcfs` explanation for *why* the JVM sees the host's RAM was written in the same flat,
+  declarative register as the measured output above it — in a section whose opening sentence
+  promises it is "written from output rather than from what is usually true of a Linux box". It is
+  now marked as the unmeasured inference it is, with the command that would settle it.
+
+**How it was caught:** entirely by the round-two reviewer. No gate touches this file.
+
+**Takeaway for next time:**
+
+- **A reviewer's caveat is a task, not a hedge.** Round one named the exact command that would
+  overturn its own finding. Running it was the highest-value thing in the round.
+- **"Right conclusion, wrong reason" is a defect.** It survives review precisely because the
+  conclusion looks correct.
+- **Scripted replacement keeps breaking structure in this file.** Check tables and fences after
+  every scripted edit, not after the ones that feel risky — `python -c` over lines starting with
+  `|` that do not end with `|` costs nothing.
+- **Verify a shell fix by running it, including the path where nothing works.** Both of this
+  round's shell bugs reported success on failure, which is the one outcome a runbook must never
+  produce.
+
 ## 2026-09-04 — four numbers I did not measure, and a review I priced wrong
 
 **Task given:** coordinate the Phase 5 promotion and the follow-up fixes — #175, #178/#180, #179's
