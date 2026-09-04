@@ -42,7 +42,8 @@ public class ContactNotificationListener {
     /**
      * The visitor's name goes in the subject line, so it is truncated to something a mail client
      * will actually show. {@code @Size(max = 200)} on the request already bounds it; this bounds
-     * it again at the point where the length matters.
+     * it again at the point where the length matters. Counted in code points rather than chars —
+     * see {@link #sanitizeForHeader(String)}.
      */
     private static final int MAX_SUBJECT_NAME_LENGTH = 100;
 
@@ -145,12 +146,26 @@ public class ContactNotificationListener {
 
     private static String sanitizeForHeader(String value) {
         StringBuilder sanitized = new StringBuilder(value.length());
-        for (int i = 0; i < value.length() && sanitized.length() < MAX_SUBJECT_NAME_LENGTH; i++) {
-            char c = value.charAt(i);
+        int kept = 0;
+        // By CODE POINT, not by char. Truncating an emoji -- or any other astral character -- at a
+        // char boundary leaves a lone high surrogate behind, and Jackson serialises that as a
+        // literal escape sequence rather than throwing. So the owner's subject line ends in
+        // visible mojibake and nothing anywhere reports a problem. Cosmetic, but silently
+        // cosmetic is the kind that survives. Counting code points also makes the 100 a limit on
+        // characters as a person would count them.
+        for (int i = 0; i < value.length() && kept < MAX_SUBJECT_NAME_LENGTH; ) {
+            int codePoint = value.codePointAt(i);
+            i += Character.charCount(codePoint);
             // Drop C0 controls (CR, LF, NUL, ...) and DEL. Ordinary printable characters,
             // including non-ASCII ones, are kept: a name is a name.
-            if (c >= ' ' && c != 0x7F) {
-                sanitized.append(c);
+            //
+            // Also drop an UNPAIRED surrogate, which codePointAt returns as itself when it has no
+            // partner. A well-formed pair never reaches this branch -- it arrives already
+            // combined into a single code point -- so this only ever removes something that was
+            // already broken on the way in.
+            if (codePoint >= ' ' && codePoint != 0x7F && !Character.isSurrogate((char) codePoint)) {
+                sanitized.appendCodePoint(codePoint);
+                kept++;
             }
         }
         return sanitized.toString().trim();

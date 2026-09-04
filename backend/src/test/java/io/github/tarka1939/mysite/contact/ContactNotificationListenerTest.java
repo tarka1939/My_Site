@@ -127,6 +127,48 @@ class ContactNotificationListenerTest {
     }
 
     @Test
+    void truncationDoesNotSplitAnAstralCharacterInHalf() {
+        // U+1F600 GRINNING FACE is one code point and two chars. Truncating by char at 100 cut
+        // one of them in half and left a lone high surrogate, which Jackson emits as a literal
+        // escape sequence instead of throwing -- mojibake in the owner's subject line, and
+        // nothing anywhere reporting it. Written as a code point rather than as a pair of Java
+        // escapes so that the test source cannot itself contain the half-character it forbids.
+        //
+        // The single leading "N" is load-bearing. All-emoji input would have the old char-based
+        // truncation land on char 100, which is a pair BOUNDARY -- 50 whole emoji, no split, and
+        // a test that passes against the bug. Shifting everything by one char makes the cut fall
+        // inside the 50th pair, which is the case that was broken.
+        String emoji = Character.toString(0x1F600);
+
+        listener(OWNER).onContactMessageReceived(
+            event("N" + emoji.repeat(120), "a@example.invalid", "Hi"));
+
+        String subject = sentSubject();
+        assertThat(subject).isEqualTo("New contact message from N" + emoji.repeat(99));
+        // codePoints(), not chars(): chars() walks UTF-16 code units, so BOTH halves of a
+        // perfectly valid pair are surrogates by that measure and the assertion would fail on
+        // correct output. codePoints() combines a valid pair into one non-surrogate code point
+        // and yields an unpaired one as itself, which is exactly the distinction being asserted.
+        assertThat(subject.codePoints()
+            .noneMatch(cp -> cp >= Character.MIN_SURROGATE && cp <= Character.MAX_SURROGATE))
+            .as("no unpaired surrogate may survive truncation")
+            .isTrue();
+    }
+
+    @Test
+    void anUnpairedSurrogateInTheNameIsDroppedRatherThanForwarded() {
+        // Not reachable through a well-formed JSON body, but this sanitizer is the last thing
+        // between visitor input and a MIME header, and that is the wrong place to assume the
+        // input is well-formed.
+        String loneHighSurrogate = String.valueOf((char) 0xD83D);
+
+        listener(OWNER).onContactMessageReceived(
+            event("Ali" + loneHighSurrogate + "ce", "a@example.invalid", "Hi"));
+
+        assertThat(sentSubject()).isEqualTo("New contact message from Alice");
+    }
+
+    @Test
     void malformedConfiguredAddressFailsFastAtBeanCreation() {
         // Present-but-malformed, the other half of CLAUDE.md's config-validation rule. Each of
         // these would otherwise fail silently, one undelivered notification at a time.
