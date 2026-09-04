@@ -640,12 +640,47 @@ a non-2xx propagated out and changed the HTTP response.
   header-injection primitive.
 - **Nothing about the visitor is logged, at any level** — not the name, email or message body. The
   message's UUID is logged instead, which points at a row the admin panel can already show.
-- **A dangling cross-reference was found, not fixed.** `docs/DEPLOYMENT.md` says "See
-  `docs/DECISIONS.md`, 2026-09-03, for why the reset flow exists at all — it is a showcase feature
-  rather than an admin tool". No such text exists in this file; the only other 2026-09-03 entry is
-  the backend-exposure ADR above, which is about TLS. The reasoning it cites is real and is stated
-  in `DEPLOYMENT.md` itself, but the ADR it points at was never written. Flagged rather than
-  invented, since guessing at what an absent decision said is worse than an obviously broken link.
+- **The shared `@Async` executor now drops and logs on overflow instead of aborting.** The
+  listener's `catch` cannot cover the `@Async` *dispatch*, which happens on the caller's thread
+  before the method body — so with `AbortPolicy` a full pool plus a full queue threw
+  `TaskRejectedException` at whoever was committing the visitor's transaction. Measured, that does
+  **not** become a 500 on Spring Framework 7.0.8: `PlatformSynchronization` has no `afterCommit()`
+  override and dispatches `AFTER_COMMIT` from `afterCompletion`, which
+  `TransactionSynchronizationUtils` wraps in a catch-and-log. The cost was an ERROR-level stack
+  trace per dropped notification, not a broken response. The handler is still right — a saturated
+  queue is a capacity condition rather than an error, the swallow is an incidental Spring detail one
+  hook away from being a 500, and `taskExecutor` is shared with future callers that will have no
+  transaction machinery to save them. **Not `CallerRunsPolicy`**, which would put the send back on
+  the request thread.
+- **`ResendEmailClient` has explicit connect and read timeouts (5s / 10s).** It builds its own
+  `RestClient` from the static factory, so Boot's `spring.http.client.*` settings never applied and
+  both timeouts were infinite. Tolerable while the only caller was `requestReset` on the request
+  thread; not once sends moved onto a shared pool, where a Resend that blackholes connections
+  instead of refusing them parks every thread forever, fills the queue behind them and makes the
+  bullet above permanent — with nothing thrown, so nothing caught and nothing logged. Wired with
+  `JdkClientHttpRequestFactory` over a `java.net.http.HttpClient`, because Boot 4's
+  `ClientHttpRequestFactoryBuilder` lives in `spring-boot-http-client`, which is not on this
+  classpath — the same absence that denies this class a `RestClient.Builder` bean.
+- **The test profile pins `app.resend.api-key` blank**, along with `app.contact.notification-email`
+  and `app.github-sync.enabled`. `application-test.yml` had overridden only `app.jwt.secret`, so
+  every other `${ENV_VAR:default}` resolved from the developer's shell — and the contact-notification
+  integration test spies on the *real* client, so an exported `RESEND_API_KEY` made the suite send
+  real email through the real account. `app.cors.allowed-origins` is deliberately left inherited:
+  `SecurityIntegrationTest` asserts the production default on purpose, and an exported override
+  breaks that test loudly rather than causing a silent third-party side effect.
+- **A dangling cross-reference is fixed here, not merely noted.** On `dev`,
+  `docs/DEPLOYMENT.md` ended its `RESEND_API_KEY` section with "See `docs/DECISIONS.md`,
+  2026-09-03, for why the reset flow exists at all — it is a showcase feature rather than an admin
+  tool". Nothing in this file said that: the only 2026-09-03 entry was the backend-exposure ADR
+  above, which is about TLS. This change deletes that sentence, and its replacement points at
+  *this* entry, which does say it — so the link resolves.
+
+  Recording the correction rather than quietly making it, because the first draft of this bullet
+  claimed the reference had been found and left alone. That was true of `dev` and false of the
+  branch the bullet was written on, where the sentence it described no longer existed and the ADR
+  it called absent had just been added two hundred lines above. Review caught it. A consequences
+  list describing the branch it is not on is worse than no consequences list, because it reads as
+  verified.
 
 ### [YYYY-MM-DD] — [Decision title]
 

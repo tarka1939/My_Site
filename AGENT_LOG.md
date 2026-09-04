@@ -297,6 +297,143 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-04 — #190 review round: the review was right about the bug and wrong about what it cost
+
+**Task given:** apply four blocking findings from a cold review of PR #190 (issue #186, contact-form
+notification). Two were called concurrency defects in the async dispatch path, with an instruction
+to treat them as such and to verify rather than assume. Findings 1 and 2 each had to come with a
+test that fails without its fix.
+
+**Agent(s) used:** backend-agent (Opus), worktree `My_Site-notify` on `feat/contact-notification`.
+
+**What went right:**
+
+Both fixes were real and both are in. The review's central mechanical claim on finding 1 is correct
+and was worth the round on its own: `ContactNotificationListener`'s `try/catch (RuntimeException)`
+**cannot** protect the `@Async` dispatch, because `AsyncExecutionAspectSupport#doSubmit` calls
+`executor.submit(...)` on the caller's thread before the method body exists. `AsyncConfig` set no
+rejection handler, so `AbortPolicy` applied and a full pool plus a full queue threw
+`TaskRejectedException` at whoever was committing.
+
+**What went wrong (be specific):**
+
+1. **The review's stated impact was false, and the fix's own justification had to be rewritten
+   around the measurement.** The review traced the throw out through
+   `TransactionalApplicationListenerSynchronization.processEventWithCallbacks` and
+   `AbstractPlatformTransactionManager#processCommit`'s handling of `triggerAfterCommit`, and
+   concluded the visitor gets a **500** on an already-committed message — "the exact outcome the
+   ADR, the class comment and #186 all declare impossible".
+
+   It is not what happens on Spring Framework 7.0.8. `PlatformSynchronization`, the concrete
+   `TransactionSynchronization` that Spring registers here, **has no `afterCommit()` override at
+   all** — `javap -c` shows it declaring exactly `beforeCommit(boolean)` and `afterCompletion(int)`,
+   with `AFTER_COMMIT` dispatched from the latter under a `status == 0` check. And
+   `TransactionSynchronizationUtils#invokeAfterCompletion` catches `Throwable` and logs it, where
+   its neighbour `invokeAfterCommit` does not. So the throw never reaches `commit()`.
+
+   Measured, with the handler removed: **all 70 submissions still returned 201.** The observed cost
+   was 12 `TaskRejectedException` stack traces at ERROR — one per dropped notification — logged by
+   `TransactionSynchronizationUtils` from the Tomcat request thread.
+
+   The first version of the end-to-end test asserted exactly what the review predicted ("every
+   response is still 201") and therefore **passed with the fix removed**. It was committed, then
+   caught by the mutation run the brief insisted on, then rebuilt: it now asserts that saturation
+   produces no ERROR-level logging (which does fail without the fix) and that the executor really
+   filled (so it cannot pass vacuously if the pool is ever resized), keeping the 201 loop as the
+   regression guard it always was. `AsyncConfigTest` carries the deterministic before/after: it
+   saturates the real bean and asserts the submit does not throw.
+
+   The handler stays, on three reasons that survive the correction: a saturated queue is a capacity
+   condition and logging it at ERROR buries the signal; the swallow is an incidental Spring
+   implementation detail one hook away from the review being right, and nothing here would notice
+   the day it moved; and `taskExecutor` is shared, so the next `@Async` caller invoked straight from
+   a request thread — Phase 7d's DSP demo — gets the throw back with nothing catching anything.
+
+2. **Adding a test seam to `ResendEmailClient` broke every Spring context, and javac plus the unit
+   tests were both happy.** Finding 2's fix needed a way to point the client at a local socket, so a
+   package-private constructor was added alongside the `@Value` one. That made it a class with two
+   candidate constructors and none annotated, at which point Spring stops guessing and looks for a
+   no-arg constructor: **every `@SpringBootTest` in the suite** failed with "No default constructor
+   found". `mvn compile`, `mvn test-compile` and the three non-Spring `ResendEmailClientTest` cases
+   all passed first. Fixed with `@Autowired` on the injection constructor, and the reason is now a
+   javadoc on it rather than folklore.
+
+3. **The review's suggested API for finding 2 does not exist in this project.** It proposed
+   `ClientHttpRequestFactoryBuilder.detect().build(ClientHttpRequestFactorySettings...)`. That type
+   lives in `spring-boot-http-client`, which is not on this classpath — checked by unzipping all 166
+   classpath jars and grepping, not by trusting the import to resolve. Its absence is the *same*
+   reason `RestClient.Builder` has no bean here, which is the thing the class comment already
+   documents. Used `JdkClientHttpRequestFactory` over a `java.net.http.HttpClient` from spring-web
+   instead: `HttpClient.newBuilder().connectTimeout(...)` for connect, `factory.setReadTimeout(...)`
+   for read, both verified present via `javap` before being written.
+
+4. **A new test asserted something false about Unicode and looked like a code defect.** The
+   surrogate-pair check first used `subject.chars().noneMatch(Character::isSurrogate)`. `chars()`
+   walks UTF-16 code units, so **both halves of a perfectly valid pair** are surrogates by that
+   measure and the assertion failed against correct output. `codePoints()` is the one that draws the
+   intended distinction — it combines a valid pair into one non-surrogate code point and yields an
+   unpaired one as itself.
+
+   Worse, the first version of that test could not have failed against the bug at all: 120 emoji is
+   240 chars, so the old char-based cut at 100 landed on a **pair boundary** — 50 whole emoji, no
+   split. One leading `"N"` shifts everything by a char and puts the cut inside the 50th pair, which
+   is the case that was broken. Both new tests now fail against the old implementation.
+
+5. **A tooling trap worth recording: `\\uD83D` written into a Python heredoc arrived as a real
+   surrogate.** Something between the Bash tool and Python collapses the doubled backslash, so what
+   was meant as the six characters `\uD83D` became the unpaired surrogate itself. Python then
+   refused to encode it — **after** `open(path, 'w')` had already truncated the target to 0 bytes.
+   `ContactNotificationListener.java` was momentarily empty; restored with `git checkout`, which
+   worked only because the file was committed. The rewrite was redone with the `Edit` tool, and the
+   Java source avoids escapes entirely (`Character.toString(0x1F600)`,
+   `String.valueOf((char) 0xD83D)`) so the test source cannot contain the half-character it forbids.
+
+**Finding 3 was correct and is the one with a real blast radius.** `application-test.yml` pinned
+`app.jwt.secret` and nothing else, so every other `${ENV_VAR:default}` in the base config resolved
+from whoever's shell ran the suite. `app.resend.api-key` is `${RESEND_API_KEY:}`, and
+`ContactNotificationIntegrationTest` uses `@MockitoSpyBean`, which calls **through** to the real
+client — so with that variable exported, which this branch's own `docs/DEPLOYMENT.md` tells the
+owner to do, two tests POSTed to `api.resend.com` against the real account and a third failed on a
+warn-and-skip log line that never appeared. The class javadoc asserted the opposite. Pinned, along
+with `app.contact.notification-email` and `app.github-sync.enabled`, which have the same hole.
+
+`app.cors.allowed-origins` was deliberately **left** unpinned: `SecurityIntegrationTest` inherits it
+on purpose so a typo in the production default fails there rather than at a browser, and an exported
+`CORS_ALLOWED_ORIGINS` breaks that test loudly instead of causing a silent third-party side effect.
+Same hole, different severity, different call — and worth saying out loud rather than pinning
+everything reflexively.
+
+**Finding 4 was correct.** The new ADR's closing bullet claimed a dangling `docs/DEPLOYMENT.md`
+cross-reference had been "found, not fixed". Both halves were false on the branch: the sentence
+existed on `dev` (`git show dev:docs/DEPLOYMENT.md`, line 458), *this PR deleted it*, and the
+replacement points at the ADR this PR created. A consequences list describing a tree it is not on is
+worse than none, because it reads as verified. Rewritten to say what happened, including that it was
+wrong.
+
+**Takeaway for next time:**
+
+- **A traced call path is a hypothesis.** The review's trace was careful, cited real class and method
+  names, and was wrong about one hop — `AFTER_COMMIT` dispatches from `afterCompletion`, not
+  `afterCommit`, and only one of those two swallows. Thirty seconds of `javap -c` settled what no
+  amount of re-reading the argument would have.
+- **A test written to a review's predicted symptom inherits the review's errors.** The 201 assertion
+  was copied from the finding's own wording and passed against the unfixed code. The instruction to
+  run the mutation is what caught it; without that step, this round would have shipped a test that
+  proved nothing while reading as proof.
+- **Keep the fix and change the reason, when the reason turns out to be wrong.** The correct response
+  to "the impact claim is false" was not to drop the rejection handler — it was to write down what
+  actually happens and re-derive whether the fix earns its place. It does, for different reasons.
+- **A second constructor is an API change to Spring, not just to callers.** Two unannotated
+  candidates is a startup failure that no amount of compiling or unit-testing will surface.
+- **`git checkout` is only a safety net for committed work.** Committing before the exploratory step,
+  per `CLAUDE.md`, is what made a 0-byte source file a non-event.
+
+**Test count:** 253 → 260 (`Tests run: 260, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS). The
+7 added: 1 on `AsyncConfig`'s saturation behaviour, 2 on `ResendEmailClient`'s timeouts (a blackhole
+server that accepts and never answers, plus a guard that the production durations are finite), 2 on
+`ContactNotificationIntegrationTest` (saturation end to end, and that the test profile really does
+pin the Resend key blank), and 2 on code-point-safe subject truncation.
+
 ## 2026-09-04 — four numbers I did not measure, and a review I priced wrong
 
 **Task given:** coordinate the Phase 5 promotion and the follow-up fixes — #175, #178/#180, #179's

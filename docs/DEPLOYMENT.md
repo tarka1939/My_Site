@@ -458,23 +458,8 @@ in `docs/DECISIONS.md`, 2026-09-03, clause 2a.
 
 **Two flows depend on this key now, not one.** Password reset is a showcase feature rather than an
 admin tool, which is what made the key sandbox-shaped. **Contact-form notification (#186) is not** —
-it is how the owner learns a real person wrote in, and it needs `CONTACT_NOTIFICATION_EMAIL` set as
-well. Leaving both unset is still a supported state: messages are saved and answered with 201
-regardless, and `/admin/messages` still shows them. It just means nobody is told. See
-`docs/DECISIONS.md`, 2026-09-03, "Contact-form notification".
-
-`CONTACT_NOTIFICATION_EMAIL` is not a secret — it is your own address — so it needs none of the
-history-suppressing care above:
-
-```bash
-sudoedit /etc/mysite/env    # add: CONTACT_NOTIFICATION_EMAIL=you@yourdomain.example
-sudo systemctl restart mysite
-```
-
-**Get it right the first time.** A malformed value is refused at startup rather than tolerated, so
-a typo here means the service fails to come back up with an `IllegalStateException` naming
-`app.contact.notification-email` — deliberate, and much easier to diagnose than notifications that
-silently never arrive. Check `journalctl -u mysite -n 50` if the restart does not settle.
+it is how the owner learns a real person wrote in, and it needs a destination as well, which is the
+next subsection. See `docs/DECISIONS.md`, 2026-09-03, "Contact-form notification".
 
 48 random bytes is 64 base64 characters, comfortably over the 32-byte minimum `SecurityConfig`
 enforces for HS256, and the base64 alphabet contains nothing systemd's `EnvironmentFile` parser
@@ -503,6 +488,24 @@ have one step than three.
 > rotate, at minimum scrub the history: `history -d` the offending entry, or truncate the file and
 > `history -c` — remembering that the running shell rewrites it on exit, so do it in *every* session
 > that saw the password.
+
+#### `CONTACT_NOTIFICATION_EMAIL`, so you find out someone wrote in
+
+Not a secret — it is your own address — so it needs none of the history-suppressing care above,
+and it goes in its own step rather than alongside the two keys, which is why it is down here:
+
+```bash
+sudoedit /etc/mysite/env    # add: CONTACT_NOTIFICATION_EMAIL=you@yourdomain.example
+sudo systemctl restart mysite
+```
+
+**Get it right the first time.** A malformed value is refused at startup rather than tolerated, so
+a typo here means the service fails to come back up with an `IllegalStateException` naming
+`app.contact.notification-email` — deliberate, and much easier to diagnose than notifications that
+silently never arrive. Check `journalctl -u mysite -n 50` if the restart does not settle.
+
+Leaving it unset is a supported state: messages are saved and answered with `201` regardless, and
+`/admin/messages` still shows them. It just means nobody is told.
 
 ### 4.7 Run it under systemd
 
