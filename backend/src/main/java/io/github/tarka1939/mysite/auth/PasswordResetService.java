@@ -118,9 +118,14 @@ public class PasswordResetService {
      * reusing that here would burn the token the moment the page loaded and actively break the
      * flow this method exists to improve. It goes through
      * {@link PasswordResetTokenRepository#existsUsableToken} instead -- a COUNT projection, no
-     * {@code @Modifying}, no entity loaded to be dirty-checked -- inside a {@code readOnly}
-     * transaction, which sets Hibernate's flush mode to MANUAL so nothing this method touches
-     * can be written back even by accident.
+     * {@code @Modifying}, no entity loaded to be dirty-checked. That projection is the real
+     * guarantee, and it holds from every call site.
+     *
+     * <p>The {@code readOnly} transaction adds a second layer -- Hibernate's flush mode goes to
+     * MANUAL -- but only <em>on the controller path, where this method starts its own
+     * transaction</em>. {@code @Transactional}'s default propagation is REQUIRED, so a call from
+     * inside an existing read-write transaction joins it and {@code readOnly} is ignored. Do not
+     * rely on that layer from a nested call site; rely on the projection.
      *
      * <h2>Why this may answer truthfully, when requestReset may not</h2>
      * {@link #requestReset} always returns 202 because its caller supplies an *email address*,

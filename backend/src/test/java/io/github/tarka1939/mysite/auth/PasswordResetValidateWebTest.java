@@ -70,8 +70,9 @@ class PasswordResetValidateWebTest {
     }
 
     @Test
-    void absentToken_is400AndStillKeyedToken_withoutReachingTheService() throws Exception {
-        // A request with no token never gets as far as a lookup, so it is a plain bean-validation
+    void blankToken_is400AndStillKeyedToken_withoutReachingTheService() throws Exception {
+        // A blank token never gets as far as a lookup (an absent one behaves identically --
+        // @NotBlank rejects both, and both key the error to `token`), so it is a plain bean-validation
         // failure rather than an InvalidResetTokenException -- a different title. What matters for
         // the client is that the field key is still "token", so a reset page that has landed its
         // message on that key renders something either way instead of failing silently. (It is not
