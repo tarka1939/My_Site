@@ -21,7 +21,7 @@ describe('App', () => {
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('nav[aria-label="Primary"]')).toBeTruthy();
-    expect(compiled.querySelector('.site-nav__brand')?.textContent).toContain('My Site');
+    expect(compiled.querySelector('.site-nav__brand')?.textContent).toContain('DELIBERATELY-WRONG-PROVING-CI-FAILS');
   });
 
   it('shows an "Admin" login link when logged out', async () => {
