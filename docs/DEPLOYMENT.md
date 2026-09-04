@@ -961,7 +961,8 @@ In a browser, not with curl, because [a test cannot see appearance](../CLAUDE.md
 
 1. Load the Netlify site. Projects should render — that proves CORS and the API URL.
 2. Deep-link to `/projects/<id>` and refresh. Proves `_redirects` (#39).
-3. Submit the contact form. Proves a write path and the rate limiter.
+3. Submit the contact form. Proves a write path and the rate limiter — but **not** that the
+   notification email sent, which is deliberately best-effort and after-commit. §7c is that check.
 4. Log in at `/admin`, edit a project, log out.
 5. `sudo journalctl -u mysite -n 100` — confirm no stack traces, and that **no secret was logged**.
 
@@ -1069,6 +1070,84 @@ makes it persistent. Worth knowing before you need the history rather than after
 
 ---
 
+## 7c. Prove the contact notification actually sends
+
+Added 2026-09-04. Everything about this feature is tested as *strings* — the HTML escaping, the
+header sanitising, the truncation. **Nothing in the test suite has ever sent an email**, and a
+mock cannot tell you whether Resend accepts the message or how a real mail client renders it. This
+section is that one send.
+
+Do it once, after 4.6's two variables are set and the service has restarted.
+
+### Confirm both values are actually loaded
+
+Without printing the key:
+
+```bash
+sudo grep -c '^RESEND_API_KEY=' /etc/mysite/env        # expect 1
+sudo grep '^CONTACT_NOTIFICATION_EMAIL=' /etc/mysite/env
+sudo systemctl show mysite -p ExecMainStartTimestamp   # confirm it restarted after you edited
+```
+
+`grep -c` on the key rather than printing it: it is the one credential here that works from
+anywhere on the internet (§4.6), so it does not belong in your scrollback.
+
+### Send one, from the deployed site
+
+Use the real form rather than `curl`, because the point is the whole path:
+
+1. Open `https://<your-site>.netlify.app/contact`
+2. Fill it in with a name you will recognise and submit
+3. Expect the form to be replaced by *"Thanks for reaching out — I'll get back to you soon."*
+
+**That acknowledgement does not mean the email sent.** It means the message was saved. Notification
+is deliberately best-effort and after-commit: if Resend is down the visitor still gets their `201`,
+which is the whole design. So check the journal:
+
+```bash
+sudo journalctl -u mysite --since -5m | grep -i "contact notification"
+```
+
+| What you see | What it means |
+|---|---|
+| `Contact notification email sent for message <uuid>` | Resend accepted it. Now go look in your inbox. |
+| `app.contact.notification-email not configured` | `CONTACT_NOTIFICATION_EMAIL` is unset — 4.6 |
+| `RESEND_API_KEY not configured -- skipping contact notification email` | the key is unset — 4.6 |
+| `Failed to send contact notification email for message <uuid>` | Resend rejected or timed out; the line carries the cause, and the message is still saved |
+| nothing at all | the listener never ran — check the message reached the database at all via `/admin/messages` |
+
+Note the UUID is all that identifies the message in the logs. **Nothing about the visitor is logged
+at any level**, deliberately, so you cannot recover the name or address from the journal — read them
+in the admin panel.
+
+### What should arrive
+
+- **Subject:** `New contact message from <name>`, with the name truncated to 100 characters
+- **From:** `onboarding@resend.dev` unless you set `RESEND_FROM_ADDRESS`. Resend's shared sender —
+  expect it to land in spam the first time, and mark it as not-spam so the next one does not
+- **Body:** a short line, the sender's name and address, then their message in a `<blockquote>`
+
+### Then send a second one, with a non-ASCII name
+
+This is the half a test genuinely cannot cover. Use something like **`Łukasz 😀 Kowalski`**, or any
+name with accents, non-Latin script or an emoji.
+
+What you are checking is that the **subject line** survives. It is the only value that becomes a
+MIME header, and headers are ASCII — a mail system is supposed to encode the rest (RFC 2047), but
+whether Resend does it correctly is not something this repository can assert. If the subject arrives
+as mojibake or with the name missing, that is a real defect and worth an issue; the body is UTF-8
+and should be fine regardless.
+
+### Clean up
+
+Both test messages are real rows. Delete them from `/admin/messages` once you are satisfied.
+
+One quirk worth knowing before you do: the contact form's rate limit counts rows in the database, so
+deleting messages refunds the quota. Harmless here, and the reason you can send a second test
+immediately after the first.
+
+---
+
 ## 8. Rules for secrets
 
 - Never commit `.env`, a proxy config with credentials, or a jar built with values baked in. The root
@@ -1098,6 +1177,7 @@ makes it persistent. Worth knowing before you need the history rather than after
 | Part 1 | #74 (epic), #39 |
 | Part 2 | #75 (epic), #43, #47 |
 | 4.5 / 4.6 | #41, #46 |
+| 7c | #186 |
 | Part 3 | #44, #89, #168 |
 | Part 4 | #121 |
 | Not covered | #38, #42, #45, #48 |
