@@ -1,0 +1,111 @@
+# Deploys the backend jar to the VPS on merge to `main`. Issue #45, item 3 of docs/CI_PLAN.md.
+#
+# Production is a plain jar under systemd, deliberately -- see the ADR in docs/DECISIONS.md,
+# 2026-09-04. This workflow replaces the hands, not the shape: it does exactly what a person does
+# in docs/DEPLOYMENT.md section 7a.
+#
+# The jar goes over stdin rather than by scp, because the key is pinned with `command=` and a forced
+# command leaves no second channel. deploy/deploy.sh is the receiving end.
+
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+  # Deliberately available by hand as well: the first run of a deploy pipeline should be one you
+  # chose to start, and a re-run should not require an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never two deploys at once, and never cancel one midway -- an interrupted deploy leaves the host
+# in whatever state the script had reached.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, ship, restart, verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # Tests run on every PR (#193) and again here. Deploying an artifact whose tests were only
+      # checked on the pull request means deploying something the merge commit never verified.
+      - name: Build the jar
+        working-directory: backend
+        run: mvn -B clean package
+
+      - name: Find the jar
+        id: jar
+        working-directory: backend
+        run: |
+          # Exactly one, or fail. A glob that silently picks the first of several is how the wrong
+          # artifact gets deployed.
+          shopt -s nullglob
+          jars=(target/*.jar)
+          if [ ${#jars[@]} -ne 1 ]; then
+            echo "expected exactly one jar in backend/target, found ${#jars[@]}: ${jars[*]}" >&2
+            exit 1
+          fi
+          echo "path=backend/${jars[0]}" >> "$GITHUB_OUTPUT"
+          echo "Built ${jars[0]} ($(stat -c %s "${jars[0]}") bytes)"
+
+      # The host key is pinned from a secret rather than accepted on first use. TOFU on a deploy
+      # path means the first run trusts whatever answers, which is the run you can least afford to
+      # get wrong.
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          # Written to a file rather than passed as an argument: an argument is visible in `ps` to
+          # anything else on the runner.
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # The remote command is ignored -- `command=` in authorized_keys forces deploy.sh regardless.
+      # `true` is sent to make that explicit to a reader rather than looking like an omission.
+      - name: Ship it
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=yes \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              -p "$DEPLOY_PORT" \
+              "deploy@$DEPLOY_HOST" true < "${{ steps.jar.outputs.path }}"
+
+      # deploy.sh already rolls back and exits non-zero on failure, so reaching here means the host
+      # reported healthy. This checks the same thing from outside, through Cloudflare and the
+      # provider's proxy -- the path a visitor actually uses, which the host's own localhost probe
+      # cannot see.
+      - name: Verify from the public internet
+        run: |
+          for i in $(seq 10); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://tarka1939.bieda.it/actuator/health || echo 000)
+            if [ "$code" = "200" ]; then echo "public health check: 200"; exit 0; fi
+            echo "attempt $i: $code"; sleep 5
+          done
+          echo "The host reported healthy but the public endpoint did not answer 200." >&2
+          echo "The application is probably up; suspect the provider proxy or the firewall rule in section 4.8." >&2
+          exit 1
+
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
