@@ -149,26 +149,52 @@ From Phase 4's tail through Phase 6, the project runs on the model in `docs/AUTO
 
 > **Runbook: `docs/DEPLOYMENT.md`** (added 2026-08-30). Step-by-step commands for the parts that cannot be delegated — provider and domain choices, VPS hardening, Postgres, TLS, and the wiring order that resolves the frontend-needs-backend-host / backend-needs-frontend-origin cycle. It also records the two things that will otherwise surprise you: Netlify defaults its production branch to the repo default, which is now `dev` rather than `main`; and #121 means a freshly migrated production database has an admin account nobody can log in as.
 
-> **Status (2026-09-04):** **both halves are live; the automation is entirely unbuilt.** The backend answers on `https://tarka1939.bieda.it` and the Netlify site serves the promoted frontend against it, so the deploy *works* end to end — CORS (#44) and forwarded headers (#168) verified against the live host, TLS valid on both, the SPA fallback confirmed on the deployed artifact, and the admin password set. What has not been built is every item below that is still unticked: **there is no CI at all.** `.github/workflows/` holds a placeholder README, every deploy has been `mvn package` + `scp` + `systemctl restart` by hand, and no pull request in this repository has ever had its gates run by anything but a person remembering to run them. Six open issues, none started: #38, #45 (the two pipelines), #41, #42 (Dockerfile, compose), #46 (secrets out of `/etc/mysite/env` into a CI store), #48 (structured logging). Treat "Phase 5 is nearly done" as false — the manual half is done, which is the half that proves the other half is worth automating.
+> **Status (2026-09-05):** **both halves live; CI exists; the deploy automation is written but not switched on.** The backend answers on `https://tarka1939.bieda.it`, Netlify serves the promoted frontend against it, TLS verifies clean on both (#47), the SPA fallback is confirmed on the deployed artifact (#39), Postgres is verified by its own migrations (#43), and the admin password is set (#121). **CI now runs both suites plus an API-client-staleness check on every pull request** (#193) — and caught a racy test on its first day that passes locally and failed on the runner. Structured logging landed off-by-default (#48). What remains is six items: the two deploy pipelines are *written* (#38, #45, PR #196) and wait on credentials and a Netlify switch that only the owner can do; #46 is those credentials; #42 is independent; #41 is deferred on purpose. Order and acceptance criteria in `docs/CI_PLAN.md`, setup steps in `docs/DEPLOY_PIPELINE_SETUP.md`, decisions in `docs/DECISIONS.md` 2026-09-04. **"Phase 5 is nearly done" is still the wrong reading**: the manual half is finished, which is the half that tells you what to automate.
+>
+> **Superseded (2026-09-04):** manual half done, automated half entirely unbuilt — no CI existed at all.
 >
 > **Superseded (2026-09-03):** unpaused and in progress; the backend went live that day while the whole Netlify half and #121 were still outstanding.
 >
 > **Superseded (2026-08-05):** paused — backend VPS/Coolify setup was still being evaluated (Hetzner Cloud vs. Mikrus vs. reusing a home laptop). Per `docs/AUTONOMOUS_WORKFLOW.md`'s task-dependency model, a blocked phase only blocks the tasks that actually depend on it — Phase 6 and Phase 7 are not gated on this and may proceed in the meantime; see the notes added to each below for exactly what can and can't move forward without a live deploy target.
 
 **Frontend (Netlify — adapted 2026-07-25, originally GitHub Pages; see `docs/DECISIONS.md`):**
-- [ ] GitHub Actions workflow that builds the Angular app (with default `--base-href /`) and deploys to Netlify on merge to `main` (e.g. via `nwtgck/actions-netlify`) — **`main`, not the default branch.** Since 2026-08-27 the default is `dev`, so a workflow keyed on the default branch, or on `push` without a branch filter, would publish every feature the moment it merged
+- [ ] **Half done (#38, PR #196).** The workflow is written: builds, asserts `_redirects` reached
+  the artifact and routes to `/index.html`, publishes via the Netlify CLI, then checks a deep link
+  returns 200. **It must not run until Netlify's own git build is switched off** — two builds
+  racing one site, possibly from different commits. Remaining: `NETLIFY_AUTH_TOKEN`/site id as
+  secrets, and that switch. Steps in `docs/DEPLOY_PIPELINE_SETUP.md`
 - [x] Confirm the `_redirects` SPA fallback survives the build — verified on the **deployed** artifact (`/projects/does-not-exist` returns 200, not 404). Note the item said *CI* build and there is no CI; what was confirmed is Netlify's own build, which is what currently ships
 - [ ] Custom domain (optional, not currently planned — see `docs/DECISIONS.md`) — if added later, configure before finalizing the CORS origin below
 
 **Backend (self-managed VPS — see `docs/DECISIONS.md`):**
-- [ ] Multi-stage Dockerfile for the Spring Boot app
-- [ ] `docker-compose.yml` for local dev (backend + Postgres) — frontend can run via `ng serve` locally against this, since it's not part of the Netlify deploy
+- [ ] Multi-stage Dockerfile (#41) — **deferred on purpose**, not pending. Containerising while
+  also automating would change what is deployed at the same moment as who deploys it, so a failure
+  would have two candidate causes. Revisit once automated jar deploys are boring; note it may
+  *fix* the JVM believing it has 120 GiB (§4.7a), which is the strongest argument for it
+- [ ] `docker-compose.yml` for local dev (#42) — independent of everything above and of #41's
+  deferral. Would remove `CLAUDE.md`'s "point the `DB_*` variables at whatever Postgres you have
+  locally" paragraph. Nothing blocks it
 - [x] Set up Postgres on the VPS — done (#43). Postgres 16.15, listening on `127.0.0.1` only, database and role `mysite` owned per-database so Flyway can create its schema; verified by the application's own migrations running against it (self-hosted, not a managed add-on — see `docs/DECISIONS.md`)
 - [x] CORS configuration explicitly allowlisting the Netlify origin — done (#44, PR #172). `app.cors.allowed-origins` takes **exact** origins, defaulting to `https://krzysztof-tarka.netlify.app`; deliberately not `allowedOriginPatterns`, since a pattern like `https://*--<site>.netlify.app` would admit a deploy preview built from a fork's pull request — arbitrary third-party JavaScript on an origin this API answers. A test asserts a deploy-preview origin is refused
-- [ ] GitHub Actions workflow: run backend tests, build Docker image, deploy to the platform on merge to `main` — same caveat as the frontend workflow above: pin the branch to `main` explicitly, because it is no longer the default
-- [ ] Secrets via CI/CD secret store and the platform's own secret manager — never commit `.env` files, even to a private repo
+- [ ] **Half done (#45, PR #196).** Retitled: it deploys the **jar**, not a Docker image —
+  containerising is deferred (#41). Running the tests split out to #193 and **shipped**. The
+  workflow and `deploy/deploy.sh` are written; the script is what an SSH key restricted with
+  `command=` may run, which is why the jar arrives on stdin rather than by `scp`. Remaining: a
+  third key, its `authorized_keys` entry, a scoped `NOPASSWD` sudoers line, and four secrets.
+  Steps in `docs/DEPLOY_PIPELINE_SETUP.md`
+- [ ] Secrets via CI/CD secret store (#46) — blocked on the owner: creating them means handling an
+  SSH private key and a Netlify token. Six are needed and named in `docs/DEPLOY_PIPELINE_SETUP.md`.
+  Note this makes Actions a **second** store; `/etc/mysite/env` stays the application's, and the
+  2026-09-03 security ADR's clause 3 now has to hold in workflow YAML too, where the failure is
+  echoing a secret into a log that is public on a public repository
 - [x] Confirm HTTPS/TLS on both the Netlify domain (automatic) and the backend host — done. Both verify clean (`ssl_verify_result=0`); the backend's is the provider's certificate, since it terminates TLS upstream (#47)
-- [ ] Basic structured logging at minimum; use whatever free-tier log viewer your backend platform provides
+- [x] Basic structured logging — done (#48, PR #195), and **off by default**, which is the
+  substance rather than a hedge. The issue said to use "whatever free-tier log viewer your backend
+  platform provides"; there is no such viewer, and the only reader is `journalctl` and a person.
+  Boot 4.1 ships the ECS/Logstash/GELF formatters natively, so `STRUCTURED_LOGS=ecs` in
+  `/etc/mysite/env` plus a restart turns it on the day a shipper exists — no code change. Verified
+  both ways: `ecs` emits ECS JSON, empty emits the normal human-readable pattern. See
+  `docs/DEPLOYMENT.md` §7b
 
 **Pre-flight (see `docs/AUTONOMOUS_WORKFLOW.md`):** Netlify + VPS accounts, secrets, and a budget ceiling need to be provided by the user before this phase can run with the same autonomy as Phases 1-4 — account creation and payment are always human-only steps, regardless of session. The first real end-to-end deploy is a manual checkpoint even after that setup is done.
 
