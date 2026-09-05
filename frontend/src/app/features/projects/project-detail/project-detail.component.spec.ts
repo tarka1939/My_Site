@@ -208,8 +208,8 @@ describe('ProjectDetailComponent', () => {
     const fixture = TestBed.createComponent(ProjectDetailComponent);
     fixture.detectChanges();
 
-    expect(document.title).toBe('My Site - Equalizer');
-    expect(seoContent('meta[property="og:title"]')).toBe('My Site - Equalizer');
+    expect(document.title).toBe('Krzysztof Tarka - Equalizer');
+    expect(seoContent('meta[property="og:title"]')).toBe('Krzysztof Tarka - Equalizer');
     expect(seoContent('meta[name="description"]')).toContain('A cross-platform, system-level audio');
     expect(seoContent('meta[property="og:description"]')).toBe(
       seoContent('meta[name="description"]'),
@@ -245,7 +245,7 @@ describe('ProjectDetailComponent', () => {
     expect(seoTagCount('meta[property="og:description"]')).toBe(1);
     expect(seoTagCount('meta[property="og:title"]')).toBe(1);
     expect(seoContent('meta[name="description"]')).toBe('A curve generator');
-    expect(document.title).toBe('My Site - CurveGen');
+    expect(document.title).toBe('Krzysztof Tarka - CurveGen');
   });
 
   it('falls back to the site description for a project with no description', () => {
@@ -257,7 +257,7 @@ describe('ProjectDetailComponent', () => {
     fixture.detectChanges();
 
     expect(seoContent('meta[name="description"]')).toBe(SITE_DESCRIPTION);
-    expect(document.title).toBe('My Site - Equalizer');
+    expect(document.title).toBe('Krzysztof Tarka - Equalizer');
   });
 
   it('does not produce broken markup for a description full of quotes and angle brackets', () => {
@@ -272,7 +272,7 @@ describe('ProjectDetailComponent', () => {
     fixture.detectChanges();
 
     expect(seoContent('meta[name="description"]')).toBe(nasty);
-    expect(document.title).toBe('My Site - A "quoted" & <angled> title');
+    expect(document.title).toBe('Krzysztof Tarka - A "quoted" & <angled> title');
     expect(document.querySelectorAll('script').length).toBe(scriptsBefore);
 
     const markup = seoTags('meta[name="description"]')[0].outerHTML;
@@ -393,7 +393,7 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     expect(seoContent('meta[name="robots"]')).toBeNull();
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
     // Still unambiguously the landing page, not a half-updated one.
-    expect(document.title).toBe('My Site - Projects');
+    expect(document.title).toBe('Krzysztof Tarka - Projects');
     expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
   });
 
@@ -404,8 +404,8 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
 
     resolve('p1', { title: 'Equalizer', description: 'A DSP project' });
 
-    expect(document.title).toBe('My Site - Projects');
-    expect(seoContent('meta[property="og:title"]')).toBe('My Site - Projects');
+    expect(document.title).toBe('Krzysztof Tarka - Projects');
+    expect(seoContent('meta[property="og:title"]')).toBe('Krzysztof Tarka - Projects');
     expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
     expect(seoContent('meta[property="og:description"]')).toBe(LANDING_DESCRIPTION);
   });
@@ -422,7 +422,7 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     resolve('b', { id: 'b', title: 'Bee', description: 'B description.' });
     resolve('a', { id: 'a', title: 'Ay', description: 'A description.' });
 
-    expect(document.title).toBe('My Site - Bee');
+    expect(document.title).toBe('Krzysztof Tarka - Bee');
     expect(seoContent('meta[name="description"]')).toBe('B description.');
     expect(seoTagCount('meta[name="description"]')).toBe(1);
   });
@@ -443,7 +443,7 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     resolve('p1', { title: 'Equalizer', description: 'A DSP project' });
 
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
-    expect(document.title).toBe('My Site - Equalizer');
+    expect(document.title).toBe('Krzysztof Tarka - Equalizer');
     expect(seoContent('meta[name="description"]')).toBe('A DSP project');
   });
 });

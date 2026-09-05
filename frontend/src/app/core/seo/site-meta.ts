@@ -10,7 +10,7 @@ import { toCardExcerpt } from '../../shared/description-excerpt/description-exce
  */
 
 /** The site's name: `og:site_name`, and the prefix every route title carries. Not a full title. */
-export const SITE_NAME = 'My Site';
+export const SITE_NAME = 'Krzysztof Tarka';
 
 /**
  * The site's own document title -- what a page that names nothing more specific is called.
@@ -72,9 +72,9 @@ export const SITE_DESCRIPTION =
 export const NOINDEX = 'noindex, nofollow';
 
 /**
- * How a page's own name becomes a document title: `"My Site - Projects"`.
+ * How a page's own name becomes a document title: `"Krzysztof Tarka - Projects"`.
  *
- * Route configs spell their titles out literally (`title: 'My Site - Contact'`) because they are
+ * Route configs spell their titles out literally (`title: 'Krzysztof Tarka - Contact'`) because they are
  * static strings in a route table; this exists for the one title that cannot be static -- the
  * project detail page, whose name is the project's own title.
  */

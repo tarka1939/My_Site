@@ -8,7 +8,7 @@ export const CONTACT_ROUTES: Routes = [
     // only buys an extra sequential request on the way to the sole thing it can render.
     path: '',
     component: ContactFormComponent,
-    title: 'My Site - Contact',
+    title: 'Krzysztof Tarka - Contact',
     data: {
       // Says nothing about what happens to a message after it is sent: the contact endpoint stores
       // it for the admin view, and nothing emails or forwards it, so "goes straight to my inbox"
