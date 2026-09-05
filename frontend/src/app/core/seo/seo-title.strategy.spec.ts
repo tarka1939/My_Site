@@ -21,10 +21,10 @@ const TEST_ROUTES: Routes = [
   {
     path: 'plain',
     component: TestPageComponent,
-    title: 'My Site - Plain',
+    title: 'Krzysztof Tarka - Plain',
     data: { description: 'A plain page.' },
   },
-  { path: 'bare', component: TestPageComponent, title: 'My Site - Bare' },
+  { path: 'bare', component: TestPageComponent, title: 'Krzysztof Tarka - Bare' },
   {
     path: 'admin',
     data: { description: 'Administration.', robots: NOINDEX },
@@ -32,10 +32,10 @@ const TEST_ROUTES: Routes = [
       {
         path: 'login',
         component: TestPageComponent,
-        title: 'My Site - Admin login',
+        title: 'Krzysztof Tarka - Admin login',
         data: { description: 'Sign in.' },
       },
-      { path: 'deep', component: TestPageComponent, title: 'My Site - Deep' },
+      { path: 'deep', component: TestPageComponent, title: 'Krzysztof Tarka - Deep' },
     ],
   },
 ];
@@ -59,10 +59,10 @@ describe('SeoTitleStrategy', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/plain');
 
-    expect(document.title).toBe('My Site - Plain');
+    expect(document.title).toBe('Krzysztof Tarka - Plain');
     expect(content('meta[name="description"]')).toBe('A plain page.');
     expect(content('meta[property="og:description"]')).toBe('A plain page.');
-    expect(content('meta[property="og:title"]')).toBe('My Site - Plain');
+    expect(content('meta[property="og:title"]')).toBe('Krzysztof Tarka - Plain');
     expect(content('meta[property="og:url"]')).toBe(`${location.origin}/plain`);
   });
 
@@ -90,7 +90,7 @@ describe('SeoTitleStrategy', () => {
 
     // Not 'A plain page.' -- a route without a description must not inherit the last one shown.
     expect(content('meta[name="description"]')).toBe(SITE_DESCRIPTION);
-    expect(document.title).toBe('My Site - Bare');
+    expect(document.title).toBe('Krzysztof Tarka - Bare');
   });
 
   it('inherits a parent route’s robots and description down the subtree', async () => {

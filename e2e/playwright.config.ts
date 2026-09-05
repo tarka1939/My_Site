@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { BACKEND_URL, FRONTEND_URL } from './support/env';
 
 /**
- * Playwright config for My Site's end-to-end suite.
+ * Playwright config for Krzysztof Tarka's end-to-end suite.
  *
  * Scope is capped on purpose: `PROJECT_TODO.md`'s testing-strategy section calls for 3-5
  * critical journeys, "kept deliberately thin", because E2E tests are the slow, brittle tier of

@@ -2,7 +2,7 @@
   "name": "e2e",
   "version": "0.0.0",
   "private": true,
-  "description": "Playwright end-to-end tests for My Site. Deliberately separate from frontend/ so Netlify's build (Phase 5) never installs Playwright.",
+  "description": "Playwright end-to-end tests for Krzysztof Tarka. Deliberately separate from frontend/ so Netlify's build (Phase 5) never installs Playwright.",
   "type": "module",
   "scripts": {
     "test": "playwright test",

@@ -14,17 +14,17 @@ export const routes: Routes = [
       import('./features/auth/reset-password-confirm/reset-password-confirm.component').then(
         (m) => m.ResetPasswordConfirmComponent,
       ),
-    title: 'My Site - Reset password',
+    title: 'Krzysztof Tarka - Reset password',
     // Reached only from a single-use emailed link. Nothing should index it, and there is nothing
     // worth describing to a crawler either.
-    data: { description: 'Set a new password for the My Site admin account.', robots: NOINDEX },
+    data: { description: 'Set a new password for the Krzysztof Tarka admin account.', robots: NOINDEX },
   },
   {
     path: 'admin',
     loadChildren: () => import('./features/auth/admin.routes').then((m) => m.ADMIN_ROUTES),
     // Applies to the whole /admin subtree, login included -- SeoTitleStrategy walks the activated
     // chain and a parent's value covers every descendant that does not override it.
-    data: { description: 'Administration for My Site.', robots: NOINDEX },
+    data: { description: 'Administration for Krzysztof Tarka.', robots: NOINDEX },
   },
   {
     // Deliberately declared last but one, *after* every named route rather than first. Its path is
@@ -44,7 +44,7 @@ export const routes: Routes = [
   {
     path: '**',
     loadComponent: () => import('./features/not-found/not-found.component').then((m) => m.NotFoundComponent),
-    title: 'My Site - Not found',
+    title: 'Krzysztof Tarka - Not found',
     // Netlify rewrites every unmatched path to index.html with a 200 (public/_redirects), so this
     // view is served with a success status and would otherwise be indexable like a real page.
     data: { description: 'This page does not exist.', robots: NOINDEX },

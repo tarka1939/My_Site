@@ -10,7 +10,7 @@ import { SeoService } from './seo.service';
 /**
  * Extends the router's own title mechanism to carry the rest of a page's metadata.
  *
- * Routes already declare `title: 'My Site - Contact'` and the router applies it through a
+ * Routes already declare `title: 'Krzysztof Tarka - Contact'` and the router applies it through a
  * `TitleStrategy` on every successful navigation. Rather than bolting a second, parallel mechanism
  * onto `NavigationEnd`, this replaces that strategy: routes gain `data: { description, robots }`
  * next to their `title`, and all three are applied from the same hook, at the same moment, for
