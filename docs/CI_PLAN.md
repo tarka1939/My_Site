@@ -7,7 +7,8 @@ confirmed on the deployed artifact. What does not exist is any automation at all
 `systemctl restart` by hand, and **no pull request in this repository has ever had its gates run by
 anything but a person remembering to run them.**
 
-This is the plan for the six issues that close that gap. The decisions behind it are an ADR in
+This is the plan for the issues that close that gap — six when it was written, seven once CI was
+split out into #193. The decisions behind it are an ADR in
 `docs/DECISIONS.md`, 2026-09-04; this file is the execution order and the acceptance criteria, and
 does not re-argue them.
 
@@ -34,10 +35,10 @@ Two things learned doing it, worth keeping:
 
 ---
 
-## 1. CI — run the gates on every pull request
+## 1. CI — run the gates on every pull request ✓ done 2026-09-05 (#193, PR #194)
 
-**No issue exists for this yet; file one.** It is currently a clause buried inside #38 and #45, and
-it is the single highest-value item here: no secrets, no deploy target, cannot break production.
+Was a clause buried inside #38 and #45; extracted because it is the single highest-value item
+here — no secrets, no deploy target, cannot break production — and shipped first.
 
 **What it does.** On every PR targeting `dev`: the backend suite and the frontend suite.
 
@@ -45,8 +46,16 @@ it is the single highest-value item here: no secrets, no deploy target, cannot b
 Testcontainers integration tests need — verify that rather than assuming, because a silently skipped
 Testcontainers suite looks identical to a passing one.
 
-**Acceptance:** open a PR with a deliberately failing test and watch it go red. A CI job that has
-never failed has not been shown to work.
+**Acceptance, met:** a PR with two deliberately inverted assertions, one per suite, went red —
+`Backend tests: failure`, `Frontend tests: failure`, API client still success — and green again on
+the revert. Both jobs failed independently, so a backend regression cannot hide behind a green
+frontend. Recovery matters as much as the failure: a pipeline that stays red after a fix is worse
+than none.
+
+**It found a real bug on day one.** An `app.spec.ts` assertion queried a `routerLink`-written
+`href` straight after `whenStable()`, racing change detection. It passed locally every time and
+failed on the runner — the exact class a person running tests by hand never catches. Fixed in
+PR #199, and it could only be verified on CI, since that is the only place it reproduced.
 
 **Traps specific to this repo:**
 
@@ -55,10 +64,10 @@ never failed has not been shown to work.
 - The frontend needs `npm ci` before `npm test`. A fresh checkout has no `node_modules`, and the
   resulting failure looks like a broken test rather than a missing install — that exact confusion
   has cost time in this project twice.
-- Consider adding the API-client regenerate check: run the generator, then
-  `git add -A && git diff --cached --numstat` must come back empty. That rule exists because a
-  description-only contract edit still produces a real client diff (PR #129), and it is the kind of
-  thing a person forgets and a machine never does. It needs Java, which CI has anyway.
+- The API-client regenerate check **was** added, as a third job: run the generator, then
+  `git add -A && git diff --cached --numstat` must come back empty. The rule exists because a
+  description-only contract edit still produces a real client diff (PR #129), and it is the kind
+  of thing a person forgets and a machine never does.
 
 ---
 
@@ -179,6 +188,55 @@ contact and reset paths deliberately log only a message UUID and never visitor d
 `ResendEmailClient` logs a reset link at DEBUG under a comment explaining why that is safe.
 Structured logging should preserve both properties.
 
+---
+
+## 8. Switching the pipelines on, and the order that matters
+
+**Decided 2026-09-05.** The `dev` → `main` promotion is deliberately held back until the deploy
+pipelines exist, so that the promotion itself becomes their end-to-end test. That is a better
+acceptance check than anything synthetic — but only if it is sequenced so a failure has one
+possible cause.
+
+`dev` is currently **63 commits** ahead of `main`. If the promotion were the pipeline's first ever
+run, a failure would leave two candidates: the pipeline is wrong, or something in those 63 commits
+is. That is the situation the runbook's own argument for deploying a jar before containerising
+exists to avoid — **one new variable at a time** — and it applies just as much here.
+
+### The order
+
+1. **Setup steps 1–6** of `docs/DEPLOY_PIPELINE_SETUP.md` — the key, its restriction, the script,
+   the scoped sudoers entry, the six secrets, and switching Netlify's own build off.
+2. **Dispatch each workflow by hand against `main` as it stands.** Both carry `workflow_dispatch`
+   for exactly this. It redeploys *the code already running*, so a green run proves the key, the
+   `command=` restriction, the host-key pin, `deploy.sh` and the public health check — with **zero
+   change to production**. If something is wrong, the only new variable is the pipeline.
+3. **Prove the rollback** — setup step 8, a deliberately broken build. The half nobody tests.
+4. **Then promote.** Still a real test: 63 commits through a path that has run twice. But a failure
+   now points at the code rather than at the plumbing.
+
+### Two hazards that bite if the order slips
+
+**Netlify's native build must be off *before* the promotion, not after.** Merging to `main` fires
+both workflows on `push`. With the git integration still enabled, that promotion triggers the Action
+*and* Netlify's own build, racing for one site — the exact failure #38 exists to prevent, arriving
+at the worst moment. Step 6 is positioned where it is for this reason.
+
+**Do not promote before the secrets exist.** `deploy-backend` would fire and fail on a missing
+`DEPLOY_SSH_KEY`. Nothing reaches the host, so it is harmless — but it puts a meaningless red run on
+`main`, and a red run that means nothing is worse than no run at all: it teaches you to ignore them.
+
+### What a good first dispatch looks like
+
+- `deploy-backend`: the jar rebuilds, ships over stdin, systemd restarts, the health check passes
+  from the host, and then **again from the public internet** through Cloudflare and the provider's
+  proxy — the path a visitor uses, which the host's own localhost probe cannot see.
+- `deploy-frontend`: `_redirects` is asserted present in the artifact *before* publishing, and a
+  deep link returns 200 *after*.
+
+If either verification step fails while the deploy itself succeeded, the application is probably
+fine and the suspect is the provider proxy or the firewall rule in §4.8. That distinction is worth
+holding onto: this pipeline can tell "the deploy failed" apart from "the deploy worked and the path
+in front of it did not", and the two have completely different fixes.
 ---
 
 ## What "Phase 5 complete" means
