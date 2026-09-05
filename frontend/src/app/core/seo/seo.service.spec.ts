@@ -176,7 +176,7 @@ describe('SeoService', () => {
     seedStaticTags();
     createService().applyPage({ description: 'No url supplied.' });
 
-    expect(content('meta[property="og:url"]')).toBe('https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/');
+    expect(content('meta[property="og:url"]')).toBe('https://krzysztof-tarka.netlify.app/');
   });
 
   it('writes a self-referencing canonical link for the page being viewed', () => {

@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  PLACEHOLDER ORIGIN — not yet valid for production.
+  Canonical origin set 2026-09-05: https://krzysztof-tarka.netlify.app
 
-  Every <loc> below uses REPLACE-WITH-CANONICAL-ORIGIN.invalid because the canonical domain
-  does not exist yet (the Netlify site is created in Phase 5, which is paused). `.invalid` is
-  reserved by RFC 2606 and can never resolve, so submitting this as-is fails visibly rather
-  than quietly advertising the wrong host. Replace the origin here and in robots.txt before
-  the first production deploy.
+  Every <loc> used a REPLACE-WITH-CANONICAL-ORIGIN.invalid placeholder until then, because the
+  Netlify site did not exist. An XML file has no runtime, so unlike SeoService's canonical —
+  which reads document.location.origin and was always correct — this advertised URLs that
+  could not resolve to anything that read it.
+
+  No custom domain is planned. If one arrives, changing the origin here is part of a site
+  move rather than an edit: 301 from the old host and a change of address in Search Console.
 
   Scope: static public routes only. Project detail pages (/projects/:id) are deliberately
   absent — their URLs are UUIDs known only at runtime, and this is a build-time artifact in
@@ -23,12 +25,12 @@
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/</loc>
+    <loc>https://krzysztof-tarka.netlify.app/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/contact</loc>
+    <loc>https://krzysztof-tarka.netlify.app/contact</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
