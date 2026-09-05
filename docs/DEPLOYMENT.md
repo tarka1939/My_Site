@@ -1056,6 +1056,34 @@ sudo journalctl -u postgresql -n 50
 **`journalctl -k` is expected to return nothing on this host** — an LXC container has no kernel
 ring buffer of its own. (A general fact about containers, not something measured here.) It is also why 4.7a reads earlyoom's own journal instead.
 
+
+#### Structured (JSON) logs, when there is something to read them
+
+The application can emit ECS-format JSON instead of the human-readable lines above. It is **off by
+default and deliberately so**: the only reader on this host is `journalctl` and a person, and JSON
+would make every command in this section worse in exchange for a benefit nobody can collect until a
+log shipper exists.
+
+When one does, it is one variable and a restart — no redeploy:
+
+```bash
+sudoedit /etc/mysite/env    # add: STRUCTURED_LOGS=ecs
+sudo systemctl restart mysite
+sudo journalctl -u mysite -n 5    # lines should now start with {"@timestamp":
+```
+
+`ecs`, `logstash` and `gelf` are the accepted values; Boot 4.1 ships all three natively, so this
+needs no dependency. Unset or empty restores the normal pattern.
+
+**It changes format, not content.** The contact and password-reset paths log a message UUID and
+never visitor data, at any level; `ResendEmailClient` logs a reset link at DEBUG under a comment
+explaining why that is safe, and DEBUG is off in production. A formatter cannot reintroduce a field
+nobody logs.
+
+Verified both ways before shipping: with `STRUCTURED_LOGS=ecs` the console emits
+`{"@timestamp":...,"log":{"level":"INFO",...},"service":{"name":"mysite-backend"}}`; with it empty,
+zero JSON lines and the usual `2026-09-04T19:59:34.915+02:00  INFO ... Started MySiteApplication`.
+
 #### Check whether the journal survives a reboot
 
 In a container the journal is often **volatile** — held in RAM and lost on restart, which is the

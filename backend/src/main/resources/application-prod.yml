@@ -41,5 +41,25 @@ app:
     trusted-hop-count: ${TRUSTED_HOP_COUNT:2}
 
 logging:
+  # Structured (JSON) log output, available and OFF by default. Issue #48.
+  #
+  # Boot 4.1 ships the formatters natively -- ecs, logstash, gelf -- so this needs no dependency.
+  # What it does NOT have on this host is a consumer. There is no log aggregator; the only reader
+  # is `journalctl -u mysite` and a person, and docs/DEPLOYMENT.md section 7b is written around
+  # that. Turning JSON on by default would make the one workflow that exists worse in exchange for
+  # a benefit nobody can collect yet.
+  #
+  # So it is a switch rather than a setting. When a log shipper exists, set STRUCTURED_LOGS=ecs
+  # (or logstash/gelf) in /etc/mysite/env and restart -- no code change, no redeploy of anything
+  # but config. Empty means Boot's normal human-readable console pattern.
+  #
+  # Note this changes FORMAT, not CONTENT: the contact and password-reset paths log a message
+  # UUID and never visitor data, at any level, and ResendEmailClient logs a reset link at DEBUG
+  # under a comment explaining why that is safe. A formatter cannot reintroduce a field nobody
+  # logs, and ResendEmailClientTest captures at DEBUG on purpose so a future line that does would
+  # fail rather than ship.
+  structured:
+    format:
+      console: ${STRUCTURED_LOGS:}
   level:
     io.github.tarka1939.mysite: INFO
