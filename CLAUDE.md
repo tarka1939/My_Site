@@ -120,9 +120,9 @@ My Site — portfolio site (Angular + Spring Boot). Full scope lives in `SPEC.md
 ### Backend (`/backend`)
 
 Requires JDK 25 and Maven on `PATH` (or `JAVA_HOME`/`MAVEN_HOME` set). Requires a running
-PostgreSQL instance for anything beyond `compile`/`test` — Phase 1 has no `docker-compose.yml`
-yet (that's Phase 5), so point `DB_NAME`/`DB_USERNAME`/`DB_PASSWORD` at whatever Postgres
-you have locally, or run one yourself: `docker run -e POSTGRES_USER=mysite -e POSTGRES_PASSWORD=mysite -e POSTGRES_DB=mysite_dev -p 5432:5432 postgres`.
+PostgreSQL instance for anything beyond `compile`/`test`. **`docker compose up -d` provides one**
+(#42) with the values the dev profile already defaults to, so no `DB_*` variables are needed —
+see "Full stack" below.
 
 ```bash
 # Build (compile only, no DB needed):
@@ -175,10 +175,23 @@ cd frontend && npm run generate:api
 # Lint: no linter/formatter has been decided yet (not in docs/DECISIONS.md) — nothing to run.
 ```
 
-### Full stack (Docker Compose)
+### Local database (Docker Compose)
 
-```
-# docker compose up — once docker-compose.yml exists (Phase 5)
+Postgres only, not the backend. Production runs a plain jar under systemd on purpose
+(`docs/DECISIONS.md`, 2026-09-04) and the Dockerfile is deferred, so there is no image to run the
+app from — and building one solely for local use would be the one place nobody deploys from.
+
+The image is **`postgres:16-alpine`, matching production**, not the `17-alpine` the Testcontainers
+suite uses. Local development should reproduce what ships. That does mean tests run against a
+different major version than production, which is a real if narrow risk: a migration valid on 17
+and not on 16 would pass CI and fail the deploy.
+
+```bash
+docker compose up -d --wait      # --wait returns when Postgres can answer, not when it starts
+cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=dev
+
+docker compose down              # stop, keeping the data
+docker compose down -v           # and discard it, which is how you re-run Flyway from empty
 ```
 
 ## Architecture
