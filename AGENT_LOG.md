@@ -297,6 +297,70 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-06 — claude (Senior Dev): I called a flaky test fixed on one green run, and it wasn't
+
+The first defect CI ever caught here was `app.spec.ts > shows an "Admin" login link when logged out`,
+failing on the GitHub runner and passing locally every time. I diagnosed it as a change-detection
+race — `RouterLink` writing `href` after `whenStable()` — added `fixture.detectChanges()`, shipped it
+as PR #199, wrote it up in `docs/CI_PLAN.md` as "Fixed in PR #199", and moved on.
+
+It failed again on PR #201, on a branch that contains that commit.
+
+**Two independent errors, and the second is the one that matters.**
+
+The diagnosis was wrong on the facts. `RouterLink` in the Angular 21 this repo actually installs
+writes `href` as `[attr.href]="reactiveHref()"` — a signal host binding over a `computed` `_urlTree()`
+(`node_modules/@angular/router/fesm2022/_router_module-chunk.mjs`). Signal host bindings do not have
+the "attribute written a tick late" race I described; the `ngOnChanges`-driven `updateHref()` I was
+reasoning about belongs to an older version I remembered rather than read. Two greps in
+`node_modules` would have shown this before the fix was written, and did show it afterwards.
+
+The verification was wrong in a way that would have caught the diagnosis anyway. A test that fails
+only on CI cannot be confirmed fixed by one green CI run, because that run is indistinguishable from
+the runs it already passed. `docs/CI_PLAN.md` contains, in its own words, the principle that a job
+which has never failed has not been shown to work — I wrote that sentence, then accepted its exact
+inverse for a fix. **Evidence for an intermittent defect is measured in runs, not a run.**
+
+**What told me the fix hadn't held**, and it was not the failure itself: #202 passed and #201 failed
+against the same `dev` tip with a byte-identical `app.spec.ts`, and #201's only content is a
+`docker-compose.yml`, which cannot reach frontend tests. That pairing is what makes "nondeterministic"
+a measurement rather than a hunch. A single red run would only have said "something is wrong."
+
+**Where I stopped.** After the second wrong mechanism (I also chased cross-file `sessionStorage`
+leakage, and disproved it: the builder builds a fresh environment per file, ~40s of the run's wall
+clock). `CLAUDE.md`'s escalation rule is three failures at the same thing; I had two, no local
+reproduction in three full-suite runs, and no third hypothesis I could distinguish from the others
+with the evidence available. So I deliberately shipped something that is **not** a fix and said so:
+
+- **A precondition the test was missing.** `app.spec.ts` was the only auth-touching spec that never
+  cleared `sessionStorage`, while `AuthService` reads the stored session in its constructor. A test
+  named "when logged out" that never establishes being logged out is wrong on its own terms, whatever
+  it is currently hiding — so this is defensible without claiming it is the cure.
+- **A diagnostic.** The assertion now prints the rendered nav. `expected null to be truthy` cannot
+  distinguish "the anchor rendered without an href" from "the `@else` branch never rendered because
+  `isLoggedIn()` was true", and those have opposite fixes. Both prior failures produced only that
+  message, which is why there was nothing to reason from and why I reasoned from memory instead.
+
+Tracked as issue #203, left open, with a closing condition that is explicitly not "the next run is
+green" — because that is exactly what closed it last time.
+
+**Takeaway for next time:**
+
+- **Read the installed source before reasoning about framework internals.** Version-specific
+  behaviour recalled from memory is a guess wearing a mechanism's clothes, and it is persuasive
+  precisely because it is specific. `node_modules` is checked out on disk.
+- **A fix for an intermittent failure needs a different standard of proof than a fix for a
+  deterministic one.** If the bug reproduces nowhere you control, the honest options are to make it
+  reproduce, to make the next failure self-explaining, or to say it is unproven — not to promote one
+  green run to a fix.
+- **Shipping a partial, honestly-labelled change beats shipping a third guess.** The precondition and
+  the diagnostic are both correct in their own right and neither claims to close the issue.
+- **Say it in the docs too.** The false claim was not only in a PR description; it was in
+  `docs/CI_PLAN.md`, where it would have been read as settled history. Correcting the log entry and
+  leaving the plan wrong would have been the worse half of the fix.
+
+---
+
 ## 2026-09-04 — #190 review round: the review was right about the bug and wrong about what it cost
 
 **Task given:** apply four blocking findings from a cold review of PR #190 (issue #186, contact-form

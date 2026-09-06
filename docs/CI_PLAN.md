@@ -52,10 +52,27 @@ the revert. Both jobs failed independently, so a backend regression cannot hide 
 frontend. Recovery matters as much as the failure: a pipeline that stays red after a fix is worse
 than none.
 
-**It found a real bug on day one.** An `app.spec.ts` assertion queried a `routerLink`-written
-`href` straight after `whenStable()`, racing change detection. It passed locally every time and
-failed on the runner — the exact class a person running tests by hand never catches. Fixed in
-PR #199, and it could only be verified on CI, since that is the only place it reproduced.
+**It found a real bug on day one, and the first fix for it was wrong.** An `app.spec.ts`
+assertion for the logged-out "Admin" link failed on the runner and never locally — the exact class a
+person running tests by hand never catches. It was diagnosed as a change-detection race against a
+`routerLink`-written `href` and fixed in PR #199 by adding a `detectChanges()`. It failed again on
+PR #201, on a branch containing that fix, in a file a `docker-compose.yml` cannot touch. Tracked in
+issue #203; two things about the wrong turn are worth keeping.
+
+- **The mechanism did not exist in this Angular.** `RouterLink` here writes `href` through
+  `[attr.href]="reactiveHref()"`, a signal host binding over a `computed` `_urlTree()`. The
+  `ngOnChanges`-driven `updateHref()` the diagnosis described belongs to an older version. Read the
+  installed source before reasoning about framework internals from memory — it is two greps away.
+- **One green run is not a verified fix.** #199 was called fixed on a single passing run of a test
+  that already passed locally every time. That is this file's own warning about a job that has never
+  failed, inverted: a fix that has never failed yet has not been shown to work either. For a defect
+  that only reproduces on CI, the evidence bar is *runs*, not *a run*.
+
+What is in now is a precondition and a diagnostic rather than a fix. `app.spec.ts` was the only
+auth-touching spec that never cleared `sessionStorage`, while `AuthService` reads the stored session
+in its constructor — a test named "when logged out" that never establishes being logged out is wrong
+whatever it is currently hiding. And the assertion now prints the rendered nav, so a third failure
+names its cause instead of restarting the guesswork.
 
 **Traps specific to this repo:**
 
