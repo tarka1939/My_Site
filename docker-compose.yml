@@ -1,0 +1,56 @@
+# Local development database. Issue #42.
+#
+# Postgres only, not "backend + Postgres" as the issue title says. Running the backend in compose
+# needs a Dockerfile, and #41 is deferred on purpose (docs/DECISIONS.md, 2026-09-04) — production is
+# a plain jar under systemd. Adding a container image here just to run it locally would build the
+# thing the ADR decided not to build yet, in the one place nobody deploys from.
+#
+# So this replaces the step that was actually painful — "point DB_NAME/DB_USERNAME/DB_PASSWORD at
+# whatever Postgres you have locally, or run one yourself" — and leaves running the app as it always
+# was:
+#
+#   docker compose up -d
+#   cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=dev
+#
+# No environment variables. The values below are exactly the dev profile's defaults
+# (application-dev.yml), so an unconfigured checkout connects.
+
+services:
+  postgres:
+    # 16, matching production (16.15 on the VPS), NOT the 17-alpine the Testcontainers suite uses.
+    # Local development should reproduce what ships. Worth knowing that this means three
+    # environments run two major versions: tests on 17, local and production on 16. A migration
+    # valid on 17 and not on 16 would pass CI and fail the deploy — filed separately rather than
+    # silently papered over by picking 17 here.
+    image: postgres:16-alpine
+    container_name: mysite-postgres
+    environment:
+      # These are the dev profile's defaults, not secrets. A local throwaway database reachable
+      # only from this machine is the one place a weak password costs nothing — and inventing a
+      # stronger one would mean every developer needs an env file, which is the friction this
+      # exists to remove.
+      POSTGRES_DB: mysite_dev
+      POSTGRES_USER: mysite
+      POSTGRES_PASSWORD: mysite
+    ports:
+      # Published on localhost only. Without the 127.0.0.1 prefix Docker binds 0.0.0.0 and, on many
+      # setups, punches through the host firewall — putting a trust-authenticated database on the
+      # local network.
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - mysite-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # So `docker compose up --wait` returns when Postgres can actually answer, rather than when
+      # the container has started. Flyway fails confusingly against a server still initialising.
+      test: ['CMD-SHELL', 'pg_isready -U mysite -d mysite_dev']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  # Named, so data survives `docker compose down`. Use `down -v` to discard it — which is also how
+  # you re-run Flyway's migrations from an empty schema, the thing most worth doing after changing
+  # one.
+  mysite-pgdata:
