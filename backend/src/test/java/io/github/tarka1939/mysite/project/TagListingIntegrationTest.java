@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import io.github.tarka1939.mysite.TestPostgres;
 
 import jakarta.persistence.EntityManager;
 
@@ -39,7 +40,7 @@ class TagListingIntegrationTest {
 
     @Container
     @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+    static PostgreSQLContainer postgres = TestPostgres.container();
 
     @Autowired
     private TagRepository tagRepository;

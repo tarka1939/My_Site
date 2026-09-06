@@ -51,7 +51,7 @@ class SecurityIntegrationTest {
 
     @Container
     @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+    static PostgreSQLContainer postgres = TestPostgres.container();
 
     @LocalServerPort
     private int port;
