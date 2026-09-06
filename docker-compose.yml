@@ -17,11 +17,15 @@
 
 services:
   postgres:
-    # 16, matching production (16.15 on the VPS), NOT the 17-alpine the Testcontainers suite uses.
-    # Local development should reproduce what ships. Worth knowing that this means three
-    # environments run two major versions: tests on 17, local and production on 16. A migration
-    # valid on 17 and not on 16 would pass CI and fail the deploy — filed separately rather than
-    # silently papered over by picking 17 here.
+    # 16, matching production (16.15 on the VPS) and the test suite. This comment used to say the
+    # suite ran 17 and that the gap was filed separately; that was true when this file was written
+    # and stopped being true when #200 merged an hour later, moving Testcontainers onto 16 too. The
+    # reason all three agree is that a migration valid on 17 and not on 16 would otherwise pass CI
+    # and fail at deploy — after the pipeline has already swapped the jar in.
+    #
+    # backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java is the only other file in
+    # the repository naming a Postgres version. The third copy is the VPS, which no constant can
+    # reach; `psql --version` there is the check.
     image: postgres:16-alpine
     container_name: mysite-postgres
     environment:
