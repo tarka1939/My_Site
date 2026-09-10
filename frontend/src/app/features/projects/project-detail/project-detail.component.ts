@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EMPTY, Observable, catchError, filter, map, switchMap, tap } from 'rxjs';
@@ -6,6 +6,7 @@ import { ProjectsService } from '../../../core/api/api/projects.service';
 import { Project } from '../../../core/api/model/project';
 import { SeoService } from '../../../core/seo/seo.service';
 import { NOINDEX, siteTitle } from '../../../core/seo/site-meta';
+import { markdownToSummaryText, renderMarkdown } from '../../../shared/markdown/markdown';
 import { projectImageAlt } from '../../../shared/project-image-alt/project-image-alt';
 import { ProjectPeriodComponent } from '../../../shared/project-period/project-period.component';
 
@@ -24,6 +25,16 @@ export class ProjectDetailComponent {
   protected readonly project = signal<Project | null>(null);
   protected readonly loading = signal(true);
   protected readonly notFound = signal(false);
+
+  /**
+   * The description as HTML, bound through `[innerHTML]` in the template (#206).
+   *
+   * `[innerHTML]` and not `bypassSecurityTrustHtml`: the binding runs Angular's sanitizer, which is
+   * the second of the two layers this feature relies on -- the first being `html: false` in
+   * shared/markdown/markdown.ts, which escapes raw HTML before it is ever markup. Trusting the
+   * string here would remove the layer that is actually load-bearing at the DOM boundary.
+   */
+  protected readonly descriptionHtml = computed(() => renderMarkdown(this.project()?.description));
 
   constructor() {
     // Both operators exist for the same reason, and neither is optional now that the callbacks
@@ -98,7 +109,15 @@ export class ProjectDetailComponent {
    */
   private describe(project: Project): void {
     this.seo.setTitle(siteTitle(project.title));
-    this.seo.setDescription(project.description);
+    // Stripped, not raw: a meta description is plain text wherever it is consumed -- a search
+    // result, a Slack unfurl, a link preview -- and none of them render Markdown. Passing the
+    // source through would put `##` and `**` in front of the one audience this tag exists for.
+    //
+    // The *summary* flattener specifically, which drops headings. toMetaDescription takes the
+    // first paragraph, and a description opening with `## What it does` otherwise produces exactly
+    // that as the whole meta description -- fourteen characters, on the page whose search
+    // visibility #182 existed to fix.
+    this.seo.setDescription(markdownToSummaryText(project.description));
     // No setRobots(undefined) here: /projects/missing -> /projects/real is a navigation, and the
     // strategy removes the tag on any navigation whose route declares no robots. That removal
     // reliably lands *before* this callback, which is what makes relying on it sound: the

@@ -764,6 +764,19 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
+          description: |
+            Markdown (#206). Rendered by the SPA; the API stores and returns the source verbatim
+            and does not render, sanitize or validate it as Markdown -- text that is not valid
+            Markdown is simply text, which is what makes this backward compatible with every
+            description written before the change.
+
+            The supported subset is headings, bold/italic, inline and fenced code, links, bullet
+            and numbered lists, and blockquotes. Raw HTML is **escaped, not rendered**; images and
+            tables are disabled. A client that renders this field must not trust it as HTML --
+            see frontend/src/app/shared/markdown/markdown.ts for the two layers the SPA uses.
+
+            `maxLength` counts the source, marks included, so heavily formatted text carries fewer
+            visible characters than plain text of the same length.
         links:
           type: array
           maxItems: 10
@@ -876,6 +889,19 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
+          description: |
+            Markdown (#206). Rendered by the SPA; the API stores and returns the source verbatim
+            and does not render, sanitize or validate it as Markdown -- text that is not valid
+            Markdown is simply text, which is what makes this backward compatible with every
+            description written before the change.
+
+            The supported subset is headings, bold/italic, inline and fenced code, links, bullet
+            and numbered lists, and blockquotes. Raw HTML is **escaped, not rendered**; images and
+            tables are disabled. A client that renders this field must not trust it as HTML --
+            see frontend/src/app/shared/markdown/markdown.ts for the two layers the SPA uses.
+
+            `maxLength` counts the source, marks included, so heavily formatted text carries fewer
+            visible characters than plain text of the same length.
         links:
           type: array
           maxItems: 10

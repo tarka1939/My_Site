@@ -51,13 +51,14 @@ const PROJECT: Project = {
 };
 
 /** Same shape as the drafted content: a stand-alone opening paragraph, then several more. */
-const LONG_DESCRIPTION = [
+const LONG_DESCRIPTION_PARAGRAPHS = [
   'A cross-platform, system-level audio equalizer built around a shared C++17 DSP core, with ' +
     'three cooperating modules: a real-time audio daemon and a Windows Audio Processing Object ' +
     'in C++, a 10-band visualiser and settings GUI in C#/Avalonia, and a Python curve generator.',
   `The DSP core is platform-agnostic. ${'Filler prose. '.repeat(30)}`,
   `CurveGen takes a WAV measurement. ${'Further filler prose. '.repeat(30)}`,
-].join('\n\n');
+];
+const LONG_DESCRIPTION = LONG_DESCRIPTION_PARAGRAPHS.join('\n\n');
 
 describe('ProjectDetailComponent', () => {
   let getProject: ReturnType<typeof vi.fn>;
@@ -125,16 +126,84 @@ describe('ProjectDetailComponent', () => {
 
   it('renders the whole description, including everything the list card clamps away', () => {
     // The counterpart to the list card's summary (#86): clamping the card is only acceptable
-    // because the full text is reachable here. Paragraph breaks survive as well -- the description
-    // is plain text with `white-space: pre-wrap`, not Markdown.
+    // because the full text is reachable here.
+    //
+    // This compared textContent to the source string exactly, while the description was plain text
+    // laid out by `white-space: pre-wrap`. Since #206 it is Markdown, so the paragraph breaks are
+    // real <p> elements and the source's blank lines are consumed by the parser rather than
+    // rendered -- asserting elements is both what the page now does and a stronger claim than a
+    // string compare, which would also pass on one undivided blob.
     getProject.mockReturnValue(of({ ...PROJECT, description: LONG_DESCRIPTION }));
 
     const fixture = TestBed.createComponent(ProjectDetailComponent);
     fixture.detectChanges();
 
     const description = (fixture.nativeElement as HTMLElement).querySelector('.description')!;
-    expect(description.textContent).toBe(LONG_DESCRIPTION);
-    expect(description.textContent!.split('\n\n')).toHaveLength(3);
+    const paragraphs = Array.from(description.querySelectorAll('p'));
+    expect(paragraphs).toHaveLength(3);
+    // Trimmed on the expected side, not the actual: the fixture's repeat() leaves a trailing space
+    // that the parser drops. Trimming what the page produced would instead hide a renderer that
+    // padded its own output.
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual(
+      LONG_DESCRIPTION_PARAGRAPHS.map((paragraph) => paragraph.trim()),
+    );
+  });
+
+  it('renders Markdown structure rather than showing its marks', () => {
+    getProject.mockReturnValue(
+      of({
+        ...PROJECT,
+        description: '## How it works\n\nA **bold** claim and `some_code`.\n\n- first\n- second',
+      }),
+    );
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const description = (fixture.nativeElement as HTMLElement).querySelector('.description')!;
+    expect(description.querySelector('h2')?.textContent).toBe('How it works');
+    expect(description.querySelector('strong')?.textContent).toBe('bold');
+    expect(description.querySelector('code')?.textContent).toBe('some_code');
+    expect(Array.from(description.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
+      'first',
+      'second',
+    ]);
+    // That the marks are gone is a separate claim from the structure being right: a renderer that
+    // emitted both the element and its source syntax would satisfy every expectation above.
+    expect(description.textContent).not.toContain('**');
+    expect(description.textContent).not.toContain('##');
+  });
+
+  it('does not let a description inject markup', () => {
+    // Two layers are meant to stop this and either alone would: markdown-it runs with `html: false`
+    // so raw HTML is escaped into text, and Angular's [innerHTML] sanitizer strips whatever gets
+    // through. The assertion is deliberately about the DOM rather than the string -- "no <script>
+    // element exists here" is the property that matters, and it holds however the renderer chose
+    // to escape things.
+    getProject.mockReturnValue(
+      of({
+        ...PROJECT,
+        description: 'Before <script>window.pwned = true;</script> and <img src=x onerror=alert(1)>.',
+      }),
+    );
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const description = (fixture.nativeElement as HTMLElement).querySelector('.description')!;
+    // Which of these assertions is load-bearing, because it is not the obvious one. The
+    // `globalThis` check is near-vacuous: jsdom never executes a script inserted through
+    // `innerHTML`, so it passes even with a sanitizer bypass in place, and it is kept only as a
+    // statement of intent. `querySelector('script') === null` is real but is satisfied by Angular's
+    // sanitizer alone. The assertion that actually pins `html: false` is the one below about the
+    // tag surviving as *text* -- flip markdown-it to `html: true` and Angular still strips the
+    // element, so the DOM check stays green while that one goes red.
+    expect(description.querySelector('script')).toBeNull();
+    expect(description.querySelector('img')).toBeNull();
+    expect((globalThis as Record<string, unknown>)['pwned']).toBeUndefined();
+    // It survives as visible text rather than vanishing, so an admin who pastes HTML can see it
+    // was not interpreted instead of wondering where their content went.
+    expect(description.textContent).toContain('<script>');
   });
 
   it('does not describe gallery images as screenshots', () => {

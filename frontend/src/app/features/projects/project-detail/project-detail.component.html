@@ -58,7 +58,12 @@
       </ul>
     }
 
-    <p class="description">{{ project.description }}</p>
+    <!-- Rendered Markdown (#206), so a block element rather than a <p>: the renderer emits its own
+         <p>, <ul>, <h3> and so on, and a <p> wrapping them is invalid markup that browsers silently
+         restructure -- which moves the content out from under this class and drops its styling.
+         [innerHTML] runs Angular's sanitizer; see descriptionHtml() for why nothing here is
+         marked trusted. -->
+    <div class="description markdown-body" [innerHTML]="descriptionHtml()"></div>
 
     @if (project.links.length > 0) {
       <h2>Links</h2>

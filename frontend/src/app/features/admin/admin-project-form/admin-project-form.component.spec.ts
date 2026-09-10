@@ -240,6 +240,51 @@ describe('AdminProjectFormComponent', () => {
     vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
   });
 
+  it('previews the description as the visitor will see it', () => {
+    const fixture = TestBed.createComponent(AdminProjectFormComponent);
+    fixture.detectChanges();
+
+    typeInto(fixture, '#project-description', '## Title\n\nA **bold** claim.');
+    fixture.detectChanges();
+
+    // Scoped to .markdown-body, not the whole section: the section also contains the preview's own
+    // "Preview" label, and a query for a heading across both would find whichever comes first in
+    // the DOM rather than the one the description produced.
+    const rendered = (fixture.nativeElement as HTMLElement).querySelector('.markdown-body')!;
+    expect(rendered.querySelector('h2')?.textContent).toBe('Title');
+    expect(rendered.querySelector('strong')?.textContent).toBe('bold');
+  });
+
+  it('does not execute markup typed into the description box', () => {
+    // The preview runs the same two layers as the public page (`html: false`, then Angular's
+    // [innerHTML] sanitizer). Worth its own test rather than leaning on the detail page's: this is
+    // the one surface where the person supplying the text is also the person the DOM belongs to,
+    // so a preview built with bypassSecurityTrustHtml would look identical and be a live sink.
+    const fixture = TestBed.createComponent(AdminProjectFormComponent);
+    fixture.detectChanges();
+
+    typeInto(fixture, '#project-description', '<script>window.pwnedPreview = true;</script>');
+    fixture.detectChanges();
+
+    const preview = (fixture.nativeElement as HTMLElement).querySelector('.markdown-preview')!;
+    // See the note in project-detail.component.spec.ts on which of these actually pins anything:
+    // the globalThis check cannot fail under jsdom, and the text assertion is what holds
+    // `html: false`.
+    expect(preview.querySelector('script')).toBeNull();
+    expect((globalThis as Record<string, unknown>)['pwnedPreview']).toBeUndefined();
+    expect(preview.textContent).toContain('<script>');
+  });
+
+  it('says nothing to preview while the box is empty', () => {
+    // Rather than an empty bordered box, which reads as something that failed to load.
+    const fixture = TestBed.createComponent(AdminProjectFormComponent);
+    fixture.detectChanges();
+
+    const preview = (fixture.nativeElement as HTMLElement).querySelector('.markdown-preview')!;
+    expect(preview.querySelector('.markdown-preview__empty')).not.toBeNull();
+    expect(preview.querySelector('.markdown-body')).toBeNull();
+  });
+
   it('labels both date inputs', () => {
     const fixture = TestBed.createComponent(AdminProjectFormComponent);
     fixture.detectChanges();
