@@ -40,9 +40,22 @@
   }
 }
 
+// 20rem, raised from 16rem (#205). This is the half of the thumbnail fix that a taller media slot
+// could not deliver, and the reason is worth keeping: the site's one screenshot is 2559x1554, a
+// *wide* image, so in a slot wider than it is tall it is width-limited. Making the slot taller adds
+// letterbox above and below it and nothing else -- measured at +3% linear, against +24% for the
+// squarer SVG diagrams. Only more width moves a wide image.
+//
+// `main` is capped at `max-width: 960px`, which is a deliberate reading measure for prose and not
+// something to widen for a grid's benefit. Within 928px of usable width the column count is
+// effectively binary: a 16rem minimum yields three 293px columns, and anything from ~294px up
+// yields two 452px ones. So this is 2-up on a desktop, and the thumbnails go from 237x144 to
+// 402x244 (2.88x the area) and from 180x144 to 371x298 (4.28x) -- measured in the browser, not
+// derived. It is still `auto-fill minmax`, so a narrower viewport drops to one column as before,
+// and a wider container would go back to three on its own.
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
   gap: 1.5rem;
   list-style: none;
   padding: 0;
@@ -111,17 +124,44 @@
 // artwork card sit on one ground rather than two. A scrim over the image was the alternative and
 // was rejected: it would dim the one thing the image is there to show, on a thumbnail this small.
 //
-// `scale-down`, not `cover`: dsp_execution_pipeline.svg is 187x150 natively against a 160px slot,
-// so `cover` was scaling a small diagram up to fill a box it never had the pixels for. scale-down
-// contains anything larger than the slot and leaves anything smaller at its own size, centred. The
-// padding keeps a bright rectangle off the plate's edge, so it reads as an inset artefact rather
-// than a hole cut in the card.
+// `contain`, and a slot sized by ratio rather than by a fixed height (#205). Both halves of that
+// replaced rules whose stated reasons did not survive measurement, so the measurements are here:
 //
-// The height is fixed and independent of what is in the slot -- that is what holds a row of cards
-// to one height across any mix of images and artwork. The artwork fills the plate edge to edge
-// (`overflow: hidden` clips it to the same radius); only images are inset.
+// This used to read `object-fit: scale-down`, justified as stopping `cover` from scaling
+// "a small diagram up to fill a box it never had the pixels for" -- citing
+// dsp_execution_pipeline.svg at "187x150 natively". Two problems. **`scale-down` was inert**: at
+// the old 244x144 content box both fits painted the same 180x144, because the reported intrinsic
+// height (150) already exceeded the box. And **187x150 is not a resolution.** That file carries a
+// `viewBox` and no `width`/`height`, so it has no intrinsic size at all; 187x150 is the browser's
+// default replaced-element box (300x150) fitted to the viewBox's ratio. It is what `naturalWidth`
+// reports, but the art is vector -- there is no pixel budget to overrun, and `scale-down` would
+// have started actively capping it the moment the slot grew past 150px tall.
+//
+// So the fit rule was never what made thumbnails small; the slot was. `height: 10rem` less this
+// padding left 144px, and every image the site has is taller-than-wide relative to the slot, so
+// all of them were height-limited: a 1120x900 diagram painted at 180x144 is ~16% linear scale.
+//
+// `aspect-ratio` instead of a fixed height keeps the property the fixed height existed for -- a
+// row of cards is uniform, because the columns are equal-width so the slots are equal-height --
+// while letting the slot grow with the card instead of staying pinned to a phone-sized 160px on a
+// desktop. 4:3 rather than the gallery's 16:10 because these are diagrams and screenshots that are
+// squarer than they are wide, and height is the binding dimension.
+//
+// This is also the pattern the detail page's gallery already used (`aspect-ratio` + `contain` +
+// a --color-surface-muted letterbox, see project-detail.component.scss). The card was the odd one
+// out; it now matches, which matters because the two show the *same images*.
+//
+// The trade-off `contain` accepts: a genuinely small raster would now be upscaled and soft, where
+// `scale-down` would have left it crisp and tiny. No image on the site is small -- the only PNG is
+// 2559x1554 -- and CSS cannot ask "is this vector?", so this picks the case that exists over the
+// one that does not. The padding still keeps a bright rectangle off the plate's edge, so an image
+// reads as an inset artefact rather than a hole cut in the card. The artwork fills the plate edge
+// to edge (`overflow: hidden` clips it to the same radius); only images are inset.
+//
+// ARTWORK_WIDTH/ARTWORK_HEIGHT in shared/project-artwork/project-artwork.ts are 4:3 to match this
+// ratio. Change one and the artwork is stretched -- see the comment there.
 .card-media {
-  height: 10rem;
+  aspect-ratio: 4 / 3;
   border-radius: 0.375rem;
   background: var(--color-surface-muted);
   overflow: hidden;
@@ -133,7 +173,7 @@
   }
 
   img {
-    object-fit: scale-down;
+    object-fit: contain;
     padding: 0.5rem;
   }
 }

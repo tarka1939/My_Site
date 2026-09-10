@@ -17,9 +17,24 @@
  * is what makes "the same project always draws the same thing" testable without a DOM at all.
  */
 
-/** Logical drawing surface. See `drawProjectArtwork` for why this is fixed rather than measured. */
+/**
+ * Logical drawing surface. See `drawProjectArtwork` for why this is fixed rather than measured.
+ *
+ * **The ratio here has to match `.card-media`'s `aspect-ratio`, and that is the whole reason these
+ * are 4:3.** The canvas is stretched by CSS to fill the media slot, so the bitmap's ratio and the
+ * slot's ratio are the same number or the artwork is distorted. While the slot was a fixed
+ * `10rem` tall and a fluid grid column wide, its ratio changed with the viewport and no fixed
+ * bitmap could match it -- a 320x160 canvas was being squeezed to 260x160 (0.81 horizontal) at a
+ * 1280px viewport and nobody noticed, because a soft gradient hides a squeeze that would be
+ * obvious on a photograph. Giving the slot a fixed `aspect-ratio` (#205) is what makes matching it
+ * possible at all: one ratio at every card width, so a same-ratio bitmap scales uniformly and
+ * measuring the element would buy nothing.
+ *
+ * Changing one of these two without the other silently reintroduces the squeeze, which is why
+ * both sides say so.
+ */
 export const ARTWORK_WIDTH = 320;
-export const ARTWORK_HEIGHT = 160;
+export const ARTWORK_HEIGHT = 240;
 
 /**
  * Horizontal sampling step, in logical pixels. 4px is below the visible faceting threshold for a
