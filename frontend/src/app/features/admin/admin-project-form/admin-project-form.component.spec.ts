@@ -267,8 +267,12 @@ describe('AdminProjectFormComponent', () => {
     fixture.detectChanges();
 
     const preview = (fixture.nativeElement as HTMLElement).querySelector('.markdown-preview')!;
+    // See the note in project-detail.component.spec.ts on which of these actually pins anything:
+    // the globalThis check cannot fail under jsdom, and the text assertion is what holds
+    // `html: false`.
     expect(preview.querySelector('script')).toBeNull();
     expect((globalThis as Record<string, unknown>)['pwnedPreview']).toBeUndefined();
+    expect(preview.textContent).toContain('<script>');
   });
 
   it('says nothing to preview while the box is empty', () => {

@@ -196,10 +196,15 @@ export class AdminProjectFormComponent {
   /**
    * The description preview (#206), rendered from what is in the box right now.
    *
-   * `initialValue` is read off the control rather than hardcoded to `''`, because this form is also
-   * the *edit* form: `valueChanges` does not fire for the value `patchValue` puts there when an
-   * existing project loads, so an empty initial value would show a blank preview beside a full
-   * textarea until the first keystroke.
+   * `initialValue` is read off the control rather than hardcoded to `''` as a defensive default,
+   * so the preview cannot disagree with the box it previews at the moment it is created.
+   *
+   * An earlier version of this comment justified it by claiming `patchValue` does not emit
+   * `valueChanges`, which is false -- `FormGroup.patchValue` forwards `emitEvent` (undefined here)
+   * to each child and the control emits whenever it is not `false`. So the edit form would in fact
+   * populate the preview without this. The line stays because reading the live value is strictly
+   * more correct than assuming an empty one, but it is belt-and-braces, not the load-bearing thing
+   * the old comment described.
    *
    * Bound through `[innerHTML]`, which sanitizes -- the preview must go through exactly the same
    * two layers as the public page, or it stops being a preview of what visitors will see. That is

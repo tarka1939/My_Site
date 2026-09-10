@@ -426,18 +426,31 @@ main:focus {
     margin-bottom: 0;
   }
 
+  // A description sits under the page's h1 -- the project title, at --text-3xl -- so its headings
+  // start well below that and never compete with it. Sized here rather than left to the UA
+  // default, which renders an h1 inside content at 2em and would out-shout the page heading.
+  //
+  // Two steps rather than one flat size, which is what this was first written as: `##` sections
+  // and `###` subsections rendered identically, so the hierarchy the admin wrote was correct in
+  // the markup and invisible on the page. Two levels is what the subset actually needs -- a
+  // description is a few sections with the occasional subsection -- and collapsing h3-h6 together
+  // is deliberate rather than unfinished: nothing in a 5000-character field earns four levels, and
+  // giving each its own step would put the deepest ones below body text.
   h1,
-  h2,
+  h2 {
+    font-size: var(--text-lg);
+    line-height: var(--leading-snug);
+    margin: 1.5rem 0 0.5rem;
+  }
+
   h3,
   h4,
   h5,
   h6 {
-    // A description sits under the page's h1 (the project title), so its headings start at the
-    // --text-lg step and do not compete with it. Sized here rather than left to the UA default,
-    // which renders an h1 inside content at 2em and would out-shout the page heading.
-    font-size: var(--text-lg);
+    font-size: var(--text-md);
     line-height: var(--leading-snug);
-    margin: 1.5rem 0 0.5rem;
+    font-weight: var(--weight-emphasis);
+    margin: 1.25rem 0 0.5rem;
   }
 
   p,

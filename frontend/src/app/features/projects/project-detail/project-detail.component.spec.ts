@@ -191,6 +191,13 @@ describe('ProjectDetailComponent', () => {
     fixture.detectChanges();
 
     const description = (fixture.nativeElement as HTMLElement).querySelector('.description')!;
+    // Which of these assertions is load-bearing, because it is not the obvious one. The
+    // `globalThis` check is near-vacuous: jsdom never executes a script inserted through
+    // `innerHTML`, so it passes even with a sanitizer bypass in place, and it is kept only as a
+    // statement of intent. `querySelector('script') === null` is real but is satisfied by Angular's
+    // sanitizer alone. The assertion that actually pins `html: false` is the one below about the
+    // tag surviving as *text* -- flip markdown-it to `html: true` and Angular still strips the
+    // element, so the DOM check stays green while that one goes red.
     expect(description.querySelector('script')).toBeNull();
     expect(description.querySelector('img')).toBeNull();
     expect((globalThis as Record<string, unknown>)['pwned']).toBeUndefined();

@@ -62,6 +62,9 @@ describe('renderMarkdown', () => {
     const html = renderMarkdown('See https://example.com for details.');
 
     expect(html).not.toContain('<a ');
+    // Paired with a positive assertion, because `not.toContain` alone also passes if rendering
+    // broke entirely and returned nothing.
+    expect(html).toContain('See https://example.com for details.');
   });
 
   it('treats a single newline as a space rather than a line break', () => {
@@ -148,5 +151,52 @@ describe('markdownToSummaryText', () => {
     expect(text).toContain('Intro.');
     expect(text).toContain('alpha');
     expect(text).toContain('quoted');
+  });
+});
+
+describe('renderMarkdown, link safety', () => {
+  it('refuses a javascript: link rather than emitting one Angular then has to strip', () => {
+    // The most security-relevant construct in the subset, and it was covered only by markdown-it's
+    // own suite. This is layer one doing its job: no anchor is produced at all, so Angular's
+    // sanitizer is never the thing standing between a description and script execution.
+    for (const source of [
+      '[x](javascript:alert(1))',
+      '[x](JaVaScRiPt:alert(1))',
+      '[x](vbscript:alert(1))',
+      '[x](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)',
+    ]) {
+      expect(renderMarkdown(source), source).not.toContain('<a ');
+    }
+  });
+
+  it('still emits ordinary links', () => {
+    // So the assertions above cannot pass by the renderer refusing everything.
+    expect(renderMarkdown('[x](https://example.com)')).toContain(
+      '<a href="https://example.com">x</a>',
+    );
+    expect(renderMarkdown('[x](/relative/path)')).toContain('<a href="/relative/path">x</a>');
+  });
+});
+
+describe('markdownToSummaryText, hard breaks', () => {
+  it('does not treat a hard line break as a paragraph break', () => {
+    // markdown-it emits `<br>\n` for a trailing-double-space break, so mapping the tag alone left
+    // a blank line behind and every paragraph-splitting caller read it as a paragraph boundary.
+    // The visible damage was a card excerpt and a meta description truncated at the first line of
+    // the opening sentence -- on content whose source is wrapped at column 100, where a stray
+    // double space is entirely ordinary.
+    const source = 'A cross-platform equalizer,  \nbuilt on C++17.\n\nSecond paragraph.';
+
+    const summary = markdownToSummaryText(source);
+
+    expect(summary.split(/\n\n/)[0]).toBe('A cross-platform equalizer,\nbuilt on C++17.');
+    expect(summary.split(/\n\n/)).toHaveLength(2);
+  });
+
+  it('summarises a description that opens with a list to the whole list, not its first bullet', () => {
+    // `</li>` used to close to a blank line, making every bullet its own paragraph.
+    const summary = markdownToSummaryText('- alpha item\n- beta item\n\nClosing prose.');
+
+    expect(summary.split(/\n\n/)[0]).toBe('alpha item\nbeta item');
   });
 });

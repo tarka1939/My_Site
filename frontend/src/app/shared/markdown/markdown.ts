@@ -111,8 +111,21 @@ export function markdownToSummaryText(source: string | null | undefined): string
 function stripToText(html: string): string {
   return decodeEntities(
     html
-      .replace(/<\/(p|h[1-6]|li|blockquote|pre|ol|ul)>/g, '\n\n')
-      .replace(/<br\s*\/?>/g, '\n')
+      // `</li>` closes to a *single* newline while every other block closes to a blank line, and
+      // the difference decides what a summary says. `toCardExcerpt` splits on a blank line to
+      // take the first paragraph, so closing list items to `\n\n` makes each bullet its own
+      // paragraph and a description opening with a list summarises to its first bullet alone.
+      // `</ul>`/`</ol>` still supply the blank line, so the list as a whole is still a block.
+      // The trailing newline is consumed here for the same reason it is on `<br>` below:
+      // markdown-it emits `</li>\n`, so replacing the tag alone still leaves `\n\n`.
+      .replace(/<\/li>\n?/g, '\n')
+      .replace(/<\/(p|h[1-6]|blockquote|pre|ol|ul)>/g, '\n\n')
+      // The trailing newline is consumed deliberately: markdown-it emits `<br>\n` for a hard
+      // break, so mapping the tag alone leaves `\n\n` behind -- a blank line, which every
+      // paragraph-splitting caller then reads as a paragraph boundary. Two trailing spaces in the
+      // opening sentence would silently truncate a card excerpt and a meta description there,
+      // which is exactly what markdownToSummaryText exists to have stopped happening.
+      .replace(/<br\s*\/?>\n?/g, '\n')
       .replace(/<[^>]+>/g, ''),
   )
     .replace(/[ \t]+\n/g, '\n')

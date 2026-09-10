@@ -297,6 +297,72 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-10 — claude (Senior Dev): three bugs that every passing test agreed with
+
+Three tasks: make project thumbnails bigger (#205), render descriptions as Markdown (#206), rename
+the page title. The third turned out to need no code at all — `dev` already said "Krzysztof Tarka"
+everywhere and `main`, which Netlify serves, did not. The interesting part is what the other two
+produced, because in each case a full green suite was compatible with the defect.
+
+**A stylesheet comment that had measured a default and recorded it as a fact.** `.card-media`
+justified `object-fit: scale-down` at length, citing `dsp_execution_pipeline.svg` as "187x150
+natively" and `cover` as scaling it "up to fill a box it never had the pixels for". Measuring in a
+browser: `scale-down` and `contain` painted **identically** at that slot size, so the rule was inert;
+and 187x150 is not a resolution but the browser's default replaced-element box (300x150) fitted to
+the file's `viewBox` ratio — the art is vector and has no pixel budget to overrun. `naturalWidth`
+does report 187x150, which is why the number looked like evidence. Three tests pinned the rule and
+all three passed, because they asserted the CSS said what it said.
+
+The fix needed two changes for one bug, and only measuring showed why: a taller slot helps the
+squarer diagrams (+24%) and does almost nothing for the wide 2559x1554 screenshot (+3%), because a
+taller box around a wide image is letterbox. Widening the grid columns is what moved that one. Final:
+2.88x and 4.28x the painted area.
+
+**A meta description that became the words "What it does".** Descriptions became Markdown, so
+summaries flatten the source to text and take the first paragraph. A description opening with
+`## What it does` — the natural way to write one — makes that heading the entire
+`<meta name="description">`. Every unit test passed, and each was *correct*: they asserted that
+flattening was faithful, which it was. The bug was in what the caller then did with a faithful
+result. Found by loading the page and reading the tag.
+
+**A hard line break that truncated the same tag, found by review after that.** Caught by the cold
+review of PR #208, not by me and not by the suite: markdown-it emits `<br>\n` for a
+trailing-double-space break, so mapping the tag to one newline left a blank line behind, which every
+paragraph-splitting caller reads as a paragraph boundary. An opening sentence ending in two spaces,
+then continuing on the next source line, summarised to just its first line -- everything after the
+break was read as a second paragraph and dropped. On content whose source is wrapped at column
+100, a stray double space is entirely ordinary. `</li>` had the identical bug — and when I fixed
+`<br>` first, my own new test for the list case still failed, because I had made the same mistake
+twice in the same function within ten minutes.
+
+**A near-miss the budget caught rather than a person.** Issue #206 asserted the bundle was safe
+because every route is lazy. True, and beside the point: `core/seo/site-meta.ts` is eager and imports
+the excerpt helper, so putting the Markdown flattener there pulled all of markdown-it onto first
+paint — 409.5 kB against a 400 kB **error** budget. Had that budget been a warning, this ships.
+
+**Takeaway for next time:**
+
+- **A comment citing a measurement is not a measurement.** Both stylesheet claims here were written
+  confidently, in a house style that explains itself, and both were wrong in the same way: a number
+  read out of a tool without asking what the tool was reporting. `naturalWidth` on an SVG with no
+  intrinsic size answers a question that was never asked.
+- **"The tests pass" and "the tests assert the right thing" are different claims**, and the gap is
+  widest when the assertion is *about a mechanism* rather than about an outcome. Every test that
+  missed the summary bugs asserted flattening was faithful. None asserted what a reader ends up
+  seeing. Assert the outcome the user gets — the meta tag's content, the painted size — not the
+  intermediate step you happen to have implemented.
+- **A renderer's output includes its whitespace.** `<br>` and `</li>` both arrive with a trailing
+  newline. Mapping a tag without looking at what surrounds it is how one bug became two.
+- **A budget set to error is worth the annoyance.** The one guard in this repo that stopped a real
+  regression this session was the one that refused to build.
+- **The cold review earned its cost on the security-adjacent change and would not have on the
+  others.** It confirmed the XSS story by probing markdown-it directly rather than reasoning about
+  the options, found the `<br>` bug, and corrected two comments of mine that stated false mechanisms
+  — one of which claimed `patchValue` does not emit `valueChanges`, and one which had the cause of a
+  bug exactly backwards, in the direction that would have made the next reader re-introduce it.
+
+---
+
 ## 2026-09-06 — claude (Senior Dev): I called a flaky test fixed on one green run, and it wasn't
 
 The first defect CI ever caught here was `app.spec.ts > shows an "Admin" login link when logged out`,

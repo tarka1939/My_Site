@@ -23,11 +23,14 @@ import { toCardExcerpt } from './description-excerpt';
  *
  * <h2>Flatten first, then split</h2>
  *
- * Two reasons this order rather than splitting the source: the marks would otherwise reach the
- * card verbatim, and a paragraph break in the *source* is not always one in the output -- a list
- * is a single block whose items are separated by single newlines, so splitting first would cut a
- * bulleted opener after its first bullet. `markdownToPlainText` puts a blank line between blocks
- * precisely so `toCardExcerpt`'s paragraph split still finds them.
+ * The marks would otherwise reach the card verbatim, which is the whole reason. An earlier version
+ * of this comment gave a second reason and had it exactly backwards -- it claimed splitting the
+ * source first would "cut a bulleted opener after its first bullet". It is the other way round:
+ * the source has no blank line between bullets, so splitting first keeps the list whole, and it
+ * was *flattening* first that cut after bullet one, because `</li>` was closing to a blank line.
+ * That is fixed in `stripToText`, where list items now close to a single newline; the comment is
+ * corrected here rather than deleted because the claim was wrong in a direction that would have
+ * made someone re-introduce the bug while "restoring" the stated behaviour.
  *
  * `markdownToSummaryText`, not `markdownToPlainText`: the summary variant drops heading blocks, so
  * a description opening with `## What it does` -- the natural way to write one -- summarises to the
