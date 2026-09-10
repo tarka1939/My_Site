@@ -60,6 +60,17 @@ const LONG_DESCRIPTION_PARAGRAPHS = [
 ];
 const LONG_DESCRIPTION = LONG_DESCRIPTION_PARAGRAPHS.join('\n\n');
 
+/**
+ * An element's `grid-column` with whitespace normalised.
+ *
+ * The same engine difference the aspect-ratio assertions dodge: a real browser serialises
+ * `grid-column: 1 / -1` back as `'1 / -1'` and jsdom as `'1/-1'`. Comparing to either literal pins
+ * a serialisation detail of the test environment rather than the span being asserted.
+ */
+function gridColumnOf(element: Element): string {
+  return getComputedStyle(element).gridColumn.replace(/\s+/g, '');
+}
+
 describe('ProjectDetailComponent', () => {
   let getProject: ReturnType<typeof vi.fn>;
   let tracker: ReturnType<typeof trackImageAttributeOrder>;
@@ -220,6 +231,57 @@ describe('ProjectDetailComponent', () => {
     expect(alts).toEqual(['Equalizer, image 1 of 2', 'Equalizer, image 2 of 2']);
     for (const alt of alts) {
       expect(alt).not.toMatch(/screenshot|diagram|photo/i);
+    }
+  });
+
+  it('frames gallery images at the same ratio the list card frames them', () => {
+    // A cross-file agreement with nothing else holding it: `.card-media` in
+    // projects-list.component.scss and `.image-gallery img` here show the *same images*, so a
+    // viewer moving from the grid into a project sees them reframed if these drift. They were 4/3
+    // and 16/10 until #211 and nobody noticed, because no test looked and the two pages are never
+    // on screen together.
+    //
+    // Asserted as a parsed number rather than the string: a real browser serialises
+    // `aspect-ratio: 4 / 3` back as `'4 / 3'` and jsdom as `'4/3'`, so a literal compare pins a
+    // property of the test environment instead of the shape of the box.
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const image = (fixture.nativeElement as HTMLElement).querySelector('.image-gallery img')!;
+    const [width, height] = getComputedStyle(image)
+      .aspectRatio.split('/')
+      .map((part) => Number(part.trim()));
+    expect(width / height).toBeCloseTo(4 / 3, 5);
+    // `contain`, never `cover`: nothing here knows what any image *is*, which is the same reason
+    // its alt text claims nothing (#87). Cropping a diagram destroys it.
+    expect(getComputedStyle(image).objectFit).toBe('contain');
+  });
+
+  it('gives a project with one image the whole row instead of half of it', () => {
+    // `auto-fill` keeps the empty second track, so a lone image would otherwise sit in half the
+    // page with a gap beside it -- which is the state one of the two projects that have images is
+    // actually in. Pinned because it is invisible in the markup and lives entirely in a
+    // `:only-child` rule that a later refactor could drop without any other test noticing.
+    getProject.mockReturnValue(of({ ...PROJECT, images: ['https://images.example.com/one.png'] }));
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const items = (fixture.nativeElement as HTMLElement).querySelectorAll('.image-gallery li');
+    expect(items).toHaveLength(1);
+    expect(gridColumnOf(items[0])).toBe('1/-1');
+  });
+
+  it('does not stretch any one image when the project has several', () => {
+    // The counterpart, so the rule above cannot be widened into "every image spans the row" --
+    // which would look correct on the single-image project and wrong everywhere else.
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const items = (fixture.nativeElement as HTMLElement).querySelectorAll('.image-gallery li');
+    expect(items.length).toBeGreaterThan(1);
+    for (const item of items) {
+      expect(gridColumnOf(item)).not.toBe('1/-1');
     }
   });
 

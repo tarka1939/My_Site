@@ -24,7 +24,18 @@ h1 {
 
 .image-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  // 20rem, raised from 12rem (#211). A 12rem minimum yields four ~220px columns inside `main`'s
+  // 960px cap, which is a contact sheet -- and a project has one or two images, not twenty. The
+  // site's real images are 1120x900, 1120x1080 and 2559x1554, so every one of them was painted
+  // under a fifth of its natural size on the page whose whole job is showing the project. Measured
+  // at a 1280px viewport: a 220x138 box, the diagram painted at 171x138.
+  //
+  // This is the same finding as #205 on the card thumbnails, and the gallery was looked at during
+  // that change and wrongly passed over -- precisely because it already had `aspect-ratio` and
+  // `contain`, which is the pattern the cards were moved *to*. But #205's conclusion was that the
+  // fit rule was never the cause and the slot size was. Having the right fit rule on an undersized
+  // box looks like a solved problem and is not one.
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
   gap: 1rem;
   list-style: none;
   padding: 0;
@@ -51,9 +62,25 @@ h1 {
     // --color-surface right: the gallery already sits on the page, and a card-coloured plate behind
     // each image would read as a second card. --color-surface-muted is the token that exists for
     // exactly this -- a fill that composites against whichever ground is live.
-    aspect-ratio: 16 / 10;
+    // 4 / 3, matching `.card-media` in projects-list.component.scss (#211). These two surfaces show
+    // the *same images*, so a viewer moving from the grid to a project saw them reframed for no
+    // reason. 16/10 also suited the one wide screenshot and letterboxed both diagrams, which are
+    // 1.24 and 1.04 -- the squarer ratio is the one that fits the content that actually exists.
+    aspect-ratio: 4 / 3;
     object-fit: contain;
     background: var(--color-surface-muted);
+  }
+
+  // A project with one image gets the whole row rather than one of two tracks with an empty gap
+  // beside it -- which is what `auto-fill` would otherwise produce, and which is the state one of
+  // the two projects that have images is actually in.
+  //
+  // `:only-child` rather than switching the grid to `auto-fit`, which would do the same thing for
+  // one image and then quietly break three: `auto-fit` collapses empty tracks, so a third image
+  // wrapping onto its own row would stretch to full width while the two above it stayed half
+  // width. Stating the single-image case explicitly keeps every other count uniform.
+  li:only-child {
+    grid-column: 1 / -1;
   }
 }
 
