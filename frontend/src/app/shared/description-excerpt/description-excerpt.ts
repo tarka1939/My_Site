@@ -57,12 +57,28 @@ const TRAILING_PUNCTUATION = /[\s.,;:!?–—-]+$/;
  * | 3 columns, page at its 60rem max width        | 259 px          | 101-103 chars    |
  * | 1 column, viewport 567 px -- the widest card  | 501 px          | 200 chars        |
  *
- * **The widest card is not the widest viewport**, which is what the previous version of this
- * comment got wrong. `.project-grid` is `repeat(auto-fill, minmax(16rem, 1fr))` with a 1.5rem gap
- * inside a `main` of `min(100vw, 60rem)` less 2rem of padding, so two columns need 536 px of
- * content width: the grid is one full-width column at 567 px and below (measured -- 568 px is the
- * first two-column width), and there a single card spans the whole container and its description
- * box is nearly twice the three-column width.
+ * **Those two rows were measured against a grid that no longer exists, and are kept as the record
+ * of how the 240 was chosen rather than as a current description of the page.** #205 raised
+ * `.project-grid` from `minmax(16rem, 1fr)` to `minmax(20rem, 1fr)`, so at the 60rem page there
+ * are now **two** 452 px columns rather than three 293 px ones, and the description box is about
+ * 420 px rather than 259 px (card width less the card's 1rem padding either side; the column width
+ * was measured in a browser, the box derived from it).
+ *
+ * The per-line character counts have **not** been re-measured at the new widths, and the numbers
+ * above should not be scaled in your head to guess them -- characters per line is a function of
+ * the glyphs, as the paragraph below says. What can be said without measuring is the direction:
+ * a wider box fits more prose in three lines, so the CSS clamp cuts later, and the 240 cap is
+ * correspondingly *more* likely to be what binds first. That is the failure mode this comment
+ * already treats as mild, not the one it warns about -- the warning was that the cap and the
+ * clamp could coincide and leave the clamp with nothing to do, and widening the box moves them
+ * further apart at the three-column end, not closer.
+ *
+ * **The widest card is still not the widest viewport**, which is what an earlier version of this
+ * comment got wrong and is worth keeping. `.project-grid` sits inside a `main` of
+ * `min(100vw, 60rem)` less 2rem of padding, with a 1.5rem gap, so two 20rem columns now need
+ * 664 px of content width instead of 536 px: the grid collapses to one full-width column at a
+ * wider viewport than before, and there a single card spans the whole container. Whoever
+ * re-measures should measure *that* card, not the widest screen.
  *
  * **This is a sizing heuristic, not a guarantee.** Characters per line depends on the glyphs -- the
  * same 501 px box holds 325 characters of narrow text ("il1 tif jil ...") against 132 of wide
