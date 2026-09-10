@@ -32,6 +32,7 @@ import {
   groupFieldErrors,
   joinMessages,
 } from '../../../shared/form-errors/form-errors';
+import { renderMarkdown } from '../../../shared/markdown/markdown';
 import {
   PROJECT_PERIOD_MESSAGES,
   validateProjectPeriod,
@@ -191,6 +192,25 @@ export class AdminProjectFormComponent {
     startedOn: computed(() => this.serverError('startedOn')),
     completedOn: computed(() => this.periodError() ?? this.serverError('completedOn')),
   } satisfies Record<string, Signal<string | null>>;
+
+  /**
+   * The description preview (#206), rendered from what is in the box right now.
+   *
+   * `initialValue` is read off the control rather than hardcoded to `''`, because this form is also
+   * the *edit* form: `valueChanges` does not fire for the value `patchValue` puts there when an
+   * existing project loads, so an empty initial value would show a blank preview beside a full
+   * textarea until the first keystroke.
+   *
+   * Bound through `[innerHTML]`, which sanitizes -- the preview must go through exactly the same
+   * two layers as the public page, or it stops being a preview of what visitors will see. That is
+   * also why it calls the same renderMarkdown() rather than anything preview-specific: a second
+   * rendering path is a second thing to keep in agreement, and the whole point of a preview is
+   * that it agrees.
+   */
+  private readonly descriptionValue = toSignal(this.form.controls.description.valueChanges, {
+    initialValue: this.form.controls.description.value,
+  });
+  protected readonly descriptionPreview = computed(() => renderMarkdown(this.descriptionValue()));
 
   protected readonly titleError = this.scalarSlots.title;
   protected readonly descriptionError = this.scalarSlots.description;

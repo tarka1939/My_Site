@@ -1,8 +1,15 @@
 /**
  * Turns a project's full `description` into the short summary the list card shows -- issue #86.
  *
- * `description` is plain text, up to 5000 characters (docs/openapi.yaml), with blank lines as
- * paragraph breaks and no Markdown. The list card used to interpolate all of it, which is fine for
+ * **This takes plain text and deliberately knows nothing about Markdown.** `description` is
+ * Markdown since #206, and the flattening happens in the *caller* -- `DescriptionExcerptPipe` for
+ * the card, `ProjectDetailComponent` for the meta tag. That split is not tidiness: `core/seo/
+ * site-meta.ts` imports this function and is in the eager graph, so importing the renderer here
+ * pulled all of markdown-it into the initial bundle and put it 9.5 kB over its 400 kB error
+ * budget. Keeping this module text-only is what keeps a ~100 kB parser in the lazy chunks that
+ * actually render.
+ *
+ * The list card used to interpolate all of it, which is fine for
  * the one-line fixtures Phases 3-4 ran on and unusable for real entries of 1000-2400 characters:
  * every card becomes a wall of text and the grid stops communicating anything.
  *
