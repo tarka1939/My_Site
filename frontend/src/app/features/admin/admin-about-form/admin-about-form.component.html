@@ -1,0 +1,51 @@
+<a routerLink="/admin/projects">&larr; Back to projects</a>
+
+<h1>Edit the About page</h1>
+
+@if (loading()) {
+  <p role="status">Loading&hellip;</p>
+} @else {
+  @if (loadError(); as message) {
+    <p role="alert">{{ message }}</p>
+  }
+
+  <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+    <div class="field">
+      <label for="about-body">Body</label>
+      <textarea
+        id="about-body"
+        rows="16"
+        formControlName="body"
+        [readonly]="submitting() || !!loadError()"
+        [attr.aria-describedby]="bodyError() ? 'about-body-error' : 'about-body-hint'"
+        [attr.aria-invalid]="bodyError() ? 'true' : null"
+      ></textarea>
+      @if (bodyError(); as message) {
+        <p id="about-body-error" class="field-error" role="alert">{{ message }}</p>
+      } @else {
+        <p id="about-body-hint" class="field-hint">
+          Markdown. {{ remaining().toLocaleString() }} characters left.
+        </p>
+      }
+
+      <!-- The same preview the project form has, for the same reasons: not a live region, since
+           it changes on every keystroke; not aria-hidden, since the rendered structure is what
+           someone who cannot see the formatting most needs to check. -->
+      <section class="markdown-preview" aria-labelledby="about-preview-label">
+        <p id="about-preview-label" class="markdown-preview__label">Preview</p>
+        @if (preview()) {
+          <div class="markdown-body" [innerHTML]="preview()"></div>
+        } @else {
+          <p class="markdown-preview__empty">Nothing to preview yet.</p>
+        }
+      </section>
+    </div>
+
+    <div class="actions">
+      <button type="submit" [disabled]="submitting() || !!loadError()">
+        {{ submitting() ? 'Saving…' : 'Save' }}
+      </button>
+      <a routerLink="/about" target="_blank" rel="noopener">View the public page</a>
+    </div>
+  </form>
+}

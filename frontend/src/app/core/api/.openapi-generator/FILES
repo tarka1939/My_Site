@@ -3,6 +3,8 @@
 README.md
 api.base.service.ts
 api.module.ts
+api/about.service.ts
+api/about.serviceInterface.ts
 api/api.ts
 api/auth.service.ts
 api/auth.serviceInterface.ts
@@ -18,6 +20,8 @@ configuration.ts
 encoder.ts
 git_push.sh
 index.ts
+model/aboutPage.ts
+model/aboutPageWriteRequest.ts
 model/contactMessage.ts
 model/contactMessageAck.ts
 model/contactMessagePageResponse.ts

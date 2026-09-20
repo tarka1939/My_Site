@@ -1,3 +1,6 @@
+export * from './about.service';
+import { AboutService } from './about.service';
+export * from './about.serviceInterface';
 export * from './auth.service';
 import { AuthService } from './auth.service';
 export * from './auth.serviceInterface';
@@ -13,4 +16,4 @@ export * from './tags.serviceInterface';
 export * from './webhooks.service';
 import { WebhooksService } from './webhooks.service';
 export * from './webhooks.serviceInterface';
-export const APIS = [AuthService, ContactService, ProjectsService, TagsService, WebhooksService];
+export const APIS = [AboutService, AuthService, ContactService, ProjectsService, TagsService, WebhooksService];

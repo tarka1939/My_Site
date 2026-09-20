@@ -30,6 +30,11 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://krzysztof-tarka.netlify.app/about</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://krzysztof-tarka.netlify.app/contact</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>

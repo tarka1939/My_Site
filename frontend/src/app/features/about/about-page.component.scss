@@ -1,0 +1,9 @@
+// The rendered body is styled by .markdown-body in src/styles.scss -- global, because component
+// styles never reach markup inserted through [innerHTML]. Only the frame around it lives here.
+.about-body {
+  margin: 1rem 0;
+}
+
+.about-empty {
+  color: var(--color-text-muted);
+}

@@ -106,6 +106,10 @@ class SecurityIntegrationTest {
             .isEqualTo(HttpStatus.OK);
         assertThat(restTemplate.getForEntity(url("/api/v1/tags"), String.class).getStatusCode())
             .isEqualTo(HttpStatus.OK);
+        // The one public surface #213 added. Listed here so the permitAll line it needed in
+        // SecurityConfig is pinned by the same test that pins every other one.
+        assertThat(restTemplate.getForEntity(url("/api/v1/about"), String.class).getStatusCode())
+            .isEqualTo(HttpStatus.OK);
 
         Map<String, String> contactBody = Map.of(
             "name", "Anonymous", "email", "anon@example.com", "message", "Hi from a public request");
@@ -122,6 +126,11 @@ class SecurityIntegrationTest {
             .isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(restTemplate.exchange(url("/api/v1/projects/" + java.util.UUID.randomUUID()),
             HttpMethod.PUT, new HttpEntity<>(projectBody), String.class).getStatusCode())
+            .isEqualTo(HttpStatus.UNAUTHORIZED);
+        // And the write half of #213 -- protected by anyRequest().authenticated() with no change to
+        // SecurityConfig, which is exactly the property worth a test: fail closed by default.
+        assertThat(restTemplate.exchange(url("/api/v1/about"),
+            HttpMethod.PUT, new HttpEntity<>(Map.of("body", "no token")), String.class).getStatusCode())
             .isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(restTemplate.exchange(url("/api/v1/projects/" + java.util.UUID.randomUUID()),
             HttpMethod.DELETE, HttpEntity.EMPTY, String.class).getStatusCode())

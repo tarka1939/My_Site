@@ -92,3 +92,11 @@ td {
   gap: 1rem;
   margin-top: 1.5rem;
 }
+
+// The two admin entry links (#213 added the second). Inline with a gap rather than two paragraphs,
+// so they read as one row of actions above the table instead of a list.
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}

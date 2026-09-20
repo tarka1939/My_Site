@@ -55,6 +55,14 @@ export const ADMIN_ROUTES: Routes = [
         title: 'Krzysztof Tarka - Admin - Edit project',
       },
       {
+        path: 'about',
+        loadComponent: () =>
+          import('../admin/admin-about-form/admin-about-form.component').then(
+            (m) => m.AdminAboutFormComponent,
+          ),
+        title: 'Krzysztof Tarka - Admin - About page',
+      },
+      {
         path: 'messages',
         loadComponent: () =>
           import('../admin/admin-messages-list/admin-messages-list.component').then(
