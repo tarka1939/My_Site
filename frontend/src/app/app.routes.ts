@@ -3,6 +3,10 @@ import { NOINDEX } from './core/seo/site-meta';
 
 export const routes: Routes = [
   {
+    path: 'about',
+    loadChildren: () => import('./features/about/about.routes').then((m) => m.ABOUT_ROUTES),
+  },
+  {
     path: 'contact',
     loadChildren: () => import('./features/contact/contact.routes').then((m) => m.CONTACT_ROUTES),
   },

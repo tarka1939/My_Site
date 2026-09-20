@@ -213,6 +213,9 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/projects", "/api/v1/projects/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/tags").permitAll()
+                // The About page (#213). Only the read is public; the PUT stays behind
+                // anyRequest().authenticated() below and the role check on the controller.
+                .requestMatchers(HttpMethod.GET, "/api/v1/about").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/contact").permitAll()
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 // Phase 7a's GitHub webhook receiver. Named exactly -- one method, one exact

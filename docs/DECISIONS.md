@@ -782,3 +782,15 @@ anything.
 **Alternatives considered:**
 
 **Consequences:**
+
+### 2026-09-20 — The About page is a singleton resource, not a pages system
+
+**Context:** #213 asked for one editable "About" page. The natural generalisation — a slug-keyed `page` table with `GET/PUT /pages/{slug}` — costs little more to build and would absorb a second static page without a migration. It was considered and not built.
+
+**Decision:** One row, id 1, in a table named for what it is (`about_page`), with a `CHECK (id = 1)` on the primary key so a second row is impossible at the database level. `GET /api/v1/about` is public; `PUT /api/v1/about` is admin-only and replaces the body. The row is created by the migration, so the page always exists and an unwritten one is an empty body rather than a 404. The body is Markdown, rendered through exactly the path #206 built for project descriptions — no second renderer.
+
+**Alternatives considered:** A generic pages resource. Rejected because every construct not asked for is a surface to secure, test and explain: a pages table invites a page-management UI, per-page metadata, ordering, and a "which slugs may exist" rule, none of which one About page needs. The cost of being wrong is small — going from this table to a keyed one later is a rename plus one column — and the decision is written down so whoever does it knows it was deliberate rather than an oversight.
+
+Also considered: a draft/publish state and edit history, as projects have. Rejected for the same reason. One page, one author, and the public GET is the only surface that exists to be careful about.
+
+**Consequences:** The frontend has no "not created yet" branch and the admin form no "create" mode, which is most of what makes both small. If a second static page is ever wanted, the honest first step is to reread this entry and decide whether it is really a second *page* or a second *field on this one*.

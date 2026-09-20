@@ -50,6 +50,8 @@ tags:
     description: Public contact form submission + admin-gated message management
   - name: Auth
     description: Admin login
+  - name: About
+    description: The single "About" page -- public read, admin-gated replace (#213)
   - name: Webhooks
     description: |
       Inbound deliveries from third-party systems. Not called by this API's frontend, and not
@@ -397,6 +399,53 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /about:
+    get:
+      operationId: getAboutPage
+      summary: The About page
+      description: |
+        Always answers 200. The row is created by the migration that adds the table (`V8`), so
+        there is no state in which the page does not exist -- an unwritten page is one with an
+        empty `body`, and the SPA renders a notice for that rather than a blank. That is what lets
+        the frontend have no "not created yet" branch and the admin form no "create" mode.
+      tags: [About]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AboutPage'
+    put:
+      operationId: updateAboutPage
+      summary: Replace the About page
+      description: |
+        Full replacement of the body, idempotent. There is deliberately no partial update, no
+        draft state and no history: one page, one author, and every construct not built here is
+        one fewer to secure. A singleton rather than a slug-keyed pages resource for the same
+        reason -- see docs/DECISIONS.md, 2026-09-20.
+      tags: [About]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AboutPageWriteRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AboutPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /auth/login:
     post:
       operationId: login
@@ -735,6 +784,35 @@ components:
           format: uri
           maxLength: 500
           example: https://github.com/tarka1939/Equalizer
+
+    AboutPage:
+      type: object
+      required: [body, updatedAt]
+      properties:
+        body:
+          type: string
+          maxLength: 20000
+          description: |
+            Markdown, with the same subset and the same two-layer rendering as a project's
+            `description` (#206): the API stores and returns the source verbatim and never renders
+            it. May be empty -- that is the unwritten state, not an error.
+
+            The limit is four times a project description's because this is the one long-form page
+            on the site; it is still a hard cap, counted on the source with marks included.
+        updatedAt:
+          type: string
+          format: date-time
+          description: |
+            When the body was last replaced. Set by the migration on creation, so it is never null.
+
+    AboutPageWriteRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          maxLength: 20000
+          description: Markdown. An empty string is valid and clears the page.
 
     Tag:
       type: object

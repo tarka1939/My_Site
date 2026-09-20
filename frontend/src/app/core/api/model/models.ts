@@ -1,3 +1,5 @@
+export * from './aboutPage';
+export * from './aboutPageWriteRequest';
 export * from './contactMessage';
 export * from './contactMessageAck';
 export * from './contactMessagePageResponse';
