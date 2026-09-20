@@ -1,4 +1,6 @@
--- The About page (#213): one row, created here, never deleted.
+-- The About page (#213): one row, created here, never deleted -- by convention, not by
+-- constraint. The CHECK below forbids a *second* row; nothing forbids deleting the first, and no
+-- code path does. If it is ever gone the service fails with a message naming this file.
 --
 -- A singleton by construction rather than by convention. `CHECK (id = 1)` on the primary key makes
 -- a second row impossible at the database level, so the application can `findById(1)` and treat

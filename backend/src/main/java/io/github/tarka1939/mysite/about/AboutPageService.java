@@ -17,6 +17,16 @@ public class AboutPageService {
         return AboutPageResponse.from(load());
     }
 
+    /**
+     * Last-write-wins, and knowingly so. Two admins who both load the page and then both save
+     * will each see their own text win for as long as it takes the other to press Save: findById
+     * takes no lock, the two UPDATEs serialise on the row, and the earlier one is overwritten
+     * without anyone being told. No state is corrupted -- a full-replacement PUT with no version
+     * or If-Match has exactly these semantics -- and this site has one admin, so the race is
+     * accepted rather than fixed, in the same way ContactService.submit accepts its rate-limit
+     * race. CLAUDE.md's checklist is clear that accepting one is fine and not noticing one is not;
+     * this comment is the noticing.
+     */
     @Transactional
     public AboutPageResponse replace(String body) {
         AboutPage page = load();

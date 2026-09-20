@@ -106,6 +106,40 @@ class AboutPageIntegrationTest {
     }
 
     @Test
+    void savingTheSameBodyAgainDoesNotBumpUpdatedAt() {
+        // "When the body was last replaced" is the contract's wording, and this is what makes it
+        // true: Hibernate skips the UPDATE when dirty-checking finds nothing, so @UpdateTimestamp
+        // never runs. Asserted rather than trusted, because it is a Hibernate behaviour a version
+        // bump could change, and the entity comment would then be quietly wrong.
+        String body = "Unchanged between two saves.";
+        ResponseEntity<Map> first = restTemplate.exchange(
+            url("/api/v1/about"), HttpMethod.PUT, authed(token, Map.of("body", body)), Map.class);
+        ResponseEntity<Map> second = restTemplate.exchange(
+            url("/api/v1/about"), HttpMethod.PUT, authed(token, Map.of("body", body)), Map.class);
+
+        assertThat(second.getBody().get("updatedAt")).isEqualTo(first.getBody().get("updatedAt"));
+
+        ResponseEntity<Map> changed = restTemplate.exchange(
+            url("/api/v1/about"), HttpMethod.PUT, authed(token, Map.of("body", body + " Edited.")), Map.class);
+        assertThat(changed.getBody().get("updatedAt"))
+            .as("a different body is a replacement and must bump it")
+            .isNotEqualTo(first.getBody().get("updatedAt"));
+    }
+
+    @Test
+    void aBodyExactlyAtTheContractLimitIsAccepted() {
+        // The boundary itself, so the 20001 -> 400 case below cannot pass by the limit being
+        // off by one in the strict direction.
+        String atLimit = "y".repeat(20000);
+
+        ResponseEntity<Map> write = restTemplate.exchange(
+            url("/api/v1/about"), HttpMethod.PUT, authed(token, Map.of("body", atLimit)), Map.class);
+
+        assertThat(write.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((String) write.getBody().get("body")).length()).isEqualTo(20000);
+    }
+
+    @Test
     void aBodyOverTheContractLimitIs400() {
         String tooLong = "x".repeat(20001);
 

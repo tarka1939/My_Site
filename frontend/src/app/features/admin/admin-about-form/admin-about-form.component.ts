@@ -58,7 +58,11 @@ export class AdminAboutFormComponent {
     // Derived from the value signal rather than from `control.hasError('maxlength')`: a control's
     // validity is not a signal, so a computed that read it would never re-run when it changed --
     // which is exactly what happened in the first version of this, and the spec caught. The
-    // Validators.maxLength on the control still stands and is what `save()` gates on.
+    // shared `clientErrorSignal()` in form-errors.ts solves the same problem by subscribing to
+    // control events, and the project form uses it; this form counts directly because it has one
+    // field with one rule, and because showing a limit violation *before* the field is touched is
+    // the better behaviour for a paste that overshoots. The Validators.maxLength on the control
+    // still stands and is what `save()` gates on; both read ABOUT_BODY_MAX_CHARS, so they agree.
     if (this.bodyValue().length > ABOUT_BODY_MAX_CHARS) {
       return `Keep it under ${ABOUT_BODY_MAX_CHARS.toLocaleString()} characters.`;
     }

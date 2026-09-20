@@ -99,7 +99,11 @@ describe('AdminAboutFormComponent', () => {
 
     expect(updateAboutPage).not.toHaveBeenCalled();
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('#about-body-error')?.textContent).toContain('20,000');
+    // The number is rendered with toLocaleString(), so compare against the same call rather than
+    // a literal: '20,000' would break under a runner locale that groups with a space or a period.
+    expect(host.querySelector('#about-body-error')?.textContent).toContain(
+      ABOUT_BODY_MAX_CHARS.toLocaleString(),
+    );
     expect(host.querySelector('#about-body')?.getAttribute('aria-invalid')).toBe('true');
   });
 
