@@ -196,9 +196,6 @@ node content-seed/seed.mjs --dry-run
 node --test content-seed/validate.test.mjs
 ```
 
-`e2e/README.md` predates `docker-compose.yml` and still tells you to `docker run` Postgres by
-hand; `docker compose up -d --wait` (below) does the same job.
-
 ### Local database (Docker Compose)
 
 Postgres only, not the backend. Production runs a plain jar under systemd on purpose
