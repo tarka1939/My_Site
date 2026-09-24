@@ -297,6 +297,42 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-24 — frontend-agent: About becomes the landing page (`feat/about-as-landing`)
+
+**Task given:** Owner request. `/` renders About, the projects list moves to `/projects`, `/about`
+redirects to `/`, `/projects/:id` unchanged. Update links, nav, sitemap, SEO, specs, e2e, docs.
+
+**Agent(s) used:** frontend-agent (Opus), dispatched by the Senior Dev. No browser.
+
+**What went right:** The move removed the problem the old `path: ''` projects comment described
+rather than working around it. The projects feature is now mounted under a named `projects`
+prefix (children `''` and `':id'`), and About sits at `''` with `pathMatch: 'full'` -- safe there,
+because ABOUT_ROUTES has one route and no deeper child a full match could strand, which is exactly
+what made `full` unusable on the old projects route. So `''` can be declared first again and no URL
+fetches a chunk only to backtrack. A mutation check confirmed the new nav spec fails when About's
+`exact: true` is removed.
+
+**What went wrong (be specific):** A first draft of `app.routes.spec.ts` asserted
+`harness.routeNativeElement.querySelector('app-about-page')` -- but `routeNativeElement` *is* the
+routed component's host, so a descendant query for its own tag is always null. Five red tests on the
+first run; fixed by comparing `tagName`.
+
+**Judgment calls, flagged rather than silently decided:**
+- Nav order left as Projects, About, Contact; the landing page's link is now second. Owner's call.
+- Projects nav link is now a prefix match, so it stays lit on `/projects/:id` (previously an exact
+  match on `/`, which went dark on detail pages). Consistent with About/Contact's old behaviour.
+- The list keeps its static component import in projects.routes.ts (saves a sequential request on
+  a cold `/projects`); About already had one, and its comment now carries the landing reasoning.
+- About's route description was rewritten to stand alone as the site root's description; title left
+  as "Krzysztof Tarka - About".
+- `/about` is a client-side router redirect only. A server-side `301` in `_redirects` would be the
+  stronger SEO signal but touches a locked-decision file, so it was proposed, not done.
+
+**How it was caught:** the Vitest run.
+
+**Takeaway for next time:** `RouterTestingHarness.routeNativeElement` is the component host, not a
+container -- assert on its `tagName`.
+
 ## 2026-09-24 — claude (cloud session): the runbook's first two deploy steps could not have worked
 
 **Task given:** Continue `docs/DEPLOY_PIPELINE_SETUP.md` from step 7 (first hand-dispatched runs), then step 8 (prove the rollback).

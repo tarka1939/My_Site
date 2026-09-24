@@ -91,7 +91,7 @@ test('an admin can log in, publish a project, and log back out', async ({ page }
 
   // The write also has to be visible to an anonymous visitor, which is a different code path
   // (public list endpoint, no bearer token) than the admin table above.
-  await page.goto('/');
+  await page.goto('/projects');
   await page.getByRole('button', { name: TAG_ADMIN_CREATED, exact: true }).click();
   await expect(page.getByRole('link', { name: title, exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: title, exact: true })).toHaveCount(1);
