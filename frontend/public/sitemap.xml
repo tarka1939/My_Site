@@ -17,6 +17,9 @@
   alongside prerendering, for the same reason: it would make the Netlify build depend on the
   VPS backend, which the committed API client exists to avoid.
 
+  / is the About page, the landing route since 2026-09-24; the projects list is /projects.
+  /about is absent on purpose: it now redirects to /, and a sitemap lists canonical URLs only.
+
   Admin routes are omitted on purpose; robots.txt disallows them.
 
   No <lastmod>: a hardcoded date would be wrong the moment anything changes, and there is no
@@ -26,13 +29,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://krzysztof-tarka.netlify.app/</loc>
-    <changefreq>weekly</changefreq>
+    <changefreq>yearly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://krzysztof-tarka.netlify.app/about</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.5</priority>
+    <loc>https://krzysztof-tarka.netlify.app/projects</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://krzysztof-tarka.netlify.app/contact</loc>

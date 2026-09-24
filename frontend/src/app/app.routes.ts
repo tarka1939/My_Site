@@ -3,8 +3,32 @@ import { NOINDEX } from './core/seo/site-meta';
 
 export const routes: Routes = [
   {
-    path: 'about',
+    // The landing page is About (owner request, 2026-09-24). pathMatch: 'full' is what lets this
+    // sit first. A '' route with the default 'prefix' match prefix-matches *every* URL, so the
+    // router would have to fetch this chunk and inspect its children before it could rule the
+    // branch out and backtrack -- on every cold entry to every other page. (That cost was real while
+    // the projects list lived at '' as a prefix route, declared last but one to limit it to 404s.)
+    // A full match fails on any non-empty URL without loading anything. It is safe here, unlike on
+    // that old projects route, because ABOUT_ROUTES holds exactly one route and it is '': there is
+    // no deeper child for a full-match parent, which consumes the whole URL, to strand.
+    path: '',
+    pathMatch: 'full',
     loadChildren: () => import('./features/about/about.routes').then((m) => m.ABOUT_ROUTES),
+  },
+  {
+    // The About page's old URL. One canonical URL per page, so this is a redirect rather than a
+    // second route to the same component (two indexable 200s with identical content), and every
+    // link or bookmark made before the move keeps working.
+    path: 'about',
+    pathMatch: 'full',
+    redirectTo: '',
+  },
+  {
+    // A named prefix, so it matches only /projects and /projects/... and is never fetched just to
+    // be backtracked out of. The list and the detail page share one route table; see
+    // projects.routes.ts for why the list's component is imported statically there.
+    path: 'projects',
+    loadChildren: () => import('./features/projects/projects.routes').then((m) => m.PROJECTS_ROUTES),
   },
   {
     path: 'contact',
@@ -29,21 +53,6 @@ export const routes: Routes = [
     // Applies to the whole /admin subtree, login included -- SeoTitleStrategy walks the activated
     // chain and a parent's value covers every descendant that does not override it.
     data: { description: 'Administration for Krzysztof Tarka.', robots: NOINDEX },
-  },
-  {
-    // Deliberately declared last but one, *after* every named route rather than first. Its path is
-    // '' with the default pathMatch: 'prefix', which prefix-matches every URL -- so while it sat
-    // first the router had to fetch this chunk and inspect its children before it could rule the
-    // branch out and backtrack, on every cold entry to /contact, /admin/*, /reset-password and any
-    // 404. That cost was ~314 bytes until projects.routes.ts started importing the list component
-    // statically; it is now 5.73 kB raw of never-rendered code on those routes.
-    //
-    // pathMatch: 'full' would also stop the over-matching, but it cannot be used here: a full-match
-    // parent consumes the entire URL, which makes its 'projects/:id' child unreachable -- verified,
-    // /projects/abc then falls through to the wildcard and renders "not found". Ordering is the fix
-    // that keeps deep links working. Only genuine 404s still pay the backtrack.
-    path: '',
-    loadChildren: () => import('./features/projects/projects.routes').then((m) => m.PROJECTS_ROUTES),
   },
   {
     path: '**',
