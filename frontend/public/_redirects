@@ -1,1 +1,3 @@
-/*   /index.html   200
+# About moved to the site root; a permanent redirect so old links and search results follow it.
+/about   /             301
+/*       /index.html   200

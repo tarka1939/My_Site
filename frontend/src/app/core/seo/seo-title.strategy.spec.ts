@@ -123,6 +123,39 @@ describe('SeoTitleStrategy', () => {
   });
 });
 
+describe('SeoTitleStrategy on the landing route', () => {
+  // The site root's title is the owner's name and nothing else. The route table's own spec proves
+  // the string; this proves it survives the real strategy into all three places a reader or a
+  // scraper sees it. The About page component is stubbed, since it would fetch its body over HTTP.
+  const originalTitle = document.title;
+  const LANDING_TITLE = ABOUT_ROUTES[0].title as string;
+
+  beforeEach(() => {
+    clearSeoTags();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([{ path: '', pathMatch: 'full', component: TestPageComponent, title: LANDING_TITLE }]),
+        { provide: TitleStrategy, useClass: SeoTitleStrategy },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    clearSeoTags();
+    document.title = originalTitle;
+  });
+
+  it('puts exactly the owner’s name in the document, og and twitter titles on /', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/');
+
+    expect(LANDING_TITLE).toBe('Krzysztof Tarka');
+    expect(document.title).toBe('Krzysztof Tarka');
+    expect(content('meta[property="og:title"]')).toBe('Krzysztof Tarka');
+    expect(content('meta[name="twitter:title"]')).toBe('Krzysztof Tarka');
+  });
+});
+
 describe('application route table', () => {
   // The tests above prove the mechanism against stand-in routes. These assert the real table
   // actually feeds it -- a correct strategy over a table with no `data` would set nothing.

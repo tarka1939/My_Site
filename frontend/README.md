@@ -42,8 +42,8 @@ ng build
 ```
 
 Compiles the project and writes build artifacts to `dist/frontend`. The production build uses the
-default `--base-href /` (Netlify serves from root) and copies `public/_redirects`
-(`/* /index.html 200`) for SPA routing -- see `docs/DECISIONS.md`.
+default `--base-href /` (Netlify serves from root) and copies `public/_redirects` -- a 301 from `/about` to `/`
+(About is the landing page) above the `/* /index.html 200` SPA fallback -- see `docs/DECISIONS.md`.
 
 ### Build budgets
 

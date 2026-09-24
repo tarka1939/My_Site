@@ -22,10 +22,12 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   page,
 }) => {
   await stubFixtureImages(page);
-  // The site root is the About page; the list is one nav click away at /projects. Going through
-  // the nav rather than straight to /projects keeps the landing page and its link in the journey.
+  // The site root is the About page, headlined with the owner's name; the list is one nav click
+  // away at /projects. Going through the nav rather than straight to /projects keeps the landing
+  // page and its link in the journey.
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'About', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Krzysztof Tarka', level: 1, exact: true })).toBeVisible();
+  await expect(page).toHaveTitle('Krzysztof Tarka');
   await page
     .getByRole('navigation', { name: 'Primary' })
     .getByRole('link', { name: 'Projects', exact: true })

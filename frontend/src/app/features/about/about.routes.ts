@@ -11,7 +11,10 @@ export const ABOUT_ROUTES: Routes = [
     // anything -- the component is the sole thing this file can render.
     path: '',
     component: AboutPageComponent,
-    title: 'Krzysztof Tarka - About',
+    // The owner's name alone, not 'Krzysztof Tarka - About': this is the site root, so its tab and
+    // share title name the person the site is about. SeoTitleStrategy applies it verbatim (no
+    // prefixing), so this string is exactly what document.title and og:title become.
+    title: 'Krzysztof Tarka',
     data: {
       // The description that applies on navigation. The component replaces it with the first
       // paragraph of the actual body once that has loaded, so this is what a crawler that does

@@ -9,7 +9,7 @@ import { toCardExcerpt } from '../../shared/description-excerpt/description-exce
  * accuracy on top).
  */
 
-/** The site's name: `og:site_name`, and the prefix every route title carries. Not a full title. */
+/** The site's name: `og:site_name`, and the prefix of every route title, and the whole title of `/`. Not otherwise a full title. */
 export const SITE_NAME = 'Krzysztof Tarka';
 
 /**

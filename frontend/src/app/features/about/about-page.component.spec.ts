@@ -29,6 +29,12 @@ describe('AboutPageComponent', () => {
     return fixture;
   }
 
+  it("headlines the landing page with the owner's name, not the nav label", async () => {
+    const fixture = await setUp();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('h1')?.textContent).toBe('Krzysztof Tarka');
+  });
+
   it('renders the body as Markdown through the shared renderer', async () => {
     const fixture = await setUp();
 

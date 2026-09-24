@@ -4,11 +4,11 @@
   <nav class="site-nav" aria-label="Primary">
     <a class="site-nav__brand" routerLink="/">Krzysztof Tarka</a>
     <ul>
-      <!-- About is the landing page, at '/'. Its active match must be exact: every URL starts with
-           '/', so a prefix match would light it up on every page. Projects is a prefix match, so it
-           stays lit on /projects/:id as well as the list. -->
-      <li><a routerLink="/projects" routerLinkActive="is-active">Projects</a></li>
+      <!-- About is the landing page, at '/', and comes first. Its active match must be exact: every
+           URL starts with '/', so a prefix match would light it up on every page. Projects is a
+           prefix match, so it stays lit on /projects/:id as well as the list. -->
       <li><a routerLink="/" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: true }">About</a></li>
+      <li><a routerLink="/projects" routerLinkActive="is-active">Projects</a></li>
       <li><a routerLink="/contact" routerLinkActive="is-active">Contact</a></li>
       @if (auth.isLoggedIn()) {
         <li><a routerLink="/admin/projects" routerLinkActive="is-active">Admin</a></li>
