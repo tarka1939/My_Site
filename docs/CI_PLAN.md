@@ -221,10 +221,18 @@ exists to avoid — **one new variable at a time** — and it applies just as mu
 
 ### The order
 
+**Status (2026-09-24): steps 1–3 done** — both pipelines dispatched green against `main`, and the
+rollback proven against a deliberately broken build. Step 4, the promotion, is next and is the
+owner's call. Record of the runs: `docs/DEPLOY_PIPELINE_SETUP.md`, end of step 8.
+
 1. **Setup steps 1–6** of `docs/DEPLOY_PIPELINE_SETUP.md` — the key, its restriction, the script,
    the scoped sudoers entry, the six secrets, and switching Netlify's own build off.
 2. **Dispatch each workflow by hand against `main` as it stands.** Both carry `workflow_dispatch`
-   for exactly this. It redeploys *the code already running*, so a green run proves the key, the
+   for exactly this. *(Corrected 2026-09-24: as first written this step could not work — `main`
+   predated #196 and had no deploy workflow to dispatch. PR #215 put #196's commit — the two
+   workflows, `deploy/deploy.sh` and the setup runbook — and nothing else on `main`, merged with `[skip ci]` so the merge itself deployed nothing. Pick
+   `main` in the Run workflow branch selector: it defaults to `dev`, which would ship every
+   unpromoted commit at once.)* It redeploys *the code already running*, so a green run proves the key, the
    `command=` restriction, the host-key pin, `deploy.sh` and the public health check — with **zero
    change to production**. If something is wrong, the only new variable is the pipeline.
 3. **Prove the rollback** — setup step 8, a deliberately broken build. The half nobody tests.

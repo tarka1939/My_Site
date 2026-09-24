@@ -15,13 +15,14 @@ a browser binary, for no benefit. `frontend/package.json` is left untouched.
 ## Prerequisites
 
 1. **Node 24+** (matches the rest of the repo).
-2. **Docker**, for Postgres. There is no `docker-compose.yml` until Phase 5, so run one yourself:
+2. **Docker**, for Postgres. From the repo root (#42 — same values the dev profile and this suite
+   default to):
 
    ```bash
-   docker run -d --name mysite-e2e-pg \
-     -e POSTGRES_USER=mysite -e POSTGRES_PASSWORD=mysite -e POSTGRES_DB=mysite_dev \
-     -p 5432:5432 postgres
+   docker compose up -d --wait
    ```
+
+   The suite uses `mysite_dev`, the same database `mvn spring-boot:run` uses.
 
 3. **JDK 25 and Maven on `PATH`** (or `JAVA_HOME`/`MAVEN_HOME` set) — Playwright starts the
    backend itself via `mvn spring-boot:run`, so it needs to be able to find them.
@@ -54,8 +55,8 @@ container's lifecycle into a test suite is how a suite ends up dropping a develo
 on exit.
 
 The browser always drives `http://localhost:4200`, never `:8080` — `frontend/proxy.conf.json`
-forwards `/api/*` to the backend so the page sees same-origin requests. The backend has no CORS
-configuration until Phase 5, so hitting `:8080` from the page would fail.
+forwards `/api/*` to the backend so the page sees same-origin requests. The backend's CORS
+allowlist holds only the deployed Netlify origin, so hitting `:8080` from the page would fail.
 
 ### If your system drive is short on space
 
@@ -113,7 +114,7 @@ working for the rest of its hour.
 
 ### Database connection settings
 
-`E2E_DB_NAME`, `E2E_DB_USERNAME` and `E2E_DB_PASSWORD` default to the `docker run` above. Change
+`E2E_DB_NAME`, `E2E_DB_USERNAME` and `E2E_DB_PASSWORD` default to the `docker compose` database above. Change
 any of them and you must **also** set the backend's own `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD`
 to match — different names, same values. Otherwise the suite provisions `e2e-admin` into a
 database the application never opens, and the admin journey fails with an unexplained `401`.

@@ -11,6 +11,7 @@ Personal portfolio site (Angular + Spring Boot) that hosts your project portfoli
 - [x] Portfolio: browse projects, view project detail (title, description, tags, links, images, dates), with pagination/filtering built in from the start
 - [x] Tag/category system (many-to-many with Project)
 - [x] Contact form, with basic rate limiting
+- [x] Editable About page (singleton, Markdown) — added 2026-09-20 with #213; recorded here after it was built, not before. See `docs/DECISIONS.md`, 2026-09-20
 - [x] Admin content management (login-gated) — JWT admin auth confirmed in scope, see Auth scope decision below
 - [x] Four sequenced backend extension features (Phase 7, one shipped before the next starts):
   - 7a. GitHub webhook auto-sync (repo metadata → `Project` records)
@@ -61,14 +62,14 @@ Phase 7 extensions add entities of their own (analytics events, GitHub sync reco
 
 ## API contract
 
-The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (written 2026-07-24, validated against `openapi-spec-validator`). Covers Phase 1–3 core endpoints only (Project, Tag, Contact, Auth) — Phase 7 extension endpoints are deliberately excluded until each sub-phase starts, since those entities are still draft/unconfirmed (see `docs/DATA_MODEL.md`).
+The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (written 2026-07-24, validated against `openapi-spec-validator`). Covers the core endpoints (Project, Tag, Contact, Auth), the About page (#213), and Phase 7a's GitHub webhook (`/webhooks/github`). Endpoints for the remaining Phase 7 extensions are deliberately excluded until each sub-phase starts, since those entities are still draft/unconfirmed (see `docs/DATA_MODEL.md`).
 
 - `docs/openapi.yaml`
 
 ## Open questions
 
-- Which VPS provider — decided to self-host (see `docs/DECISIONS.md`) but the specific provider isn't picked; pick before Phase 5 (affects secrets/config structure in earlier phases)
+- ~~Which VPS provider~~ — **resolved 2026-09-03:** Mikrus, a NAT'd LXC container behind the provider's HTTPS proxy (see `docs/DECISIONS.md`, "Backend exposure")
 - Multi-user support (2026-07-24) — no longer a hard non-goal, flagged as a possible future POC/extension. Not scoped or designed yet: `docs/DATA_MODEL.md`'s `AdminUser` table, `docs/DECISIONS.md`'s "Auth flow" ADR, and `docs/openapi.yaml`'s login-only auth contract all still assume a single admin account with no registration endpoint. Revisit those three before actually building multi-user support.
-- Exact Netlify site subdomain (2026-07-25) — frontend hosting is confirmed as Netlify (see `docs/DECISIONS.md`), but the actual `*.netlify.app` origin doesn't exist until the site is created in Phase 5. The CORS allowlist origin on the backend can't be finalized until then.
+- ~~Exact Netlify site subdomain~~ — **resolved (#44):** `https://krzysztof-tarka.netlify.app`, the backend's CORS allowlist default
 
-**Superseded 2026-07-25:** frontend hosting moved from GitHub Pages to Netlify (see `docs/DECISIONS.md`) — the GitHub Pages URL/`--base-href /My_Site/`/CORS-origin note previously here no longer applies. `--base-href` simplifies to the default `/` (Netlify serves from root, not a repo-name subpath); the CORS origin is now the open question above.
+**Superseded 2026-07-25:** frontend hosting moved from GitHub Pages to Netlify (see `docs/DECISIONS.md`) — the GitHub Pages URL/`--base-href /My_Site/`/CORS-origin note previously here no longer applies. `--base-href` simplifies to the default `/` (Netlify serves from root, not a repo-name subpath); the CORS origin was then an open question, since resolved (above).

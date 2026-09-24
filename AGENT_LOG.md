@@ -297,6 +297,18 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-24 — claude (cloud session): the runbook's first two deploy steps could not have worked
+
+**Task given:** Continue `docs/DEPLOY_PIPELINE_SETUP.md` from step 7 (first hand-dispatched runs), then step 8 (prove the rollback).
+
+**What went wrong (be specific):** Two defects in the runbook, both written with #196 and never exercised. (1) Step 7 and `CI_PLAN.md` §8 said to dispatch "against `main` as it stands", but `main` predated #196 and had no deploy workflow to dispatch — and the Actions UI's branch selector defaults to `dev`, so the obvious click would have shipped 84 unpromoted commits through a pipeline on its first run, the two-unknowns case §8 exists to prevent. (2) Step 8 said to break the build with "a syntax error in a controller". The workflow runs `mvn clean package` on the runner first, so that fails before `deploy.sh` is ever invoked: a red run that tests no rollback, indistinguishable at a glance from a drill that passed.
+
+**How it was caught:** Reading the runbook against the repository before acting on it — `git ls-tree origin/main .github/workflows/` for the first, and reading the workflow's step order alongside `deploy.sh` for the second.
+
+**Fix applied:** PR #215 cherry-picked #196's commit alone onto `main`, merged with `[skip ci]` so the merge itself deployed nothing (verified: no run appeared). The drill used a `@Profile("prod")` component that throws in its constructor — compiles, passes every test since none activates `prod`, and refuses to start on the host. Both runbook steps corrected.
+
+**Takeaway for next time:** A drill that fails is not evidence the drill *ran*. Before trusting a red result as "the rollback worked", confirm the failure happened at the stage under test — here, a `[deploy] ... rolling back` line from the host, not merely a red icon.
+
 ## 2026-09-10 — claude (Senior Dev): three bugs that every passing test agreed with
 
 Three tasks: make project thumbnails bigger (#205), render descriptions as Markdown (#206), rename

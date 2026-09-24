@@ -10,7 +10,7 @@ Each row is a decision. `Status` is one of: `proposed`, `confirmed`, `overridden
 
 | Decision | Default | Status | Notes |
 |---|---|---|---|
-| Repo structure | Monorepo (`/backend`, `/frontend`, `/docs`) | proposed | not revisited in the 2026-07-24 review pass — carry forward as-is unless flagged later |
+| Repo structure | Monorepo (`/backend`, `/frontend`, `/docs`) | **confirmed** (2026-09-24) | not revisited in the 2026-07-24 review pass; confirmed de facto — every phase since was built on it, and reversing it in Phase 5/6 would be a restructure for no gain. Later top-level additions: `/e2e`, `/content-seed`, `/deploy` |
 | Database | PostgreSQL | **confirmed** (2026-07-24) | already baked into `docs/DATA_MODEL.md` (jsonb, text[]) and `docs/openapi.yaml` |
 | ORM | Spring Data JPA + Hibernate | **confirmed** (2026-07-24) | |
 | Schema migrations | Flyway | **confirmed** (2026-07-24) | never `hibernate.ddl-auto=update` outside local scratch experiments |
@@ -18,10 +18,10 @@ Each row is a decision. `Status` is one of: `proposed`, `confirmed`, `overridden
 | Auth | JWT-based admin login | **confirmed** (2026-07-21) | see SPEC.md → Auth scope decision; expiry/reset flow detailed below (2026-07-24) |
 | Angular architecture | Standalone components, signals for state, no NgRx | **confirmed** (2026-07-25) | this site's state is simple and mostly server-derived; none of NgRx's justifying cases (undo/redo, optimistic updates, deep cross-cutting state) apply here |
 | Frontend hosting | **Netlify** (overridden from TODO's GitHub Pages default) | **confirmed** (2026-07-25) | see ADR below — no non-commercial ToS restriction (unlike Vercel), native SPA rewrites, no 404.html workaround needed |
-| Backend hosting | Render, Railway, or Fly.io free tier | **overridden** (2026-07-21) | replaced by a self-managed VPS — see note below table; specific provider still TBD, deliberately deferred (2026-07-24 review) to closer to Phase 5 |
-| Cross-origin setup | CORS on Spring Boot, allowlisting the frontend origin | **confirmed in principle** (2026-07-25) | exact origin is a `*.netlify.app` subdomain, **TBD until the Netlify site is created** (Phase 5) — no custom domain planned, see `docs/DECISIONS.md` license/domain ADR |
+| Backend hosting | Render, Railway, or Fly.io free tier | **overridden** (2026-07-21) | replaced by a self-managed VPS — see note below table; specific provider still TBD, deliberately deferred (2026-07-24 review) to closer to Phase 5. **Resolved 2026-09-03:** Mikrus, a NAT'd LXC container behind the provider's own HTTPS proxy — see the "Backend exposure" ADR |
+| Cross-origin setup | CORS on Spring Boot, allowlisting the frontend origin | **confirmed in principle** (2026-07-25) | exact origin is a `*.netlify.app` subdomain, **TBD until the Netlify site is created** (Phase 5) — no custom domain planned, see `docs/DECISIONS.md` license/domain ADR. **Resolved (#44):** `https://krzysztof-tarka.netlify.app`, set via `CORS_ALLOWED_ORIGINS` with exact origins only |
 | SPA routing on Pages | ~~`404.html` fallback~~ — **N/A, superseded** | **confirmed** (2026-07-25) | moot once Netlify was chosen — Netlify handles SPA routing natively via a one-line `_redirects` file, no build-step workaround needed |
-| CI/CD | GitHub Actions — separate workflows for frontend deploy (to Netlify) and backend container build/deploy | **confirmed** (2026-07-24) | two distinct deploy targets, not one pipeline; frontend workflow now deploys to Netlify (e.g. via `nwtgck/actions-netlify`) instead of `actions/deploy-pages` |
+| CI/CD | GitHub Actions — separate workflows for frontend deploy (to Netlify) and backend container build/deploy | **confirmed** (2026-07-24) | two distinct deploy targets, not one pipeline; frontend workflow now deploys to Netlify (e.g. via `nwtgck/actions-netlify`) instead of `actions/deploy-pages`. **Amended 2026-09-04:** the backend ships as a plain jar under systemd, not a container — see the "Deploy automation" ADR |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done), linked to Issues | **confirmed** (2026-07-24) | already built: project #1, all checklist items converted to issues and added, tagged by phase/component |
 | Backend module structure | Package-by-feature + **Spring Modulith** (enforced boundaries) | **confirmed** (2026-07-25) | see ADR below — low added cost (one dependency, one verification test) for enforced boundaries as Phase 7 adds 4 more packages |
 | Build tool | **Maven** | **confirmed** (2026-07-29) | see ADR below — never decided until now; single-module backend gets no benefit from Gradle's build-speed/multi-module advantages |
@@ -30,7 +30,7 @@ Each row is a decision. `Status` is one of: `proposed`, `confirmed`, `overridden
 | Async/background jobs | Dedicated `@Async` task executor, provisioned in Phase 1 before anything uses it | **confirmed** (2026-07-24) | needed by the DSP demo (7d); built early so it's not retrofitted under time pressure |
 | Feature rollout | Config-based feature flags per extension | **confirmed** (2026-07-24) | ship the core CMS live while Phase 7 extensions are still half-built |
 
-**Backend hosting override, explained:** chosen over the TODO's Render/Railway/Fly.io default in favor of a self-managed VPS. Trade-off: no free-tier spin-down-on-inactivity cold starts, but you take on OS patching, TLS renewal, reverse proxy, and process supervision yourself instead of a PaaS handling it. Specific provider not yet chosen.
+**Backend hosting override, explained:** chosen over the TODO's Render/Railway/Fly.io default in favor of a self-managed VPS. Trade-off: no free-tier spin-down-on-inactivity cold starts, but you take on OS patching, TLS renewal, reverse proxy, and process supervision yourself instead of a PaaS handling it. Specific provider not yet chosen. (Chosen 2026-09-03: Mikrus — see "Backend exposure" below.)
 
 ## Additional decisions
 
@@ -178,7 +178,7 @@ _Add new ADR-style entries below as they arise._
 
 **Alternatives considered:** Keep hand-writing a kickoff prompt per phase (rejected — real friction the user explicitly wants to move past, and doesn't scale to "run autonomously unless problems arise"). Force the original Phase 4 isolation exercise onto the current, fully-integrated codebase anyway (rejected — there's no new feature left to build blind; rebuilding an already-built site blind to itself would be theater, not a real test). Full unattended autonomy including Phase 5 infrastructure (rejected — account creation, payment, and first-deploy secrets/DNS/TLS going live together are a different risk class than pure code changes; these get explicit human checkpoints regardless of how autonomous earlier phases were).
 
-**Consequences:** `docs/AUTONOMOUS_WORKFLOW.md` is the operative spec going forward for Phase 4's tail through Phase 6. `PROJECT_TODO.md`'s Phase 4 checklist is annotated with the adaptation rather than silently reinterpreted. GitHub Copilot's review continues alongside the new independent-session review, not replaced by it — both have independently caught real defects so far. **Amended 2026-08-08:** Copilot is temporarily suspended from the merge gate — its quota is exhausted until 2026-08-25 and it answers review requests with a quota error. PRs #81, #82, #83 and #84 merged on the independent review alone. The intent of this ADR is unchanged: restore Copilot as a required layer when quota returns, because a quota error is not the same claim as "the reviewer found nothing."
+**Consequences:** `docs/AUTONOMOUS_WORKFLOW.md` is the operative spec going forward for Phase 4's tail through Phase 6. `PROJECT_TODO.md`'s Phase 4 checklist is annotated with the adaptation rather than silently reinterpreted. GitHub Copilot's review continues alongside the new independent-session review, not replaced by it — both have independently caught real defects so far. **Amended 2026-08-08:** Copilot is temporarily suspended from the merge gate — its quota is exhausted until 2026-08-25 and it answers review requests with a quota error. PRs #81, #82, #83 and #84 merged on the independent review alone. The intent of this ADR is unchanged: restore Copilot as a required layer when quota returns, because a quota error is not the same claim as "the reviewer found nothing." **Amended 2026-09-24:** (1) Copilot leaves the merge gate for good and becomes optional — at this project's PR volume its quota runs out within days of each reset, and the owner chose not to manage a second paid reviewer here. The independent-session review stays mandatory with no fallback. (2) The workflow's scope extends to the end of the project; Phases 7 and 8 were already run on it.
 
 ### 2026-08-07 — Playwright E2E lives in a top-level `/e2e`, and provisions its own admin account
 
@@ -773,16 +773,6 @@ anything.
   auth, and that trade should be decided explicitly rather than by default.
 - **Structured logging (#48) stays independent** and can land at any point.
 
-### [YYYY-MM-DD] — [Decision title]
-
-**Context:**
-
-**Decision:**
-
-**Alternatives considered:**
-
-**Consequences:**
-
 ### 2026-09-20 — The About page is a singleton resource, not a pages system
 
 **Context:** #213 asked for one editable "About" page. The natural generalisation — a slug-keyed `page` table with `GET/PUT /pages/{slug}` — costs little more to build and would absorb a second static page without a migration. It was considered and not built.
@@ -794,3 +784,13 @@ anything.
 Also considered: a draft/publish state and edit history, as projects have. Rejected for the same reason. One page, one author, and the public GET is the only surface that exists to be careful about.
 
 **Consequences:** The frontend has no "not created yet" branch and the admin form no "create" mode, which is most of what makes both small. If a second static page is ever wanted, the honest first step is to reread this entry and decide whether it is really a second *page* or a second *field on this one*.
+
+### [YYYY-MM-DD] — [Decision title]
+
+**Context:**
+
+**Decision:**
+
+**Alternatives considered:**
+
+**Consequences:**

@@ -26,12 +26,21 @@ Testcontainers, and `@Testcontainers` is deliberately *not* set to `disabledWith
 runner without Docker fails rather than skips, and the step names that cause instead of leaving a
 confusing container error to be interpreted.
 
-## Still to come
+## `deploy-backend.yml` and `deploy-frontend.yml` — live on `main`
 
-- **Backend deploy** on merge to `main` — #45. Ships the jar, restarts, verifies, rolls back on
-  failure, using an SSH key restricted with `command=` so it can run one script and nothing else.
-- **Frontend deploy** — #38. Only worth doing if it *replaces* Netlify's native build rather than
-  racing it; running both would mean two builds competing for one site.
+Both run on push to `main` and by hand (`workflow_dispatch`), in a `production` environment, one at
+a time and never cancelled midway. Issue #196.
+
+- **Backend** (#45): builds the jar and ships it over **stdin** to `deploy/deploy.sh`, using an SSH
+  key pinned with `command=` so it can run that one script and nothing else. Restarts, verifies, and
+  rolls back on failure.
+- **Frontend** (#38): builds, asserts the SPA fallback survived into the artifact, publishes to
+  Netlify. It **replaces** Netlify's own git build — switch that off first, or two builds race for
+  one site.
+
+The owner-side setup in `docs/DEPLOY_PIPELINE_SETUP.md` is done, and both were dispatched green
+against `main` on 2026-09-24, with the backend rollback proven against a deliberately broken build.
+**Any push or merge to `main` now deploys to production.**
 
 The order, the acceptance criteria and the reasoning are in `docs/CI_PLAN.md`; the decisions behind
 them are an ADR in `docs/DECISIONS.md`, 2026-09-04.

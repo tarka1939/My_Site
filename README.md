@@ -12,9 +12,9 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 **Phase 8 (polishing and cleaning) has started** with the visual design the site never had (#152) — a token layer where every colour that needs a different value on each ground gets one, with its measured contrast ratio recorded beside it, a real type scale, self-hosted faces rather than the Google Fonts CDN, and a card grid that generates per-project artwork where no image exists. What remains in the milestone is the security hardening deferred from Phases 1-3 — a Content-Security-Policy (#122) and the JavaScript-readable admin JWT (#123) — plus two smaller things the visual work turned up: contrast figures in comments that do not survive recomputation (#159), and an unanswered design question about how a dead image should look on the detail page (#160).
 
-**Phase 5 (deployment) is underway. Both halves are live; none of the automation is built.** `https://tarka1939.bieda.it/actuator/health` answers from the public internet, with Flyway's migrations applied against Postgres on a self-managed VPS, and the Netlify site serves the promoted frontend against it. The host is a NAT'd LXC container whose ports 80 and 443 belong to the provider, so TLS is terminated upstream rather than by us — the reasoning, and the Caddy/Let's-Encrypt plan it replaced, are an ADR in `docs/DECISIONS.md`. CORS (#44) and forwarded-header handling (#168) are verified against the live host: a preflight from the Netlify origin is answered, an unlisted origin is refused with 403, and the login limiter returns 429 on the sixth attempt.
+**Phase 5 (deployment) is underway. Both halves are live, and both deploy pipelines have run green and had their rollback proven (2026-09-24); what remains is the first promotion through them.** `https://tarka1939.bieda.it/actuator/health` answers from the public internet, with Flyway's migrations applied against Postgres on a self-managed VPS, and the Netlify site serves the promoted frontend against it. The host is a NAT'd LXC container whose ports 80 and 443 belong to the provider, so TLS is terminated upstream rather than by us — the reasoning, and the Caddy/Let's-Encrypt plan it replaced, are an ADR in `docs/DECISIONS.md`. CORS (#44) and forwarded-header handling (#168) are verified against the live host: a preflight from the Netlify origin is answered, an unlisted origin is refused with 403, and the login limiter returns 429 on the sixth attempt.
 
-**The automated half exists and has not yet been switched on.** CI runs both suites and the API-client staleness check on every pull request (#193), and was proven to go red on a deliberately broken test and green on the revert. Both deploy workflows are written (#196): the backend jar ships over a restricted SSH key that can run exactly one script, with a host-key pin and a rollback that keeps the failed build; the frontend build asserts the SPA fallback survived before publishing. Structured logging is in and off by default (#48), and `docker compose up` provides the local database (#42). What has not happened is the owner-side setup in `docs/DEPLOY_PIPELINE_SETUP.md` — the key, the scoped sudoers entry, the Actions secrets, switching Netlify's own build off — and until it has, `main` is deliberately not promoted: everything above is on `dev`, and the live site still shows the state from 2026-09-04. The sequencing, and why the promotion is being held to serve as the pipeline's first real test, is `docs/CI_PLAN.md` §8.
+**The automated half exists and has run.** CI runs both suites and the API-client staleness check on every pull request (#193), and was proven to go red on a deliberately broken test and green on the revert. Both deploy workflows are written (#196): the backend jar ships over a restricted SSH key that can run exactly one script, with a host-key pin and a rollback that keeps the failed build; the frontend build asserts the SPA fallback survived before publishing. Structured logging is in and off by default (#48), and `docker compose up` provides the local database (#42). The owner-side setup in `docs/DEPLOY_PIPELINE_SETUP.md` is done, and on 2026-09-24 both workflows were dispatched green against `main` and the backend rollback was proven against a deliberately broken build. `main` is still deliberately not promoted: the promotion is the pipeline's first real *change*, and is the owner's call — sequencing in `docs/CI_PLAN.md` §8.
 
 `PROJECT_TODO.md` carries the authoritative per-phase status; this section summarises it and can lag.
 
@@ -22,7 +22,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 - **What it is:** A personal portfolio site (Angular + Spring Boot) hosting a project portfolio, doubling as a deliberate practice ground for multi-agent development workflows (spec-first, parallel agents, documented review).
 - **Who it's for:** Visitors browsing the portfolio and submitting contact messages; a single site-owner admin managing project content.
-- **Live URL:** none yet — the frontend is not deployed. The backend is live and public at `https://tarka1939.bieda.it` (health and read endpoints answer; there is no content in it yet).
+- **Live URLs:** frontend `https://krzysztof-tarka.netlify.app`, backend `https://tarka1939.bieda.it`. Both serve `main` as last promoted on 2026-09-03 (PR #179); `dev` is well ahead of it (see Status). Five portfolio projects are published (checked 2026-09-24).
 
 ## How this is built
 
@@ -68,18 +68,18 @@ See `docs/AGENT_WORKFLOW.md` for the mechanics and `docs/AUTONOMOUS_WORKFLOW.md`
 |---|---|
 | Frontend framework | Angular — standalone components, signals for state, no NgRx — **confirmed** |
 | Frontend hosting | **Netlify** (static build) — **confirmed**, overrides the TODO's GitHub Pages default; native SPA routing, no non-commercial ToS restriction |
-| Backend | Spring Boot, package-by-feature + **Spring Modulith** (enforced module boundaries): `project/`, `contact/`, `about/`, plus Phase 7 additions `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/` |
-| Backend hosting | Self-managed VPS — **overrides** the TODO's Render/Railway/Fly.io PaaS default; specific provider not yet chosen |
+| Backend | Spring Boot, package-by-feature + **Spring Modulith** (enforced module boundaries): `project/`, `contact/`, `auth/`, `about/`, `githubsync/` (Phase 7a); Phase 7 still plans `analytics/`, `agentlog/`, `dspdemo/` |
+| Backend hosting | Self-managed VPS (Mikrus, a NAT'd LXC container; TLS terminated by the provider's proxy) — **overrides** the TODO's Render/Railway/Fly.io PaaS default |
 | Database | PostgreSQL |
 | ORM / migrations | Spring Data JPA + Hibernate; Flyway (never `hibernate.ddl-auto=update` outside local scratch) |
 | API contract | OpenAPI 3.0, written before implementation; Angular client generated via `openapi-generator-cli` |
 | Auth | JWT admin login (1 hour expiry) + password reset via Resend — **confirmed in scope**, gates write endpoints (see `SPEC.md` → Auth scope decision) |
 | Cross-origin | CORS on Spring Boot, allowlisting the exact Netlify origin `https://krzysztof-tarka.netlify.app` (`CORS_ALLOWED_ORIGINS` to override). Exact origins rather than patterns, so a fork's deploy preview cannot become a trusted origin |
-| CI/CD | GitHub Actions — separate workflows for Netlify deploy (frontend) and container build/deploy (backend) |
+| CI/CD | GitHub Actions — `ci.yml` runs backend tests, frontend tests and an API-client staleness check on every PR; separate deploy workflows for Netlify (frontend) and a jar shipped over a restricted SSH key (backend), live on `main` — any push or merge to `main` deploys |
 | Testing | JUnit 5 + Mockito unit tests, Testcontainers integration tests against real Postgres, Vitest component tests, and a deliberately thin Playwright E2E suite (4 journeys — see `PROJECT_TODO.md`'s testing-strategy note on why it stays small) |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done) |
 
-See `docs/DECISIONS.md` for full reasoning. All 14 foundational decisions are now confirmed except the specific VPS provider and the exact Netlify subdomain, both deliberately deferred to Phase 5.
+See `docs/DECISIONS.md` for full reasoning.
 
 ## Repo structure
 
@@ -88,6 +88,7 @@ See `docs/DECISIONS.md` for full reasoning. All 14 foundational decisions are no
   /project        Project CRUD (title, description, tags, links, images)
   /contact        Contact form + rate limiting
   /auth           JWT admin login, password reset
+  /about          Editable About page (singleton)
   /analytics      Phase 7c — usage analytics (privacy-respecting)
   /githubsync     Phase 7a — GitHub webhook auto-sync
   /agentlog       Phase 7b — rendered agent build-log page
@@ -95,8 +96,9 @@ See `docs/DECISIONS.md` for full reasoning. All 14 foundational decisions are no
 /frontend         Angular app (standalone components, signals, generated API client, admin CRUD)
 /e2e              Playwright end-to-end suite — its own package, deliberately not inside /frontend
 /content-seed     Portfolio content as data, plus a script that applies it through the real API
-/docs             SPEC, data model, decisions, OpenAPI contract, agent workflow
-.github/workflows Separate CI/CD: Netlify deploy (frontend), container build/deploy (backend)
+/deploy           deploy.sh — the one script the backend deploy key may run on the VPS
+/docs             SPEC, data model, decisions, OpenAPI contract, agent workflow, deployment runbooks
+.github/workflows CI on every PR; separate deploy workflows for Netlify (frontend) and the jar (backend)
 ```
 
 `/e2e` sits at the top level rather than under `/frontend` because it drives the backend as much as the frontend, and because Phase 5 deploys `/frontend` to Netlify — a browser-automation framework in that package would be installed on every production build for no benefit.
@@ -106,7 +108,7 @@ Backend is package-by-feature with Spring Modulith enforcing boundaries between 
 ## Constraints & caveats
 
 - **Frontend hosting (Netlify) only ever hosts the Angular frontend** — the backend needs a separate host (self-managed VPS) regardless.
-- **Backend hosting is a self-managed VPS**, not a managed PaaS — the free-tier "spins down on inactivity" caveat from the TODO doesn't apply, but in exchange you own things a PaaS would otherwise handle: OS patching, TLS certificate renewal (e.g. via certbot), a reverse proxy (e.g. Nginx) in front of the Spring Boot process, and process supervision/restarts. Budget setup time for this in Phase 5.
+- **Backend hosting is a self-managed VPS**, not a managed PaaS — the free-tier "spins down on inactivity" caveat from the TODO doesn't apply, but in exchange you own things a PaaS would otherwise handle: OS patching and process supervision (systemd). On the host actually provisioned, TLS and the public reverse proxy belong to the provider rather than to us — see `docs/DECISIONS.md`, 2026-09-03.
 - Phase 7's sequencing (ship one extension before starting the next) is a discipline call, not something the architecture enforces on its own.
 - The live DSP demo (7d) carries the most hosting-cost/reliability risk — budget for the possibility it needs more resources or a queue/backpressure mechanism sooner than the others.
 
@@ -115,20 +117,16 @@ Backend is package-by-feature with Spring Modulith enforcing boundaries between 
 ### Prerequisites
 
 - JDK 25, Node 24 (see note below), Docker
-- No custom domain planned — frontend serves from a Netlify subdomain (`*.netlify.app`, exact name TBD until the site is created in Phase 5). Netlify serves from root, so `--base-href` uses the Angular default (`/`) — no repo-name subpath needed, unlike the GitHub Pages project-page setup originally planned.
+- No custom domain planned — frontend serves from `krzysztof-tarka.netlify.app`. Netlify serves from root, so `--base-href` uses the Angular default (`/`) — no repo-name subpath needed, unlike the GitHub Pages project-page setup originally planned.
 
 > **Note on versions:** JDK 21 / Node 20 were floated initially as "current LTS," but that's stale as of mid-2026 — Node 20 is past its recommended window (Node 24 is the current active LTS; Node 22 is maintenance-only), and JDK 21 permissive-license updates end September 2026 (JDK 25 is the current LTS). Updated to JDK 25 + Node 24 accordingly — override if you have a specific reason to pin older versions.
 
 ### Local development
 
-No `docker-compose.yml` yet (that's Phase 5) — point the backend at whatever Postgres you have
-locally, or run one yourself:
-
 ```bash
-docker run -e POSTGRES_USER=mysite -e POSTGRES_PASSWORD=mysite -e POSTGRES_DB=mysite_dev -p 5432:5432 postgres
-```
+# Postgres 16, matching production, with the values the dev profile defaults to (#42):
+docker compose up -d --wait
 
-```bash
 # Backend (dev profile, needs Postgres reachable — see above):
 cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=dev
 
@@ -137,8 +135,8 @@ cd frontend && npm install && npm start
 ```
 
 `ng serve`'s dev-server proxy (`frontend/proxy.conf.json`) forwards `/api/*` to `localhost:8080`,
-so the browser sees same-origin requests — the backend has no CORS config yet (Phase 5 adds it,
-for the deployed Netlify origin only, not local dev). See `CLAUDE.md`'s Commands section for the
+so the browser sees same-origin requests — the backend's CORS allowlist holds only the deployed
+Netlify origin, not `localhost`. See `CLAUDE.md`'s Commands section for the
 full command reference (tests, builds, regenerating the API client, etc.).
 
 ### End-to-end tests
