@@ -2,7 +2,7 @@
 
 This document specifies how the project runs from this point to the end of the project — originally scoped through Phase 6, extended 2026-09-24 to Phases 7 and 8, where it was already in use: one persistent "Senior Dev" session the user (product owner) talks to directly, which coordinates and dispatches phase work to fresh implementation agents against `PROJECT_TODO.md`, dispatches PR review to independent sessions, and escalates only on genuine blockers. This supersedes the per-phase kickoff-prompt workflow used for Phases 1-3 — those worked, but required the user to hand-write a new prompt every phase. This is the standing replacement.
 
-**Target end state (2026-09-24):** the user handles only secrets/credentials and decisions — the escalation list below. Anything else that still needs the user's hands is a gap in this workflow, and worth recording as one rather than routinely working around.
+**Long-term direction (2026-09-24), approached incrementally rather than designed up front:** the user handling only secrets/credentials and decisions — the escalation list below. When something else still needs the user's hands, that is a candidate improvement to note, not a failure of the workflow.
 
 Confirmed 2026-08-02. See `docs/DECISIONS.md` for the ADR.
 

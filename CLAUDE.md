@@ -68,7 +68,8 @@ Three files need updating together whenever a phase's state changes, not just `A
 
 This repo is worked through many checkouts at once and none is reliably `dev`. A path alone is not a reference.
 
-- Resolve content through an explicit ref: `git show <ref>:<path>`. The remote here is `My_Site`, not `origin`.
+- Resolve content through an explicit ref: `git show <ref>:<path>`.
+- **The remote's name depends on the checkout.** It is `My_Site` in the owner's local clones and `origin` in Claude Code cloud sessions, which clone fresh with git's default; same repository either way. Run `git remote` before copying a command, and substitute. `My_Site/...` below means "this remote". A wrong name fails loudly (`unknown revision`), so the risk is wasted steps, not a silent wrong result. Cloud clones also fetch only `dev` and the session branch — `git fetch origin main` before touching `main`.
 - State provenance as `git rev-parse --short HEAD` **plus** `git status --porcelain`. A branch name is not enough — `--abbrev-ref` returns `HEAD` in the detached worktrees used for review, and says nothing about uncommitted edits.
 - Quote searchable text, not line numbers, in fast-moving files.
 - `git fetch` before comparing against any remote ref, and never assume a local branch matches its remote — including `dev` and `main`.
