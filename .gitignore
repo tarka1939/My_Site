@@ -36,3 +36,6 @@ Thumbs.db
 /set-admin-password.ps1
 /run-seed.ps1
 /run-seed.sh
+
+# Isolated git worktrees Claude Code creates for dispatched agents. Working copies, never content.
+.claude/worktrees/

@@ -297,6 +297,54 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-24 — claude (cloud session): eleven commits under the wrong name, and a cherry-pick that billed the promotion
+
+**Task given:** Documentation review, the deploy pipeline's first runs, and the first `dev` → `main` promotion through it — the first work on this project from a Claude Code cloud session.
+
+**What went wrong (be specific):** (1) Every commit on the docs branch was authored `Claude <noreply@anthropic.com>` — the cloud container's default git identity — which CLAUDE.md's commit conventions forbid, and nobody checked until the cold review of #216 did. The repo hook blocks force-pushes, so the history could not be rewritten. (2) #215 cherry-picked #196's commit onto `main` so the pipelines could be dispatched against it; that made the later promotion conflict add/add on `docs/DEPLOY_PIPELINE_SETUP.md`, which both branches had now added. (3) A background watcher for a deploy was written with a Python f-string the container's interpreter rejects, and looped silently instead of reporting — the release it was watching had succeeded, which is the only reason it cost nothing.
+
+**How it was caught:** (1) the independent review of #216 compared commit authors against `dev`'s history; (2) `git merge-tree` before opening the promotion; (3) reading the watcher's output file when it had been quiet too long.
+
+**Fix applied:** (1) #216 was squash-merged with an explicit message, so the Claude-authored commits never reached `dev`; the session's identity was set to the owner's for everything after; CLAUDE.md now says to set it before the first commit in a cloud session. (2) #217 merged `main` back into `dev` — tree unchanged, conflict resolved to `dev`'s version — and the promotion (#218) then merged cleanly. (3) The watcher was stopped and the runs read directly.
+
+**Takeaway for next time:** A new environment's defaults are part of the diff: check `git log -1 --format='%an <%ae>'` after the first commit anywhere new. Anything cherry-picked onto `main` has to come back to `dev` before the next promotion. And a watcher that has said nothing is not a watcher that saw nothing — give it a failure path that prints.
+
+## 2026-09-24 — frontend-agent: About becomes the landing page (`feat/about-as-landing`)
+
+**Task given:** Owner request. `/` renders About, the projects list moves to `/projects`, `/about`
+redirects to `/`, `/projects/:id` unchanged. Update links, nav, sitemap, SEO, specs, e2e, docs.
+
+**Agent(s) used:** frontend-agent (Opus), dispatched by the Senior Dev. No browser.
+
+**What went right:** The move removed the problem the old `path: ''` projects comment described
+rather than working around it. The projects feature is now mounted under a named `projects`
+prefix (children `''` and `':id'`), and About sits at `''` with `pathMatch: 'full'` -- safe there,
+because ABOUT_ROUTES has one route and no deeper child a full match could strand, which is exactly
+what made `full` unusable on the old projects route. So `''` can be declared first again and no URL
+fetches a chunk only to backtrack. A mutation check confirmed the new nav spec fails when About's
+`exact: true` is removed.
+
+**What went wrong (be specific):** A first draft of `app.routes.spec.ts` asserted
+`harness.routeNativeElement.querySelector('app-about-page')` -- but `routeNativeElement` *is* the
+routed component's host, so a descendant query for its own tag is always null. Five red tests on the
+first run; fixed by comparing `tagName`.
+
+**Judgment calls, flagged rather than silently decided:**
+- Nav order left as Projects, About, Contact; the landing page's link is now second. Owner's call.
+- Projects nav link is now a prefix match, so it stays lit on `/projects/:id` (previously an exact
+  match on `/`, which went dark on detail pages). Consistent with About/Contact's old behaviour.
+- The list keeps its static component import in projects.routes.ts (saves a sequential request on
+  a cold `/projects`); About already had one, and its comment now carries the landing reasoning.
+- About's route description was rewritten to stand alone as the site root's description; title left
+  as "Krzysztof Tarka - About".
+- `/about` is a client-side router redirect only. A server-side `301` in `_redirects` would be the
+  stronger SEO signal but touches a locked-decision file, so it was proposed, not done.
+
+**How it was caught:** the Vitest run.
+
+**Takeaway for next time:** `RouterTestingHarness.routeNativeElement` is the component host, not a
+container -- assert on its `tagName`.
+
 ## 2026-09-24 — claude (cloud session): the runbook's first two deploy steps could not have worked
 
 **Task given:** Continue `docs/DEPLOY_PIPELINE_SETUP.md` from step 7 (first hand-dispatched runs), then step 8 (prove the rollback).

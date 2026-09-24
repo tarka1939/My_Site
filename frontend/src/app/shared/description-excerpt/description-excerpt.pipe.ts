@@ -15,7 +15,7 @@ import { toCardExcerpt } from './description-excerpt';
  * place to strip that is inside `toCardExcerpt`, and it is the wrong one: `core/seo/site-meta.ts`
  * imports that function and sits in the **eager** graph, so a renderer import there pulls all of
  * markdown-it into the initial bundle -- measured at 409.5 kB against a 400 kB error budget, +105
- * kB on first paint for a parser the landing page needs only after its data arrives.
+ * kB on first paint for a parser the projects list needs only after its data arrives.
  *
  * This pipe is reached only from `projects-list`, which is lazy, so the cost stays in the chunk
  * that uses it. "Every route is lazy" was not enough to conclude the budget was safe -- a shared

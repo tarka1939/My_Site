@@ -214,16 +214,20 @@ pipelines exist, so that the promotion itself becomes their end-to-end test. Tha
 acceptance check than anything synthetic — but only if it is sequenced so a failure has one
 possible cause.
 
-`dev` is currently **63 commits** ahead of `main`. If the promotion were the pipeline's first ever
+`dev` was, on 2026-09-05, **63 commits** ahead of `main`. If the promotion were the pipeline's first ever
 run, a failure would leave two candidates: the pipeline is wrong, or something in those 63 commits
 is. That is the situation the runbook's own argument for deploying a jar before containerising
 exists to avoid — **one new variable at a time** — and it applies just as much here.
 
 ### The order
 
-**Status (2026-09-24): steps 1–3 done** — both pipelines dispatched green against `main`, and the
-rollback proven against a deliberately broken build. Step 4, the promotion, is next and is the
-owner's call. Record of the runs: `docs/DEPLOY_PIPELINE_SETUP.md`, end of step 8.
+**Status (2026-09-24): all four steps done.** Both pipelines dispatched green against `main`; the
+rollback proven against a deliberately broken build; then the promotion (#218, 87 commits, one
+additive migration) deployed through them with no rollback. Record of the dispatch
+and drill runs: `docs/DEPLOY_PIPELINE_SETUP.md`, end of step 8; the promotion's runs were backend
+36053789115, frontend 36053793778 and CI 36053789142. One thing the plan did not foresee: #215 had
+cherry-picked #196 onto `main`, so the promotion conflicted add/add on the setup runbook and needed
+`main` merged back into `dev` first (#217). Cherry-picking onto `main` always costs that.
 
 1. **Setup steps 1–6** of `docs/DEPLOY_PIPELINE_SETUP.md` — the key, its restriction, the script,
    the scoped sudoers entry, the six secrets, and switching Netlify's own build off.

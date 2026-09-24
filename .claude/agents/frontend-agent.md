@@ -16,7 +16,7 @@ Hard constraints from `docs/DECISIONS.md` — locked decisions, not suggestions.
 - Standalone Angular components, signals for state — no NgRx
 - A typed API client generated from `docs/openapi.yaml` via `openapi-generator-cli` — never hand-write HTTP calls that bypass it
 - `--base-href` uses the Angular default (`/`) — Netlify serves from root
-- `frontend/public/_redirects` (`/* /index.html 200`) for SPA routing — no `404.html` copy trick
+- `frontend/public/_redirects` (`/* /index.html 200`) for SPA routing — no `404.html` copy trick. Any redirect rule goes above that line (first match wins; `redirects.spec.ts` pins the order)
 - Lazy-loaded feature routes; two functional HTTP interceptors — `authInterceptor` attaches the JWT, `errorInterceptor` normalizes failures into an `ApiProblem` (see `CLAUDE.md`'s Architecture section)
 
 Log mistakes, corrections, and non-obvious judgment calls to `AGENT_LOG.md` as you go — see its header for the entry format. This applies for the whole project, not just Phase 4.

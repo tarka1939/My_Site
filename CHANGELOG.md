@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Releases now go out through the pipelines** (2026-09-24, #218, #220, infra). The first promotion since 2026-09-03 — 87 commits (52 excluding merges), including the About page's migration — deployed on merge with no hands on the server: backend healthy 39s after the swap, frontend verified with a deep link. About an hour later a one-tag release (#220) went the same way.
+
+- **Google Search Console verification** (2026-09-24, #219, frontend). The ownership tag is in `index.html`'s static head, where Google's verifier reads it without running JavaScript.
+
 - **Deploy pipelines live on `main`** (2026-09-24, #38, #45, #46, PRs #196 and #215, infra). Both workflows dispatched green against `main`: the backend jar shipped over a key restricted with `command=` to one script, with a pinned host key, and was verified from the public internet; the frontend build asserted its SPA fallback before publishing to Netlify. The backend rollback was then proven against a build that compiles and refuses to start under `prod` — site back in about 2m17s, the failed jar kept, the run red. Any push or merge to `main` now deploys.
 
 - **CI on every pull request** (2026-09-05, #193, PR #194, infra). Backend tests, frontend tests, and a check that the committed API client matches `docs/openapi.yaml`.
@@ -52,6 +56,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 - Draft Phase 7 extension entities in `docs/DATA_MODEL.md`: `GithubSyncRecord`, `AgentLogEntry`, `AnalyticsEvent`, `DspJob` (inferred, not yet confirmed)
 
 ### Changed
+
+- **About is the landing page** (2026-09-24, #221, frontend). `/` now renders the About page, the projects list moves from `/` to `/projects`, and `/about` redirects to `/`. Project pages keep their `/projects/<id>` URLs. The sitemap lists `/`, `/projects` and `/contact`. Follow-up (#224): About comes first in the nav, the home page's title and heading are the owner's name, and Netlify answers `/about` with a 301 to `/`.
 
 - Project plan (`PROJECT_TODO.md`) revised: split frontend/backend hosting (GitHub Pages + Render/Railway/Fly.io), CORS + SPA-fallback requirements, package-by-feature backend structure, `ApplicationEventPublisher` + `@Async` executor + feature flags, GitHub Projects task tracking, and a new sequenced Phase 7 (GitHub webhook sync → agent build-log page → analytics → live DSP demo)
 - Project name confirmed as "My Site" across `README.md`, `SPEC.md`, `CLAUDE.md`

@@ -547,7 +547,7 @@ describe('the tag chips', () => {
   const chipCss = () => stripComments(readFileSync(PROJECTS_LIST_STYLES, 'utf8'));
 
   it('are set in the mono face at a size from the scale', () => {
-    // The specific element from #152 §3, on the most-repeated component of the landing page. The
+    // The specific element from #152 §3, on the most-repeated component of the projects list. The
     // root reset means a missing declaration here no longer lands them in Arial -- but the ADR
     // says tags are mono, and losing that is losing a design decision rather than a fallback.
     const filter = ruleFor(chipCss(), '.tag-filter');
