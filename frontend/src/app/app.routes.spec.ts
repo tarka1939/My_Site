@@ -66,7 +66,8 @@ describe('application routes', () => {
 
     expect(TestBed.inject(Router).url).toBe('/');
     expect(renderedPage(harness)).toBe('app-about-page');
-    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe('About');
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe('Krzysztof Tarka');
+    expect(document.title).toBe('Krzysztof Tarka');
   });
 
   it('redirects the old /about URL to the site root', async () => {
@@ -124,6 +125,17 @@ describe('primary navigation against the real routes', () => {
     expect(projects.getAttribute('href')).toBe('/projects');
     expect(about.getAttribute('href')).toBe('/');
     expect(brand.getAttribute('href')).toBe('/');
+  });
+
+  it('lists About first, then Projects, then Contact', async () => {
+    const fixture = TestBed.createComponent(App);
+    await TestBed.inject(Router).navigateByUrl('/');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const items = (fixture.nativeElement as HTMLElement).querySelectorAll('nav[aria-label="Primary"] li a');
+    const labels = Array.from(items).map((a) => a.textContent?.trim());
+
+    expect(labels.slice(0, 3)).toEqual(['About', 'Projects', 'Contact']);
   });
 
   it('marks only About active on the landing page', async () => {
