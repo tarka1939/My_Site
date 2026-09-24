@@ -703,6 +703,8 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     expect(host().querySelector('.viewer-position .visually-hidden')?.textContent?.trim()).toBe(
       'Image 2 of 3',
     );
+    // Scaled to fit, never cropped -- the gallery's own rule, for the same reason (#87, #211).
+    expect(getComputedStyle(viewerImage()!).objectFit).toBe('contain');
   });
 
   it('focuses Close on open and returns focus to the opening image on close', async () => {
