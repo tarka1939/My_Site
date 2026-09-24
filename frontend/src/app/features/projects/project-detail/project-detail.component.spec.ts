@@ -869,8 +869,13 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
   it('moves with Previous and Next, wrapping at both ends', async () => {
     await openFromGallery(2);
     expect(visiblePosition()).toBe('3 / 3');
-    expect(host().querySelector('.viewer-prev')?.textContent?.trim()).toBe('Previous image');
-    expect(host().querySelector('.viewer-next')?.textContent?.trim()).toBe('Next image');
+    // Short visible words, fuller accessible names that still contain them (label in name).
+    const prev = host().querySelector('.viewer-prev')!;
+    const next = host().querySelector('.viewer-next')!;
+    expect(prev.textContent?.trim()).toBe('Previous');
+    expect(prev.getAttribute('aria-label')).toBe('Previous image');
+    expect(next.textContent?.trim()).toBe('Next');
+    expect(next.getAttribute('aria-label')).toBe('Next image');
 
     await clickOn(fixture!, '.viewer-next');
     expect(visiblePosition()).toBe('1 / 3');
