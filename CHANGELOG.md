@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Deploy pipelines live on `main`** (2026-09-24, #38, #45, #46, PRs #196 and #215, infra). Both workflows dispatched green against `main`: the backend jar shipped over a key restricted with `command=` to one script, with a pinned host key, and was verified from the public internet; the frontend build asserted its SPA fallback before publishing to Netlify. The backend rollback was then proven against a build that compiles and refuses to start under `prod` — site back in about 2m17s, the failed jar kept, the run red. Any push or merge to `main` now deploys.
+
+- **CI on every pull request** (2026-09-05, #193, PR #194, infra). Backend tests, frontend tests, and a check that the committed API client matches `docs/openapi.yaml`.
+
 - **An editable About page** (2026-09-20, #213, backend + frontend + content). `/about` is public and reads one Markdown body; `/admin/about` edits it with the same live preview the project form has and a Save that stays on the page. Backend: a new `about/` Modulith module, `V8__about_page.sql` creating the single row with a `CHECK (id = 1)` so a second is impossible, `GET /api/v1/about` permitted explicitly in `SecurityConfig` and `PUT` protected by the existing fail-closed `anyRequest().authenticated()` plus a role check — the one deliberately new public surface is the read. The row always exists, so the page never 404s and an unwritten one shows a notice rather than a blank. Rendered through exactly the path #206 built — `renderMarkdown` at `html: false`, `[innerHTML]`, `.markdown-body` — with the meta description taken from the first real paragraph and not the heading. A singleton rather than a pages system; the reasoning is an ADR in `docs/DECISIONS.md`, 2026-09-20. Verified end to end against a local database that ran V8 (7 → 8): anonymous PUT 401, save through the real form, public page and meta description updated. One thing found on the way and *not* fixed here: the admin area has never had a link to `/admin/messages` — it is reached by URL — so the landing page now carries an "Edit the About page" link and a comment naming the gap.
 
 
@@ -20,6 +24,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - **The admin password is set and the site is reachable end to end.** Login, the contact form and the password-reset flow were all exercised against the live deployment. Two defects the owner found there are fixed separately (#185, #187); a third — that the contact form notifies nobody — is #186.
 
 ### Still missing from Phase 5, stated plainly
+
+*(The state as of 2026-09-04, kept as written. Since then CI (#193), the local compose database (#42), structured logging (#48) and both deploy pipelines (#196, live 2026-09-24) have landed — see Added above.)*
 
 **None of the automation exists.** `.github/workflows/` contains a placeholder README and nothing else. Every deploy to date has been `mvn package`, `scp`, `systemctl restart`, run by hand against a host over SSH, and **no pull request in this repository has ever had its gates run by anything but a person remembering to run them.** The six open issues are unstarted: the frontend and backend deploy pipelines (#38, #45), the multi-stage Dockerfile and the compose file for local dev (#41, #42), moving secrets out of `/etc/mysite/env` into a CI secret store (#46), and structured logging (#48).
 
