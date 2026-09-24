@@ -680,8 +680,8 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
 
   /** Gives the viewer image a natural size and a laid-out box, neither of which jsdom has. */
   function layOut(image: HTMLImageElement, natural: [number, number], box: DOMRect): void {
-    Object.defineProperty(image, 'naturalWidth', { value: natural[0] });
-    Object.defineProperty(image, 'naturalHeight', { value: natural[1] });
+    Object.defineProperty(image, 'naturalWidth', { value: natural[0], configurable: true });
+    Object.defineProperty(image, 'naturalHeight', { value: natural[1], configurable: true });
     image.getBoundingClientRect = () => box;
   }
 
@@ -815,12 +815,23 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     // Still loading, or failed: the natural size reads 0x0, so where the picture paints is not
     // known, and an ambiguous click must not close the viewer under someone. The same point is
     // letterbox in the test above, so this differs from it only in the size being unknown.
+    //
+    // Two shapes of "unknown". 0x0 alone cannot tell the guard from its absence: without it the
+    // arithmetic divides by zero, every bound comes out NaN, every comparison is false, and the
+    // click reads as "inside" by accident. One zero dimension is what the guard is actually
+    // needed for -- without it the picture computes as a zero-width sliver in the middle of the
+    // box, and this click at x=100 lands "outside" it.
     await openFromGallery(0);
-    layOut(viewerImage()!, [0, 0], new DOMRect(0, 0, 800, 400));
+    for (const natural of [
+      [0, 0],
+      [0, 300],
+    ] as [number, number][]) {
+      layOut(viewerImage()!, natural, new DOMRect(0, 0, 800, 400));
 
-    await pointerClick(viewerImage()!, viewerImage()!, { clientX: 100, clientY: 200 });
+      await pointerClick(viewerImage()!, viewerImage()!, { clientX: 100, clientY: 200 });
 
-    expect(dialog().open).toBe(true);
+      expect(dialog().open, `natural size ${natural.join('x')}`).toBe(true);
+    }
     // Positive counterpart, so the open assertion is not vacuous: the stage still closes it.
     await pointerClick(host().querySelector('.stage')!);
     expect(dialog().open).toBe(false);
