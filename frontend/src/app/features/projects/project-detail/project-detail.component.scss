@@ -41,7 +41,23 @@ h1 {
   padding: 0;
   margin: 1rem 0;
 
+  // The button that opens the full-screen viewer. Stripped to nothing but its focus ring, so the
+  // gallery's box is still the image's box: every sizing rule below stays on the `img`, and
+  // `li:only-child` still spans a row whose only child is this. `display: block` on both, because
+  // a button shrinks to fit its content and an inline img leaves a descender gap under itself.
+  .gallery-open {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: inherit;
+    cursor: zoom-in;
+  }
+
   img {
+    display: block;
     width: 100%;
     border-radius: 0.375rem;
 
