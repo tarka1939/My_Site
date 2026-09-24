@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Releases now go out through the pipelines** (2026-09-24, #218, #220, infra). The first promotion since 2026-09-03 — 87 commits (52 excluding merges), including the About page's migration — deployed on merge with no hands on the server: backend healthy 39s after the swap, frontend verified with a deep link. About an hour later a one-tag release (#220) went the same way.
+
+- **Google Search Console verification** (2026-09-24, #219, frontend). The ownership tag is in `index.html`'s static head, where Google's verifier reads it without running JavaScript.
+
 - **Deploy pipelines live on `main`** (2026-09-24, #38, #45, #46, PRs #196 and #215, infra). Both workflows dispatched green against `main`: the backend jar shipped over a key restricted with `command=` to one script, with a pinned host key, and was verified from the public internet; the frontend build asserted its SPA fallback before publishing to Netlify. The backend rollback was then proven against a build that compiles and refuses to start under `prod` — site back in about 2m17s, the failed jar kept, the run red. Any push or merge to `main` now deploys.
 
 - **CI on every pull request** (2026-09-05, #193, PR #194, infra). Backend tests, frontend tests, and a check that the committed API client matches `docs/openapi.yaml`.

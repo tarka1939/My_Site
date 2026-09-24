@@ -297,6 +297,18 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-24 — claude (cloud session): eleven commits under the wrong name, and a cherry-pick that billed the promotion
+
+**Task given:** Documentation review, the deploy pipeline's first runs, and the first `dev` → `main` promotion through it — the first work on this project from a Claude Code cloud session.
+
+**What went wrong (be specific):** (1) Every commit on the docs branch was authored `Claude <noreply@anthropic.com>` — the cloud container's default git identity — which CLAUDE.md's commit conventions forbid, and nobody checked until the cold review of #216 did. The repo hook blocks force-pushes, so the history could not be rewritten. (2) #215 cherry-picked #196's commit onto `main` so the pipelines could be dispatched against it; that made the later promotion conflict add/add on `docs/DEPLOY_PIPELINE_SETUP.md`, which both branches had now added. (3) A background watcher for a deploy was written with a Python f-string the container's interpreter rejects, and looped silently instead of reporting — the release it was watching had succeeded, which is the only reason it cost nothing.
+
+**How it was caught:** (1) the independent review of #216 compared commit authors against `dev`'s history; (2) `git merge-tree` before opening the promotion; (3) reading the watcher's output file when it had been quiet too long.
+
+**Fix applied:** (1) #216 was squash-merged with an explicit message, so the Claude-authored commits never reached `dev`; the session's identity was set to the owner's for everything after; CLAUDE.md now says to set it before the first commit in a cloud session. (2) #217 merged `main` back into `dev` — tree unchanged, conflict resolved to `dev`'s version — and the promotion (#218) then merged cleanly. (3) The watcher was stopped and the runs read directly.
+
+**Takeaway for next time:** A new environment's defaults are part of the diff: check `git log -1 --format='%an <%ae>'` after the first commit anywhere new. Anything cherry-picked onto `main` has to come back to `dev` before the next promotion. And a watcher that has said nothing is not a watcher that saw nothing — give it a failure path that prints.
+
 ## 2026-09-24 — frontend-agent: About becomes the landing page (`feat/about-as-landing`)
 
 **Task given:** Owner request. `/` renders About, the projects list moves to `/projects`, `/about`
