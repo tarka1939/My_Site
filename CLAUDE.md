@@ -122,7 +122,7 @@ My Site — portfolio site (Angular + Spring Boot). Full scope lives in `SPEC.md
 Requires JDK 25 and Maven on `PATH` (or `JAVA_HOME`/`MAVEN_HOME` set). Requires a running
 PostgreSQL instance for anything beyond `compile`/`test`. **`docker compose up -d` provides one**
 (#42) with the values the dev profile already defaults to, so no `DB_*` variables are needed —
-see "Full stack" below.
+see "Local database (Docker Compose)" below.
 
 ```bash
 # Build (compile only, no DB needed):
@@ -138,7 +138,7 @@ cd backend && mvn test
 # Run a single test:
 cd backend && mvn test -Dtest=ProjectServiceTest
 
-# Lint: no linter/formatter has been decided yet (not in docs/DECISIONS.md) — nothing to run.
+# Lint: no linter is configured (#210) — nothing to run.
 
 # Package an executable jar:
 cd backend && mvn clean package
@@ -223,7 +223,7 @@ docker compose down -v           # and discard it, which is how you re-run Flywa
 Foundational choices are ADRs in `docs/DECISIONS.md`; production topology (NAT'd LXC VPS behind a provider-owned proxy chain, TLS terminated upstream, `https://tarka1939.bieda.it`) is in `docs/DEPLOYMENT.md`.
 
 - **Repo layout:** monorepo — `/backend` (Spring Boot), `/frontend` (Angular), `/docs` (spec, data model, decisions, OpenAPI contract).
-- **Hosting split (hard constraint, not a config choice):** frontend deploys as a static build to Netlify (overrides the TODO's original GitHub Pages default — see `docs/DECISIONS.md`); backend deploys separately to a self-managed VPS (specific provider not yet chosen — this overrides the TODO's original Render/Railway/Fly.io default). Neither hosts a JVM process — the backend needs its own host regardless.
+- **Hosting split (hard constraint, not a config choice):** frontend deploys as a static build to Netlify (overrides the TODO's original GitHub Pages default — see `docs/DECISIONS.md`); backend deploys separately to a self-managed VPS (Mikrus — this overrides the TODO's original Render/Railway/Fly.io default). Neither hosts a JVM process — the backend needs its own host regardless.
 - **Cross-origin:** `app.cors.allowed-origins` (`CORS_ALLOWED_ORIGINS`) lists exact origins, defaulting to the Netlify site; a wildcard entry fails startup (`SecurityConfig`). Netlify deploy previews are deliberately excluded.
 - **SPA routing:** Netlify handles this natively via a `frontend/public/_redirects` file (`/* /index.html 200`) — no GitHub-Pages-style `404.html` copy trick needed. `--base-href` uses the Angular default (`/`), since Netlify serves from root rather than a repo-name subpath.
 - **Contract-first:** `docs/openapi.yaml` is the source of truth for the API and is written before backend or frontend code. The Angular client is generated from it (`openapi-generator-cli`) rather than hand-written — don't add HTTP calls that bypass the generated client.
