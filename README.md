@@ -22,7 +22,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 - **What it is:** A personal portfolio site (Angular + Spring Boot) hosting a project portfolio, doubling as a deliberate practice ground for multi-agent development workflows (spec-first, parallel agents, documented review).
 - **Who it's for:** Visitors browsing the portfolio and submitting contact messages; a single site-owner admin managing project content.
-- **Live URLs:** frontend `https://krzysztof-tarka.netlify.app`, backend `https://tarka1939.bieda.it`. Both serve `main` as last promoted on 2026-09-04; `dev` is well ahead of it (see Status). As of the last recorded check no portfolio content had been loaded — the copy in `content-seed/` is not yet signed off.
+- **Live URLs:** frontend `https://krzysztof-tarka.netlify.app`, backend `https://tarka1939.bieda.it`. Both serve `main` as last promoted on 2026-09-04; `dev` is well ahead of it (see Status). Five portfolio projects are published (checked 2026-09-24).
 
 ## How this is built
 

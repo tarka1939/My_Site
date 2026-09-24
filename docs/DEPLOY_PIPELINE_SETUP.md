@@ -127,7 +127,10 @@ allowlist their origins anyway.
 Both workflows have `workflow_dispatch`, deliberately: the first run of a deploy pipeline should be
 one you chose to start.
 
-**Actions → Deploy backend → Run workflow.** Watch it, then check the site.
+**Actions → Deploy backend → Run workflow → set "Use workflow from" to `main`.** The selector
+defaults to `dev`, the default branch, and running against `dev` deploys every unpromoted commit
+through a pipeline that has never run — two unknowns at once, which is what `docs/CI_PLAN.md` §8 is
+sequenced to avoid. Watch it, then check the site.
 
 Then the same for **Deploy frontend**.
 
