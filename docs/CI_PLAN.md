@@ -221,6 +221,10 @@ exists to avoid — **one new variable at a time** — and it applies just as mu
 
 ### The order
 
+**Status (2026-09-24): steps 1–3 done** — both pipelines dispatched green against `main`, and the
+rollback proven against a deliberately broken build. Step 4, the promotion, is next and is the
+owner's call. Record of the runs: `docs/DEPLOY_PIPELINE_SETUP.md`, end of step 8.
+
 1. **Setup steps 1–6** of `docs/DEPLOY_PIPELINE_SETUP.md` — the key, its restriction, the script,
    the scoped sudoers entry, the six secrets, and switching Netlify's own build off.
 2. **Dispatch each workflow by hand against `main` as it stands.** Both carry `workflow_dispatch`

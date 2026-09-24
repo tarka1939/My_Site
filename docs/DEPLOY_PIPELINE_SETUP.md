@@ -138,16 +138,37 @@ Then the same for **Deploy frontend**.
 
 This is the half nobody tests, and the half that matters at 2am.
 
-Break the build deliberately — a syntax error in a controller is enough — push it to a branch, and
-run **Deploy backend** against that branch by hand. Expect:
+Break the build deliberately, push it to a branch, and run **Deploy backend** against that branch
+by hand.
+
+**The break must compile and pass the tests.** The workflow runs `mvn clean package` on the runner
+before anything is shipped, so a syntax error fails there, `deploy.sh` never runs, and the run goes
+red having tested nothing — which reads exactly like a passing drill. What reaches the rollback is a
+build that is fine on the runner and refuses to start on the host. The drill run on 2026-09-24 used
+a class no test can see, because no test activates the `prod` profile:
+
+```java
+@Component
+@Profile("prod")
+class RollbackDrill {
+    RollbackDrill() { throw new IllegalStateException("Deliberate startup failure: rollback drill"); }
+}
+```
+
+The API is down for the length of the attempt — about 2m20s in that run: 90s of health checks on the
+bad build, then the previous one restarting. The frontend stays up but cannot load data. Expect:
 
 - `deploy.sh` reports the health check never passed
 - it moves the failed jar to `/home/deploy/mysite-bad.jar` and restores the previous one
 - the site stays up
 - the workflow goes red
 
-Then delete the branch. If any of those four is untrue, the pipeline is not finished, whatever the
-green runs say.
+Then delete the branch, and `/home/deploy/mysite-bad.jar` on the host once you no longer want it. If
+any of those four is untrue, the pipeline is not finished, whatever the green runs say.
+
+**Done 2026-09-24** (runs 36050353412 and 36050637727 for step 7, 36050901571 for step 8). All four
+held: `health check never passed after 90s -- rolling back`, the failed jar kept at
+`mysite-bad.jar`, public health back to 200 about 2m17s after it dropped, and the run red.
 
 ---
 
