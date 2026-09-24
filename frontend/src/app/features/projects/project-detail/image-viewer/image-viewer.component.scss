@@ -1,0 +1,147 @@
+// The whole viewport, opaque, on the page's own ground. Opaque rather than a translucent scrim over
+// the page: a scrim lets whatever is behind bleed into the letterbox around an image that does not
+// match the viewport's shape, and every image here is of unknown shape (admin-pasted URLs). The
+// ground token rather than a fixed black keeps the viewer in whichever scheme the site is in --
+// there is no token that is dark in both schemes, and inventing one would be a colour with no
+// measured contrast behind it.
+.viewer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  // Nothing inside may make the viewer wider than the screen. On a phone, content wider than the
+  // device makes the browser widen the layout viewport and zoom the page out -- measured at 360px
+  // with the old "Previous image" / "Next image" labels, which pushed the bottom bar below the
+  // visible screen. The bars are sized to fit 320px below; this is the backstop if a label ever
+  // grows again: it gets clipped instead of rescaling the page.
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+// Only when open. Setting `display` on the closed dialog would override the UA's `display: none`
+// and paint it permanently.
+.viewer[open] {
+  display: grid;
+  // The stage takes whatever the bars leave. `minmax(0, ...)` rather than `1fr`, whose implicit
+  // minimum is the content's size -- which for a large image is its natural height, and would push
+  // the bottom bar off-screen instead of shrinking the picture.
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  // And one column that is exactly the viewer's width. The implicit column is `auto`, which would
+  // be at least as wide as the widest bar's min-content -- the widening this file guards against.
+  grid-template-columns: minmax(0, 1fr);
+}
+
+// Covered entirely by the dialog, so this only matters for the frame before the dialog paints.
+.viewer::backdrop {
+  background: var(--color-bg);
+}
+
+// Controls sit on a solid bar, never over the picture: nothing here knows what an image looks like,
+// so any control floating over it would be illegible over some image. On --color-surface the ink
+// is 16.47:1 light / 16.59:1 dark, the muted button outline 5.47:1 / 5.58:1, and the focus ring
+// 16.47:1 / 16.59:1 (ratios from styles.scss).
+.bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.5rem 1rem;
+  background: var(--color-surface);
+
+  > * {
+    min-width: 0;
+  }
+}
+
+.bar-top {
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.bar-bottom {
+  justify-content: space-between;
+  border-top: 1px solid var(--color-hairline);
+  // A fallback, not the layout: at default text sizes the bar fits on one row down to 320px (measured
+  // at 320/360/390 in Chromium). With large system text on a narrow phone it no longer can, and
+  // wrapping to a second row keeps every control whole and reachable -- where `nowrap` alone would
+  // overlap "2 / 3" onto Next or push Next past the viewer's `overflow: hidden` edge.
+  flex-wrap: wrap;
+}
+
+// The site's secondary button: an outline in the muted value, which is the control-boundary token
+// (--color-hairline is for structure and is too quiet for a control -- see styles.scss).
+.bar button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0.5rem 1.25rem;
+  // One line always: a wrapped label makes the bar taller, which costs the picture room.
+  white-space: nowrap;
+  border: 1px solid var(--color-text-muted);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.viewer-position {
+  margin: 0;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-mono);
+}
+
+// The stage's size comes only from the dialog's grid row, never from the image: the image is
+// positioned out of flow, so a 2559px-tall picture cannot contribute its natural size to the track
+// and push the bottom bar off-screen. (An in-flow `height: 100%` image in an auto-sized box is
+// exactly the cyclic-percentage case where browsers fall back to the natural height.)
+.stage {
+  position: relative;
+  min-height: 0;
+}
+
+// Narrow phones (up to 384px). Estimated budget at 320px, the narrowest width supported: bar
+// padding 2 x 0.5rem, two gaps of 0.5rem, and each button's 2 x 0.75rem padding and 1px borders
+// around "Previous" / "Next", plus "2 / 3" -- roughly 250px at 16px. Only horizontal spacing
+// shrinks; the 2.75rem touch-target height holds.
+@media (max-width: 24rem) {
+  .bar {
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .bar button {
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+// The box fills the stage, less a 1rem margin, and `contain` fits the picture inside it -- so an
+// image of any shape is as large as the viewport allows without cropping, the same reason the
+// gallery uses `contain`. No background: the letterbox here is the viewer's own ground, not a plate
+// behind the picture.
+.viewer-image {
+  position: absolute;
+  inset: 1rem;
+  width: calc(100% - 2rem);
+  height: calc(100% - 2rem);
+  object-fit: contain;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .viewer[open] {
+    animation: viewer-fade-in 150ms ease-out;
+  }
+}
+
+@keyframes viewer-fade-in {
+  from {
+    opacity: 0;
+  }
+}

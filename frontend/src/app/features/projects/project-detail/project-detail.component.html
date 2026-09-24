@@ -38,24 +38,38 @@
                  is false. See
                  shared/project-image-alt/project-image-alt.ts for the full reasoning, including why
                  these are not marked decorative with alt="". -->
-            @if ($first) {
-              <img
-                [src]="image"
-                [alt]="imageAlt(project, i)"
-                loading="eager"
-                fetchpriority="high"
-              />
-            } @else {
-              <img
-                [src]="image"
-                [alt]="imageAlt(project, i)"
-                loading="lazy"
-                decoding="async"
-              />
-            }
+            <!-- A real button, so the viewer opens from the keyboard and is announced as a control.
+                 Its name is the image's own alt text with the action in front, built from the same
+                 helper rather than a separate "image N of M" string: whatever #87 eventually does
+                 to the alt text then reaches this name too, instead of being hidden behind it
+                 (a button's content is presentational, so an aria-label replaces the alt). -->
+            <button
+              type="button"
+              class="gallery-open"
+              [attr.aria-label]="'View full screen: ' + imageAlt(project, i)"
+              (click)="viewer.open(i, $any($event.currentTarget))"
+            >
+              @if ($first) {
+                <img
+                  [src]="image"
+                  [alt]="imageAlt(project, i)"
+                  loading="eager"
+                  fetchpriority="high"
+                />
+              } @else {
+                <img
+                  [src]="image"
+                  [alt]="imageAlt(project, i)"
+                  loading="lazy"
+                  decoding="async"
+                />
+              }
+            </button>
           </li>
         }
       </ul>
+
+      <app-image-viewer #viewer [images]="project.images" [title]="project.title" />
     }
 
     <!-- Rendered Markdown (#206), so a block element rather than a <p>: the renderer emits its own
