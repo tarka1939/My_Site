@@ -57,6 +57,16 @@ Was floated in the original data-model draft; confirmed out of scope in `SPEC.md
 
 Rate limiting: no separate table — query `count(*) where requester_ip_hash = ? and created_at > now() - interval` at request time. Revisit only if this endpoint sees enough volume for that query to matter.
 
+### AboutPage (#213, V8)
+
+| Field | Type | Notes |
+|---|---|---|
+| id | smallint, PK, `CHECK (id = 1)` | the constraint is the singleton: a second row is impossible at the database level |
+| body | text, not null default `''` | Markdown, up to 20000 chars (enforced at the DTO layer); empty is the unwritten state, not an error |
+| updated_at | timestamptz, not null default `now()` | seeded by the migration, then bumped by `@UpdateTimestamp` only when the body actually changes |
+
+One row, inserted by the migration that creates the table. Deletion is prevented by convention, not constraint -- no code path deletes it, and the service fails loudly (500, naming the migration) if it is gone. A slug-keyed `page` table was considered and not built; the 2026-09-20 ADR in `docs/DECISIONS.md` has the reasoning.
+
 ### AdminUser
 
 _Confirmed in scope — see SPEC.md → Auth scope decision._
@@ -254,4 +264,5 @@ erDiagram
 - `V2__admin_user_email_and_seed.sql` (Phase 2) — adds `admin_user.email` (see AdminUser table above) and seeds the single admin row with a bcrypt-hashed password, per the Auth Flow ADR in `docs/DECISIONS.md`.
 - `V3__password_reset_token_hash_index.sql` (Phase 2) — adds a unique index on `password_reset_token.token_hash` (see PasswordResetToken table above), caught in cross-review after V1/V2 had already shipped without one.
 - `V4__project_dates.sql` (Phase 6) — adds nullable `project.started_on` and `project.completed_on` plus a `CHECK` enforcing that `completed_on` neither precedes `started_on` nor exists without it. Additive and non-destructive: both columns are nullable, so existing rows are untouched and no backfill is required. See the 2026-08-08 project-dates ADR in `docs/DECISIONS.md`.
+- `V8__about_page.sql` (Phase 6, #213) — creates `about_page` (see AboutPage above) and inserts its one row. Additive; touches nothing existing. V5-V7 (tag index, GitHub sync record, project publication fields) landed with Phase 7a and are described by their own files.
 - Record schema changes here as they land, or link to migration files directly.

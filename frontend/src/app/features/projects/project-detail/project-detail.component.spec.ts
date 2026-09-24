@@ -51,13 +51,25 @@ const PROJECT: Project = {
 };
 
 /** Same shape as the drafted content: a stand-alone opening paragraph, then several more. */
-const LONG_DESCRIPTION = [
+const LONG_DESCRIPTION_PARAGRAPHS = [
   'A cross-platform, system-level audio equalizer built around a shared C++17 DSP core, with ' +
     'three cooperating modules: a real-time audio daemon and a Windows Audio Processing Object ' +
     'in C++, a 10-band visualiser and settings GUI in C#/Avalonia, and a Python curve generator.',
   `The DSP core is platform-agnostic. ${'Filler prose. '.repeat(30)}`,
   `CurveGen takes a WAV measurement. ${'Further filler prose. '.repeat(30)}`,
-].join('\n\n');
+];
+const LONG_DESCRIPTION = LONG_DESCRIPTION_PARAGRAPHS.join('\n\n');
+
+/**
+ * An element's `grid-column` with whitespace normalised.
+ *
+ * The same engine difference the aspect-ratio assertions dodge: a real browser serialises
+ * `grid-column: 1 / -1` back as `'1 / -1'` and jsdom as `'1/-1'`. Comparing to either literal pins
+ * a serialisation detail of the test environment rather than the span being asserted.
+ */
+function gridColumnOf(element: Element): string {
+  return getComputedStyle(element).gridColumn.replace(/\s+/g, '');
+}
 
 describe('ProjectDetailComponent', () => {
   let getProject: ReturnType<typeof vi.fn>;
@@ -125,16 +137,84 @@ describe('ProjectDetailComponent', () => {
 
   it('renders the whole description, including everything the list card clamps away', () => {
     // The counterpart to the list card's summary (#86): clamping the card is only acceptable
-    // because the full text is reachable here. Paragraph breaks survive as well -- the description
-    // is plain text with `white-space: pre-wrap`, not Markdown.
+    // because the full text is reachable here.
+    //
+    // This compared textContent to the source string exactly, while the description was plain text
+    // laid out by `white-space: pre-wrap`. Since #206 it is Markdown, so the paragraph breaks are
+    // real <p> elements and the source's blank lines are consumed by the parser rather than
+    // rendered -- asserting elements is both what the page now does and a stronger claim than a
+    // string compare, which would also pass on one undivided blob.
     getProject.mockReturnValue(of({ ...PROJECT, description: LONG_DESCRIPTION }));
 
     const fixture = TestBed.createComponent(ProjectDetailComponent);
     fixture.detectChanges();
 
     const description = (fixture.nativeElement as HTMLElement).querySelector('.description')!;
-    expect(description.textContent).toBe(LONG_DESCRIPTION);
-    expect(description.textContent!.split('\n\n')).toHaveLength(3);
+    const paragraphs = Array.from(description.querySelectorAll('p'));
+    expect(paragraphs).toHaveLength(3);
+    // Trimmed on the expected side, not the actual: the fixture's repeat() leaves a trailing space
+    // that the parser drops. Trimming what the page produced would instead hide a renderer that
+    // padded its own output.
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual(
+      LONG_DESCRIPTION_PARAGRAPHS.map((paragraph) => paragraph.trim()),
+    );
+  });
+
+  it('renders Markdown structure rather than showing its marks', () => {
+    getProject.mockReturnValue(
+      of({
+        ...PROJECT,
+        description: '## How it works\n\nA **bold** claim and `some_code`.\n\n- first\n- second',
+      }),
+    );
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const description = (fixture.nativeElement as HTMLElement).querySelector('.description')!;
+    expect(description.querySelector('h2')?.textContent).toBe('How it works');
+    expect(description.querySelector('strong')?.textContent).toBe('bold');
+    expect(description.querySelector('code')?.textContent).toBe('some_code');
+    expect(Array.from(description.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
+      'first',
+      'second',
+    ]);
+    // That the marks are gone is a separate claim from the structure being right: a renderer that
+    // emitted both the element and its source syntax would satisfy every expectation above.
+    expect(description.textContent).not.toContain('**');
+    expect(description.textContent).not.toContain('##');
+  });
+
+  it('does not let a description inject markup', () => {
+    // Two layers are meant to stop this and either alone would: markdown-it runs with `html: false`
+    // so raw HTML is escaped into text, and Angular's [innerHTML] sanitizer strips whatever gets
+    // through. The assertion is deliberately about the DOM rather than the string -- "no <script>
+    // element exists here" is the property that matters, and it holds however the renderer chose
+    // to escape things.
+    getProject.mockReturnValue(
+      of({
+        ...PROJECT,
+        description: 'Before <script>window.pwned = true;</script> and <img src=x onerror=alert(1)>.',
+      }),
+    );
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const description = (fixture.nativeElement as HTMLElement).querySelector('.description')!;
+    // Which of these assertions is load-bearing, because it is not the obvious one. The
+    // `globalThis` check is near-vacuous: jsdom never executes a script inserted through
+    // `innerHTML`, so it passes even with a sanitizer bypass in place, and it is kept only as a
+    // statement of intent. `querySelector('script') === null` is real but is satisfied by Angular's
+    // sanitizer alone. The assertion that actually pins `html: false` is the one below about the
+    // tag surviving as *text* -- flip markdown-it to `html: true` and Angular still strips the
+    // element, so the DOM check stays green while that one goes red.
+    expect(description.querySelector('script')).toBeNull();
+    expect(description.querySelector('img')).toBeNull();
+    expect((globalThis as Record<string, unknown>)['pwned']).toBeUndefined();
+    // It survives as visible text rather than vanishing, so an admin who pastes HTML can see it
+    // was not interpreted instead of wondering where their content went.
+    expect(description.textContent).toContain('<script>');
   });
 
   it('does not describe gallery images as screenshots', () => {
@@ -151,6 +231,57 @@ describe('ProjectDetailComponent', () => {
     expect(alts).toEqual(['Equalizer, image 1 of 2', 'Equalizer, image 2 of 2']);
     for (const alt of alts) {
       expect(alt).not.toMatch(/screenshot|diagram|photo/i);
+    }
+  });
+
+  it('frames gallery images at the same ratio the list card frames them', () => {
+    // A cross-file agreement with nothing else holding it: `.card-media` in
+    // projects-list.component.scss and `.image-gallery img` here show the *same images*, so a
+    // viewer moving from the grid into a project sees them reframed if these drift. They were 4/3
+    // and 16/10 until #211 and nobody noticed, because no test looked and the two pages are never
+    // on screen together.
+    //
+    // Asserted as a parsed number rather than the string: a real browser serialises
+    // `aspect-ratio: 4 / 3` back as `'4 / 3'` and jsdom as `'4/3'`, so a literal compare pins a
+    // property of the test environment instead of the shape of the box.
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const image = (fixture.nativeElement as HTMLElement).querySelector('.image-gallery img')!;
+    const [width, height] = getComputedStyle(image)
+      .aspectRatio.split('/')
+      .map((part) => Number(part.trim()));
+    expect(width / height).toBeCloseTo(4 / 3, 5);
+    // `contain`, never `cover`: nothing here knows what any image *is*, which is the same reason
+    // its alt text claims nothing (#87). Cropping a diagram destroys it.
+    expect(getComputedStyle(image).objectFit).toBe('contain');
+  });
+
+  it('gives a project with one image the whole row instead of half of it', () => {
+    // `auto-fill` keeps the empty second track, so a lone image would otherwise sit in half the
+    // page with a gap beside it -- which is the state one of the two projects that have images is
+    // actually in. Pinned because it is invisible in the markup and lives entirely in a
+    // `:only-child` rule that a later refactor could drop without any other test noticing.
+    getProject.mockReturnValue(of({ ...PROJECT, images: ['https://images.example.com/one.png'] }));
+
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const items = (fixture.nativeElement as HTMLElement).querySelectorAll('.image-gallery li');
+    expect(items).toHaveLength(1);
+    expect(gridColumnOf(items[0])).toBe('1/-1');
+  });
+
+  it('does not stretch any one image when the project has several', () => {
+    // The counterpart, so the rule above cannot be widened into "every image spans the row" --
+    // which would look correct on the single-image project and wrong everywhere else.
+    const fixture = TestBed.createComponent(ProjectDetailComponent);
+    fixture.detectChanges();
+
+    const items = (fixture.nativeElement as HTMLElement).querySelectorAll('.image-gallery li');
+    expect(items.length).toBeGreaterThan(1);
+    for (const item of items) {
+      expect(gridColumnOf(item)).not.toBe('1/-1');
     }
   });
 
@@ -208,8 +339,8 @@ describe('ProjectDetailComponent', () => {
     const fixture = TestBed.createComponent(ProjectDetailComponent);
     fixture.detectChanges();
 
-    expect(document.title).toBe('My Site - Equalizer');
-    expect(seoContent('meta[property="og:title"]')).toBe('My Site - Equalizer');
+    expect(document.title).toBe('Krzysztof Tarka - Equalizer');
+    expect(seoContent('meta[property="og:title"]')).toBe('Krzysztof Tarka - Equalizer');
     expect(seoContent('meta[name="description"]')).toContain('A cross-platform, system-level audio');
     expect(seoContent('meta[property="og:description"]')).toBe(
       seoContent('meta[name="description"]'),
@@ -245,7 +376,7 @@ describe('ProjectDetailComponent', () => {
     expect(seoTagCount('meta[property="og:description"]')).toBe(1);
     expect(seoTagCount('meta[property="og:title"]')).toBe(1);
     expect(seoContent('meta[name="description"]')).toBe('A curve generator');
-    expect(document.title).toBe('My Site - CurveGen');
+    expect(document.title).toBe('Krzysztof Tarka - CurveGen');
   });
 
   it('falls back to the site description for a project with no description', () => {
@@ -257,7 +388,7 @@ describe('ProjectDetailComponent', () => {
     fixture.detectChanges();
 
     expect(seoContent('meta[name="description"]')).toBe(SITE_DESCRIPTION);
-    expect(document.title).toBe('My Site - Equalizer');
+    expect(document.title).toBe('Krzysztof Tarka - Equalizer');
   });
 
   it('does not produce broken markup for a description full of quotes and angle brackets', () => {
@@ -272,7 +403,7 @@ describe('ProjectDetailComponent', () => {
     fixture.detectChanges();
 
     expect(seoContent('meta[name="description"]')).toBe(nasty);
-    expect(document.title).toBe('My Site - A "quoted" & <angled> title');
+    expect(document.title).toBe('Krzysztof Tarka - A "quoted" & <angled> title');
     expect(document.querySelectorAll('script').length).toBe(scriptsBefore);
 
     const markup = seoTags('meta[name="description"]')[0].outerHTML;
@@ -393,7 +524,7 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     expect(seoContent('meta[name="robots"]')).toBeNull();
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
     // Still unambiguously the landing page, not a half-updated one.
-    expect(document.title).toBe('My Site - Projects');
+    expect(document.title).toBe('Krzysztof Tarka - Projects');
     expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
   });
 
@@ -404,8 +535,8 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
 
     resolve('p1', { title: 'Equalizer', description: 'A DSP project' });
 
-    expect(document.title).toBe('My Site - Projects');
-    expect(seoContent('meta[property="og:title"]')).toBe('My Site - Projects');
+    expect(document.title).toBe('Krzysztof Tarka - Projects');
+    expect(seoContent('meta[property="og:title"]')).toBe('Krzysztof Tarka - Projects');
     expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
     expect(seoContent('meta[property="og:description"]')).toBe(LANDING_DESCRIPTION);
   });
@@ -422,7 +553,7 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     resolve('b', { id: 'b', title: 'Bee', description: 'B description.' });
     resolve('a', { id: 'a', title: 'Ay', description: 'A description.' });
 
-    expect(document.title).toBe('My Site - Bee');
+    expect(document.title).toBe('Krzysztof Tarka - Bee');
     expect(seoContent('meta[name="description"]')).toBe('B description.');
     expect(seoTagCount('meta[name="description"]')).toBe(1);
   });
@@ -443,7 +574,7 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     resolve('p1', { title: 'Equalizer', description: 'A DSP project' });
 
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
-    expect(document.title).toBe('My Site - Equalizer');
+    expect(document.title).toBe('Krzysztof Tarka - Equalizer');
     expect(seoContent('meta[name="description"]')).toBe('A DSP project');
   });
 });

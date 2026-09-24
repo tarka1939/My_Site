@@ -45,6 +45,27 @@
       @if (descriptionError(); as message) {
         <p id="project-description-error" class="field-error" role="alert">{{ message }}</p>
       }
+
+      <!-- The Markdown preview (#206). Deliberately not a live region: it changes on every
+           keystroke, so announcing it would talk over the person typing. A screen reader user
+           reaches it the ordinary way instead -- it is a labelled region in the tab and landmark
+           order, immediately after the box it previews.
+
+           `aria-hidden` was the alternative and is wrong: the rendered structure (headings, lists)
+           is exactly what someone who cannot see the formatting most needs to check, so hiding it
+           would remove the preview from the audience that benefits most from having one. -->
+      <section class="markdown-preview" aria-labelledby="project-description-preview-label">
+        <!-- A <p>, not a heading. `aria-labelledby` accepts any element, and this names a
+             control's output rather than opening a section of the page -- so a heading here would
+             put a rung in the document outline that does not correspond to any structure. It would
+             also collide with the headings the description itself renders: `##` emits an <h2>. -->
+        <p id="project-description-preview-label" class="markdown-preview__label">Preview</p>
+        @if (descriptionPreview()) {
+          <div class="markdown-body" [innerHTML]="descriptionPreview()"></div>
+        } @else {
+          <p class="markdown-preview__empty">Nothing to preview yet.</p>
+        }
+      </section>
     </div>
 
     <div class="field">

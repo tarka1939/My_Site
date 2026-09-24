@@ -35,6 +35,21 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }
 
+    /**
+     * POST rather than {@code GET /password-reset/validate?token=...}: Cloudflare and the
+     * provider's nginx both log request URLs, so a query parameter would copy live reset tokens
+     * into two third parties' access logs. 204 on success -- there is nothing to say beyond
+     * "usable"; an invalid token is a 400 carrying a field error keyed "token", identical to the
+     * shape confirmPasswordReset rejects with.
+     */
+    @PostMapping("/password-reset/validate")
+    public ResponseEntity<Void> validatePasswordResetToken(
+        @Valid @RequestBody PasswordResetValidateBody request, HttpServletRequest httpRequest
+    ) {
+        passwordResetService.validateToken(request, httpRequest);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/password-reset")
     public ResponseEntity<Void> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmBody request) {
         passwordResetService.confirmReset(request);

@@ -2,9 +2,10 @@
 
 <header class="site-header">
   <nav class="site-nav" aria-label="Primary">
-    <a class="site-nav__brand" routerLink="/">My Site</a>
+    <a class="site-nav__brand" routerLink="/">Krzysztof Tarka</a>
     <ul>
       <li><a routerLink="/" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: true }">Projects</a></li>
+      <li><a routerLink="/about" routerLinkActive="is-active">About</a></li>
       <li><a routerLink="/contact" routerLinkActive="is-active">Contact</a></li>
       @if (auth.isLoggedIn()) {
         <li><a routerLink="/admin/projects" routerLinkActive="is-active">Admin</a></li>
@@ -21,7 +22,7 @@
 </main>
 
 <footer class="site-footer">
-  <p>&copy; {{ currentYear }} My Site. All rights reserved.</p>
+  <p>&copy; {{ currentYear }} Krzysztof Tarka. All rights reserved.</p>
 </footer>
 
 <app-notification-banner />

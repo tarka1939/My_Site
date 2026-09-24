@@ -32,6 +32,7 @@ import {
   groupFieldErrors,
   joinMessages,
 } from '../../../shared/form-errors/form-errors';
+import { renderMarkdown } from '../../../shared/markdown/markdown';
 import {
   PROJECT_PERIOD_MESSAGES,
   validateProjectPeriod,
@@ -191,6 +192,30 @@ export class AdminProjectFormComponent {
     startedOn: computed(() => this.serverError('startedOn')),
     completedOn: computed(() => this.periodError() ?? this.serverError('completedOn')),
   } satisfies Record<string, Signal<string | null>>;
+
+  /**
+   * The description preview (#206), rendered from what is in the box right now.
+   *
+   * `initialValue` is read off the control rather than hardcoded to `''` as a defensive default,
+   * so the preview cannot disagree with the box it previews at the moment it is created.
+   *
+   * An earlier version of this comment justified it by claiming `patchValue` does not emit
+   * `valueChanges`, which is false -- `FormGroup.patchValue` forwards `emitEvent` (undefined here)
+   * to each child and the control emits whenever it is not `false`. So the edit form would in fact
+   * populate the preview without this. The line stays because reading the live value is strictly
+   * more correct than assuming an empty one, but it is belt-and-braces, not the load-bearing thing
+   * the old comment described.
+   *
+   * Bound through `[innerHTML]`, which sanitizes -- the preview must go through exactly the same
+   * two layers as the public page, or it stops being a preview of what visitors will see. That is
+   * also why it calls the same renderMarkdown() rather than anything preview-specific: a second
+   * rendering path is a second thing to keep in agreement, and the whole point of a preview is
+   * that it agrees.
+   */
+  private readonly descriptionValue = toSignal(this.form.controls.description.valueChanges, {
+    initialValue: this.form.controls.description.value,
+  });
+  protected readonly descriptionPreview = computed(() => renderMarkdown(this.descriptionValue()));
 
   protected readonly titleError = this.scalarSlots.title;
   protected readonly descriptionError = this.scalarSlots.description;

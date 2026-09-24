@@ -27,6 +27,7 @@ import org.springframework.web.client.RestTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import io.github.tarka1939.mysite.TestPostgres;
 
 /**
  * The receiver end to end: real HTTP, the real Spring Security filter chain, a real Postgres.
@@ -49,7 +50,7 @@ class GithubWebhookIntegrationTest {
 
     @Container
     @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+    static PostgreSQLContainer postgres = TestPostgres.container();
 
     @LocalServerPort
     private int port;

@@ -16,7 +16,8 @@ is refused with 403, and the login limiter returns 429 on the sixth attempt.
 **Not done:** §6 (the admin password — #121, so nobody can log in yet), §7 (end-to-end
 verification, which begins by loading the Netlify site), and all of Part 1 (Netlify).
 
-Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4 and §4.8
+Sections corrected **after contact with the actual host** are marked as such — §4.2, §4.4, §4.7,
+§4.7a and §4.8
 each said something that turned out to be wrong, and the wrongness is left on the record rather than
 quietly replaced, because each one cost time and the reasoning behind it was plausible.
 
@@ -31,11 +32,11 @@ Re-verify the table before acting if this file has aged.
 ## 0. Three decisions only you can make
 
 Nothing below can start until these are settled. They are recorded in `docs/DECISIONS.md` as
-deferred to Phase 5. **Two of the three are now settled** — see the strikethroughs below and the ADR of 2026-09-03. The Netlify site name is reserved but the site is not yet created, which is why Part 1 is still outstanding.
+deferred to Phase 5. **Two of the three are now settled** — see the strikethroughs below and the ADR of 2026-09-03. The Netlify site name is reserved but the site is not yet created, which is why Part 1 is still outstanding. **(Superseded: the Netlify site is live — owner confirmed 2026-09-24.)**
 
 | Decision | Why it blocks | Notes |
 |---|---|---|
-| **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — the JVM plus Postgres will thrash. Pick a region near you, not near nothing. |
+| **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not — with no swap on this class of host the JVM plus Postgres does not thrash, it gets killed (§4.7a). Pick a region near you, not near nothing. |
 | **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled that day on `tarka1939.tojest.dev`, and **moved to `tarka1939.bieda.it` on 2026-09-03** — both provider domains, and the change cost only a redeploy, which is why `AGENT_LOG.md`'s 2026-09-02 entry names the older one. Check what your provider gives you *before* buying a domain — and if you do buy one, spend it on the frontend, where the URL is actually visible. |
 | **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** — the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. |
 
@@ -68,7 +69,7 @@ yourself — it changes only Part 2, step 3.
 | | Value |
 |---|---|
 | Backend public URL | `https://tarka1939.bieda.it` |
-| Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` — name settled, site not yet created |
+| Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` — live (owner confirmed 2026-09-24) |
 | Container app port | `8080` — Spring Boot's default, so no `SERVER_PORT` needed |
 | Host | Ubuntu 24.04 LTS, LXC, 2 GB RAM, 25 GB disk |
 | Postgres | 16.15, listening on `127.0.0.1:5432` only |
@@ -86,8 +87,9 @@ start without them.**
 | **`SPRING_PROFILES_ACTIVE`** | none | Must be `prod`. Without it none of the four below is read at all — they exist only in `application-prod.yml` — and the failure is a confusing one about a missing datasource rather than a missing variable |
 | **`JWT_SECRET`** | none | Must be ≥32 bytes. Deliberately has no default — the app refuses to boot rather than run on a guessable key |
 | `FRONTEND_URL` | `http://localhost:4200` | Used to build password-reset links. Set it to the Netlify URL or reset emails will point at localhost |
-| `RESEND_API_KEY` | empty | Empty is a *designed* no-op: password-reset emails are skipped with a warning rather than failing. Fine to leave unset at first |
+| `RESEND_API_KEY` | empty | Empty is a *designed* no-op: emails are skipped with a warning rather than failing. Fine to leave unset at first, but note it is no longer only about password reset — since #186 it also gates contact-form notification, which is an operational need rather than a demo |
 | `RESEND_FROM_ADDRESS` | `onboarding@resend.dev` | Only matters once `RESEND_API_KEY` is set |
+| `CONTACT_NOTIFICATION_EMAIL` | empty | #186. Where contact-form submissions are announced. Empty is a designed no-op — the message is still saved and still answered with 201, nobody is just told about it. A **malformed** value is not tolerated and the app refuses to start, because a typo'd address fails one silent notification at a time and reads as "nobody is writing in" |
 | `GITHUB_SYNC_ENABLED` | `false` | Leave off. Phase 7a is built but not meant to be live yet |
 | `GITHUB_WEBHOOK_SECRET` | empty | Only read when sync is enabled |
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
@@ -424,9 +426,9 @@ JWT_SECRET
 -rw------- 1 root root ... /etc/mysite/env
 ```
 
-#### `RESEND_API_KEY`, if and when you want the password-reset flow live
+#### `RESEND_API_KEY`, if and when you want email to actually leave the host
 
-Optional, and deliberately so: with the key unset the flow degrades to warn-and-skip, which is a
+Optional, and deliberately so: with the key unset every send degrades to warn-and-skip, which is a
 designed no-op rather than a broken state. Add it the same way as the others — the value never
 reaches a command line:
 
@@ -441,16 +443,24 @@ sudo systemctl restart mysite
 Add `RESEND_FROM_ADDRESS` too if you are sending from your own domain; it defaults to
 `onboarding@resend.dev`, which works for testing and is obviously not yours.
 
-**This key is not like the other two, and the difference matters.** A leaked `DB_PASSWORD` is
-useless to anyone who cannot reach `127.0.0.1:5432`; a leaked `JWT_SECRET` is useless without the
-running app. **A leaked Resend key works from anywhere on the internet** and lets the holder send
-mail as your sender identity — phishing that passes SPF and DKIM because it genuinely is you. It is
-the one credential here whose blast radius leaves this host, which makes it the one where the
-handling above is doing real work rather than hygiene. Rotate it in Resend's dashboard if it ever
-reaches a terminal you paste from; revocation there is immediate and free.
+**These three keys do not have the same blast radius, and an earlier version of this paragraph got
+that backwards.** A leaked `DB_PASSWORD` is useless to anyone who cannot reach `127.0.0.1:5432` —
+i.e. to anyone who does not already have the host. **`JWT_SECRET` and `RESEND_API_KEY` both work
+from anywhere on the internet.** The first is an HS256 *symmetric* signing key, so a holder mints an
+admin token offline and presents it to the public API, never calling `/auth/login` and never meeting
+its rate limiter. The second sends mail through this project's Resend account — today from
+`onboarding@resend.dev`, and *as* you with valid SPF and DKIM if a sender domain is ever verified.
 
-See `docs/DECISIONS.md`, 2026-09-03, for why the reset flow exists at all — it is a showcase
-feature rather than an admin tool, and that changes where this key most belongs.
+So **two** of the three are where the handling above does real work rather than hygiene, not one.
+Rotate either on suspicion: `JWT_SECRET` per §8, which costs only live sessions, and the Resend key
+in its dashboard, where revocation is immediate and free. This paragraph previously said a leaked
+`JWT_SECRET` was "useless without the running app", which is the opposite of true and is corrected
+in `docs/DECISIONS.md`, 2026-09-03, clause 2a.
+
+**Two flows depend on this key now, not one.** Password reset is a showcase feature rather than an
+admin tool, which is what made the key sandbox-shaped. **Contact-form notification (#186) is not** —
+it is how the owner learns a real person wrote in, and it needs a destination as well, which is the
+next subsection. See `docs/DECISIONS.md`, 2026-09-03, "Contact-form notification".
 
 48 random bytes is 64 base64 characters, comfortably over the 32-byte minimum `SecurityConfig`
 enforces for HS256, and the base64 alphabet contains nothing systemd's `EnvironmentFile` parser
@@ -479,6 +489,24 @@ have one step than three.
 > rotate, at minimum scrub the history: `history -d` the offending entry, or truncate the file and
 > `history -c` — remembering that the running shell rewrites it on exit, so do it in *every* session
 > that saw the password.
+
+#### `CONTACT_NOTIFICATION_EMAIL`, so you find out someone wrote in
+
+Not a secret — it is your own address — so it needs none of the history-suppressing care above,
+and it goes in its own step rather than alongside the two keys, which is why it is down here:
+
+```bash
+sudoedit /etc/mysite/env    # add: CONTACT_NOTIFICATION_EMAIL=you@yourdomain.example
+sudo systemctl restart mysite
+```
+
+**Get it right the first time.** A malformed value is refused at startup rather than tolerated, so
+a typo here means the service fails to come back up with an `IllegalStateException` naming
+`app.contact.notification-email` — deliberate, and much easier to diagnose than notifications that
+silently never arrive. Check `journalctl -u mysite -n 50` if the restart does not settle.
+
+Leaving it unset is a supported state: messages are saved and answered with `201` regardless, and
+`/admin/messages` still shows them. It just means nobody is told.
 
 ### 4.7 Run it under systemd
 
@@ -527,19 +555,150 @@ curl -s localhost:8080/actuator/health
 Nothing else. `show-details: when-authorized` means an anonymous caller sees only the status, which
 is why it is safe to expose through the provider's proxy in 4.8.
 
-`-Xmx512m` is deliberate. The JVM's default maximum heap is a quarter of RAM, which on a 2 GB box has
-it competing with Postgres; many providers also ship no swap, and the OOM killer takes Postgres as
-readily as the JVM. If `free -h` shows none, add some:
+`-Xmx512m` is deliberate, and it is load-bearing for a reason that is not the obvious one — on
+this host the JVM believes it has 120 GiB and would size its heap for a 30 GiB ceiling without it.
+§4.7a has the measurement. Do not drop the flag, and do not run the jar by hand without it.
+
+If it does not come up, the likely causes are: a missing variable from 4.6 (the app names which),
+the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
+rather than an exhaustive one.
+
+### 4.7a Memory pressure — swap is not available here, and `-Xmx` is doing more than it looks
+
+**Corrected 2026-09-04, after measuring the host.** An earlier version of this section told you to
+create a swapfile. You cannot, on this host. A later version then claimed `-Xmx512m` was mostly
+decorative and that an OOM kill leaves no trace. Both of those were wrong too, and the measurements
+below are why. This section is now written from output rather than from what is usually true of a
+Linux box.
+
+**Check what kind of host you are on first**, because it decides whether the usual answer even
+exists:
+
+```bash
+systemd-detect-virt; free -h
+```
+
+Semicolon, not `&&`: `systemd-detect-virt` exits **non-zero when it finds no virtualization**, so on
+bare metal `&&` would swallow the `free -h` that is half the point.
+
+#### Swap is unavailable, not merely unhelpful
+
+**If that says `lxc` (or `openvz`), you cannot enable swap and should not try.** An LXC container,
+privileged or not, cannot enable its own — swap is a host-level resource. On an unprivileged one the
+kernel refuses outright, which is what happened here:
+
+```
+$ sudo swapon /swapfile
+swapon: /swapfile: swapon failed: Operation not permitted
+```
+
+The trap is that everything before the last step *succeeds*: the file is created, `mkswap` works, the
+`fstab` line is accepted. You end up with a gigabyte of disk doing nothing and an `fstab` entry that
+looks like it worked. If you already made one: `sudo rm /swapfile`, drop the `fstab` line.
+
+On a real VM the usual three commands do work. **Untested here, for the reason above:**
 
 ```bash
 sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h && swapon --show      # verify -- do not assume the fstab line means it is active
 ```
 
-If it does not come up, the likely causes are: a missing variable from 4.6 (the app names which),
-the Java version, or the schema grant from 4.3. Untested, so treat that list as a starting point
-rather than an exhaustive one.
+#### `-Xmx512m` is not a round number, and not the reason an earlier draft gave
+
+The unit sets `-Xmx512m`. A previous version of this section justified it as "the JVM defaults to a
+quarter of RAM, which on a 2 GB box competes with Postgres". The arithmetic is right and the premise
+is wrong — and on this host it is wrong by a factor of sixty. Measured, as `deploy`, inside the
+container:
+
+```
+$ java -XX:+PrintFlagsFinal -version | grep -E "MaxHeapSize|MaxRAMPercentage"
+   size_t MaxHeapSize     = 32210157568    {product} {ergonomic}
+   double MaxRAMPercentage = 25.000000     {product} {default}
+```
+
+**32210157568 bytes is almost exactly 30 GiB** (2 MiB under). At the default 25%, the JVM believes this machine has **120 GiB**.
+It has 2. Container memory detection is not working here — that much *is* measured, and it is the
+part that matters. **The explanation below is not measured**, and is marked as such because the
+rest of this section is: the most plausible account is that `lxcfs` virtualises `/proc/meminfo`,
+so `free` reads 2 GiB correctly, while the JVM's own container support looks for a cgroup memory
+limit, finds none, and falls back to the physical host's figure. `cat /sys/fs/cgroup/memory.max`
+on the host would settle it; nobody has run it.
+
+So the flag is not trimming a default that was nearly right. **Without it the JVM would size its heap
+against a ceiling fifteen times the size of the box**, and would grow into it until earlyoom
+intervened. Do not remove it, and do not "simplify" it to match a general guide that assumes
+container awareness works.
+
+This also means: if you ever run the jar by hand to debug something, `java -jar mysite.jar` **without
+`-Xmx`** is not the same program the unit runs. Pass it.
+
+#### What the provider runs, and why it matters more than swap
+
+Read this even if you skipped the rest. On this host:
+
+```
+/usr/bin/earlyoom -r 3600 -m 15,8 --avoid (^|/)(sshd|systemd|init|bash)$ --prefer ^(node|python|php|java|chrome)$
+```
+
+`--prefer` adds a large badness penalty to any process named `java`, and the JVM is also the largest
+single consumer here, so under pressure it is selected first in practice. (`--prefer` biases the
+ranking; it does not impose an order, and a second `java` or `node` process would compete.)
+
+`-m 15,8` set the minimum available memory as a percentage of **total** RAM, and earlyoom acts
+when `MemAvailable` falls below it. On 2048 MiB total:
+
+| threshold | signal | what it does to the service |
+|---|---|---|
+| 15% ≈ **307 MiB** | `SIGTERM` | the JVM runs shutdown hooks and exits **143** |
+| 8% ≈ **164 MiB** | `SIGKILL` | the JVM dies outright, `signal=KILL` |
+
+**The two produce opposite symptoms, and an earlier draft only described one.** The unit carries
+`SuccessExitStatus=143` and `Restart=on-failure`, so systemd treats 143 as a *clean* exit and does
+**not** restart. The common case — a `SIGTERM` at 15% — therefore looks like the service stopping
+dead and staying stopped, with `systemctl status` reporting `Result: success` and nothing in the
+application log explaining why it shut down. That is a far nastier diagnosis than a restart loop, and
+it is the one you are most likely to meet. Only the `SIGKILL` case produces the restart-every-few-
+minutes pattern.
+
+#### The kill does leave a trace — read earlyoom's own log
+
+An earlier draft said the kill was invisible because `journalctl -k` is empty in a container. That
+reasoning does not hold: `journalctl -k` reads the *kernel* ring buffer, where the *kernel's* OOM
+killer logs. **earlyoom is a userspace daemon** — it polls `MemAvailable`, sends the signal itself,
+and writes to the journal like any other service:
+
+```bash
+journalctl -t earlyoom --since -1d | tail -20
+```
+
+Its `-r 3600` flag means it writes a memory report every hour even when nothing is killed, so this
+command also tells you the log is reachable at all. Real output from this deployment:
+
+```
+Sep 03 19:07:00 lee159 earlyoom[248]: mem avail: 1543 of 2048 MiB (75.37%), swap free: 0 of 0 MiB (0.00%)
+```
+
+#### Watch `available`, not `free`
+
+`free -h` prints both and they differ a lot on a box with page cache. earlyoom watches
+**`available`**. On this deployment:
+
+```
+               total        used        free      shared  buff/cache   available
+Mem:           2.0Gi       505Mi       481Mi        27Mi       1.1Gi       1.5Gi
+Swap:             0B          0B          0B
+```
+
+The `free` column reads **481 MiB**, which looks alarmingly close to the 307 MiB trigger. The number
+that matters is `available` at **1.5 GiB**, roughly five times the threshold. Reading the wrong
+column here is how a comfortable box looks like a failing one.
+
+For a sense of scale: earlyoom's hourly reports show `mem avail` sitting at 1977 MiB before the
+backend starts and 1547 MiB after, so **the application's real footprint is about 430 MiB** —
+comfortably inside its 512 MiB heap cap plus overhead. If that figure climbs toward the 307 MiB
+margin, lower `-Xmx` before earlyoom decides for you.
 
 ### 4.8 Exposing it to the internet
 
@@ -712,9 +871,11 @@ IFS= read -rsp 'New admin password: ' ADMPW; echo
 ```
 
 ```bash
+# ADMPW comes from the read -rsp prompt in the block above -- never typed here.
+# Replace the <...> email with a recovery address you have never published -- see below.
 { printf "SET log_statement = 'none'; SET log_min_duration_statement = -1;\n"
   printf "UPDATE admin_user SET password_hash = crypt('%s', gen_salt('bf',10)), email = '%s' WHERE username = 'admin';\n" \
-    "${ADMPW//\'/\'\'}" "recovery-address-you-have-never-published@example.com"
+    "${ADMPW//\'/\'\'}" "<your-unpublished-recovery-address>"
 } | sudo -u postgres psql -d mysite
 unset ADMPW
 ```
@@ -736,6 +897,9 @@ and cost one line. They are themselves logged, harmlessly.
 endpoint deliberately returns 202 whether or not an address is registered (`ifPresent` with no
 `else`), so an unpublished address stays genuinely unknown — which matters, because an attacker
 chooses the weaker of bcrypt and your mailbox, and knowing which mailbox is most of that work.
+It cannot be a *secret* — a maintainer address sits in most of this repository's commits — but
+withholding which mailbox is real is still work an attacker has to do. See the security-posture
+ADR in `docs/DECISIONS.md` (2026-09-03), clause 5.
 
 Setting the email in the same statement matters: `V2` seeds a placeholder, and with `RESEND_API_KEY`
 unset there is no working password-reset path, so losing this password means another manual `UPDATE`.
@@ -745,22 +909,48 @@ unset there is no working password-reset path, so losing this password means ano
 Then verify from your machine, not from the server, so you are testing the real path:
 
 ```bash
-curl -s -X POST https://tarka1939.bieda.it/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"<the password>"}'
+IFS= read -rsp 'Password to test: ' ADMPW; echo
+ADMPW="$ADMPW" python3 -c 'import json,os,sys; json.dump({"username":"admin","password":os.environ["ADMPW"]}, sys.stdout)' \
+  | curl -sS -o /dev/null -w '%{http_code}\n' -X POST https://tarka1939.bieda.it/api/v1/auth/login \
+      -H 'Content-Type: application/json' --data @-
+unset ADMPW
 ```
 
-A `200` with a token proves DNS, TLS, the provider's proxy, the app, the database and the hash. It proves nothing
-about CORS or the frontend build — that is what §7 is for. A `401` means the hash did not take, and
+**The password never reaches `argv`, and the token never reaches your scrollback.** Four things
+are deliberate:
+
+**Not `-d '{..."password":"..."}'`,** which an earlier version of this section used. A value passed
+in `-d` is a command-line argument: it lands in shell history and is visible in `ps` to every user
+on the machine you run it from.
+
+**Not `export ADMPW`,** which an earlier version of *this fix* used. `ADMPW="$ADMPW" python3 ...` is
+a one-shot assignment scoped to that single process. An `export` puts the password in the
+interactive shell's own environment, where every later child inherits it and any subsequent `env`
+or verbose build prints it — and if the pipeline errors or you Ctrl-C, the `unset` never runs and it
+stays there. The variable itself survives an interrupt either way — `read` set it — so run
+`unset ADMPW` yourself if you Ctrl-C; what the one-shot form removes is every later child
+inheriting it. No other unprivileged user can read a process environment (`/proc/<pid>/environ` is
+owner-only on Linux; on Windows it is readable only within your own user context), but your own
+scrollback is exactly the exposure this runbook is trying to avoid.
+
+**`-o /dev/null -w '%{http_code}\n'`, so only the status code prints.** `-sS` silences the progress
+meter, not the body — and the body of a successful login is a bearer token valid for an hour. The
+prose below reasons only about `200`/`401`/`429`, so printing the token buys nothing and puts admin
+credential material into the scrollback that `docs/DECISIONS.md`'s 2026-09-03 clause 3 prohibits.
+That is not hypothetical here: pasted terminal output is the disclosure route that actually
+occurred during this deployment.
+
+**`python3` builds the JSON rather than `printf`,** because the password has to be *JSON*-escaped
+and a
+hand-rolled version is where this goes wrong: a password containing `"` or `\` produces a malformed
+body and a `400` or `401` that looks exactly like a bad password, sending you to debug a hash that
+is fine. `json.dump` handles every case, including quotes, backslashes and non-ASCII. On Windows the
+interpreter is usually `python` rather than `python3`.
+
+A `200` proves DNS, TLS, the provider's proxy, the app, the database and the hash — and the token
+it would otherwise have printed stays out of your scrollback. It proves nothing about CORS or the
+frontend build — that is what §7 is for. A `401` means the hash did not take, and
 remember from 4.8 that the **sixth** attempt returns 429 rather than 401.
-
-**Set the email while you are in there.** `V2` seeds a placeholder, and with `RESEND_API_KEY` unset
-there is no working password-reset path — so if you lose this password, another manual `UPDATE` is
-the only way back in:
-
-```sql
-UPDATE admin_user SET email = '<your real address>' WHERE username = 'admin';
-```
 
 Note that `#121` is properly fixed by changing how the admin is provisioned, not by this manual step — the
 manual step just gets you a working site today.
@@ -771,7 +961,8 @@ In a browser, not with curl, because [a test cannot see appearance](../CLAUDE.md
 
 1. Load the Netlify site. Projects should render — that proves CORS and the API URL.
 2. Deep-link to `/projects/<id>` and refresh. Proves `_redirects` (#39).
-3. Submit the contact form. Proves a write path and the rate limiter.
+3. Submit the contact form. Proves a write path and the rate limiter — but **not** that the
+   notification email sent, which is deliberately best-effort and after-commit. §7c is that check.
 4. Log in at `/admin`, edit a project, log out.
 5. `sudo journalctl -u mysite -n 100` — confirm no stack traces, and that **no secret was logged**.
 
@@ -797,12 +988,20 @@ scp -P 10159 target/*.jar deploy@<vps-host>:/home/deploy/mysite-new.jar
 test -s /home/deploy/mysite-new.jar \
   && mv /home/deploy/mysite.jar /home/deploy/mysite-prev.jar \
   && mv /home/deploy/mysite-new.jar /home/deploy/mysite.jar \
-  && sudo systemctl restart mysite && sleep 5 && curl -s localhost:8080/actuator/health
+  && sudo systemctl restart mysite \
+  && { ok=; for i in $(seq 30); do curl -sf localhost:8080/actuator/health && { ok=1; break; }; sleep 2; done
+       [ "$ok" ] || { echo 'health never passed after 60s' >&2; false; }; }
 ```
 
 Chained deliberately: if the `scp` never landed — wrong port, full disk, a typo — an unchained
 first `mv` would rename the working jar away, the second would fail, and `systemctl restart`
 would then run against **no jar at all**.
+
+**Poll rather than sleep.** An earlier version waited a fixed 5 seconds and then curled once, which
+on this host reports *nothing at all*: startup takes about 26 seconds, so `curl` hit a closed port
+and `-s` swallowed the error. The operator is left staring at a silent prompt with no way to tell
+success from failure — reported from a live run. The loop above exits the moment it is healthy and
+keeps waiting if it is not; `Ctrl-C` if it never comes.
 
 Expect `{"groups":["liveness","readiness"],"status":"UP"}`. If not, roll back — keeping the
 failed build, because rolling straight over it destroys the thing you were about to diagnose:
@@ -819,6 +1018,161 @@ configured to read. That is deliberate (#168), and it is the most likely cause o
 boots fine one build and not the next. The journal names the property.
 
 The frontend needs nothing — Netlify rebuilds on every push to `main`.
+
+---
+
+## 7b. Reading the logs
+
+Added 2026-09-04, because `journalctl` appeared in three scattered places in this document — during
+migrations, in the verify checklist, and in the rollback path — and nowhere that told you the unit
+name or that there is no log file to `tail`.
+
+The service runs as the systemd unit **`mysite`**, and Spring Boot writes to stdout, so everything
+goes to journald. There is nothing under `/var/log` to open.
+
+```bash
+sudo journalctl -u mysite -f                  # follow live; the one to keep open during a redeploy
+sudo journalctl -u mysite -n 200 --no-pager   # last 200 lines
+sudo journalctl -u mysite -p err --since today
+sudo journalctl -u mysite --since "10 min ago" | grep -iE "exception|caused by"
+```
+
+`--no-pager` matters: without it you land in `less` and need `q` to get out, which is the same trap
+as 4.8's foreground listener.
+
+For state rather than output — running or dead, uptime, restart count, and the last few lines:
+
+```bash
+systemctl status mysite
+```
+
+Other logs on this host:
+
+```bash
+sudo journalctl -t earlyoom --since -1d       # the OOM daemon -- see 4.7a
+sudo journalctl -u postgresql -n 50
+```
+
+**`journalctl -k` is expected to return nothing on this host** — an LXC container has no kernel
+ring buffer of its own. (A general fact about containers, not something measured here.) It is also why 4.7a reads earlyoom's own journal instead.
+
+
+#### Structured (JSON) logs, when there is something to read them
+
+The application can emit ECS-format JSON instead of the human-readable lines above. It is **off by
+default and deliberately so**: the only reader on this host is `journalctl` and a person, and JSON
+would make every command in this section worse in exchange for a benefit nobody can collect until a
+log shipper exists.
+
+When one does, it is one variable and a restart — no redeploy:
+
+```bash
+sudoedit /etc/mysite/env    # add: STRUCTURED_LOGS=ecs
+sudo systemctl restart mysite
+sudo journalctl -u mysite -n 5    # lines should now start with {"@timestamp":
+```
+
+`ecs`, `logstash` and `gelf` are the accepted values; Boot 4.1 ships all three natively, so this
+needs no dependency. Unset or empty restores the normal pattern.
+
+**It changes format, not content.** The contact and password-reset paths log a message UUID and
+never visitor data, at any level; `ResendEmailClient` logs a reset link at DEBUG under a comment
+explaining why that is safe, and DEBUG is off in production. A formatter cannot reintroduce a field
+nobody logs.
+
+Verified both ways before shipping: with `STRUCTURED_LOGS=ecs` the console emits
+`{"@timestamp":...,"log":{"level":"INFO",...},"service":{"name":"mysite-backend"}}`; with it empty,
+zero JSON lines and the usual `2026-09-04T19:59:34.915+02:00  INFO ... Started MySiteApplication`.
+
+#### Check whether the journal survives a reboot
+
+In a container the journal is often **volatile** — held in RAM and lost on restart, which is the
+worst possible property for diagnosing a crash after the fact:
+
+```bash
+journalctl --disk-usage; ls -d /var/log/journal 2>/dev/null || echo "VOLATILE -- logs die on reboot"
+```
+
+If it reports volatile, `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald`
+makes it persistent. Worth knowing before you need the history rather than after.
+
+---
+
+## 7c. Prove the contact notification actually sends
+
+Added 2026-09-04. Everything about this feature is tested as *strings* — the HTML escaping, the
+header sanitising, the truncation. **Nothing in the test suite has ever sent an email**, and a
+mock cannot tell you whether Resend accepts the message or how a real mail client renders it. This
+section is that one send.
+
+Do it once, after 4.6's two variables are set and the service has restarted.
+
+### Confirm both values are actually loaded
+
+Without printing the key:
+
+```bash
+sudo grep -c '^RESEND_API_KEY=' /etc/mysite/env        # expect 1
+sudo grep '^CONTACT_NOTIFICATION_EMAIL=' /etc/mysite/env
+sudo systemctl show mysite -p ExecMainStartTimestamp   # confirm it restarted after you edited
+```
+
+`grep -c` on the key rather than printing it: it is the one credential here that works from
+anywhere on the internet (§4.6), so it does not belong in your scrollback.
+
+### Send one, from the deployed site
+
+Use the real form rather than `curl`, because the point is the whole path:
+
+1. Open `https://<your-site>.netlify.app/contact`
+2. Fill it in with a name you will recognise and submit
+3. Expect the form to be replaced by *"Thanks for reaching out — I'll get back to you soon."*
+
+**That acknowledgement does not mean the email sent.** It means the message was saved. Notification
+is deliberately best-effort and after-commit: if Resend is down the visitor still gets their `201`,
+which is the whole design. So check the journal:
+
+```bash
+sudo journalctl -u mysite --since -5m | grep -i "contact notification"
+```
+
+| What you see | What it means |
+|---|---|
+| `Contact notification email sent for message <uuid>` | Resend accepted it. Now go look in your inbox. |
+| `app.contact.notification-email not configured` | `CONTACT_NOTIFICATION_EMAIL` is unset — 4.6 |
+| `RESEND_API_KEY not configured -- skipping contact notification email` | the key is unset — 4.6 |
+| `Failed to send contact notification email for message <uuid>` | Resend rejected or timed out; the line carries the cause, and the message is still saved |
+| nothing at all | the listener never ran — check the message reached the database at all via `/admin/messages` |
+
+Note the UUID is all that identifies the message in the logs. **Nothing about the visitor is logged
+at any level**, deliberately, so you cannot recover the name or address from the journal — read them
+in the admin panel.
+
+### What should arrive
+
+- **Subject:** `New contact message from <name>`, with the name truncated to 100 characters
+- **From:** `onboarding@resend.dev` unless you set `RESEND_FROM_ADDRESS`. Resend's shared sender —
+  expect it to land in spam the first time, and mark it as not-spam so the next one does not
+- **Body:** a short line, the sender's name and address, then their message in a `<blockquote>`
+
+### Then send a second one, with a non-ASCII name
+
+This is the half a test genuinely cannot cover. Use something like **`Łukasz 😀 Kowalski`**, or any
+name with accents, non-Latin script or an emoji.
+
+What you are checking is that the **subject line** survives. It is the only value that becomes a
+MIME header, and headers are ASCII — a mail system is supposed to encode the rest (RFC 2047), but
+whether Resend does it correctly is not something this repository can assert. If the subject arrives
+as mojibake or with the name missing, that is a real defect and worth an issue; the body is UTF-8
+and should be fine regardless.
+
+### Clean up
+
+Both test messages are real rows. Delete them from `/admin/messages` once you are satisfied.
+
+One quirk worth knowing before you do: the contact form's rate limit counts rows in the database, so
+deleting messages refunds the quota. Harmless here, and the reason you can send a second test
+immediately after the first.
 
 ---
 
@@ -851,6 +1205,7 @@ The frontend needs nothing — Netlify rebuilds on every push to `main`.
 | Part 1 | #74 (epic), #39 |
 | Part 2 | #75 (epic), #43, #47 |
 | 4.5 / 4.6 | #41, #46 |
+| 7c | #186 |
 | Part 3 | #44, #89, #168 |
 | Part 4 | #121 |
 | Not covered | #38, #42, #45, #48 |

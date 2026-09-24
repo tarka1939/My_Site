@@ -25,6 +25,8 @@ import { PasswordResetConfirmBody } from '../model/passwordResetConfirmBody';
 // @ts-ignore
 import { PasswordResetRequestBody } from '../model/passwordResetRequestBody';
 // @ts-ignore
+import { PasswordResetValidateBody } from '../model/passwordResetValidateBody';
+// @ts-ignore
 import { ProblemDetail } from '../model/problemDetail';
 // @ts-ignore
 import { ValidationProblemDetail } from '../model/validationProblemDetail';
@@ -37,7 +39,8 @@ import {
     AuthServiceInterface,
     ConfirmPasswordResetRequestParams,
     LoginRequestParams,
-    RequestPasswordResetRequestParams
+    RequestPasswordResetRequestParams,
+    ValidatePasswordResetTokenRequestParams
 } from './auth.serviceInterface';
 
 
@@ -246,6 +249,74 @@ export class AuthService extends BaseService implements AuthServiceInterface {
             {
                 context: localVarHttpContext,
                 body: passwordResetRequestBody,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Check whether a password-reset token is still usable
+     * Public. Answers whether a reset token is real, unused and unexpired, so the reset page can refuse to render a password form for a link that is already spent instead of letting the visitor compose a new password and only then discover the link is dead.  **A read, never a consume.** Unlike &#x60;POST /auth/password-reset&#x60;, this never sets &#x60;used_at&#x60;. Calling it any number of times leaves the token exactly as usable as it was -- which is the whole point, since the reset page calls it on load.  **POST with the token in the body, deliberately, not &#x60;GET ?token&#x3D;&#x60;.** The deployed backend sits behind Cloudflare and the provider\&#39;s nginx, both of which log request URLs, so a query string would write live reset tokens into two third parties\&#39; access logs. A body does not.  **Every failure looks the same.** Expired-but-unused, used-but-unexpired, never-issued and malformed tokens all return the same 400; the shape of the failure never says which. This endpoint is deliberately *not* enumeration-safe in the way &#x60;POST /auth/password-reset-request&#x60; is -- that one always answers 202 because its caller supplies an email address it may not own, whereas this caller already holds the token, and telling them whether their own link still works discloses nothing they could not learn by submitting the reset form itself. It is rate-limited per requester IP under its own bucket regardless, because it is a cheaper validity oracle than that form.  A token can still expire between this call and the reset submission, so a client must handle the submit path\&#39;s rejection too rather than treating a 204 here as a guarantee. 
+     * @endpoint post /auth/password-reset/validate
+     * @param requestParameters
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public validatePasswordResetToken(requestParameters: ValidatePasswordResetTokenRequestParams, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<any>;
+    public validatePasswordResetToken(requestParameters: ValidatePasswordResetTokenRequestParams, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
+    public validatePasswordResetToken(requestParameters: ValidatePasswordResetTokenRequestParams, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
+    public validatePasswordResetToken(requestParameters: ValidatePasswordResetTokenRequestParams, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        const passwordResetValidateBody = requestParameters?.passwordResetValidateBody;
+        if (passwordResetValidateBody === null || passwordResetValidateBody === undefined) {
+            throw new Error('Required parameter passwordResetValidateBody was null or undefined when calling validatePasswordResetToken.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/problem+json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        // to determine the Content-Type header
+        const consumes: string[] = [
+            'application/json'
+        ];
+        const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes);
+        if (httpContentTypeSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected);
+        }
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/auth/password-reset/validate`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<any>('post', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                body: passwordResetValidateBody,
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

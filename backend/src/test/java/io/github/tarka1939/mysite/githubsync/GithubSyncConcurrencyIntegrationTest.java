@@ -26,6 +26,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import io.github.tarka1939.mysite.TestPostgres;
 
 /**
  * The check-then-act race, tested where it can actually be observed.
@@ -64,7 +65,7 @@ class GithubSyncConcurrencyIntegrationTest {
 
     @Container
     @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+    static PostgreSQLContainer postgres = TestPostgres.container();
 
     @Autowired
     private GithubSyncService githubSyncService;

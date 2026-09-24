@@ -15,6 +15,7 @@ import { LoginRequest } from '../model/models';
 import { LoginResponse } from '../model/models';
 import { PasswordResetConfirmBody } from '../model/models';
 import { PasswordResetRequestBody } from '../model/models';
+import { PasswordResetValidateBody } from '../model/models';
 import { ProblemDetail } from '../model/models';
 import { ValidationProblemDetail } from '../model/models';
 
@@ -32,6 +33,10 @@ export interface LoginRequestParams {
 
 export interface RequestPasswordResetRequestParams {
     passwordResetRequestBody: PasswordResetRequestBody;
+}
+
+export interface ValidatePasswordResetTokenRequestParams {
+    passwordResetValidateBody: PasswordResetValidateBody;
 }
 
 
@@ -62,5 +67,13 @@ export interface AuthServiceInterface {
 * @param requestParameters
      */
     requestPasswordReset(requestParameters: RequestPasswordResetRequestParams, extraHttpRequestParams?: any): Observable<{}>;
+
+    /**
+     * Check whether a password-reset token is still usable
+     * Public. Answers whether a reset token is real, unused and unexpired, so the reset page can refuse to render a password form for a link that is already spent instead of letting the visitor compose a new password and only then discover the link is dead.  **A read, never a consume.** Unlike &#x60;POST /auth/password-reset&#x60;, this never sets &#x60;used_at&#x60;. Calling it any number of times leaves the token exactly as usable as it was -- which is the whole point, since the reset page calls it on load.  **POST with the token in the body, deliberately, not &#x60;GET ?token&#x3D;&#x60;.** The deployed backend sits behind Cloudflare and the provider\&#39;s nginx, both of which log request URLs, so a query string would write live reset tokens into two third parties\&#39; access logs. A body does not.  **Every failure looks the same.** Expired-but-unused, used-but-unexpired, never-issued and malformed tokens all return the same 400; the shape of the failure never says which. This endpoint is deliberately *not* enumeration-safe in the way &#x60;POST /auth/password-reset-request&#x60; is -- that one always answers 202 because its caller supplies an email address it may not own, whereas this caller already holds the token, and telling them whether their own link still works discloses nothing they could not learn by submitting the reset form itself. It is rate-limited per requester IP under its own bucket regardless, because it is a cheaper validity oracle than that form.  A token can still expire between this call and the reset submission, so a client must handle the submit path\&#39;s rejection too rather than treating a 204 here as a guarantee. 
+     * @endpoint post /auth/password-reset/validate
+* @param requestParameters
+     */
+    validatePasswordResetToken(requestParameters: ValidatePasswordResetTokenRequestParams, extraHttpRequestParams?: any): Observable<{}>;
 
 }

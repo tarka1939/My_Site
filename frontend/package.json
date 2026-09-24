@@ -19,6 +19,7 @@
     "@angular/forms": "^21.2.0",
     "@angular/platform-browser": "^21.2.0",
     "@angular/router": "^21.2.0",
+    "markdown-it": "^15.0.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
@@ -27,6 +28,7 @@
     "@angular/cli": "^21.2.19",
     "@angular/compiler-cli": "^21.2.0",
     "@openapitools/openapi-generator-cli": "^2.40.1",
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.13.3",
     "jsdom": "^28.0.0",
     "prettier": "^3.8.1",

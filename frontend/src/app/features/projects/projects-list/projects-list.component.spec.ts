@@ -7,7 +7,26 @@ import { clickOn, renderComponent } from '../../../../testing/zoneless';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
 import { CARD_EXCERPT_MAX_CHARS } from '../../../shared/description-excerpt/description-excerpt';
+import {
+  ARTWORK_HEIGHT,
+  ARTWORK_WIDTH,
+} from '../../../shared/project-artwork/project-artwork';
 import { ProjectsListComponent } from './projects-list.component';
+
+/**
+ * `.card-media`'s aspect ratio as a number.
+ *
+ * Parsed rather than string-compared because the two engines disagree on formatting: a real browser
+ * reports `aspect-ratio: 4 / 3` back as `'4 / 3'` and jsdom as `'4/3'`. Asserting either literal
+ * pins a serialisation detail of the test environment instead of the shape of the slot, and would
+ * break on a jsdom upgrade that changed nothing about the site.
+ */
+function slotRatio(slot: Element): number {
+  const [width, height] = getComputedStyle(slot)
+    .aspectRatio.split('/')
+    .map((part) => Number(part.trim()));
+  return width / height;
+}
 
 const PROJECT = {
   id: 'p1',
@@ -383,11 +402,15 @@ describe('ProjectsListComponent', () => {
     expect(link.textContent!.trim()).toBe(PROJECT.title);
   });
 
-  it('gives every card one media slot of a fixed height, whatever the slot holds', async () => {
+  it('gives every card one media slot of a fixed shape, whatever the slot holds', async () => {
     // The uniform-row assertion available without layout: jsdom measures nothing, so what can be
-    // checked is that the slot is on every card, holds exactly one thing, and takes its height
+    // checked is that the slot is on every card, holds exactly one thing, and takes its size
     // from the stylesheet rather than from its content. The rendered heights themselves need a
     // browser -- see CLAUDE.md, "A test cannot see appearance".
+    //
+    // This asserted `height: 10rem` until #205. A ratio holds the same property -- the grid's
+    // columns are equal-width, so equal-ratio slots are equal-height -- while letting the slot
+    // grow with the card instead of staying pinned to 160px on a desktop.
     listProjects.mockReturnValue(pageOf([PROJECT, PROJECT_WITH_IMAGE, OTHER_PROJECT_WITH_IMAGE]));
 
     const fixture = await renderComponent(ProjectsListComponent);
@@ -398,22 +421,43 @@ describe('ProjectsListComponent', () => {
       const slots = card.querySelectorAll('.card-media');
       expect(slots.length).toBe(1);
       expect(slots[0].children.length).toBe(1);
-      const style = getComputedStyle(slots[0]);
-      expect(style.height).toBe('10rem');
-      expect(style.overflow).toBe('hidden');
+      expect(slotRatio(slots[0])).toBeCloseTo(4 / 3, 5);
+      expect(getComputedStyle(slots[0]).overflow).toBe('hidden');
     }
   });
 
-  it('contains a card image rather than scaling it up to fill the slot', async () => {
-    // The regression this pins: `object-fit: cover` on a fixed-height slot enlarges anything
-    // smaller than the box. One of the two real images is a 187x150 SVG diagram in a 160px slot,
-    // and it was being blown up past its natural size. scale-down never enlarges.
+  it('letterboxes a card image into the slot rather than cropping it', async () => {
+    // What this pins is that the fit never *crops*: these are diagrams and screenshots pasted by an
+    // admin, and `cover` would cut the edges off content nothing here can interpret -- the same
+    // reason the detail gallery letterboxes and the alt text claims nothing (#87).
+    //
+    // It asserted `scale-down` until #205, on the reasoning that a "187x150" SVG would otherwise be
+    // "blown up past its natural size". That number is not a resolution: the file has a viewBox and
+    // no width/height, so 187x150 is the browser's default replaced-element box fitted to its
+    // ratio. The art is vector and has no natural size to exceed, and at the larger slot
+    // `scale-down` would have capped it there while every other image grew.
     listProjects.mockReturnValue(pageOf([PROJECT_WITH_IMAGE]));
 
     const fixture = await renderComponent(ProjectsListComponent);
 
     const style = getComputedStyle((fixture.nativeElement as HTMLElement).querySelector('img')!);
-    expect(style.objectFit).toBe('scale-down');
+    expect(style.objectFit).toBe('contain');
+  });
+
+  it('draws its generated artwork at the same ratio as the slot that stretches it', async () => {
+    // A cross-file coupling with nothing else holding it. The canvas bitmap is a fixed size that
+    // CSS stretches to fill the media slot, so the two ratios have to agree or the artwork is
+    // distorted -- and a soft gradient hides distortion well enough that the previous 0.81
+    // horizontal squeeze went unnoticed until it was measured in a browser.
+    //
+    // This is the defect shape the project keeps hitting: a value copied into two files that drift
+    // because nothing asserts they agree (#178's hostname, #182's canonical origin, #200's Postgres
+    // version). Comments on both sides say so; this is what fails if someone changes one.
+    listProjects.mockReturnValue(pageOf([PROJECT]));
+
+    const fixture = await renderComponent(ProjectsListComponent);
+
+    expect(slotRatio(mediaSlots(fixture)[0])).toBeCloseTo(ARTWORK_WIDTH / ARTWORK_HEIGHT, 5);
   });
 
   // --- An image that does not arrive (#156) -----------------------------------------------------
@@ -479,7 +523,7 @@ describe('ProjectsListComponent', () => {
   });
 
   it('keeps the media slot the same shape after a card falls back', async () => {
-    // Rows are uniform because the slot's height comes from the stylesheet and not from what is in
+    // Rows are uniform because the slot's shape comes from the stylesheet and not from what is in
     // it, so a swap that happens after load must not touch that. jsdom lays nothing out, so this
     // asserts the structural cause: the same slot element, still holding exactly one thing, still
     // sized by the rule, with the replacement filling it exactly as the image did.
@@ -488,7 +532,7 @@ describe('ProjectsListComponent', () => {
     const fixture = await renderComponent(ProjectsListComponent);
     const card = (fixture.nativeElement as HTMLElement).querySelector('.project-card')!;
     const slot = mediaSlots(fixture)[0];
-    expect(getComputedStyle(slot).height).toBe('10rem');
+    expect(slotRatio(slot)).toBeCloseTo(4 / 3, 5);
     expect(slot.children.length).toBe(1);
     expect(getComputedStyle(slot.children[0]).height).toBe('100%');
 
@@ -500,11 +544,12 @@ describe('ProjectsListComponent', () => {
     // hid the broken <img> and stacked artwork over it, both leave "unchanged" trivially true.
     expect(slot.children.length).toBe(1);
     expect(slot.children[0].tagName.toLowerCase()).toBe('app-project-artwork');
-    const style = getComputedStyle(slot);
-    expect(style.height).toBe('10rem');
-    expect(style.overflow).toBe('hidden');
-    // No pixel height introduced anywhere on the way: one would stop tracking the rem-based rule
-    // the moment a visitor raises their font size, and rows would go ragged only for them.
+    expect(slotRatio(slot)).toBeCloseTo(4 / 3, 5);
+    expect(getComputedStyle(slot).overflow).toBe('hidden');
+    // No pixel sizing introduced anywhere on the way. The slot's height is now derived from its
+    // width, and that width comes from a `minmax(20rem, 1fr)` column -- so it still tracks a
+    // visitor's font size, and a pixel value slipped in here would still make rows go ragged for
+    // them alone.
     expect(getComputedStyle(slot.children[0]).height).toBe('100%');
   });
 

@@ -1,6 +1,8 @@
-# Autonomous Workflow (Phase 4 tail through Phase 6)
+# Autonomous Workflow (Phase 4 tail to the end of the project)
 
-This document specifies how the project runs from this point through the end of Phase 6: one persistent "Senior Dev" session the user (product owner) talks to directly, which coordinates and dispatches phase work to fresh implementation agents against `PROJECT_TODO.md`, dispatches PR review to independent sessions, and escalates only on genuine blockers. This supersedes the per-phase kickoff-prompt workflow used for Phases 1-3 — those worked, but required the user to hand-write a new prompt every phase. This is the standing replacement.
+This document specifies how the project runs from this point to the end of the project — originally scoped through Phase 6, extended 2026-09-24 to Phases 7 and 8, where it was already in use: one persistent "Senior Dev" session the user (product owner) talks to directly, which coordinates and dispatches phase work to fresh implementation agents against `PROJECT_TODO.md`, dispatches PR review to independent sessions, and escalates only on genuine blockers. This supersedes the per-phase kickoff-prompt workflow used for Phases 1-3 — those worked, but required the user to hand-write a new prompt every phase. This is the standing replacement.
+
+**Long-term direction (2026-09-24), approached incrementally rather than designed up front:** the user handling only secrets/credentials and decisions — the escalation list below. When something else still needs the user's hands, that is a candidate improvement to note, not a failure of the workflow.
 
 Confirmed 2026-08-02. See `docs/DECISIONS.md` for the ADR.
 
@@ -15,6 +17,8 @@ Confirmed 2026-08-02. See `docs/DECISIONS.md` for the ADR.
 **Who launches it (clarified 2026-08-08):** the Senior Dev launches the reviewer itself, in its own detached `git worktree`. This has been this document's position since it was written — see "dispatches PR review to independent sessions" in the opening paragraph — and is spelled out here only because a session kickoff prompt on 2026-08-07 instructed otherwise (hand a neutral prompt to the user, who starts the session themselves), out of a concern that the Senior Dev would leak implementation framing into a review meant to be blind. That concern is legitimate, but the leak risk lives in the *prompt text*, not in who presses go: a dispatched agent starts with a fresh context window and inherits nothing else. So the neutrality constraint sits on the prompt — PR pointer plus the standing docs, and nothing about why an approach was taken.
 
 **On Copilot (deviated 2026-08-07):** Copilot's review was originally a required second layer alongside this one, and it earned that place — it independently caught real defects (missing validation, a race condition, an exception-naming collision) across Phases 1-3. It is currently **unavailable**: its quota is exhausted until 2026-08-25, and it responds to review requests with a quota error rather than a review. PRs #81, #82 and #83 were merged on the independent review alone. This is a deliberate deviation, not an oversight — stalling the project for two and a half weeks was the worse trade. Restore Copilot as a required layer once quota returns; a quota error is emphatically **not** the same claim as "the automated reviewer found nothing."
+
+**Removed from the merge gate (2026-09-24):** quota returned, but at this project's PR volume — PRs plus review-fix pushes — it runs out within days of each reset, and the owner chose not to run a second paid reviewer alongside Claude in this project. Copilot is now **optional**: request it when quota allows and treat its findings like any other bot's, but a PR never waits on it. This does not weaken the gate's fail-closed rule, because the gate no longer names Copilot at all: the independent review is the one mandatory layer, and it still has no fallback.
 
 **The user (product owner).** Answers genuine spec-ambiguity questions when they come up, approves anything in the escalation list below, and does the one-time Phase 5 pre-flight setup that only a human can do (account creation, payment, credentials).
 
@@ -84,9 +88,9 @@ server listening.
 
 1. Senior Dev opens a PR, following `CLAUDE.md`'s PR conventions (closing keywords, correct milestone, project board status).
 2. The Senior Dev dispatches a fresh session to review the diff cold, in its own detached worktree — no context beyond the PR itself and the standing docs. Findings get posted as PR review comments, same shape as the Copilot review pattern already established.
-3. GitHub Copilot's automated review also runs — **suspended until 2026-08-25 while its quota is exhausted; see the note above.**
+3. GitHub Copilot's automated review may also run when quota allows — **optional since 2026-09-24, never a gate; see the note above.** (Suspended 2026-08-07 to 2026-08-25 for quota, before that.)
 4. Senior Dev addresses valid findings, verifying each one rather than accepting or rejecting on the spot (per the pattern in `AGENT_LOG.md`'s Copilot-review entries — one finding across the project so far has turned out to be factually wrong, and blind acceptance would have made the code worse, not better).
-5. Only merges once **the independent review has actually run and its findings are addressed** — that layer is mandatory and has no "unavailable" fallback. Copilot's review is additionally required whenever Copilot is able to run; its suspension above is a named, dated exception, not a general licence. Note the phrasing deliberately: an earlier draft of this line said "every *available* layer", which fails open — if nothing is available, nothing is addressed, and the gate passes. A merge gate has to fail closed for the same reason `CLAUDE.md`'s security-defaults bullet and the Definition of Done require it of security config: absence of a check is not a passing check.
+5. Only merges once **the independent review has actually run and its findings are addressed** — that layer is mandatory and has no "unavailable" fallback. Copilot's review was additionally required until 2026-09-24 and is now optional (see above) — so the gate is exactly one named layer, not "whatever is available". Note the phrasing deliberately: an earlier draft of this line said "every *available* layer", which fails open — if nothing is available, nothing is addressed, and the gate passes. A merge gate has to fail closed for the same reason `CLAUDE.md`'s security-defaults bullet and the Definition of Done require it of security config: absence of a check is not a passing check.
 
 ## When a dispatched agent dies mid-task
 
@@ -94,11 +98,13 @@ See `CLAUDE.md`'s "When a dispatched agent dies mid-task" for the operative rule
 
 ## Reporting
 
-Status updates should read like a senior dev's standup to a product owner, not a commit log: what shipped, what's in progress, what's blocked and on whom, and any open questions — see the `engineering:standup` skill for the format if useful. Prefer this over silently working through the whole remaining scope and surfacing one giant diff at the end.
+Status updates should read like a senior dev's standup to a product owner, not a commit log: what shipped, what's in progress, what's blocked and on whom, and any open questions. Prefer this over silently working through the whole remaining scope and surfacing one giant diff at the end.
 
 ## Phase 5 pre-flight checklist (human-only setup)
 
-Phase 5 touches real infrastructure — the risk profile is different from Phases 1-3, which were pure code. Before Phase 5 can run with the same autonomy as earlier phases, the user needs to provide:
+Phase 5 touches real infrastructure — the risk profile is different from Phases 1-3, which were pure code. **Status (2026-09-24): done** — both halves are live. The deploy-pipeline setup in `docs/DEPLOY_PIPELINE_SETUP.md` is done too (2026-09-24): both pipelines are live on `main`. Kept below as the record of what it took.
+
+Before Phase 5 can run with the same autonomy as earlier phases, the user needs to provide:
 
 - A Netlify account with the site already created (gives the `*.netlify.app` subdomain needed for CORS config and `FRONTEND_URL`).
 - A VPS provider chosen, account created, and a server provisioned, with SSH access set up as a deploy key.

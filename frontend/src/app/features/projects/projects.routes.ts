@@ -10,7 +10,7 @@ export const PROJECTS_ROUTES: Routes = [
     // landing page never open it.
     path: '',
     component: ProjectsListComponent,
-    title: 'My Site - Projects',
+    title: 'Krzysztof Tarka - Projects',
     data: {
       description:
         'Every project in the portfolio, filterable by tag — software, audio and signal-processing work, each with links, images and the period it was built.',
@@ -20,7 +20,7 @@ export const PROJECTS_ROUTES: Routes = [
     path: 'projects/:id',
     loadComponent: () =>
       import('./project-detail/project-detail.component').then((m) => m.ProjectDetailComponent),
-    title: 'My Site - Project',
+    title: 'Krzysztof Tarka - Project',
     // Placeholders, both of them. The real title and description are the project's own, and the
     // project is not loaded until after this navigation completes -- ProjectDetailComponent
     // replaces both once the API responds. These are what a crawler sees if that request fails,

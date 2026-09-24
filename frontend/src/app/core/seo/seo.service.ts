@@ -4,7 +4,7 @@ import { NOINDEX, SITE_DESCRIPTION, SITE_TITLE, toMetaDescription } from './site
 
 /** What a route (or a loaded page) declares about itself. Every field is optional. */
 export interface PageMeta {
-  /** Full document title, e.g. `'My Site - Contact'`. Falls back to {@link SITE_TITLE}. */
+  /** Full document title, e.g. `'Krzysztof Tarka - Contact'`. Falls back to {@link SITE_TITLE}. */
   readonly title?: string;
   /** Raw description text -- truncated and whitespace-collapsed here, not by the caller. */
   readonly description?: string | null;
@@ -69,7 +69,7 @@ export class SeoService {
   /**
    * Sets the title, and mirrors it into `og:title`/`twitter:title`.
    *
-   * The share titles reuse the document title verbatim, including its `"My Site - "` prefix, rather
+   * The share titles reuse the document title verbatim, including its `"Krzysztof Tarka - "` prefix, rather
    * than carrying a separate short form. `og:site_name` does technically make the prefix redundant
    * in a preview card, but a second source of truth for a page's name is a thing to keep in sync
    * for a cosmetic gain, and previews that show the site name inline are common enough to look

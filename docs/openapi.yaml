@@ -50,6 +50,8 @@ tags:
     description: Public contact form submission + admin-gated message management
   - name: Auth
     description: Admin login
+  - name: About
+    description: The single "About" page -- public read, admin-gated replace (#213)
   - name: Webhooks
     description: |
       Inbound deliveries from third-party systems. Not called by this API's frontend, and not
@@ -397,6 +399,53 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /about:
+    get:
+      operationId: getAboutPage
+      summary: The About page
+      description: |
+        Always answers 200. The row is created by the migration that adds the table (`V8`), so
+        there is no state in which the page does not exist -- an unwritten page is one with an
+        empty `body`, and the SPA renders a notice for that rather than a blank. That is what lets
+        the frontend have no "not created yet" branch and the admin form no "create" mode.
+      tags: [About]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AboutPage'
+    put:
+      operationId: updateAboutPage
+      summary: Replace the About page
+      description: |
+        Full replacement of the body, idempotent. There is deliberately no partial update, no
+        draft state and no history: one page, one author, and every construct not built here is
+        one fewer to secure. A singleton rather than a slug-keyed pages resource for the same
+        reason -- see docs/DECISIONS.md, 2026-09-20.
+      tags: [About]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AboutPageWriteRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AboutPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /auth/login:
     post:
       operationId: login
@@ -470,6 +519,57 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblemDetail'
+
+  /auth/password-reset/validate:
+    post:
+      operationId: validatePasswordResetToken
+      summary: Check whether a password-reset token is still usable
+      description: |
+        Public. Answers whether a reset token is real, unused and unexpired, so the reset page can
+        refuse to render a password form for a link that is already spent instead of letting the
+        visitor compose a new password and only then discover the link is dead.
+
+        **A read, never a consume.** Unlike `POST /auth/password-reset`, this never sets `used_at`.
+        Calling it any number of times leaves the token exactly as usable as it was -- which is the
+        whole point, since the reset page calls it on load.
+
+        **POST with the token in the body, deliberately, not `GET ?token=`.** The deployed backend
+        sits behind Cloudflare and the provider's nginx, both of which log request URLs, so a query
+        string would write live reset tokens into two third parties' access logs. A body does not.
+
+        **Every failure looks the same.** Expired-but-unused, used-but-unexpired, never-issued and
+        malformed tokens all return the same 400; the shape of the failure never says which. This
+        endpoint is deliberately *not* enumeration-safe in the way `POST
+        /auth/password-reset-request` is -- that one always answers 202 because its caller supplies
+        an email address it may not own, whereas this caller already holds the token, and telling
+        them whether their own link still works discloses nothing they could not learn by
+        submitting the reset form itself. It is rate-limited per requester IP under its own bucket
+        regardless, because it is a cheaper validity oracle than that form.
+
+        A token can still expire between this call and the reset submission, so a client must
+        handle the submit path's rejection too rather than treating a 204 here as a guarantee.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetValidateBody'
+      responses:
+        '204':
+          description: The token is real, unused and unexpired -- the reset form may be shown. No body.
+        '400':
+          description: |
+            The token is invalid, expired, already used, or absent from the request. Carries a field
+            error keyed `token`, matching `POST /auth/password-reset`'s rejection shape so a client
+            can branch on both identically.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetail'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
   /webhooks/github:
     post:
@@ -685,6 +785,35 @@ components:
           maxLength: 500
           example: https://github.com/tarka1939/Equalizer
 
+    AboutPage:
+      type: object
+      required: [body, updatedAt]
+      properties:
+        body:
+          type: string
+          maxLength: 20000
+          description: |
+            Markdown, with the same subset and the same two-layer rendering as a project's
+            `description` (#206): the API stores and returns the source verbatim and never renders
+            it. May be empty -- that is the unwritten state, not an error.
+
+            The limit is four times a project description's because this is the one long-form page
+            on the site; it is still a hard cap, counted on the source with marks included.
+        updatedAt:
+          type: string
+          format: date-time
+          description: |
+            When the body was last replaced. Set by the migration on creation, so it is never null.
+
+    AboutPageWriteRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          maxLength: 20000
+          description: Markdown. An empty string is valid and clears the page.
+
     Tag:
       type: object
       required: [id, name]
@@ -713,6 +842,19 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
+          description: |
+            Markdown (#206). Rendered by the SPA; the API stores and returns the source verbatim
+            and does not render, sanitize or validate it as Markdown -- text that is not valid
+            Markdown is simply text, which is what makes this backward compatible with every
+            description written before the change.
+
+            The supported subset is headings, bold/italic, inline and fenced code, links, bullet
+            and numbered lists, and blockquotes. Raw HTML is **escaped, not rendered**; images and
+            tables are disabled. A client that renders this field must not trust it as HTML --
+            see frontend/src/app/shared/markdown/markdown.ts for the two layers the SPA uses.
+
+            `maxLength` counts the source, marks included, so heavily formatted text carries fewer
+            visible characters than plain text of the same length.
         links:
           type: array
           maxItems: 10
@@ -825,6 +967,19 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
+          description: |
+            Markdown (#206). Rendered by the SPA; the API stores and returns the source verbatim
+            and does not render, sanitize or validate it as Markdown -- text that is not valid
+            Markdown is simply text, which is what makes this backward compatible with every
+            description written before the change.
+
+            The supported subset is headings, bold/italic, inline and fenced code, links, bullet
+            and numbered lists, and blockquotes. Raw HTML is **escaped, not rendered**; images and
+            tables are disabled. A client that renders this field must not trust it as HTML --
+            see frontend/src/app/shared/markdown/markdown.ts for the two layers the SPA uses.
+
+            `maxLength` counts the source, marks included, so heavily formatted text carries fewer
+            visible characters than plain text of the same length.
         links:
           type: array
           maxItems: 10
@@ -1026,6 +1181,17 @@ components:
           type: string
           format: password
           minLength: 8
+
+    PasswordResetValidateBody:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: |
+            The raw reset token from the emailed link (compared against the stored hash
+            server-side). Carried in the body rather than as a query parameter so it never reaches
+            a proxy or CDN access log.
 
     GithubWebhookAck:
       type: object

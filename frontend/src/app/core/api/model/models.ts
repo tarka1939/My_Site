@@ -1,3 +1,5 @@
+export * from './aboutPage';
+export * from './aboutPageWriteRequest';
 export * from './contactMessage';
 export * from './contactMessageAck';
 export * from './contactMessagePageResponse';
@@ -9,6 +11,7 @@ export * from './loginResponse';
 export * from './pageMeta';
 export * from './passwordResetConfirmBody';
 export * from './passwordResetRequestBody';
+export * from './passwordResetValidateBody';
 export * from './problemDetail';
 export * from './project';
 export * from './projectPageResponse';

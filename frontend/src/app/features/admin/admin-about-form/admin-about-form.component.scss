@@ -1,0 +1,51 @@
+// The same field styling as admin-project-form.component.scss, copied rather than shared: the two
+// forms have never been refactored onto a common stylesheet and doing that inside a feature would
+// be a second change riding on the first. The preview frame and rendered body are global
+// (.markdown-preview and .markdown-body in src/styles.scss) for the reason given there.
+//
+// Wider than the project form's 36rem because this is the one long-form editor on the site, and a
+// preview of prose is judged at something near the width it will be read at.
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 48rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+label {
+  font-weight: var(--weight-emphasis);
+}
+
+textarea {
+  padding: 0.5rem;
+  border: 1px solid var(--color-text-muted);
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-mono);
+  line-height: 1.5;
+}
+
+.field-error {
+  color: var(--color-error);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.field-hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}

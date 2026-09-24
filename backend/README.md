@@ -1,22 +1,27 @@
 # /backend
 
-Spring Boot 4.1.0 app (Maven, JDK 25). Phase 1 (backend foundation) is scaffolded — see
-`PROJECT_TODO.md` for the phase plan and root `CLAUDE.md` → Commands for build/run/test.
+Spring Boot 4.1.0 app (Maven, JDK 25). See `PROJECT_TODO.md` for the phase plan and root
+`CLAUDE.md` → Commands for build/run/test.
 
 ## Status
 
-Phase 1 scope only. `project/` and `contact/` are the initial package-by-feature modules,
-enforced by Spring Modulith (`ModularityTests` runs `ApplicationModules.verify()`). The
-`project/` package has a deliberately minimal **create-only** vertical slice
-(`POST /api/v1/projects`) to demonstrate the controller → service → repository → DTO
-layering and the `ProjectCreatedEvent` publish/listen example — full CRUD (list/pagination/
-filtering, update, delete) is Phase 2, not built here. `contact/` has only the entity +
-repository for the same reason.
+Package-by-feature under `io.github.tarka1939.mysite`, with boundaries enforced by Spring Modulith
+(`ModularityTests` runs `ApplicationModules.verify()`):
 
-Verified end-to-end: `mvn test` runs unit tests, Spring Modulith verification, and a
-Testcontainers integration test against real Postgres (Flyway migration included). The app
-has also been booted manually against a real Postgres instance and exercised via
-`POST /api/v1/projects` and `/actuator/health`.
+| Package | Endpoints (`/api/v1/...`) |
+|---|---|
+| `project/` | `projects` (public list/detail; admin create/update/delete), `admin/projects` (drafts included), `tags` |
+| `contact/` | `contact` (public, rate-limited), `contact-messages` (admin) |
+| `auth/` | `auth/login`, `auth/password-reset-request`, `auth/password-reset/validate`, `auth/password-reset` |
+| `about/` | `about` (public GET, admin PUT) |
+| `githubsync/` | `webhooks/github` — Phase 7a, off unless `GITHUB_SYNC_ENABLED=true` |
+
+Cross-cutting pieces (security config, the exception handler, the shared rate limiter, client-IP
+resolution behind proxies, the async executor, the Resend client) live in the root package.
+Schema is Flyway-only, `src/main/resources/db/migration`.
+
+`mvn test` runs unit tests, Spring Modulith verification, and Testcontainers integration tests
+against real Postgres — those need a running Docker daemon, and fail rather than skip without one.
 
 See `CLAUDE.md` (repo root) for the locked-in architecture conventions and `AGENT_LOG.md`
-for the judgment calls made while scaffolding this.
+for the judgment calls made while building it.

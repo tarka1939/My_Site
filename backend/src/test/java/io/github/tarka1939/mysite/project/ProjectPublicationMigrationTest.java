@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import io.github.tarka1939.mysite.TestPostgres;
 
 /**
  * The one test in this suite that is about a deploy rather than about behaviour.
@@ -36,7 +37,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 class ProjectPublicationMigrationTest {
 
     @Container
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+    static PostgreSQLContainer postgres = TestPostgres.container();
 
     /**
      * The dangerous line. A project that existed before V7 is on the live site, and must still

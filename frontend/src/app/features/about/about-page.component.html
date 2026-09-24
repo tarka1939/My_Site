@@ -1,0 +1,17 @@
+<h1>About</h1>
+
+@if (loading()) {
+  <p role="status">Loading&hellip;</p>
+} @else if (loadError(); as message) {
+  <p role="alert">{{ message }}</p>
+} @else if (isEmpty()) {
+  <!-- The unwritten state. Said plainly rather than left blank, so a visitor who lands here from
+       the nav or a search result knows the page is real and simply has nothing on it yet. -->
+  <p class="about-empty">This page hasn't been written yet.</p>
+} @else {
+  <!-- [innerHTML] runs Angular's sanitizer; the string is never marked trusted. Block element,
+       not a <p>: the renderer emits its own paragraphs and headings, and a <p> around them is
+       invalid markup the browser silently restructures. .markdown-body is global in styles.scss
+       because component styles never reach [innerHTML] content. -->
+  <div class="about-body markdown-body" [innerHTML]="bodyHtml()"></div>
+}

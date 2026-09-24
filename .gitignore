@@ -35,3 +35,4 @@ Thumbs.db
 # rather than the one that has been run against a real password.
 /set-admin-password.ps1
 /run-seed.ps1
+/run-seed.sh

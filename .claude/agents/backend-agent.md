@@ -14,7 +14,7 @@ Before starting, read the parts that bear on your task, **not these files end to
 Hard constraints from `docs/DECISIONS.md` — locked decisions, not suggestions. Ask before deviating from any of them:
 
 - Maven (not Gradle), JDK 25
-- Package-by-feature (`project/`, `contact/`, later `analytics/`, `githubsync/`, `agentlog/`, `dspdemo/`) + Spring Modulith, enforced via an `ApplicationModules.verify()` test
+- Package-by-feature (`project/`, `contact/`, `auth/`, `about/`, `githubsync/`; later `analytics/`, `agentlog/`, `dspdemo/`) + Spring Modulith, enforced via an `ApplicationModules.verify()` test
 - PostgreSQL + Flyway migrations only — never `hibernate.ddl-auto=update`
 - UUID primary keys everywhere
 - DTOs at the controller boundary — never return JPA entities directly from controllers

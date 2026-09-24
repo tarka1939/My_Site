@@ -187,9 +187,9 @@ Loopback targets are allowed. **Anything else needs two independent keys:**
 
 1. The hostname must appear in `APPROVED_DEPLOYMENT_HOSTS`, a committed constant in
    `locality.mjs` — so pointing this at a real site is a reviewed code change, not something
-   whoever is typing can decide. **That list is currently empty**, because Phase 5 is paused and
-   no VPS provider has been chosen; today, no remote target can run under any combination of
-   arguments and environment.
+   whoever is typing can decide. **It currently holds one host, `tarka1939.bieda.it` — the live
+   backend.** So a run with `SEED_ALLOW_REMOTE_HOST=tarka1939.bieda.it` *will* write to
+   production; the copy it writes is still not signed off (see the top of this file).
 2. The run must set `SEED_ALLOW_REMOTE_HOST` to that same hostname, so a host committed for a
    future deploy cannot quietly become someone's default local target.
 

@@ -1,0 +1,133 @@
+# Runs both test suites on every pull request. Issue #193, item 1 of docs/CI_PLAN.md.
+#
+# Deliberately does not deploy anything. Deploying is #45 and #38, and separating them is the
+# point: this workflow needs no secrets and has no deploy target, so it cannot break production
+# and can be merged on its own.
+#
+# Until this existed, every test run in this repository happened because a person remembered to
+# run one.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+# Least privilege: this workflow reads the code and writes nothing.
+permissions:
+  contents: read
+
+# A second push to the same PR makes the first run irrelevant. Pushes to dev/main are not
+# cancelled -- there the run is the record of whether that commit was green.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # Thirteen test files use Testcontainers against postgres:17-alpine. `@Testcontainers` here
+      # is NOT set to disabledWithoutDocker, so a runner without Docker fails the suite rather
+      # than skipping it -- which is the behaviour we want, because a silently skipped
+      # integration suite is indistinguishable from a passing one. This step proves Docker is
+      # present before the tests need it, so that failure mode is named rather than inferred from
+      # a confusing container error.
+      - name: Confirm Docker is available for Testcontainers
+        run: docker info > /dev/null
+
+      # -B for non-interactive batch output. NOT -q: that suppresses the "Tests run:" summary
+      # line, which is the record. A count derived from target/surefire-reports instead of read
+      # from Maven has already been wrong in this project once, by 22 tests.
+      - name: Run backend tests
+        working-directory: backend
+        run: mvn -B test
+
+  frontend:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci`, not `npm install`: it installs exactly the lockfile and fails if the lockfile
+      # and package.json disagree, which is what a CI install should do. Without an install step
+      # at all, `ng` does not exist and the failure reads as a broken test rather than a missing
+      # dependency -- a confusion that has cost time in this project twice.
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+  api-client-in-sync:
+    name: Generated API client matches the contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The generator shells out to a Java process, so this job needs both toolchains.
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Regenerate the client from docs/openapi.yaml
+        working-directory: frontend
+        run: npm run generate:api
+
+      # The committed client must already match the contract. This encodes CLAUDE.md's rule, and
+      # the exact form matters:
+      #
+      #   - not `git status --porcelain`, which gives a false positive on Windows line endings
+      #   - not `git diff --numstat`, which compares the working tree to the INDEX and is therefore
+      #     blind to a newly generated file -- exactly the shape of a stale client after a schema
+      #     is added
+      #
+      # Staging first normalises line endings away and makes new files visible at once.
+      #
+      # This rule exists because PR #129 changed two description strings, merged on the correct
+      # reasoning that no generated *type* could change, and left the client stale anyway: the
+      # generator inlines summary and description into the client's JSDoc.
+      - name: Fail if the committed client is stale
+        run: |
+          git add -A
+          if [ -n "$(git diff --cached --numstat)" ]; then
+            echo "The generated API client does not match docs/openapi.yaml." >&2
+            echo "Run 'cd frontend && npm run generate:api' and commit the result." >&2
+            echo >&2
+            git diff --cached --stat >&2
+            exit 1
+          fi
+          echo "Generated client is in sync with the contract."

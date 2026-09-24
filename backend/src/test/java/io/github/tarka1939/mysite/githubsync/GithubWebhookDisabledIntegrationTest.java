@@ -23,6 +23,7 @@ import org.springframework.web.client.RestTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import io.github.tarka1939.mysite.TestPostgres;
 
 import javax.sql.DataSource;
 
@@ -44,7 +45,7 @@ class GithubWebhookDisabledIntegrationTest {
 
     @Container
     @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+    static PostgreSQLContainer postgres = TestPostgres.container();
 
     @LocalServerPort
     private int port;

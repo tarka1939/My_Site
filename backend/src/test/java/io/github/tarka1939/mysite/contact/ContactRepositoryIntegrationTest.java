@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import io.github.tarka1939.mysite.TestPostgres;
 
 import io.github.tarka1939.mysite.PageResponse;
 import io.github.tarka1939.mysite.RateLimitExceededException;
@@ -38,7 +39,7 @@ class ContactRepositoryIntegrationTest {
 
     @Container
     @ServiceConnection
-    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
+    static PostgreSQLContainer postgres = TestPostgres.container();
 
     @Autowired
     private ContactService contactService;

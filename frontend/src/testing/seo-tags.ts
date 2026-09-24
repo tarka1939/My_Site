@@ -90,7 +90,7 @@ export function seedStaticSeoTags(description = 'STATIC SITE DESCRIPTION'): void
     ['property', 'og:site_name', SITE_NAME],
     ['property', 'og:title', SITE_TITLE],
     ['property', 'og:description', description],
-    ['property', 'og:url', 'https://REPLACE-WITH-CANONICAL-ORIGIN.invalid/'],
+    ['property', 'og:url', 'https://krzysztof-tarka.netlify.app/'],
     ['name', 'twitter:card', 'summary'],
     ['name', 'twitter:title', SITE_TITLE],
     ['name', 'twitter:description', description],

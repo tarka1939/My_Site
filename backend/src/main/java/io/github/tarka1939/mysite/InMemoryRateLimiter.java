@@ -25,8 +25,10 @@ import org.springframework.stereotype.Component;
  * <h2>Key contract: one window per key</h2>
  * A given key must always be passed the same {@code window}. This is not a new constraint
  * introduced by eviction — it has always held: calling one key with a short window prunes away
- * hits that a longer-window call on the same key was still counting. Both current callers hold
- * to it by namespacing their keys ({@code "login:"}, {@code "password-reset:"}).
+ * hits that a longer-window call on the same key was still counting. All three current callers
+ * hold to it by namespacing their keys ({@code "login:"}, {@code "password-reset:"},
+ * {@code "password-reset-validate:"}), and since every key is a prefix plus a fixed-length
+ * SHA-256 hex hash, keys built from different prefixes differ in length and cannot collide.
  *
  * <h2>Eviction (issue #78)</h2>
  * A key that is never queried again — a one-time visitor — used to sit in the map for the
@@ -66,9 +68,10 @@ import org.springframework.stereotype.Component;
 public class InMemoryRateLimiter {
 
     /**
-     * Entries tolerated before a write sweeps. Sized so the two real callers (per-IP login and
-     * password-reset buckets on a solo portfolio site) never reach it in normal operation; it
-     * exists to cap a flood of one-shot keys, not to tune steady-state behaviour.
+     * Entries tolerated before a write sweeps. Sized so the real callers (per-IP login,
+     * password-reset-request and password-reset-validate buckets on a solo portfolio site) never
+     * reach it in normal operation; it exists to cap a flood of one-shot keys, not to tune
+     * steady-state behaviour.
      */
     static final int DEFAULT_SWEEP_THRESHOLD = 1024;
 

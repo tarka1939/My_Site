@@ -41,22 +41,30 @@
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
- * Deployment hosts this script is permitted to write to. **Deliberately empty, and correct as
- * empty.**
+ * Deployment hosts this script is permitted to write to.
  *
- * Phase 5 is paused and `docs/DECISIONS.md` records that the VPS provider is still unchosen, so
- * there is no real host to name. Until a hostname is added here — in a commit, reviewed like any
- * other change — no environment variable, argument, or combination of the two can make this
- * script write to a non-loopback target. That is the "structurally incapable" part, and it is why
- * this list is a committed constant instead of a `SEED_ALLOWED_HOSTS` env var: an env var moves
- * the decision to whoever happens to be typing, which is exactly the person a guard exists to
- * protect.
+ * **Was deliberately empty, and was correct as empty** — the original note said so because Phase 5
+ * was paused and `docs/DECISIONS.md` recorded the VPS provider as unchosen, so there was no real
+ * host to name. Both of those premises expired on 2026-09-03: the backend is live at
+ * `tarka1939.bieda.it`, a Mikrus LXC container reached through the provider's subdomain with TLS
+ * terminated upstream (see the exposure ADR of that date).
  *
- * Adding a host here is necessary but not sufficient. The run must *also* set
- * `SEED_ALLOW_REMOTE_HOST` to that same hostname (see below), so a hostname committed for a
- * future deploy cannot silently become the default target of someone's local run.
+ * So the list now has exactly one entry, and adding it is the deliberate act the guard was built to
+ * require. What that changes: this script *can* now write to the public site — `POST`/`PUT
+ * /projects`, and `DELETE /projects/{id}` under `--remove` — where before no combination of
+ * environment variable and argument could make it reach anything but loopback.
+ *
+ * What it does **not** change: adding a host here is necessary and not sufficient. The run must
+ * also set `SEED_ALLOW_REMOTE_HOST` to the same hostname, so a hostname committed for a deploy
+ * cannot silently become the default target of someone's local run. That second key is per-run and
+ * on purpose; `run-seed.sh` refuses to supply it, because a wrapper that filled in both keys would
+ * turn two independent decisions back into one.
+ *
+ * This list stays a committed constant rather than a `SEED_ALLOWED_HOSTS` env var for the reason
+ * the original note gave and which still holds: an env var moves the decision to whoever happens to
+ * be typing, who is exactly the person a guard exists to protect.
  */
-const APPROVED_DEPLOYMENT_HOSTS = new Set([]);
+const APPROVED_DEPLOYMENT_HOSTS = new Set(['tarka1939.bieda.it']);
 
 const WHY =
   `This script authenticates as an admin and writes portfolio content through the API ` +

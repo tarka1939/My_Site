@@ -297,6 +297,688 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-24 — claude (cloud session): the runbook's first two deploy steps could not have worked
+
+**Task given:** Continue `docs/DEPLOY_PIPELINE_SETUP.md` from step 7 (first hand-dispatched runs), then step 8 (prove the rollback).
+
+**What went wrong (be specific):** Two defects in the runbook, both written with #196 and never exercised. (1) Step 7 and `CI_PLAN.md` §8 said to dispatch "against `main` as it stands", but `main` predated #196 and had no deploy workflow to dispatch — and the Actions UI's branch selector defaults to `dev`, so the obvious click would have shipped 84 unpromoted commits through a pipeline on its first run, the two-unknowns case §8 exists to prevent. (2) Step 8 said to break the build with "a syntax error in a controller". The workflow runs `mvn clean package` on the runner first, so that fails before `deploy.sh` is ever invoked: a red run that tests no rollback, indistinguishable at a glance from a drill that passed.
+
+**How it was caught:** Reading the runbook against the repository before acting on it — `git ls-tree origin/main .github/workflows/` for the first, and reading the workflow's step order alongside `deploy.sh` for the second.
+
+**Fix applied:** PR #215 cherry-picked #196's commit alone onto `main`, merged with `[skip ci]` so the merge itself deployed nothing (verified: no run appeared). The drill used a `@Profile("prod")` component that throws in its constructor — compiles, passes every test since none activates `prod`, and refuses to start on the host. Both runbook steps corrected.
+
+**Takeaway for next time:** A drill that fails is not evidence the drill *ran*. Before trusting a red result as "the rollback worked", confirm the failure happened at the stage under test — here, a `[deploy] ... rolling back` line from the host, not merely a red icon.
+
+## 2026-09-10 — claude (Senior Dev): three bugs that every passing test agreed with
+
+Three tasks: make project thumbnails bigger (#205), render descriptions as Markdown (#206), rename
+the page title. The third turned out to need no code at all — `dev` already said "Krzysztof Tarka"
+everywhere and `main`, which Netlify serves, did not. The interesting part is what the other two
+produced, because in each case a full green suite was compatible with the defect.
+
+**A stylesheet comment that had measured a default and recorded it as a fact.** `.card-media`
+justified `object-fit: scale-down` at length, citing `dsp_execution_pipeline.svg` as "187x150
+natively" and `cover` as scaling it "up to fill a box it never had the pixels for". Measuring in a
+browser: `scale-down` and `contain` painted **identically** at that slot size, so the rule was inert;
+and 187x150 is not a resolution but the browser's default replaced-element box (300x150) fitted to
+the file's `viewBox` ratio — the art is vector and has no pixel budget to overrun. `naturalWidth`
+does report 187x150, which is why the number looked like evidence. Three tests pinned the rule and
+all three passed, because they asserted the CSS said what it said.
+
+The fix needed two changes for one bug, and only measuring showed why: a taller slot helps the
+squarer diagrams (+24%) and does almost nothing for the wide 2559x1554 screenshot (+3%), because a
+taller box around a wide image is letterbox. Widening the grid columns is what moved that one. Final:
+2.88x and 4.28x the painted area.
+
+**A meta description that became the words "What it does".** Descriptions became Markdown, so
+summaries flatten the source to text and take the first paragraph. A description opening with
+`## What it does` — the natural way to write one — makes that heading the entire
+`<meta name="description">`. Every unit test passed, and each was *correct*: they asserted that
+flattening was faithful, which it was. The bug was in what the caller then did with a faithful
+result. Found by loading the page and reading the tag.
+
+**A hard line break that truncated the same tag, found by review after that.** Caught by the cold
+review of PR #208, not by me and not by the suite: markdown-it emits `<br>\n` for a
+trailing-double-space break, so mapping the tag to one newline left a blank line behind, which every
+paragraph-splitting caller reads as a paragraph boundary. An opening sentence ending in two spaces,
+then continuing on the next source line, summarised to just its first line -- everything after the
+break was read as a second paragraph and dropped. On content whose source is wrapped at column
+100, a stray double space is entirely ordinary. `</li>` had the identical bug — and when I fixed
+`<br>` first, my own new test for the list case still failed, because I had made the same mistake
+twice in the same function within ten minutes.
+
+**A near-miss the budget caught rather than a person.** Issue #206 asserted the bundle was safe
+because every route is lazy. True, and beside the point: `core/seo/site-meta.ts` is eager and imports
+the excerpt helper, so putting the Markdown flattener there pulled all of markdown-it onto first
+paint — 409.5 kB against a 400 kB **error** budget. Had that budget been a warning, this ships.
+
+**Takeaway for next time:**
+
+- **A comment citing a measurement is not a measurement.** Both stylesheet claims here were written
+  confidently, in a house style that explains itself, and both were wrong in the same way: a number
+  read out of a tool without asking what the tool was reporting. `naturalWidth` on an SVG with no
+  intrinsic size answers a question that was never asked.
+- **"The tests pass" and "the tests assert the right thing" are different claims**, and the gap is
+  widest when the assertion is *about a mechanism* rather than about an outcome. Every test that
+  missed the summary bugs asserted flattening was faithful. None asserted what a reader ends up
+  seeing. Assert the outcome the user gets — the meta tag's content, the painted size — not the
+  intermediate step you happen to have implemented.
+- **A renderer's output includes its whitespace.** `<br>` and `</li>` both arrive with a trailing
+  newline. Mapping a tag without looking at what surrounds it is how one bug became two.
+- **A budget set to error is worth the annoyance.** The one guard in this repo that stopped a real
+  regression this session was the one that refused to build.
+- **The cold review earned its cost on the security-adjacent change and would not have on the
+  others.** It confirmed the XSS story by probing markdown-it directly rather than reasoning about
+  the options, found the `<br>` bug, and corrected two comments of mine that stated false mechanisms
+  — one of which claimed `patchValue` does not emit `valueChanges`, and one which had the cause of a
+  bug exactly backwards, in the direction that would have made the next reader re-introduce it.
+
+---
+
+## 2026-09-06 — claude (Senior Dev): I called a flaky test fixed on one green run, and it wasn't
+
+The first defect CI ever caught here was `app.spec.ts > shows an "Admin" login link when logged out`,
+failing on the GitHub runner and passing locally every time. I diagnosed it as a change-detection
+race — `RouterLink` writing `href` after `whenStable()` — added `fixture.detectChanges()`, shipped it
+as PR #199, wrote it up in `docs/CI_PLAN.md` as "Fixed in PR #199", and moved on.
+
+It failed again on PR #201, on a branch that contains that commit.
+
+**Two independent errors, and the second is the one that matters.**
+
+The diagnosis was wrong on the facts. `RouterLink` in the Angular 21 this repo actually installs
+writes `href` as `[attr.href]="reactiveHref()"` — a signal host binding over a `computed` `_urlTree()`
+(`node_modules/@angular/router/fesm2022/_router_module-chunk.mjs`). Signal host bindings do not have
+the "attribute written a tick late" race I described; the `ngOnChanges`-driven `updateHref()` I was
+reasoning about belongs to an older version I remembered rather than read. Two greps in
+`node_modules` would have shown this before the fix was written, and did show it afterwards.
+
+The verification was wrong in a way that would have caught the diagnosis anyway. A test that fails
+only on CI cannot be confirmed fixed by one green CI run, because that run is indistinguishable from
+the runs it already passed. `docs/CI_PLAN.md` contains, in its own words, the principle that a job
+which has never failed has not been shown to work — I wrote that sentence, then accepted its exact
+inverse for a fix. **Evidence for an intermittent defect is measured in runs, not a run.**
+
+**What told me the fix hadn't held**, and it was not the failure itself: #202 passed and #201 failed
+against the same `dev` tip with a byte-identical `app.spec.ts`, and #201's only content is a
+`docker-compose.yml`, which cannot reach frontend tests. That pairing is what makes "nondeterministic"
+a measurement rather than a hunch. A single red run would only have said "something is wrong."
+
+**Where I stopped.** After the second wrong mechanism (I also chased cross-file `sessionStorage`
+leakage, and disproved it: the builder builds a fresh environment per file, ~40s of the run's wall
+clock). `CLAUDE.md`'s escalation rule is three failures at the same thing; I had two, no local
+reproduction in three full-suite runs, and no third hypothesis I could distinguish from the others
+with the evidence available. So I deliberately shipped something that is **not** a fix and said so:
+
+- **A precondition the test was missing.** `app.spec.ts` was the only auth-touching spec that never
+  cleared `sessionStorage`, while `AuthService` reads the stored session in its constructor. A test
+  named "when logged out" that never establishes being logged out is wrong on its own terms, whatever
+  it is currently hiding — so this is defensible without claiming it is the cure.
+- **A diagnostic.** The assertion now prints the rendered nav. `expected null to be truthy` cannot
+  distinguish "the anchor rendered without an href" from "the `@else` branch never rendered because
+  `isLoggedIn()` was true", and those have opposite fixes. Both prior failures produced only that
+  message, which is why there was nothing to reason from and why I reasoned from memory instead.
+
+Tracked as issue #203, left open, with a closing condition that is explicitly not "the next run is
+green" — because that is exactly what closed it last time.
+
+**Takeaway for next time:**
+
+- **Read the installed source before reasoning about framework internals.** Version-specific
+  behaviour recalled from memory is a guess wearing a mechanism's clothes, and it is persuasive
+  precisely because it is specific. `node_modules` is checked out on disk.
+- **A fix for an intermittent failure needs a different standard of proof than a fix for a
+  deterministic one.** If the bug reproduces nowhere you control, the honest options are to make it
+  reproduce, to make the next failure self-explaining, or to say it is unproven — not to promote one
+  green run to a fix.
+- **Shipping a partial, honestly-labelled change beats shipping a third guess.** The precondition and
+  the diagnostic are both correct in their own right and neither claims to close the issue.
+- **Say it in the docs too.** The false claim was not only in a PR description; it was in
+  `docs/CI_PLAN.md`, where it would have been read as settled history. Correcting the log entry and
+  leaving the plan wrong would have been the worse half of the fix.
+
+---
+
+## 2026-09-04 — #190 review round: the review was right about the bug and wrong about what it cost
+
+**Task given:** apply four blocking findings from a cold review of PR #190 (issue #186, contact-form
+notification). Two were called concurrency defects in the async dispatch path, with an instruction
+to treat them as such and to verify rather than assume. Findings 1 and 2 each had to come with a
+test that fails without its fix.
+
+**Agent(s) used:** backend-agent (Opus), worktree `My_Site-notify` on `feat/contact-notification`.
+
+**What went right:**
+
+Both fixes were real and both are in. The review's central mechanical claim on finding 1 is correct
+and was worth the round on its own: `ContactNotificationListener`'s `try/catch (RuntimeException)`
+**cannot** protect the `@Async` dispatch, because `AsyncExecutionAspectSupport#doSubmit` calls
+`executor.submit(...)` on the caller's thread before the method body exists. `AsyncConfig` set no
+rejection handler, so `AbortPolicy` applied and a full pool plus a full queue threw
+`TaskRejectedException` at whoever was committing.
+
+**What went wrong (be specific):**
+
+1. **The review's stated impact was false, and the fix's own justification had to be rewritten
+   around the measurement.** The review traced the throw out through
+   `TransactionalApplicationListenerSynchronization.processEventWithCallbacks` and
+   `AbstractPlatformTransactionManager#processCommit`'s handling of `triggerAfterCommit`, and
+   concluded the visitor gets a **500** on an already-committed message — "the exact outcome the
+   ADR, the class comment and #186 all declare impossible".
+
+   It is not what happens on Spring Framework 7.0.8. `PlatformSynchronization`, the concrete
+   `TransactionSynchronization` that Spring registers here, **has no `afterCommit()` override at
+   all** — `javap -c` shows it declaring exactly `beforeCommit(boolean)` and `afterCompletion(int)`,
+   with `AFTER_COMMIT` dispatched from the latter under a `status == 0` check. And
+   `TransactionSynchronizationUtils#invokeAfterCompletion` catches `Throwable` and logs it, where
+   its neighbour `invokeAfterCommit` does not. So the throw never reaches `commit()`.
+
+   Measured, with the handler removed: **all 70 submissions still returned 201.** The observed cost
+   was 12 `TaskRejectedException` stack traces at ERROR — one per dropped notification — logged by
+   `TransactionSynchronizationUtils` from the Tomcat request thread.
+
+   The first version of the end-to-end test asserted exactly what the review predicted ("every
+   response is still 201") and therefore **passed with the fix removed**. It was committed, then
+   caught by the mutation run the brief insisted on, then rebuilt: it now asserts that saturation
+   produces no ERROR-level logging (which does fail without the fix) and that the executor really
+   filled (so it cannot pass vacuously if the pool is ever resized), keeping the 201 loop as the
+   regression guard it always was. `AsyncConfigTest` carries the deterministic before/after: it
+   saturates the real bean and asserts the submit does not throw.
+
+   The handler stays, on three reasons that survive the correction: a saturated queue is a capacity
+   condition and logging it at ERROR buries the signal; the swallow is an incidental Spring
+   implementation detail one hook away from the review being right, and nothing here would notice
+   the day it moved; and `taskExecutor` is shared, so the next `@Async` caller invoked straight from
+   a request thread — Phase 7d's DSP demo — gets the throw back with nothing catching anything.
+
+2. **Adding a test seam to `ResendEmailClient` broke every Spring context, and javac plus the unit
+   tests were both happy.** Finding 2's fix needed a way to point the client at a local socket, so a
+   package-private constructor was added alongside the `@Value` one. That made it a class with two
+   candidate constructors and none annotated, at which point Spring stops guessing and looks for a
+   no-arg constructor: **every `@SpringBootTest` in the suite** failed with "No default constructor
+   found". `mvn compile`, `mvn test-compile` and the three non-Spring `ResendEmailClientTest` cases
+   all passed first. Fixed with `@Autowired` on the injection constructor, and the reason is now a
+   javadoc on it rather than folklore.
+
+3. **The review's suggested API for finding 2 does not exist in this project.** It proposed
+   `ClientHttpRequestFactoryBuilder.detect().build(ClientHttpRequestFactorySettings...)`. That type
+   lives in `spring-boot-http-client`, which is not on this classpath — checked by unzipping all 166
+   classpath jars and grepping, not by trusting the import to resolve. Its absence is the *same*
+   reason `RestClient.Builder` has no bean here, which is the thing the class comment already
+   documents. Used `JdkClientHttpRequestFactory` over a `java.net.http.HttpClient` from spring-web
+   instead: `HttpClient.newBuilder().connectTimeout(...)` for connect, `factory.setReadTimeout(...)`
+   for read, both verified present via `javap` before being written.
+
+4. **A new test asserted something false about Unicode and looked like a code defect.** The
+   surrogate-pair check first used `subject.chars().noneMatch(Character::isSurrogate)`. `chars()`
+   walks UTF-16 code units, so **both halves of a perfectly valid pair** are surrogates by that
+   measure and the assertion failed against correct output. `codePoints()` is the one that draws the
+   intended distinction — it combines a valid pair into one non-surrogate code point and yields an
+   unpaired one as itself.
+
+   Worse, the first version of that test could not have failed against the bug at all: 120 emoji is
+   240 chars, so the old char-based cut at 100 landed on a **pair boundary** — 50 whole emoji, no
+   split. One leading `"N"` shifts everything by a char and puts the cut inside the 50th pair, which
+   is the case that was broken. Both new tests now fail against the old implementation.
+
+5. **A tooling trap worth recording: `\\uD83D` written into a Python heredoc arrived as a real
+   surrogate.** Something between the Bash tool and Python collapses the doubled backslash, so what
+   was meant as the six characters `\uD83D` became the unpaired surrogate itself. Python then
+   refused to encode it — **after** `open(path, 'w')` had already truncated the target to 0 bytes.
+   `ContactNotificationListener.java` was momentarily empty; restored with `git checkout`, which
+   worked only because the file was committed. The rewrite was redone with the `Edit` tool, and the
+   Java source avoids escapes entirely (`Character.toString(0x1F600)`,
+   `String.valueOf((char) 0xD83D)`) so the test source cannot contain the half-character it forbids.
+
+**Finding 3 was correct and is the one with a real blast radius.** `application-test.yml` pinned
+`app.jwt.secret` and nothing else, so every other `${ENV_VAR:default}` in the base config resolved
+from whoever's shell ran the suite. `app.resend.api-key` is `${RESEND_API_KEY:}`, and
+`ContactNotificationIntegrationTest` uses `@MockitoSpyBean`, which calls **through** to the real
+client — so with that variable exported, which this branch's own `docs/DEPLOYMENT.md` tells the
+owner to do, two tests POSTed to `api.resend.com` against the real account and a third failed on a
+warn-and-skip log line that never appeared. The class javadoc asserted the opposite. Pinned, along
+with `app.contact.notification-email` and `app.github-sync.enabled`, which have the same hole.
+
+`app.cors.allowed-origins` was deliberately **left** unpinned: `SecurityIntegrationTest` inherits it
+on purpose so a typo in the production default fails there rather than at a browser, and an exported
+`CORS_ALLOWED_ORIGINS` breaks that test loudly instead of causing a silent third-party side effect.
+Same hole, different severity, different call — and worth saying out loud rather than pinning
+everything reflexively.
+
+**Finding 4 was correct.** The new ADR's closing bullet claimed a dangling `docs/DEPLOYMENT.md`
+cross-reference had been "found, not fixed". Both halves were false on the branch: the sentence
+existed on `dev` (`git show dev:docs/DEPLOYMENT.md`, line 458), *this PR deleted it*, and the
+replacement points at the ADR this PR created. A consequences list describing a tree it is not on is
+worse than none, because it reads as verified. Rewritten to say what happened, including that it was
+wrong.
+
+**Takeaway for next time:**
+
+- **A traced call path is a hypothesis.** The review's trace was careful, cited real class and method
+  names, and was wrong about one hop — `AFTER_COMMIT` dispatches from `afterCompletion`, not
+  `afterCommit`, and only one of those two swallows. Thirty seconds of `javap -c` settled what no
+  amount of re-reading the argument would have.
+- **A test written to a review's predicted symptom inherits the review's errors.** The 201 assertion
+  was copied from the finding's own wording and passed against the unfixed code. The instruction to
+  run the mutation is what caught it; without that step, this round would have shipped a test that
+  proved nothing while reading as proof.
+- **Keep the fix and change the reason, when the reason turns out to be wrong.** The correct response
+  to "the impact claim is false" was not to drop the rejection handler — it was to write down what
+  actually happens and re-derive whether the fix earns its place. It does, for different reasons.
+- **A second constructor is an API change to Spring, not just to callers.** Two unannotated
+  candidates is a startup failure that no amount of compiling or unit-testing will surface.
+- **`git checkout` is only a safety net for committed work.** Committing before the exploratory step,
+  per `CLAUDE.md`, is what made a 0-byte source file a non-event.
+
+**Test count:** 253 → 260 (`Tests run: 260, Failures: 0, Errors: 0, Skipped: 0`, BUILD SUCCESS). The
+7 added: 1 on `AsyncConfig`'s saturation behaviour, 2 on `ResendEmailClient`'s timeouts (a blackhole
+server that accepts and never answers, plus a guard that the production durations are finite), 2 on
+`ContactNotificationIntegrationTest` (saturation end to end, and that the test profile really does
+pin the Resend key blank), and 2 on code-point-safe subject truncation.
+
+## 2026-09-04 — #185/#187 frontend: a rejection with no destination, and the two states that are not "dead link"
+
+**Task given:** the frontend half of both issues in one branch. #187 — validate the token on route
+entry and replace the form with a dead-link state plus a "Request a new link" action, staying on
+the page rather than redirecting. #185 — make the submit-time `token` rejection visible instead of
+swallowed, following `contact-form.component.ts`'s `hasUnclaimedRejection` pattern, and fix the
+false comment that was the bug. Worktree `D:/repos/My_Site-resetux`, branch `feat/reset-link-ux`,
+cut from the backend branch so `POST /auth/password-reset/validate` was already in the contract.
+
+**The defect, restated because the shape is the transferable part.** Three correct decisions
+combined into a silence. The backend reports a spent token as a field error keyed `token`; the
+reset form has no `token` input, because the token comes from the query string; and
+`error.interceptor.ts` deliberately suppresses the global toast whenever field errors are present,
+on the assumption that a field error renders inline. So the rejection was suppressed as "will be
+shown inline" by a form structurally unable to show it. Pressing the button did nothing at all.
+`reset-password-confirm.component.ts` carried a comment asserting the opposite — "Surfaced globally
+by errorInterceptor (invalid/expired token -> 400, no field errors)" — and every word after the
+parenthesis was false. That comment is why nobody looked.
+
+**The judgement call worth recording: a 429 is not a dead link, and neither is a 500.** The obvious
+implementation validates on load and shows the dead-link state on any failure. That is wrong twice.
+The validate endpoint is rate-limited per requester IP under its own bucket, so a 429 says something
+about how often *this network* has asked and nothing whatever about *this token* — and a 5xx or a
+dropped connection says even less. Failing closed on either would tell someone holding a perfectly
+good link that it was spent, sending them to request links they do not need, and behind a shared NAT
+it would deny the reset outright with no way through. So `linkState` distinguishes six cases, and
+only a literal 400 produces `dead`. `rateLimited` and `unavailable` both **fail open**: they show
+the form under a plainly-worded notice saying the link has not been checked yet and will be checked
+on submit. That is safe only because the submit path is now honest, which is #185 — the two issues
+are load-bearing for each other in both directions, not just the one the issues describe.
+
+**The in-flight state is not cosmetic.** `checking` is the initial value of `linkState`, so the form
+is never the first thing on screen. A form that appears and is then replaced reads as the app
+changing its mind, which is not much better than the bug being fixed. The spec asserts this with an
+observable that never emits, and asserts the *absence of a form* rather than the presence of a
+message — the presence of a message is satisfied by a component that renders both.
+
+**Two destinations, then a catch-all, following the contact form rather than inventing a second
+pattern.** `token` is claimed by the dead-link panel; `newPassword` got a real message slot beside
+its input (it had none, so a server `@Size` rejection of the password had nowhere to land either);
+`hasUnclaimedRejection` catches anything else, including `confirmPassword`, which exists only on the
+client and whose arrival from the server would mean the contract had moved. Slot keys are declared
+once and subtracted once, so a new slot cannot be added without leaving the catch-all, and the
+lookup is `Object.keys().includes()` rather than `in` for the reason the contact form records:
+`'toString' in slots` is true, which would re-create the silent drop through the prototype chain.
+There is a test for exactly that key.
+
+**What the tests can and cannot claim.** 15 new tests; the suite went 345 -> 360. Running the new
+spec against the *unmodified* component was the check that mattered: 13 of the 15 fail, and the
+#185 regression test fails by finding `null` where the dead-link panel should be — nothing rendered,
+which is the defect's actual signature. But `CLAUDE.md`'s standing warning applies in full here.
+Every state in this change is a thing a person looks at, the DOM was correct throughout the original
+bug, and no assertion in this file can tell whether the copy reads right or the notice reads as a
+warning rather than an error. A browser checklist went back with the report instead of a claim that
+it looks correct.
+
+**Left deliberately undone:** `admin-project-form.component.ts` and `admin-projects-list.component.ts`
+have the same latent gap — they read `fieldErrors` with no catch-all — and were left alone on the
+brief's instruction. They are a separate issue and should be filed as one.
+
+**Takeaway for next time:** when an interceptor decides centrally that "something else will render
+this", every component it defers to is silently on the hook for a contract it never signed. The
+audit that found four components and only one guard is the artifact worth repeating, not the fix.
+
+---
+
+## 2026-09-03 — #187 backend: the endpoint that must not do the thing its neighbour exists to do
+
+**Task given:** the backend half of #187 — `POST /auth/password-reset/validate`, so the reset page
+can refuse to render a password form for a spent link instead of letting a visitor compose a new
+password and only then discover the link is dead. Contract in `docs/openapi.yaml` first. Three
+constraints named in the brief: do not consume the token, POST with the token in the body rather
+than `GET ?token=`, and rate-limit it under its own namespace. Worktree
+`D:/repos/My_Site-resetvalidate`, branch `feat/reset-token-validate`. Frontend half is #185 and a
+separate task.
+
+**What made this worth logging:** nothing here went wrong, and the reason is that the brief named
+all three traps up front. The entry is about what verifying them actually took, because two of the
+three would have passed a green suite while being wrong.
+
+**The consumption trap, and why one call is not a test.** `confirmReset` consumes through
+`markUsedIfValid`, an atomic conditional `UPDATE`. The natural way to write validation is to reuse
+it and check the row count — and that would have burned the token at page load, breaking exactly
+the flow the endpoint exists to improve. Validation instead goes through a new
+`PasswordResetTokenRepository.existsUsableToken`: a `COUNT(...) > 0` projection with the same
+`WHERE` clause as `markUsedIfValid` character-for-character, no `@Modifying`, no entity loaded that
+a dirty check could flush, called inside a `@Transactional(readOnly = true)` method.
+
+The test for it validates the same token **three times** and then completes a real reset with it.
+Both halves are load-bearing. A single validate followed by an assertion would pass against a
+consuming implementation, since the first call is the one that succeeds — the second call is what
+fails. And `usedAt is null` is necessary but not sufficient; the assertion that means something is
+that the link still works. Confirmed by mutation rather than by reading: swapping the body for
+`markUsedIfValid(...) == 0` made the test error at the *second* validate call
+(`InvalidResetTokenException`), then reverted. Committed the implementation before running that
+mutation, per `CLAUDE.md` — a mutation test is exactly when a termination is most expensive.
+
+**The rate-limit namespace, proven rather than eyeballed.** `InMemoryRateLimiter` is a shared
+singleton keyed only by the string handed to it, and this project has already shipped one bug of
+this shape (login reusing password-reset's unnamespaced key, 2026-08-01 entry below). The new
+caller uses `"password-reset-validate:"`, not `requestReset`'s `"password-reset:"`. Three reasons,
+and only the first is the known bug: sharing the bucket would let a few reset-page loads consume
+the budget for *requesting* a reset email and lock an admin out of recovery; the two want different
+budgets, because sending mail is expensive and rare while loading a page is cheap and repeatable;
+and `InMemoryRateLimiter` documents one window per key, so two callers with different windows
+sharing a key would corrupt both counts.
+
+The non-collision is by construction, not by inspection: every key is a prefix plus a 64-character
+SHA-256 hex hash, so keys built from different prefixes have different total lengths (`login:` 6,
+`password-reset:` 15, `password-reset-validate:` 24) and cannot be equal whatever the hashes are.
+There is also a test that exhausts the validate bucket and then requires `requestReset` and `login`
+to still work on the same IP. Its assertion order is deliberate and commented: the exhaustion
+assertion runs **last**, because it is the only step that throws out of a `@Transactional` service
+method, which marks the surrounding test transaction rollback-only. The bucket is monotonic within
+its window, so proving it exhausted at the end proves it was exhausted before the two assertions
+that depend on that — which is what keeps those assertions from being vacuous. The limiter's own
+Javadoc, which enumerated "both current callers", was updated; leaving it saying two would have
+made the next reader's audit of the namespaces wrong by omission.
+
+**Where the enumeration reasoning landed.** This endpoint answers "is this token real and live",
+which `requestReset` deliberately refuses to do for an email address. The asymmetry is real and is
+written into both the code and the contract rather than left to be re-derived: `requestReset`'s
+caller supplies an address it may not own, so a truthful answer confirms an account exists, whereas
+this caller already holds the token and can learn the same fact by submitting the reset form. What
+the endpoint changes is the *cost* of the oracle, which is what the rate limit is for — the threat
+is not guessing a 32-byte `SecureRandom` token, it is cheap bulk confirmation of tokens harvested
+from a mailbox or a log. Never-issued, already-used, expired and malformed tokens all raise the
+same exception with the same message, and the repository answers with a boolean, so there is
+nothing left at the service layer to tell them apart with; the tests assert the message, not just
+the type, for exactly that reason.
+
+**One judgment call the brief left open.** A blank or absent token is *not* folded into the
+indistinguishable-failure set. It is a bean-validation failure with a different title, and that is
+deliberate: distinguishing "you sent no token" from "your token is dead" discloses nothing about
+any real token. What matters for the client is that both still carry a field error keyed `token`,
+so a reset page that has landed its message on that key renders something either way rather than
+failing silently — which is precisely #185's bug, one endpoint over. That is pinned by a web-layer
+test rather than left as a comment.
+
+**Why a `@WebMvcTest` as well as the integration tests.** The service tests cover behaviour; they
+cannot see what a client receives. The 400's wire shape *is* the contract the frontend branches on
+— same `token` key, same title, same detail as `confirmPasswordReset` — so an
+equivalent-but-differently-shaped 400 would be a silent trap for whoever writes #185's half rather
+than a test failure. `PasswordResetValidateWebTest` pins 204-with-empty-body, the 400 shape, the
+blank-token case reaching a 400 without touching the service, and 429.
+
+Backend 235 tests to 245. The frontend client was deliberately **not** regenerated here:
+`CLAUDE.md` requires the regenerate be verified in the same change that consumes it, which is
+#185's task.
+
+**Takeaway for next time:**
+
+- **A "does not mutate" test needs at least two calls and a real use afterwards.** One call cannot
+  distinguish "never consumes" from "consumes, and this was the call that succeeded", and a
+  column-is-still-null assertion is weaker than actually using the thing.
+- **Prove a key namespace cannot collide, do not observe that it does not.** Fixed-length hashes
+  behind variable-length prefixes give a length argument, which holds for every future caller;
+  reading two string literals and agreeing they differ holds only for today's two.
+- **Ordering matters in a test that mixes throwing service calls with later DB assertions.** An
+  exception out of a `@Transactional` method poisons the surrounding test transaction, so an
+  assertion placed for narrative flow can undermine the assertions after it.
+
+## 2026-09-04 — #176: a review finding that was right about JVMs and wrong about this box
+
+**Task given:** fix the four blocking defects a cold review found in `docs/DEPLOYMENT.md`'s memory
+section, using diagnostic output the owner ran on the live host.
+
+**Agent(s) used:** one reviewer on Opus for round one, one on Sonnet for round two.
+
+**What went right:** the round-one reviewer measured `MaxHeapSize` **on its own machine**, got
+exactly 512 MiB — a quarter of 2 GiB — and concluded `-Xmx512m` was byte-identical to the JVM
+default and therefore decorative. It then wrote down the condition under which it would be wrong:
+*"if lxcfs/cgroup detection is not working, the JVM would see the physical host's RAM… in which case
+the flag matters a great deal."* It is not working. The host reports `MaxHeapSize = 32210157568` —
+almost exactly 30 GiB — so the JVM believes the box has 120 GiB and the flag is holding back a
+fifteen-fold overshoot. **The finding was reversed by the very check its own caveat asked for.** A
+reviewer that states its uncertainty converts a wrong conclusion into a right question.
+
+**What went wrong (be specific):** the section had the right conclusion — keep `-Xmx512m` — via a
+false premise: "a quarter of RAM, which on a 2 GB box competes with Postgres". Right arithmetic,
+wrong RAM, off by sixty. That is worse than being plainly wrong, because it reads as verified and
+nobody re-checks a conclusion they agree with.
+
+**Then the fixes introduced three more.** Round two found all of them, and all three were written in
+the commit that was supposed to be cleaning up:
+
+- Rewording section 0's "will thrash" left a **raw newline inside a markdown table cell**, which
+  terminates the row. This is the third time scripted string replacement has broken a table or a
+  code block in this document, and the second time in one session by the same person who logged the
+  first.
+- The bounded health-check loop replacing the escaped `&&` chain **reported success when the
+  application never came up**: on a failing run the loop's last executed command is `sleep`, which
+  exits 0, so the whole chain exits 0. Verified by reproduction rather than by reading, in both
+  directions.
+- The `lxcfs` explanation for *why* the JVM sees the host's RAM was written in the same flat,
+  declarative register as the measured output above it — in a section whose opening sentence
+  promises it is "written from output rather than from what is usually true of a Linux box". It is
+  now marked as the unmeasured inference it is, with the command that would settle it.
+
+**How it was caught:** entirely by the round-two reviewer. No gate touches this file.
+
+**Takeaway for next time:**
+
+- **A reviewer's caveat is a task, not a hedge.** Round one named the exact command that would
+  overturn its own finding. Running it was the highest-value thing in the round.
+- **"Right conclusion, wrong reason" is a defect.** It survives review precisely because the
+  conclusion looks correct.
+- **Scripted replacement keeps breaking structure in this file.** Check tables and fences after
+  every scripted edit, not after the ones that feel risky — `python -c` over lines starting with
+  `|` that do not end with `|` costs nothing.
+- **Verify a shell fix by running it, including the path where nothing works.** Both of this
+  round's shell bugs reported success on failure, which is the one outcome a runbook must never
+  produce.
+
+## 2026-09-04 — four numbers I did not measure, and a review I priced wrong
+
+**Task given:** coordinate the Phase 5 promotion and the follow-up fixes — #175, #178/#180, #179's
+release, #177's security ADR, and the contact/reset-link defects the owner found on the live site.
+
+**Agent(s) used:** two backend agents and one frontend agent on Opus, five cold reviewers. Every
+failure below is the coordinator's.
+
+**What went right:** the dispatched work was strong, and it was strong in a specific way — three
+separate agents verified a claim by *breaking* it rather than by reading. #180 force-failed a
+throwaway spec to observe what `fileReplacements` actually resolves to under `ng test`. #187's
+backend swapped in `markUsedIfValid` and confirmed the test failed before reverting. #186 mutated
+its own listener three ways and found that two of the three mutations passed the whole suite —
+the tests could prove a message survives a Resend failure but not that the send was off the
+request thread. None of those were asked for in that form.
+
+**What went wrong (be specific):**
+
+**Four claims stated as fact, none of them measured.**
+
+- **"The backend suite is 213 tests."** I ran `mvn -q test`, which suppresses the summary line, then
+  reconstructed a total by regexing `target/surefire-reports`. The real number is 235. I published
+  213 as a *finding against an accurate log entry*, opened a correction branch, and put a hold on
+  the release PR. A raw count of `@Test`-family annotations gives 224 — a floor, since parameterized
+  cases expand — so 213 was arithmetically impossible and one `grep` would have caught it before I
+  said anything.
+- **"The admin password is not set."** I probed the login endpoint, got `401`, and recorded it as
+  fact. `401` is also what a *wrong* password returns, and I had no credentials — the observation
+  could not distinguish the two. It went into a PR body and several status tables before the owner
+  corrected it.
+- **"The contact form sends no POST."** My click missed the button, which sits at y=521 in a 519px
+  viewport. I was one message from filing it as a defect.
+- **"The commit count is 290 of 372."** Stale at the commit that introduced it.
+
+The shape is the same each time: an observation that *could* mean two things, resolved toward the
+one I already expected, then repeated until someone else checked.
+
+**Three near-misses from testing the wrong target.** A dev server started from the session's
+working directory rather than the branch's worktree, so a footer screenshot showed the old text. A
+click at a stale coordinate. A backend that failed to start with *"Port 8080 was already in use"*
+while a nine-day-old process answered my health check and 404'd the new endpoint. Each looked
+exactly like a real defect.
+
+**A review priced for the wrong job.** A scoped check of a 19-line documentation diff went to Opus
+under `CLAUDE.md`'s "cold PR review → Opus, never cheapen". That rule is written for full reviews of
+unfamiliar code; this was a bounded delta closer to "running a gate and reporting real output →
+Sonnet". It cost ~93k tokens, and the floor was fixed overhead rather than the diff: `CLAUDE.md` is
+227 lines and ~5,750 tokens, charged to every dispatch, with no nested files to scope it. Filed as
+#188.
+
+**Saying a thing would be logged, instead of logging it.** I twice told the owner a finding
+"belongs in `AGENT_LOG`" and moved on. Both times they had to ask. An intention announced reads as
+work done, which is worse than silence.
+
+**A citation merged before its target.** #175 shipped a runbook line citing a 2026-09-03 ADR that
+was sitting unmerged in #177, leaving a dangling pointer in production docs — the exact defect class
+as #162, which was fixed earlier the same day. Holding a PR through four review rounds is not free.
+
+**How it was caught:** the owner caught the password claim, the plaintext fragments and both
+unwritten log entries. Cold reviewers caught the rest. No gate caught any of it, because none of
+these are the kind of thing a gate can see.
+
+**Fix applied:** the 213 correction was reverted and its branch deleted before merge; the release
+PR carries the correction. #177's four rounds are merged and the dangling pointer resolves. #188
+covers the dispatch overhead.
+
+**Takeaway for next time:**
+
+- **A number that agrees with what you expected still has to be measured.** All four bad claims
+  confirmed a prior. That is when to check, not when to stop.
+- **Read the tool's own summary, not a derived artifact.** `mvn` prints the total; `-q` hides it,
+  and parsing the reports directory instead is how 213 happened.
+- **Sanity-check against a floor before reporting.** 224 annotations made 213 impossible for free.
+- **Name the target before believing the result.** Which worktree, which process, which coordinate.
+  Three of this session's near-misses were one identity check away from being obvious.
+- **The model allowlist prices the job, not the diff — but a bounded delta is a different job.**
+- **Do not announce that something belongs in the log. Put it there.**
+
+## 2026-09-03 — #186: the contact form notified nobody, and the fix had a documented way to go wrong
+
+**Task given:** Implement issue #186 — publish a domain event from `ContactService.submit` and email
+the owner via the existing `ResendEmailClient`, with the destination in a new environment variable.
+The brief named the constraint up front: notification is best-effort, persistence is not.
+
+**Agent(s) used:** backend-agent (Opus), in the `My_Site-notify` worktree on
+`feat/contact-notification`.
+
+**What went right:**
+
+The brief pointed at `PasswordResetService.requestReset` and the 2026-08-01 entry above *before*
+asking for a design, and that is the reason this entry has no bug in it. That entry records
+`resendEmailClient.sendPasswordResetEmail(...)` running uncaught inside a `@Transactional` method,
+so a non-2xx from Resend propagated out and changed the HTTP response. The same shape was available
+here and would have been worse: the visitor's message is the product, and losing one because a third
+party had a bad minute is the worst outcome the feature has. Naming the prior incident in the brief
+turned "design an event listener" into "do not reproduce this specific failure", which is a much
+easier instruction to follow.
+
+**What went wrong (be specific):**
+
+Nothing that reached a commit, but two judgement calls are worth recording because neither was
+forced by the brief and both could reasonably have gone the other way.
+
+1. **`ResendEmailClient` lived in `auth/`, and `contact` needed it.** The tempting move was to
+   inject it as-is. `ApplicationModules.verify()` would have **passed**: the class sits in the auth
+   module's base package, which makes it part of that module's public API, so a `contact → auth`
+   dependency is legal. It is also false — email delivery has nothing to do with authentication, and
+   the graph would have said the contact form depends on the login system. This is a case where the
+   enforcement test cannot be the thing that catches the problem, because the problem is not a
+   violation. Moved the class to the application's base package instead, where `ClientIpHasher` and
+   `InMemoryRateLimiter` already live for the identical reason: shared infrastructure that outgrew
+   one module. No new Modulith module was introduced.
+2. **The event carries the submission, not just the id.** `ProjectCreatedEvent` is the precedent and
+   carries only a `UUID`. Copying it would have meant re-reading the row in the listener, after the
+   commit — a read the admin can race by deleting the message, silently losing the notification for
+   the one message the owner most needs. `CLAUDE.md`'s concurrency rule says accepting a race is a
+   legitimate answer and not noticing one is not; here the race was avoidable outright, so it was
+   avoided rather than accepted. The cost is that the event holds visitor PII, which is fine in
+   memory and would **not** be fine if `spring-modulith-events` durable publication is ever adopted
+   (`docs/DECISIONS.md` still lists that as undecided). Written on the event's javadoc so the
+   trade-off is visible at the point where it would change.
+
+**How it was caught:** Neither by a test. Both were design decisions taken before code, prompted by
+re-reading the Modulith ADR and `CLAUDE.md`'s concurrency checklist rather than by anything the
+build could report. The Modulith one is the more interesting: a green `ApplicationModules.verify()`
+is evidence about *legality*, not about whether the dependency graph describes the system honestly.
+
+**A third thing, found by mutation testing after the work looked finished.** Three mutations were
+run against the committed listener:
+
+| Mutation | Result |
+|---|---|
+| Synchronous `@EventListener` (in-transaction), catch kept | **all tests passed** |
+| Synchronous, in-transaction, catch removed — the `requestReset` shape exactly | integration test failed, `expected: 201 CREATED but was: 500`; the listener unit test failed too |
+| `@Async` removed, `AFTER_COMMIT` and the catch kept | **all tests passed** |
+
+The two passes are the finding. The suite as first written could prove the message survives a
+Resend failure, and could not prove the send was off the request thread at all — so a future edit
+dropping `@Async` would have been invisible, and a hanging Resend call would have hung the visitor
+while every test stayed green. The catch is load-bearing enough to mask its own siblings.
+`slowResend_doesNotHoldTheVisitorsResponseOpen` was added to close that: it blocks the stubbed
+client on a latch for 30 seconds and asserts the 201 comes back in under 10. Re-run against the
+`@Async`-removed mutation, it fails after the full 30. That test exists because the mutation run
+happened, not because anyone thought of the case while writing the feature.
+
+**Fix applied:**
+
+- `ContactMessageReceivedEvent` published from `ContactService.submit` inside the transaction, so
+  Spring holds it to `AFTER_COMMIT` and drops it entirely on rollback.
+- `ContactNotificationListener`: `@TransactionalEventListener(phase = AFTER_COMMIT)` plus
+  `@Async("taskExecutor")` — the executor `AsyncConfig` has provisioned unused since Phase 1, whose
+  javadoc said the DSP demo would be its first consumer; this is. It catches its own
+  `RuntimeException`s and logs.
+- `CONTACT_NOTIFICATION_EMAIL`. Absent is a designed no-op (warn, skip, message still saved and
+  still 201); present-but-malformed throws from the listener's constructor and the app refuses to
+  start. Both halves of `CLAUDE.md`'s config-validation rule are in play in one variable, and the
+  comment says which is which. No default address, and deliberately not an RFC 2606 `.invalid`
+  placeholder either: a placeholder that *parses* would make every environment attempt a send to a
+  domain that cannot receive, which reads as a delivery bug rather than as "nobody configured this".
+- Visitor content in the email is escaped where it is interpolated. The body is HTML-escaped
+  (escape first, *then* introduce `<br>`, or a visitor's typed `<br>` survives). The subject has all
+  control characters stripped, because it is the one value that becomes a MIME header — Jackson
+  would encode a newline safely into the JSON request, but it would arrive at Resend as a literal
+  newline in a value bound for `Subject:`, which is the classic header-injection primitive.
+- Nothing about the visitor is logged at **any** level — not DEBUG either. The message UUID is
+  logged instead, and it points at a row the admin panel already shows.
+
+**Takeaway for next time:**
+
+- **A brief that names the prior incident is worth more than a brief that names the rule.** "Do not
+  call a third party inside the transaction" is a rule anyone would agree with and still violate;
+  "`requestReset` did exactly this on 2026-08-01 and here is what broke" is not.
+- **`ApplicationModules.verify()` passing is not the same as the boundary being right.** Types in a
+  module's base package are its API, so the test is silent about whether a legal dependency is a
+  sensible one. The verify test catches reaching into internals; it cannot catch a module depending
+  on the wrong module correctly.
+- **A no-op reference implementation sets a precedent it was never load-tested for.**
+  `ProjectCreatedEventListener` logs and returns, so `ProjectCreatedEvent` carrying only an id has
+  never had to survive the row being deleted. The first real listener is where that assumption gets
+  tested, and copying the shape without re-deriving it would have shipped the race.
+
+**Test count:** 235 → 253. The 18 added break down as 9 on `ContactNotificationListener` (4 on
+escaping and header sanitisation, 2 on its config validation's two halves, 3 on the happy, degraded
+and throwing paths), 3 on `ResendEmailClient` (unconfigured-key degrade, PII silence, and one
+re-asserting that the reset link stays off WARN across the package move), 2 on the
+publish/don't-publish split in `ContactService`, and 4 end-to-end. The end-to-end class is
+deliberately **not** `@Transactional`: a rolled-back test can never fire an `AFTER_COMMIT` listener
+and would have passed while asserting nothing.
+
 ## 2026-09-03 — #178: the obvious way to write this test would have asserted against the wrong environment file
 
 **Task given:** add a test that reads the real `frontend/src/index.html` and asserts its
