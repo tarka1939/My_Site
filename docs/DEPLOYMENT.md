@@ -32,7 +32,7 @@ Re-verify the table before acting if this file has aged.
 ## 0. Three decisions only you can make
 
 Nothing below can start until these are settled. They are recorded in `docs/DECISIONS.md` as
-deferred to Phase 5. **Two of the three are now settled** — see the strikethroughs below and the ADR of 2026-09-03. The Netlify site name is reserved but the site is not yet created, which is why Part 1 is still outstanding.
+deferred to Phase 5. **Two of the three are now settled** — see the strikethroughs below and the ADR of 2026-09-03. The Netlify site name is reserved but the site is not yet created, which is why Part 1 is still outstanding. **(Superseded: the Netlify site is live — owner confirmed 2026-09-24.)**
 
 | Decision | Why it blocks | Notes |
 |---|---|---|
@@ -69,7 +69,7 @@ yourself — it changes only Part 2, step 3.
 | | Value |
 |---|---|
 | Backend public URL | `https://tarka1939.bieda.it` |
-| Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` — name settled, site not yet created |
+| Frontend origin (CORS allowlist, `FRONTEND_URL`) | `https://krzysztof-tarka.netlify.app` — live (owner confirmed 2026-09-24) |
 | Container app port | `8080` — Spring Boot's default, so no `SERVER_PORT` needed |
 | Host | Ubuntu 24.04 LTS, LXC, 2 GB RAM, 25 GB disk |
 | Postgres | 16.15, listening on `127.0.0.1:5432` only |
