@@ -9,11 +9,12 @@ import { NOINDEX, siteTitle } from '../../../core/seo/site-meta';
 import { markdownToSummaryText, renderMarkdown } from '../../../shared/markdown/markdown';
 import { projectImageAlt } from '../../../shared/project-image-alt/project-image-alt';
 import { ProjectPeriodComponent } from '../../../shared/project-period/project-period.component';
+import { ImageViewerComponent } from './image-viewer/image-viewer.component';
 
 @Component({
   selector: 'app-project-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, ProjectPeriodComponent],
+  imports: [RouterLink, ProjectPeriodComponent, ImageViewerComponent],
   templateUrl: './project-detail.component.html',
   styleUrl: './project-detail.component.scss',
 })

@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
   ParamMap,
@@ -8,6 +8,7 @@ import {
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
+import { stubDialog } from '../../../../testing/dialog';
 import { trackImageAttributeOrder } from '../../../../testing/image-attribute-order';
 import {
   clearSeoTags,
@@ -15,6 +16,7 @@ import {
   seoTagCount,
   seoTags,
 } from '../../../../testing/seo-tags';
+import { clickOn, renderComponent } from '../../../../testing/zoneless';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
 import { Project } from '../../../core/api/model/project';
@@ -577,5 +579,259 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
     expect(document.title).toBe('Krzysztof Tarka - Equalizer');
     expect(seoContent('meta[name="description"]')).toBe('A DSP project');
+  });
+});
+
+describe('ProjectDetailComponent, full-screen image viewer', () => {
+  const THREE_IMAGES = [
+    'https://images.example.com/one.png',
+    'https://images.example.com/two.png',
+    'https://images.example.com/three.png',
+  ];
+  let getProject: ReturnType<typeof vi.fn>;
+  let dialogStub: ReturnType<typeof stubDialog>;
+  let fixture: ComponentFixture<ProjectDetailComponent> | undefined;
+
+  beforeEach(async () => {
+    clearSeoTags();
+    dialogStub = stubDialog();
+    getProject = vi.fn().mockReturnValue(of({ ...PROJECT, images: THREE_IMAGES }));
+
+    await TestBed.configureTestingModule({
+      imports: [ProjectDetailComponent],
+      providers: [
+        provideRouter([]),
+        { provide: ProjectsService, useValue: { getProject } },
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: new BehaviorSubject(convertToParamMap({ id: 'p1' })) },
+        },
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    (fixture?.nativeElement as HTMLElement | undefined)?.remove();
+    fixture = undefined;
+    dialogStub.restore();
+    clearSeoTags();
+    document.documentElement.style.overflow = '';
+  });
+
+  function host(): HTMLElement {
+    return fixture!.nativeElement as HTMLElement;
+  }
+
+  function dialog(): HTMLDialogElement {
+    return host().querySelector('dialog')!;
+  }
+
+  function viewerImage(): HTMLImageElement | null {
+    return host().querySelector('dialog img');
+  }
+
+  /** The "2 / 3" a sighted reader sees -- read from the visible span alone, because the element's
+   * textContent would also include the visually-hidden spoken form beside it. */
+  function visiblePosition(): string | undefined {
+    return host()
+      .querySelector('.viewer-position [aria-hidden="true"]')
+      ?.textContent?.replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  async function press(key: string): Promise<void> {
+    // Dispatched on whatever has focus, bubbling, as a real keypress is -- so it reaches the
+    // dialog's listener the way it would from the Close button or from Next.
+    const target = (document.activeElement ?? dialog()) as HTMLElement;
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await fixture!.whenStable();
+  }
+
+  async function click(target: Element, init: MouseEventInit = {}): Promise<void> {
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true, ...init }));
+    await fixture!.whenStable();
+  }
+
+  /** Renders the page attached to the document -- so `focus()` really moves
+   * `document.activeElement` -- and activates gallery item `index`. */
+  async function openFromGallery(index: number): Promise<void> {
+    fixture = await renderComponent(ProjectDetailComponent);
+    document.body.appendChild(fixture.nativeElement);
+    await clickOn(fixture, '.image-gallery button', index);
+  }
+
+  /** Gives the viewer image a natural size and a laid-out box, neither of which jsdom has. */
+  function layOut(image: HTMLImageElement, natural: [number, number], box: DOMRect): void {
+    Object.defineProperty(image, 'naturalWidth', { value: natural[0] });
+    Object.defineProperty(image, 'naturalHeight', { value: natural[1] });
+    image.getBoundingClientRect = () => box;
+  }
+
+  it('makes each gallery image a button named after the image it opens', async () => {
+    fixture = await renderComponent(ProjectDetailComponent);
+
+    const buttons = [...host().querySelectorAll('.image-gallery li > button')];
+    expect(buttons).toHaveLength(3);
+    // The alt text is inside the name rather than replaced by it: an aria-label wins over the
+    // button's content, so a name that dropped it would hide whatever #87 later puts in the alt.
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'View full screen: Equalizer, image 1 of 3',
+      'View full screen: Equalizer, image 2 of 3',
+      'View full screen: Equalizer, image 3 of 3',
+    ]);
+    for (const button of buttons) {
+      expect(button.getAttribute('type')).toBe('button');
+      expect(button.querySelector('img')).not.toBeNull();
+    }
+  });
+
+  it('keeps the closed viewer empty, so it fetches nothing until opened', async () => {
+    fixture = await renderComponent(ProjectDetailComponent);
+
+    expect(dialog()).not.toBeNull();
+    expect(dialog().open).toBe(false);
+    expect(viewerImage()).toBeNull();
+  });
+
+  it('opens the image that was activated, with its own alt text and position', async () => {
+    await openFromGallery(1);
+
+    expect(dialog().open).toBe(true);
+    expect(viewerImage()?.getAttribute('src')).toBe(THREE_IMAGES[1]);
+    expect(viewerImage()?.getAttribute('alt')).toBe('Equalizer, image 2 of 3');
+    expect(visiblePosition()).toBe('2 / 3');
+    expect(host().querySelector('.viewer-position .visually-hidden')?.textContent?.trim()).toBe(
+      'Image 2 of 3',
+    );
+  });
+
+  it('focuses Close on open and returns focus to the opening image on close', async () => {
+    await openFromGallery(2);
+    const opener = host().querySelectorAll('.image-gallery button')[2];
+
+    expect(document.activeElement).toBe(host().querySelector('.viewer-close'));
+
+    await clickOn(fixture!, '.viewer-close');
+
+    expect(dialog().open).toBe(false);
+    expect(viewerImage()).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('closes on Escape', async () => {
+    await openFromGallery(0);
+    expect(dialog().open).toBe(true);
+
+    await press('Escape');
+
+    expect(dialog().open).toBe(false);
+    expect(document.activeElement).toBe(host().querySelector('.image-gallery button'));
+  });
+
+  it('closes on a click on the backdrop, and not on a click on the picture or the controls', async () => {
+    await openFromGallery(0);
+    // A 400x300 picture in a 400x300 box: every point in the box is on the picture.
+    layOut(viewerImage()!, [400, 300], new DOMRect(0, 0, 400, 300));
+
+    // Presence first: a click on the picture itself leaves the viewer open...
+    await click(viewerImage()!, { clientX: 200, clientY: 150 });
+    expect(dialog().open).toBe(true);
+
+    // ...as does a click on a control bar between its buttons.
+    await click(host().querySelector('.bar-bottom')!);
+    expect(dialog().open).toBe(true);
+
+    // A click on ::backdrop is delivered to the dialog element itself.
+    await click(dialog());
+    expect(dialog().open).toBe(false);
+  });
+
+  it('closes on a click on the empty stage around the picture', async () => {
+    await openFromGallery(0);
+
+    await click(host().querySelector('.stage')!);
+
+    expect(dialog().open).toBe(false);
+  });
+
+  it('closes on a click in the letterbox beside a picture that does not fill its box', async () => {
+    await openFromGallery(0);
+    // A square picture contained in an 800x400 box paints at 400x400, centred: x 200..600.
+    layOut(viewerImage()!, [100, 100], new DOMRect(0, 0, 800, 400));
+
+    await click(viewerImage()!, { clientX: 400, clientY: 200 });
+    expect(dialog().open).toBe(true);
+
+    await click(viewerImage()!, { clientX: 100, clientY: 200 });
+    expect(dialog().open).toBe(false);
+  });
+
+  it('moves with Previous and Next, wrapping at both ends', async () => {
+    await openFromGallery(2);
+    expect(visiblePosition()).toBe('3 / 3');
+
+    await clickOn(fixture!, '.viewer-next');
+    expect(visiblePosition()).toBe('1 / 3');
+    expect(viewerImage()?.getAttribute('src')).toBe(THREE_IMAGES[0]);
+    expect(viewerImage()?.getAttribute('alt')).toBe('Equalizer, image 1 of 3');
+
+    await clickOn(fixture!, '.viewer-prev');
+    expect(visiblePosition()).toBe('3 / 3');
+    expect(viewerImage()?.getAttribute('src')).toBe(THREE_IMAGES[2]);
+
+    await clickOn(fixture!, '.viewer-prev');
+    expect(visiblePosition()).toBe('2 / 3');
+    expect(viewerImage()?.getAttribute('src')).toBe(THREE_IMAGES[1]);
+  });
+
+  it('moves with the Left and Right arrow keys', async () => {
+    await openFromGallery(0);
+
+    await press('ArrowRight');
+    expect(visiblePosition()).toBe('2 / 3');
+    expect(viewerImage()?.getAttribute('src')).toBe(THREE_IMAGES[1]);
+
+    await press('ArrowLeft');
+    await press('ArrowLeft');
+    expect(visiblePosition()).toBe('3 / 3');
+    expect(viewerImage()?.getAttribute('src')).toBe(THREE_IMAGES[2]);
+  });
+
+  it('shows no Previous, Next or position for a project with one image', async () => {
+    getProject.mockReturnValue(of({ ...PROJECT, images: ['https://images.example.com/one.png'] }));
+    await openFromGallery(0);
+
+    // Presence first, so the absences below cannot pass on a viewer that never opened.
+    expect(dialog().open).toBe(true);
+    expect(viewerImage()?.getAttribute('alt')).toBe('Equalizer');
+    expect(host().querySelector('.viewer-close')).not.toBeNull();
+
+    expect(host().querySelector('.viewer-prev')).toBeNull();
+    expect(host().querySelector('.viewer-next')).toBeNull();
+    expect(host().querySelector('.viewer-position')).toBeNull();
+
+    await press('ArrowRight');
+    expect(dialog().open).toBe(true);
+    expect(viewerImage()?.getAttribute('src')).toBe('https://images.example.com/one.png');
+  });
+
+  it('locks page scrolling while open and restores what was there on close', async () => {
+    document.documentElement.style.overflow = 'clip';
+    await openFromGallery(0);
+
+    expect(document.documentElement.style.overflow).toBe('hidden');
+
+    await clickOn(fixture!, '.viewer-close');
+    expect(document.documentElement.style.overflow).toBe('clip');
+  });
+
+  it('releases the scroll lock if the page is torn down with the viewer open', async () => {
+    // The browser's Back button is not blocked by a modal dialog, so this is a real exit.
+    await openFromGallery(0);
+    expect(document.documentElement.style.overflow).toBe('hidden');
+
+    fixture!.destroy();
+
+    expect(document.documentElement.style.overflow).toBe('');
   });
 });

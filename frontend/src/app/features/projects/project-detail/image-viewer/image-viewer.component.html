@@ -1,0 +1,39 @@
+<!-- Always in the DOM, so `showModal()` has an element to open; everything that depends on which
+     image is showing is inside @if blocks, so the closed dialog holds no <img> and fetches
+     nothing until someone asks for it. -->
+<dialog
+  #dialog
+  class="viewer"
+  [attr.aria-label]="alt() ? alt() + ', full screen' : 'Full-screen image'"
+  (close)="onClosed()"
+  (keydown)="onKeydown($event)"
+  (click)="onClick($event)"
+>
+  <div class="bar bar-top">
+    <button #closeButton type="button" class="viewer-close" autofocus (click)="close()">
+      Close
+    </button>
+  </div>
+
+  <div #stage class="stage">
+    @if (current(); as src) {
+      <img class="viewer-image" [src]="src" [alt]="alt()" />
+    }
+  </div>
+
+  @if (count() > 1) {
+    <div class="bar bar-bottom">
+      <button type="button" class="viewer-prev" (click)="step(-1)">Previous</button>
+      <!-- "2 / 3" is what sighted readers expect and what a screen reader reads as "2 slash 3", so
+           the visible form is hidden from assistive tech and a spoken form sits beside it. Polite
+           and live, so moving with the arrow keys -- which moves no focus -- is still announced. -->
+      @if (index() !== null) {
+        <p class="viewer-position" aria-live="polite">
+          <span aria-hidden="true">{{ index()! + 1 }} / {{ count() }}</span>
+          <span class="visually-hidden">Image {{ index()! + 1 }} of {{ count() }}</span>
+        </p>
+      }
+      <button type="button" class="viewer-next" (click)="step(1)">Next</button>
+    </div>
+  }
+</dialog>
