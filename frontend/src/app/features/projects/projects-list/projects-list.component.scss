@@ -14,7 +14,7 @@
 
   // A tag is metadata, so it is set in the mono face (docs/DECISIONS.md, 2026-08-22) -- and #152's
   // third defect was here: these chips rendered in Arial 13.3333px, the UA default for a button,
-  // against system-ui 16px everywhere else, on the most-repeated element of the landing page.
+  // against system-ui 16px everywhere else, on the most-repeated element of the projects list.
   // styles.scss now makes every control inherit, so this rule names a face because the design says
   // tags are mono, not to patch a leak.
   //

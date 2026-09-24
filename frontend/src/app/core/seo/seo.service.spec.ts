@@ -221,7 +221,7 @@ describe('SeoService', () => {
     seo.applyPage({ title: 'Krzysztof Tarka - Admin login', robots: 'noindex, nofollow' });
     expect(content('meta[name="robots"]')).toBe('noindex, nofollow');
 
-    seo.applyPage({ title: 'Krzysztof Tarka - Projects' });
+    seo.applyPage({ title: 'Krzysztof Tarka - About' });
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
   });
 

@@ -53,6 +53,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Changed
 
+- **About is the landing page** (2026-09-24, #221, frontend). `/` now renders the About page, the projects list moves from `/` to `/projects`, and `/about` redirects to `/`. Project pages keep their `/projects/<id>` URLs. The sitemap lists `/`, `/projects` and `/contact`.
+
 - Project plan (`PROJECT_TODO.md`) revised: split frontend/backend hosting (GitHub Pages + Render/Railway/Fly.io), CORS + SPA-fallback requirements, package-by-feature backend structure, `ApplicationEventPublisher` + `@Async` executor + feature flags, GitHub Projects task tracking, and a new sequenced Phase 7 (GitHub webhook sync → agent build-log page → analytics → live DSP demo)
 - Project name confirmed as "My Site" across `README.md`, `SPEC.md`, `CLAUDE.md`
 - Auth scope confirmed: JWT admin login is in scope (`SPEC.md`, `docs/DECISIONS.md`, `docs/DATA_MODEL.md`)

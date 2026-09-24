@@ -26,7 +26,7 @@ public interface TagRepository extends JpaRepository<Tag, UUID> {
      *
      * <p>Not {@code findAll}: nothing deletes a tag when its last project stops referencing it,
      * so the table accumulates orphans (six of twenty-six in the first real content load), and
-     * an orphan offered in the landing page's "filter by tag" control is a filter value that
+     * an orphan offered in the projects list's "filter by tag" control is a filter value that
      * matches nothing. Deleting orphans on last-reference instead would be a check-then-act
      * write on a row a concurrent project write may be attaching to — the shape that already
      * produced a race in {@link #upsertByName}. Filtering the read has no such hazard; the cost
