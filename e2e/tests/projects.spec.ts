@@ -22,7 +22,15 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   page,
 }) => {
   await stubFixtureImages(page);
+  // The site root is the About page; the list is one nav click away at /projects. Going through
+  // the nav rather than straight to /projects keeps the landing page and its link in the journey.
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'About', level: 1 })).toBeVisible();
+  await page
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Projects', exact: true })
+    .click();
+  await expect(page).toHaveURL('/projects');
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
   // Each card is an <a> wrapping the project's <h2>, so its accessible name is the title.
@@ -276,6 +284,6 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   await expect(sourceLink).toHaveAttribute('href', FIXTURE_ALPHA.links![0].url);
 
   await page.getByRole('link', { name: 'Back to projects' }).click();
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/projects');
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 });

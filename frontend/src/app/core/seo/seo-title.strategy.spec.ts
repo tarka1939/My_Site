@@ -4,6 +4,7 @@ import { Routes, TitleStrategy, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { clearSeoTags, seoContent as content, seoTagCount as count } from '../../../testing/seo-tags';
 import { routes as applicationRoutes } from '../../app.routes';
+import { ABOUT_ROUTES } from '../../features/about/about.routes';
 import { CONTACT_ROUTES } from '../../features/contact/contact.routes';
 import { PROJECTS_ROUTES } from '../../features/projects/projects.routes';
 import { SeoTitleStrategy } from './seo-title.strategy';
@@ -132,8 +133,9 @@ describe('application route table', () => {
   }
 
   it('describes the public routes', () => {
+    expect(routeByPath(ABOUT_ROUTES, '')['data']?.['description']).toBeTruthy();
     expect(routeByPath(PROJECTS_ROUTES, '')['data']?.['description']).toBeTruthy();
-    expect(routeByPath(PROJECTS_ROUTES, 'projects/:id')['data']?.['description']).toBeTruthy();
+    expect(routeByPath(PROJECTS_ROUTES, ':id')['data']?.['description']).toBeTruthy();
     expect(routeByPath(CONTACT_ROUTES, '')['data']?.['description']).toBeTruthy();
   });
 
@@ -144,8 +146,9 @@ describe('application route table', () => {
   });
 
   it('leaves the public routes indexable', () => {
+    expect(routeByPath(ABOUT_ROUTES, '')['data']?.['robots']).toBeUndefined();
     expect(routeByPath(PROJECTS_ROUTES, '')['data']?.['robots']).toBeUndefined();
-    expect(routeByPath(PROJECTS_ROUTES, 'projects/:id')['data']?.['robots']).toBeUndefined();
+    expect(routeByPath(PROJECTS_ROUTES, ':id')['data']?.['robots']).toBeUndefined();
     expect(routeByPath(CONTACT_ROUTES, '')['data']?.['robots']).toBeUndefined();
   });
 });

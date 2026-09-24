@@ -461,7 +461,7 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
   const originalTitle = document.title;
 
   /** Read off the real route table rather than copied, so editing the prose cannot break this. */
-  const LANDING_DESCRIPTION = PROJECTS_ROUTES.find((route) => route.path === '')?.data?.[
+  const LIST_DESCRIPTION = PROJECTS_ROUTES.find((route) => route.path === '')?.data?.[
     'description'
   ] as string;
 
@@ -478,10 +478,11 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
 
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(PROJECTS_ROUTES),
+        // Mounted as app.routes.ts mounts it, so the URLs below are the real ones.
+        provideRouter([{ path: 'projects', children: PROJECTS_ROUTES }]),
         { provide: TitleStrategy, useClass: SeoTitleStrategy },
         { provide: ProjectsService, useValue: { getProject, listProjects: () => of(EMPTY_PAGE) } },
-        // The landing route renders the real list component, which asks for the tag filter.
+        // The list route renders the real list component, which asks for the tag filter.
         { provide: TagsService, useValue: { listTags: () => of([]) } },
       ],
     });
@@ -504,18 +505,18 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
     response.complete();
   }
 
-  it('leaves no noindex behind on the landing page when the abandoned request then fails', async () => {
+  it('leaves no noindex behind on the projects list when the abandoned request then fails', async () => {
     // The de-indexing case, end to end: /projects/<gone> is still in flight when the visitor goes
-    // back to the site root, and only then 404s. Before switchMap/takeUntilDestroyed the destroyed
+    // back to the list, and only then 404s. Before switchMap/takeUntilDestroyed the destroyed
     // component still received that error and ran setRobots(NOINDEX), stamping "noindex, nofollow"
-    // onto the public landing page -- invisible in the UI, and nothing else ever removes it,
+    // onto the public list page -- invisible in the UI, and nothing else ever removes it,
     // because the tag is only cleared by a *later* navigation.
     const harness = await RouterTestingHarness.create();
 
     await harness.navigateByUrl('/projects/gone');
     expect(requestFor('gone').observed).toBe(true);
 
-    await harness.navigateByUrl('/');
+    await harness.navigateByUrl('/projects');
     // The subscription is gone with the component, so the error below cannot be delivered.
     expect(requestFor('gone').observed).toBe(false);
 
@@ -523,22 +524,22 @@ describe('ProjectDetailComponent, when the page moves on before a response lands
 
     expect(seoContent('meta[name="robots"]')).toBeNull();
     expect(seoTagCount('meta[name="robots"]')).toBe(0);
-    // Still unambiguously the landing page, not a half-updated one.
+    // Still unambiguously the list page, not a half-updated one.
     expect(document.title).toBe('Krzysztof Tarka - Projects');
-    expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
+    expect(seoContent('meta[name="description"]')).toBe(LIST_DESCRIPTION);
   });
 
-  it('leaves the landing page’s own title and description alone when a late request succeeds', async () => {
+  it('leaves the list page’s own title and description alone when a late request succeeds', async () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/projects/p1');
-    await harness.navigateByUrl('/');
+    await harness.navigateByUrl('/projects');
 
     resolve('p1', { title: 'Equalizer', description: 'A DSP project' });
 
     expect(document.title).toBe('Krzysztof Tarka - Projects');
     expect(seoContent('meta[property="og:title"]')).toBe('Krzysztof Tarka - Projects');
-    expect(seoContent('meta[name="description"]')).toBe(LANDING_DESCRIPTION);
-    expect(seoContent('meta[property="og:description"]')).toBe(LANDING_DESCRIPTION);
+    expect(seoContent('meta[name="description"]')).toBe(LIST_DESCRIPTION);
+    expect(seoContent('meta[property="og:description"]')).toBe(LIST_DESCRIPTION);
   });
 
   it('describes the project being viewed when an earlier one answers out of order', async () => {

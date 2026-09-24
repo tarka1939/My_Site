@@ -128,7 +128,7 @@ application under test.
 
 | File | Journey |
 |---|---|
-| `tests/projects.spec.ts` | Browse projects → filter by tag → open a project's detail page. Asserts the filter both keeps one fixture and drops the other, then that the detail page renders the stored title, description, tags, and link. Also carries the content-rendering assertions of issue #99: the card summarises a long description, the line clamp holds it to three rendered lines, the gallery's alt text names the image's position, and no alt text claims to know what an image contains. |
+| `tests/projects.spec.ts` | Land on the About page at `/` → follow the nav to the project list at `/projects` → filter by tag → open a project's detail page. Asserts the filter both keeps one fixture and drops the other, then that the detail page renders the stored title, description, tags, and link. Also carries the content-rendering assertions of issue #99: the card summarises a long description, the line clamp holds it to three rendered lines, the gallery's alt text names the image's position, and no alt text claims to know what an image contains. |
 | `tests/contact.spec.ts` | Submit the contact form. Asserts an actual `201`, that an empty form never reaches the API, and reads the message back through the admin API rather than trusting the confirmation banner. |
 | `tests/contact.spec.ts` | Fill the contact rate-limit window and get rejected. Asserts an actual `429` with the RFC 7807 body, that the user-visible error appears, and that exactly the allowed number of messages was stored. |
 | `tests/admin.spec.ts` | Admin logs in → creates a project through the UI → it appears on the public (unauthenticated) list → logs out → `authGuard` redirects a protected route back to login with `returnUrl` intact. |
