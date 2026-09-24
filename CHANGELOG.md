@@ -7,7 +7,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Releases now go out through the pipelines** (2026-09-24, #218, #220, infra). The first promotion since 2026-09-03 — 87 commits, including the About page's migration — deployed on merge with no hands on the server: backend healthy 39s after the swap, frontend verified with a deep link. A second, one-line release followed within the hour.
+- **Releases now go out through the pipelines** (2026-09-24, #218, #220, infra). The first promotion since 2026-09-03 — 87 commits (52 excluding merges), including the About page's migration — deployed on merge with no hands on the server: backend healthy 39s after the swap, frontend verified with a deep link. About an hour later a one-tag release (#220) went the same way.
 
 - **Google Search Console verification** (2026-09-24, #219, frontend). The ownership tag is in `index.html`'s static head, where Google's verifier reads it without running JavaScript.
 
