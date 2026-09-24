@@ -639,17 +639,35 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
       .trim();
   }
 
+  /**
+   * Waits a task and then for the app to settle. A browser fires a dialog's `close` event in a
+   * later task, and so does the stub (src/testing/dialog.ts); `whenStable()` alone does not wait
+   * for that, so anything the component does in response to closing -- focus, scroll, removing
+   * the image -- is only visible after this.
+   */
+  async function settle(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve));
+    await fixture!.whenStable();
+  }
+
   async function press(key: string): Promise<void> {
     // Dispatched on whatever has focus, bubbling, as a real keypress is -- so it reaches the
     // dialog's listener the way it would from the Close button or from Next.
     const target = (document.activeElement ?? dialog()) as HTMLElement;
     target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-    await fixture!.whenStable();
+    await settle();
   }
 
-  async function click(target: Element, init: MouseEventInit = {}): Promise<void> {
-    target.dispatchEvent(new MouseEvent('click', { bubbles: true, ...init }));
-    await fixture!.whenStable();
+  /** A press on `down` and a click delivered to `up`, as a pointer produces them: when press and
+   * release land on different elements, the click goes to their common ancestor. */
+  async function pointerClick(
+    down: Element,
+    up: Element = down,
+    init: MouseEventInit = {},
+  ): Promise<void> {
+    down.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, ...init }));
+    up.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, ...init }));
+    await settle();
   }
 
   /** Renders the page attached to the document -- so `focus()` really moves
@@ -707,6 +725,30 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     expect(getComputedStyle(viewerImage()!).objectFit).toBe('contain');
   });
 
+  it('is already named for the image, and holds it, at the moment it opens', async () => {
+    // Opening is when a screen reader announces the dialog's name. Everything above is asserted
+    // after the page has settled, by which point the render has caught up either way -- so this
+    // looks at the dialog from inside showModal() itself, the one moment that matters.
+    const atOpen: { label: string | null; src: string | null }[] = [];
+    const showModal = HTMLDialogElement.prototype.showModal;
+    const spy = vi
+      .spyOn(HTMLDialogElement.prototype, 'showModal')
+      .mockImplementation(function (this: HTMLDialogElement) {
+        atOpen.push({
+          label: this.getAttribute('aria-label'),
+          src: this.querySelector('img')?.getAttribute('src') ?? null,
+        });
+        showModal.call(this);
+      });
+
+    await openFromGallery(1);
+    spy.mockRestore();
+
+    expect(atOpen).toEqual([
+      { label: 'Equalizer, image 2 of 3, full screen', src: THREE_IMAGES[1] },
+    ]);
+  });
+
   it('focuses Close on open and returns focus to the opening image on close', async () => {
     await openFromGallery(2);
     const opener = host().querySelectorAll('.image-gallery button')[2];
@@ -714,6 +756,7 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     expect(document.activeElement).toBe(host().querySelector('.viewer-close'));
 
     await clickOn(fixture!, '.viewer-close');
+    await settle();
 
     expect(dialog().open).toBe(false);
     expect(viewerImage()).toBeNull();
@@ -736,22 +779,22 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     layOut(viewerImage()!, [400, 300], new DOMRect(0, 0, 400, 300));
 
     // Presence first: a click on the picture itself leaves the viewer open...
-    await click(viewerImage()!, { clientX: 200, clientY: 150 });
+    await pointerClick(viewerImage()!, viewerImage()!, { clientX: 200, clientY: 150 });
     expect(dialog().open).toBe(true);
 
     // ...as does a click on a control bar between its buttons.
-    await click(host().querySelector('.bar-bottom')!);
+    await pointerClick(host().querySelector('.bar-bottom')!);
     expect(dialog().open).toBe(true);
 
-    // A click on ::backdrop is delivered to the dialog element itself.
-    await click(dialog());
+    // A press and click on ::backdrop are delivered to the dialog element itself.
+    await pointerClick(dialog());
     expect(dialog().open).toBe(false);
   });
 
   it('closes on a click on the empty stage around the picture', async () => {
     await openFromGallery(0);
 
-    await click(host().querySelector('.stage')!);
+    await pointerClick(host().querySelector('.stage')!);
 
     expect(dialog().open).toBe(false);
   });
@@ -761,16 +804,62 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     // A square picture contained in an 800x400 box paints at 400x400, centred: x 200..600.
     layOut(viewerImage()!, [100, 100], new DOMRect(0, 0, 800, 400));
 
-    await click(viewerImage()!, { clientX: 400, clientY: 200 });
+    await pointerClick(viewerImage()!, viewerImage()!, { clientX: 400, clientY: 200 });
     expect(dialog().open).toBe(true);
 
-    await click(viewerImage()!, { clientX: 100, clientY: 200 });
+    await pointerClick(viewerImage()!, viewerImage()!, { clientX: 100, clientY: 200 });
     expect(dialog().open).toBe(false);
+  });
+
+  it('stays open on a letterbox click while the picture’s size is still unknown', async () => {
+    // Still loading, or failed: the natural size reads 0x0, so where the picture paints is not
+    // known, and an ambiguous click must not close the viewer under someone. The same point is
+    // letterbox in the test above, so this differs from it only in the size being unknown.
+    await openFromGallery(0);
+    layOut(viewerImage()!, [0, 0], new DOMRect(0, 0, 800, 400));
+
+    await pointerClick(viewerImage()!, viewerImage()!, { clientX: 100, clientY: 200 });
+
+    expect(dialog().open).toBe(true);
+    // Positive counterpart, so the open assertion is not vacuous: the stage still closes it.
+    await pointerClick(host().querySelector('.stage')!);
+    expect(dialog().open).toBe(false);
+  });
+
+  it('stays open when a double-click on a gallery image lands its second click on the stage', async () => {
+    // The first click opened the viewer; the second of the pair arrives on whatever is under the
+    // pointer now, with detail 2.
+    await openFromGallery(0);
+    const stage = host().querySelector('.stage')!;
+
+    stage.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    stage.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+    await settle();
+    expect(dialog().open).toBe(true);
+
+    // And a deliberate single click there afterwards still closes it.
+    await pointerClick(stage);
+    expect(dialog().open).toBe(false);
+  });
+
+  it('stays open after a drag from the picture that is released on the stage', async () => {
+    await openFromGallery(0);
+    layOut(viewerImage()!, [400, 300], new DOMRect(0, 0, 400, 300));
+
+    // Pressed on the picture, released beside it: the click goes to the stage, their common
+    // ancestor.
+    await pointerClick(viewerImage()!, host().querySelector('.stage')!, {
+      clientX: 200,
+      clientY: 150,
+    });
+    expect(dialog().open).toBe(true);
   });
 
   it('moves with Previous and Next, wrapping at both ends', async () => {
     await openFromGallery(2);
     expect(visiblePosition()).toBe('3 / 3');
+    expect(host().querySelector('.viewer-prev')?.textContent?.trim()).toBe('Previous image');
+    expect(host().querySelector('.viewer-next')?.textContent?.trim()).toBe('Next image');
 
     await clickOn(fixture!, '.viewer-next');
     expect(visiblePosition()).toBe('1 / 3');
@@ -824,6 +913,7 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     expect(document.documentElement.style.overflow).toBe('hidden');
 
     await clickOn(fixture!, '.viewer-close');
+    await settle();
     expect(document.documentElement.style.overflow).toBe('clip');
   });
 

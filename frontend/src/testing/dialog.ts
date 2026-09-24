@@ -7,9 +7,13 @@
  *
  * - `showModal()` sets the `open` attribute (jsdom does reflect `open` into the property, and it is
  *   what `dialog.open` and the component's `[open]` styling read).
- * - `close()` removes it and fires `close` -- only if the dialog was open, as a browser does. That
- *   event is the one the component cleans up on, so a spec asserting focus or scroll is restored is
- *   exercising the component's handler, not this file.
+ * - `close()` removes it at once and fires `close` **asynchronously**, in a later task -- as a
+ *   browser does: `open` is false as soon as `close()` returns, but the event is queued. Only if the
+ *   dialog was open, as a browser does. That event is the one the component cleans up on, so a
+ *   spec asserting focus or scroll is restored is exercising the component's handler, not this
+ *   file -- and has to wait a task for it (`fixture.whenStable()` alone does not wait for a
+ *   `setTimeout`). A synchronous stub would let a component, or a spec, come to depend on the
+ *   cleanup having happened by the time `close()` returns, which no browser guarantees.
  *
  * What this does **not** do, on purpose: move focus, trap focus, or handle Escape. A browser does
  * all three, and so does the component explicitly; faking them here would let a spec pass with
@@ -28,7 +32,7 @@ export function stubDialog(): { restore(): void } {
       return;
     }
     this.removeAttribute('open');
-    this.dispatchEvent(new Event('close'));
+    setTimeout(() => this.dispatchEvent(new Event('close')));
   };
 
   return {

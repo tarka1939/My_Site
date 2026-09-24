@@ -7,6 +7,7 @@
   [attr.aria-label]="alt() ? alt() + ', full screen' : 'Full-screen image'"
   (close)="onClosed()"
   (keydown)="onKeydown($event)"
+  (pointerdown)="onPointerDown($event)"
   (click)="onClick($event)"
 >
   <div class="bar bar-top">
@@ -23,7 +24,7 @@
 
   @if (count() > 1) {
     <div class="bar bar-bottom">
-      <button type="button" class="viewer-prev" (click)="step(-1)">Previous</button>
+      <button type="button" class="viewer-prev" (click)="step(-1)">Previous image</button>
       <!-- "2 / 3" is what sighted readers expect and what a screen reader reads as "2 slash 3", so
            the visible form is hidden from assistive tech and a spoken form sits beside it. Polite
            and live, so moving with the arrow keys -- which moves no focus -- is still announced. -->
@@ -33,7 +34,7 @@
           <span class="visually-hidden">Image {{ index()! + 1 }} of {{ count() }}</span>
         </p>
       }
-      <button type="button" class="viewer-next" (click)="step(1)">Next</button>
+      <button type="button" class="viewer-next" (click)="step(1)">Next image</button>
     </div>
   }
 </dialog>

@@ -7,7 +7,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Full-screen image viewer on project pages** (2026-09-24, frontend). Any gallery image opens full screen — by click, tap or keyboard — with Previous/Next and arrow keys between a project's images, and Escape or a click outside the picture to close. Built on the native `<dialog>`, so focus is trapped while open and returns to the image afterwards; no new dependencies.
+- **Full-screen image viewer on project pages** (2026-09-24, #227, frontend). Any gallery image opens full screen — by click, tap or keyboard — with Previous/Next and arrow keys between a project's images, and Escape or a click outside the picture to close. Built on the native `<dialog>`, so focus is trapped while open and returns to the image afterwards; no new dependencies.
 
 - **Releases now go out through the pipelines** (2026-09-24, #218, #220, infra). The first promotion since 2026-09-03 — 87 commits (52 excluding merges), including the About page's migration — deployed on merge with no hands on the server: backend healthy 39s after the swap, frontend verified with a deep link. About an hour later a one-tag release (#220) went the same way.
 

@@ -4,6 +4,8 @@ import {
   DOCUMENT,
   DestroyRef,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   inject,
   input,
@@ -30,9 +32,10 @@ import { projectImageAlt } from '../../../../shared/project-image-alt/project-im
  *   because jsdom implements neither, so without the explicit calls the specs could only ever be
  *   testing their own stub.
  * - **Escape.** A browser closes a modal dialog on Escape by itself (via `cancel`). The keydown
- *   handler closes it too, which is harmless -- `close()` on a closed dialog is a no-op -- and is
- *   what keeps Escape working where a browser declines the `cancel` (Chrome ignores a second
- *   Escape without intervening user activation).
+ *   handler closes it too, which is harmless -- it runs first, and `close()` on a closed dialog is
+ *   a no-op -- and it makes Escape one code path the component owns and a spec can exercise:
+ *   jsdom has no `cancel` behaviour at all, so without this handler an Escape test could only
+ *   ever be testing whatever its stub chose to fake.
  *
  * Previous/Next **wrap** rather than disabling at the ends. A disabled button cannot hold focus, so
  * pressing Next until it disabled would drop keyboard focus onto the dialog's body mid-gallery; a
@@ -51,6 +54,7 @@ export class ImageViewerComponent {
   readonly title = input.required<string>();
 
   private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private readonly stage = viewChild.required<ElementRef<HTMLElement>>('stage');
   private readonly closeButton = viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
@@ -69,6 +73,14 @@ export class ImageViewerComponent {
   });
 
   private opener: HTMLElement | null = null;
+  /** An open() whose render has not happened yet -- see open(). */
+  private opening = false;
+  /**
+   * Whether the current press began outside the picture. A click is only a "click outside" when
+   * both its ends are: the click event itself fires on the common ancestor of press and release,
+   * so a drag from the picture to the stage arrives as a click on the stage.
+   */
+  private pressStartedOutside = false;
   /** The root's inline `overflow` before the viewer locked scrolling; null while nothing is locked. */
   private savedOverflow: string | null = null;
 
@@ -79,17 +91,37 @@ export class ImageViewerComponent {
     inject(DestroyRef).onDestroy(() => this.unlockScroll());
   }
 
-  /** Shows image `index`. `opener` gets focus back when the viewer closes. */
+  /**
+   * Shows image `index`. `opener` gets focus back when the viewer closes.
+   *
+   * The dialog is shown after the next render, not immediately. Setting `index` only *schedules*
+   * a render (zoneless), so a synchronous `showModal()` would open a dialog still carrying the
+   * closed state's generic name and no image -- and opening is the moment a screen reader
+   * announces the dialog's name. Rendering first means it announces "Equalizer, image 2 of 3,
+   * full screen", with the image already in it.
+   */
   open(index: number, opener: HTMLElement | null): void {
-    const dialog = this.dialog().nativeElement;
     this.index.set(index);
-    if (dialog.open) {
+    if (this.dialog().nativeElement.open || this.opening) {
       return;
     }
+    this.opening = true;
     this.opener = opener;
-    this.lockScroll();
-    dialog.showModal();
-    this.closeButton().nativeElement.focus();
+    afterNextRender(
+      {
+        write: () => {
+          this.opening = false;
+          const dialog = this.dialog().nativeElement;
+          if (dialog.open) {
+            return;
+          }
+          this.lockScroll();
+          dialog.showModal();
+          this.closeButton().nativeElement.focus();
+        },
+      },
+      { injector: this.injector },
+    );
   }
 
   protected close(): void {
@@ -135,22 +167,46 @@ export class ImageViewerComponent {
     }
   }
 
+  protected onPointerDown(event: PointerEvent): void {
+    this.pressStartedOutside = this.isOutside(event);
+  }
+
   /**
-   * Closes on a click that lands outside the picture: on the dialog itself (which is where a click
-   * on `::backdrop` is delivered), on the empty stage around the image, or on the letterbox the
-   * image's own box paints around it. The control bars are not "outside" -- a near miss on a
-   * button must not throw the viewer away.
+   * Closes on a click outside the picture, where both the press and the release were outside and
+   * it is a single click -- see `isOutside` for what "outside" covers. The other two conditions
+   * are what keep the viewer from throwing itself away under someone:
+   *
+   * - `detail > 1`: a double-click on a gallery image opens the viewer on its first click, and its
+   *   second lands on whatever is now under the pointer -- usually the stage or the letterbox.
+   * - the press: a drag that starts on the picture and ends beside it delivers its click to the
+   *   common ancestor, the stage, which on its own looks exactly like a click on the stage.
    */
   protected onClick(event: MouseEvent): void {
-    const target = event.target;
-    if (target === this.dialog().nativeElement || target === this.stage().nativeElement) {
-      this.close();
-    } else if (
-      target instanceof HTMLImageElement &&
-      isOutsidePaintedImage(target, event.clientX, event.clientY)
-    ) {
+    const pressStartedOutside = this.pressStartedOutside;
+    this.pressStartedOutside = false;
+    if (event.detail > 1 || !pressStartedOutside) {
+      return;
+    }
+    if (this.isOutside(event)) {
       this.close();
     }
+  }
+
+  /**
+   * Outside the picture: on the dialog itself (which is where a press on `::backdrop` is
+   * delivered), on the empty stage around the image, or on the letterbox the image's own box
+   * paints around it. The control bars are not outside -- a near miss on a button must not throw
+   * the viewer away.
+   */
+  private isOutside(event: MouseEvent): boolean {
+    const target = event.target;
+    if (target === this.dialog().nativeElement || target === this.stage().nativeElement) {
+      return true;
+    }
+    return (
+      target instanceof HTMLImageElement &&
+      isOutsidePaintedImage(target, event.clientX, event.clientY)
+    );
   }
 
   private lockScroll(): void {
