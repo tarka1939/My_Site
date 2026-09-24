@@ -87,6 +87,12 @@ origins, no image CDN loader, no SSR, and unknown dimensions (forcing `fill` mod
 provides is either inert or actively counterproductive here. If an image CDN is ever put in front of
 project images, revisit that.
 
+Each gallery image on a project's page opens in a full-screen viewer
+(`project-detail/image-viewer/`): a native `<dialog>` opened with `showModal()`, with Close,
+Previous/Next and arrow keys, and Escape or a click outside the picture to close. The viewer
+holds no `<img>` until it opens, so it fetches nothing up front. jsdom implements neither
+`showModal` nor `close`; specs use the stub in `src/testing/dialog.ts`.
+
 ## Running unit tests
 
 ```bash
