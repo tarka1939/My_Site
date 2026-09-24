@@ -22,7 +22,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 - **What it is:** A personal portfolio site (Angular + Spring Boot) hosting a project portfolio, doubling as a deliberate practice ground for multi-agent development workflows (spec-first, parallel agents, documented review).
 - **Who it's for:** Visitors browsing the portfolio and submitting contact messages; a single site-owner admin managing project content.
-- **Live URLs:** frontend `https://krzysztof-tarka.netlify.app`, backend `https://tarka1939.bieda.it`. Both serve `main` as last promoted on 2026-09-04; `dev` is well ahead of it (see Status). Five portfolio projects are published (checked 2026-09-24).
+- **Live URLs:** frontend `https://krzysztof-tarka.netlify.app`, backend `https://tarka1939.bieda.it`. Both serve `main` as last promoted on 2026-09-03 (PR #179); `dev` is well ahead of it (see Status). Five portfolio projects are published (checked 2026-09-24).
 
 ## How this is built
 
@@ -75,7 +75,7 @@ See `docs/AGENT_WORKFLOW.md` for the mechanics and `docs/AUTONOMOUS_WORKFLOW.md`
 | API contract | OpenAPI 3.0, written before implementation; Angular client generated via `openapi-generator-cli` |
 | Auth | JWT admin login (1 hour expiry) + password reset via Resend — **confirmed in scope**, gates write endpoints (see `SPEC.md` → Auth scope decision) |
 | Cross-origin | CORS on Spring Boot, allowlisting the exact Netlify origin `https://krzysztof-tarka.netlify.app` (`CORS_ALLOWED_ORIGINS` to override). Exact origins rather than patterns, so a fork's deploy preview cannot become a trusted origin |
-| CI/CD | GitHub Actions — `ci.yml` runs backend tests, frontend tests and an API-client staleness check on every PR; separate deploy workflows for Netlify (frontend) and a jar shipped over a restricted SSH key (backend), written but not yet switched on |
+| CI/CD | GitHub Actions — `ci.yml` runs backend tests, frontend tests and an API-client staleness check on every PR; separate deploy workflows for Netlify (frontend) and a jar shipped over a restricted SSH key (backend), live on `main` — any push or merge to `main` deploys |
 | Testing | JUnit 5 + Mockito unit tests, Testcontainers integration tests against real Postgres, Vitest component tests, and a deliberately thin Playwright E2E suite (4 journeys — see `PROJECT_TODO.md`'s testing-strategy note on why it stays small) |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done) |
 

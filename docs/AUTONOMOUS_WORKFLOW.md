@@ -102,7 +102,7 @@ Status updates should read like a senior dev's standup to a product owner, not a
 
 ## Phase 5 pre-flight checklist (human-only setup)
 
-Phase 5 touches real infrastructure — the risk profile is different from Phases 1-3, which were pure code. **Status (2026-09-24): done** — both halves are live. The owner-side work left is the deploy-pipeline setup in `docs/DEPLOY_PIPELINE_SETUP.md`. Kept below as the record of what it took.
+Phase 5 touches real infrastructure — the risk profile is different from Phases 1-3, which were pure code. **Status (2026-09-24): done** — both halves are live. The deploy-pipeline setup in `docs/DEPLOY_PIPELINE_SETUP.md` is done too (2026-09-24): both pipelines are live on `main`. Kept below as the record of what it took.
 
 Before Phase 5 can run with the same autonomy as earlier phases, the user needs to provide:
 
