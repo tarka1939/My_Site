@@ -68,6 +68,11 @@
 .bar-bottom {
   justify-content: space-between;
   border-top: 1px solid var(--color-hairline);
+  // A fallback, not the layout: at default text sizes the bar fits on one row down to 320px (measured
+  // at 320/360/390 in Chromium). With large system text on a narrow phone it no longer can, and
+  // wrapping to a second row keeps every control whole and reachable -- where `nowrap` alone would
+  // overlap "2 / 3" onto Next or push Next past the viewer's `overflow: hidden` edge.
+  flex-wrap: wrap;
 }
 
 // The site's secondary button: an outline in the muted value, which is the control-boundary token
@@ -97,6 +102,11 @@
 // positioned out of flow, so a 2559px-tall picture cannot contribute its natural size to the track
 // and push the bottom bar off-screen. (An in-flow `height: 100%` image in an auto-sized box is
 // exactly the cyclic-percentage case where browsers fall back to the natural height.)
+.stage {
+  position: relative;
+  min-height: 0;
+}
+
 // Narrow phones (up to 384px). Estimated budget at 320px, the narrowest width supported: bar
 // padding 2 x 0.5rem, two gaps of 0.5rem, and each button's 2 x 0.75rem padding and 1px borders
 // around "Previous" / "Next", plus "2 / 3" -- roughly 250px at 16px. Only horizontal spacing
@@ -110,11 +120,6 @@
   .bar button {
     padding: 0.5rem 0.75rem;
   }
-}
-
-.stage {
-  position: relative;
-  min-height: 0;
 }
 
 // The box fills the stage, less a 1rem margin, and `contain` fits the picture inside it -- so an
