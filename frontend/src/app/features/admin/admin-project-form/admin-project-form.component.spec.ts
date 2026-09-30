@@ -618,10 +618,10 @@ describe('AdminProjectFormComponent', () => {
     });
 
     it('tells the admin to log in again when the load fails with a 401', () => {
-      // errorInterceptor only logs out and redirects while auth.isLoggedIn() is still true, and
-      // that is a wall-clock check on expiresAt. A token that expired while this page sat open --
-      // one of the triggers issue #92 names -- fails that check before the 401 arrives, so nothing
-      // redirects and "Try again" would fail identically for as long as the admin keeps pressing.
+      // errorInterceptor normally acts first -- a 401 while a token is held ends the session and
+      // redirects (#108) -- but the page cannot assume it did. A token expiring while the page sat
+      // open is one of the triggers issue #92 names, and if a 401 does reach the page, "Try again"
+      // would fail identically for as long as the admin kept pressing.
       getAnyProject.mockReturnValueOnce(throwError(() => ({ ...LOAD_FAILURE, status: 401 })));
       editExistingProject();
 
