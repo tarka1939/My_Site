@@ -2,9 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
- * The backend host is written down in two files that nothing forces to agree: the
- * `preconnect`/`dns-prefetch` hints in `src/index.html`, and `apiBaseUrl` in
- * `src/environments/environment.ts`. The subdomain moved twice during Phase 5
+ * The backend host is written down in three files that nothing forces to agree: the
+ * `preconnect`/`dns-prefetch` hints in `src/index.html`, `apiBaseUrl` in
+ * `src/environments/environment.ts`, and the production `servers:` entry in `docs/openapi.yaml`
+ * (the last added by #181). The subdomain moved twice during Phase 5
  * (`tojest.dev` -> `bieda.it`), both times by hand in both files, and PR #175 exists because one
  * of those edits was missed (issue #178).
  *
@@ -169,6 +170,34 @@ function mismatchMessage(rel: string, apiBaseUrl: string, found: { href: string 
 }
 
 // -------------------------------------------------------------------------------------------
+// Reading openapi.yaml's production server
+// -------------------------------------------------------------------------------------------
+
+/** The contract, one level above the frontend project. readFileSync throws if it is not there. */
+const OPENAPI = join(ROOT, '..', 'docs', 'openapi.yaml');
+
+/**
+ * The `url` of every `servers:` entry whose description begins "Production".
+ *
+ * Pattern-matched rather than parsed, because the frontend has no YAML parser of its own and
+ * borrowing a transitive one would break the day it is deduped away. The block is small and flat --
+ * a top-level `servers:` key holding `- url:` / `description:` pairs -- and anything less regular
+ * than that makes this fail loudly rather than pass on nothing.
+ */
+function productionServerUrls(): string[] {
+  const yaml = readFileSync(OPENAPI, 'utf8').replace(/\r\n/g, '\n');
+  const block = /^servers:\n((?:[ \t]+.*\n|\n)*)/m.exec(yaml)?.[1];
+  if (!block) {
+    throw new Error('no top-level servers: block in ' + OPENAPI);
+  }
+  const entries = [...block.matchAll(/-\s+url:\s*(\S+)\s*\n\s+description:\s*(.*)/g)];
+  expect(entries.length, 'no `- url:` / `description:` pairs under servers: in ' + OPENAPI).toBeGreaterThan(0);
+  return entries
+    .filter((entry) => /^production\b/i.test(entry[2].trim()))
+    .map((entry) => entry[1].replace(/^['"]|['"]$/g, ''));
+}
+
+// -------------------------------------------------------------------------------------------
 
 describe('index.html resource hints agree with the production API origin', () => {
   it('read both files off disk', () => {
@@ -229,5 +258,29 @@ describe('index.html resource hints agree with the production API origin', () =>
       matching.length,
       mismatchMessage('dns-prefetch', apiBaseUrl, prefetches),
     ).toBeGreaterThan(0);
+  });
+});
+
+// #181. The fourth hand-written copy of the backend host, and until this the one nothing checked.
+// A stale entry here breaks no request -- app.config.ts hands environment.apiBaseUrl to
+// provideApi(), and the generator takes its own default from the *first*, local, servers entry --
+// but it misinforms whoever reads the contract, which CLAUDE.md names as the API's source of truth.
+// Compared in full, path included: this entry is the contract's statement of the base URL itself,
+// where index.html's hints are only ever about an origin.
+describe('openapi.yaml names the same production API as environment.ts', () => {
+  it('has exactly one production server, and it is apiBaseUrl', () => {
+    const apiBaseUrl = productionApiBaseUrl();
+    const servers = productionServerUrls();
+
+    expect(
+      servers.length,
+      'expected exactly one servers: entry described as Production in ' + OPENAPI + ', found ' + servers.length,
+    ).toBe(1);
+    expect(
+      servers[0].replace(/\/$/, ''),
+      'docs/openapi.yaml production server disagrees with environment.ts apiBaseUrl (' +
+        apiBaseUrl +
+        '). Both name the backend host by hand; see docs/DEPLOYMENT.md for all four places.',
+    ).toBe(apiBaseUrl.replace(/\/$/, ''));
   });
 });
