@@ -7,6 +7,7 @@ import { routes } from './app.routes';
 import { AboutService } from './core/api/api/about.service';
 import { ProjectsService } from './core/api/api/projects.service';
 import { TagsService } from './core/api/api/tags.service';
+import { AuthService } from './core/auth/auth.service';
 import { Project } from './core/api/model/project';
 
 /**
@@ -45,7 +46,12 @@ function configure(): void {
       { provide: AboutService, useValue: { getAboutPage: () => of({ body: '', updatedAt: '2026-09-20T10:00:00Z' }) } },
       {
         provide: ProjectsService,
-        useValue: { listProjects: () => of(EMPTY_PAGE), getProject: () => of(PROJECT) },
+        useValue: {
+          listProjects: () => of(EMPTY_PAGE),
+          getProject: () => of(PROJECT),
+          // The admin list, reached by the logged-in aria-current case below.
+          listAllProjects: () => of(EMPTY_PAGE),
+        },
       },
       { provide: TagsService, useValue: { listTags: () => of([]) } },
     ],
@@ -153,5 +159,43 @@ describe('primary navigation against the real routes', () => {
       expect(projects.classList.contains('is-active'), url).toBe(true);
       expect(about.classList.contains('is-active'), url).toBe(false);
     }
+  });
+
+  /** Every nav link carrying aria-current, as "text=value", after navigating to `url`. */
+  async function currentLinksAt(url: string): Promise<string[]> {
+    const fixture = TestBed.createComponent(App);
+    await TestBed.inject(Router).navigateByUrl(url);
+    await fixture.whenStable();
+    const nav = (fixture.nativeElement as HTMLElement).querySelector('nav[aria-label="Primary"]');
+    return Array.from(nav?.querySelectorAll('[aria-current]') ?? []).map(
+      (link) => `${link.textContent?.trim()}=${link.getAttribute('aria-current')}`,
+    );
+  }
+
+  // #225. The visual state above has always been there; a screen reader was told nothing. Exactly
+  // one link each time. The '/' case is the one a prefix match would get wrong: every URL starts
+  // with '/', so without `exact` About would claim to be current on every other page too, and the
+  // later rows would come back with two entries rather than one.
+  it.each([
+    ['/', ['About=page']],
+    ['/projects', ['Projects=page']],
+    ['/projects/p1', ['Projects=page']],
+    ['/contact', ['Contact=page']],
+    ['/admin/login', ['Admin=page']],
+  ])('at %s, tells assistive technology %j is the current page', async (url, expected) => {
+    expect(await currentLinksAt(url)).toEqual(expected);
+  });
+
+  // The logged-in header swaps in a different Admin link, to the admin list rather than the login
+  // page, so it needs its own case. The URL check is not decoration: had the guard bounced this to
+  // /admin/login, the *logged-out* Admin link would be the current one and the result identical.
+  it('marks the logged-in Admin link current inside the admin area', async () => {
+    TestBed.inject(AuthService).setSession({
+      token: 't',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    expect(await currentLinksAt('/admin/projects')).toEqual(['Admin=page']);
+    expect(TestBed.inject(Router).url).toBe('/admin/projects');
   });
 });
