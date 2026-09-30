@@ -2,20 +2,25 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
- * The backend host is written down in three files that nothing forces to agree: the
- * `preconnect`/`dns-prefetch` hints in `src/index.html`, `apiBaseUrl` in
- * `src/environments/environment.ts`, and the production `servers:` entry in `docs/openapi.yaml`
- * (the last added by #181). The subdomain moved twice during Phase 5
- * (`tojest.dev` -> `bieda.it`), both times by hand in both files, and PR #175 exists because one
- * of those edits was missed (issue #178).
+ * The backend host is written down by hand in several places that nothing else forces to agree.
+ * This file checks four of them against `apiBaseUrl` in `src/environments/environment.ts`: the
+ * `preconnect` and `dns-prefetch` hints in `src/index.html`, the production `servers:` entry in
+ * `docs/openapi.yaml`, and the public health check in `.github/workflows/deploy-backend.yml` (the
+ * last two added by #181). The subdomain moved during Phase 5 (`tojest.dev` -> `bieda.it`), and
+ * the rename commit (67cdaf1, 2026-09-03) edited only openapi.yaml, leaving the app and its hints
+ * on the retired host until PR #175 (issue #178).
+ *
+ * One more copy is deliberately left out: content-seed/locality.mjs's approved-hosts list. Allowing
+ * the seed to write to a host is its own decision, and following a host change automatically would
+ * merge it back into this one -- see that file's comment. docs/DEPLOYMENT.md §1 lists every place.
  *
  * That failure is silent. A stale `preconnect` breaks nothing and warns about nothing: the browser
  * completes a DNS lookup, TCP handshake and TLS negotiation to a host the app never then requests,
  * while the real calls go somewhere else and pay for their own round trip. The only symptom is a
  * latency regression -- the handshake the hint was supposed to save now costs one instead.
  *
- * So the entire value of this file is that it reads BOTH sides off disk. Asserting either side
- * against a hostname literal written here would just create a third copy to keep in sync, which is
+ * So the entire value of this file is that it reads every side off disk. Asserting any of them
+ * against a hostname literal written here would just add another copy to keep in sync, which is
  * the bug rather than the fix.
  */
 
@@ -180,18 +185,32 @@ const OPENAPI = join(ROOT, '..', 'docs', 'openapi.yaml');
  * The `url` of every `servers:` entry whose description begins "Production".
  *
  * Pattern-matched rather than parsed, because the frontend has no YAML parser of its own and
- * borrowing a transitive one would break the day it is deduped away. The block is small and flat --
- * a top-level `servers:` key holding `- url:` / `description:` pairs -- and anything less regular
- * than that makes this fail loudly rather than pass on nothing.
+ * borrowing a transitive one would break the day it is deduped away. The block is small and flat,
+ * and SERVERS_SHAPE below is the one shape read; anything else -- valid YAML included, such as a
+ * comment after `servers:` or `description:` before `url:` -- fails loudly rather than passing on
+ * nothing, and the message says which shape was expected.
+ *
+ * What it cannot see: an entry is "production" only when its description *starts* with the word, so
+ * a leftover described as, say, "Retired production host" is not counted and passes. The "exactly
+ * one" check below catches a second entry only while it still reads "Production ...".
  */
+const SERVERS_SHAPE =
+  'a top-level `servers:` line with nothing after it, then indented `- url: <url>` lines each ' +
+  'followed directly by `description: <text>`';
+
 function productionServerUrls(): string[] {
   const yaml = readFileSync(OPENAPI, 'utf8').replace(/\r\n/g, '\n');
   const block = /^servers:\n((?:[ \t]+.*\n|\n)*)/m.exec(yaml)?.[1];
   if (!block) {
-    throw new Error('no top-level servers: block in ' + OPENAPI);
+    throw new Error(
+      'no servers: block in the shape this reads, in ' + OPENAPI + '; expected ' + SERVERS_SHAPE,
+    );
   }
   const entries = [...block.matchAll(/-\s+url:\s*(\S+)\s*\n\s+description:\s*(.*)/g)];
-  expect(entries.length, 'no `- url:` / `description:` pairs under servers: in ' + OPENAPI).toBeGreaterThan(0);
+  expect(
+    entries.length,
+    'no url/description pairs under servers: in ' + OPENAPI + '; expected ' + SERVERS_SHAPE,
+  ).toBeGreaterThan(0);
   return entries
     .filter((entry) => /^production\b/i.test(entry[2].trim()))
     .map((entry) => entry[1].replace(/^['"]|['"]$/g, ''));
@@ -261,8 +280,7 @@ describe('index.html resource hints agree with the production API origin', () =>
   });
 });
 
-// #181. The fourth hand-written copy of the backend host, and until this the one nothing checked.
-// A stale entry here breaks no request -- app.config.ts hands environment.apiBaseUrl to
+// #181. A stale entry here breaks no request -- app.config.ts hands environment.apiBaseUrl to
 // provideApi(), and the generator takes its own default from the *first*, local, servers entry --
 // but it misinforms whoever reads the contract, which CLAUDE.md names as the API's source of truth.
 // Compared in full, path included: this entry is the contract's statement of the base URL itself,
@@ -274,13 +292,55 @@ describe('openapi.yaml names the same production API as environment.ts', () => {
 
     expect(
       servers.length,
-      'expected exactly one servers: entry described as Production in ' + OPENAPI + ', found ' + servers.length,
+      'expected exactly one servers: entry described as Production in ' +
+        OPENAPI +
+        ', found ' +
+        servers.length,
     ).toBe(1);
     expect(
       servers[0].replace(/\/$/, ''),
       'docs/openapi.yaml production server disagrees with environment.ts apiBaseUrl (' +
         apiBaseUrl +
-        '). Both name the backend host by hand; see docs/DEPLOYMENT.md for all four places.',
+        '). Both name the backend host by hand; docs/DEPLOYMENT.md §1 lists every place.',
     ).toBe(apiBaseUrl.replace(/\/$/, ''));
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// Reading deploy-backend.yml's public health check
+// -------------------------------------------------------------------------------------------
+
+/** The backend deploy workflow, at the repo root beside docs/. */
+const DEPLOY_BACKEND = join(ROOT, '..', '.github', 'workflows', 'deploy-backend.yml');
+
+// #181's review. The one copy whose staleness fails loudly, and in the wrong place: after a host
+// change, the next push to main deploys fine, then "Verify from the public internet" curls the old
+// host. If that host still resolves -- a retired subdomain answering the provider's 404 did exactly
+// that -- the run fails after ten attempts, blaming the proxy or the firewall. Compared by origin:
+// the check's path is the actuator's, which apiBaseUrl rightly does not share. https only: a check
+// on the host's own loopback (deploy/deploy.sh has one) is plain http and not about this host.
+describe('deploy-backend.yml health-checks the origin environment.ts calls', () => {
+  it('curls only the apiBaseUrl origin for its public health check', () => {
+    const apiOrigin = requireOrigin(productionApiBaseUrl());
+    const workflow = readFileSync(DEPLOY_BACKEND, 'utf8');
+    const checked = [...workflow.matchAll(/https:\/\/[^\s'"]+\/actuator\/health/g)].map(
+      (m) => m[0],
+    );
+
+    expect(
+      checked.length,
+      'no https://.../actuator/health URL in ' +
+        DEPLOY_BACKEND +
+        '; if the public check moved or changed shape, update this test with it',
+    ).toBeGreaterThan(0);
+    for (const url of checked) {
+      expect(
+        originOf(url),
+        DEPLOY_BACKEND +
+          ' health-checks ' +
+          url +
+          ', not the environment.ts apiBaseUrl origin; docs/DEPLOYMENT.md §1 lists every place.',
+      ).toBe(apiOrigin);
+    }
   });
 });
