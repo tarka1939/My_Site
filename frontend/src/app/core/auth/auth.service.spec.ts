@@ -85,4 +85,31 @@ describe('AuthService', () => {
     expect(service.isLoggedIn()).toBe(false);
     expect(sessionStorage.getItem('mysite.admin.session')).toBeNull();
   });
+
+  // #151. authGuard calls this on every redirect to the login page, and a guard can run for a
+  // navigation that is then cancelled. That is safe only because this never ends a live session --
+  // which authGuard's own spec cannot show, since the guard only calls it once isLoggedIn() is
+  // already false. So the promise is pinned here, where it is made.
+  describe('clearExpiredSession', () => {
+    it('clears a session that has expired, from the signals and from storage', () => {
+      const service = TestBed.inject(AuthService);
+      service.setSession({ token: 'abc123', expiresAt: new Date(Date.now() - 60_000).toISOString() });
+
+      service.clearExpiredSession();
+
+      expect(service.hasToken()).toBe(false);
+      expect(sessionStorage.getItem('mysite.admin.session')).toBeNull();
+    });
+
+    it('leaves a live session exactly as it was', () => {
+      const service = TestBed.inject(AuthService);
+      service.setSession({ token: 'abc123', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+      service.clearExpiredSession();
+
+      expect(service.isLoggedIn()).toBe(true);
+      expect(service.token()).toBe('abc123');
+      expect(sessionStorage.getItem('mysite.admin.session')).not.toBeNull();
+    });
+  });
 });
