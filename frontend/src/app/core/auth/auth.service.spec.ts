@@ -29,6 +29,27 @@ describe('AuthService', () => {
     expect(service.isLoggedIn()).toBe(false);
   });
 
+  // #151, and found in the browser after every test in this file had passed. isLoggedIn was a
+  // computed(), which memoizes: it re-runs only when a signal it read has changed, and the clock is
+  // not a signal. Each test above sets a session that is expired already, so the first evaluation
+  // came after the expiry and the cache never showed. In a real tab the header reads isLoggedIn()
+  // straight after login, and from then on it answered true for as long as the tab lived.
+  it('stops reporting logged in when the expiry passes, having said true before it did', () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const service = TestBed.inject(AuthService);
+      service.setSession({ token: 'abc123', expiresAt: new Date(now + 60_000).toISOString() });
+      expect(service.isLoggedIn()).toBe(true);
+
+      clock.mockReturnValue(now + 61_000);
+
+      expect(service.isLoggedIn()).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('still reports hasToken for a session that has expired by wall clock', () => {
     // The one window the two predicates are meant to disagree in, and the reason hasToken() exists:
     // "may this person use the admin area" is already no, while "did we hold a credential the
