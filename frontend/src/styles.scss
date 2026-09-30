@@ -315,11 +315,15 @@ optgroup {
 
 // Every form's primary action, as a default rather than a per-form copy (#222). Six forms each
 // wrote this same rule into their own stylesheet; the seventh, the About editor, did not, and its
-// Save button fell through to the UA's own grey fill, which the owner reported as white text on
-// light grey. A component rule still wins where one exists (emulated encapsulation
-// adds an attribute selector, so it out-specifies this), which is why the copies can stay: they are
-// identical to this, and removing them is a refactor, not this fix. What changes is that a form
-// which says nothing now gets the accent pair instead of the browser's.
+// Save button fell through to the UA's own colours. In dark mode that is white on #6b6b6b, which
+// the owner reported as hard to read. Measured, it is 5.33:1 -- over AA, so this is not a contrast
+// failure a ratio check would flag, but it was the one grey primary action on a site whose others
+// are all on the accent (5.83:1 light, 5.79:1 dark).
+//
+// A component rule still wins where one exists -- emulated encapsulation adds an attribute
+// selector, so it out-specifies this -- which is why the six copies can stay: they are identical
+// to this, and removing them is a refactor, not this fix. What changes is that a form which says
+// nothing now gets the accent pair instead of the browser's.
 button[type='submit'] {
   padding: 0.5rem 1.25rem;
   border: none;
