@@ -27,7 +27,12 @@ export const ADMIN_ROUTES: Routes = [
   },
   {
     path: '',
-    canActivate: [authGuard],
+    // canActivateChild, not canActivate: moving between these pages reuses this componentless
+    // parent, and a reused route's canActivate never runs again. As canActivate, an admin whose
+    // session expired on /admin/projects could still open the About editor -- its load is a public
+    // GET, so it filled -- and only met the login page on save, losing the edit (#151's review).
+    // A child guard runs on every navigation into the subtree, the first one included.
+    canActivateChild: [authGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'projects' },
       {
