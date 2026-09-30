@@ -59,10 +59,10 @@ yourself — it changes only Part 2, step 3.
 | Angular project name | `frontend` | `frontend/angular.json` |
 | Angular build output | `dist/frontend/browser` (no explicit `outputPath`, so the `@angular/build:application` default) | `frontend/angular.json` |
 | SPA fallback | already committed | `frontend/public/_redirects` |
-| Prod API base URL | `https://tarka1939.bieda.it/api/v1` — was a `TBD` placeholder until 2026-09-03 | `frontend/src/environments/environment.ts` |
+| Prod API base URL | `https://tarka1939.bieda.it/api/v1` — was a `TBD` placeholder until 2026-09-03. **A host change is four edits, not one** (#181): the row once named only the first, and a rename run from it missed one (#175) | 1. `frontend/src/environments/environment.ts` — `apiBaseUrl`, the value the app actually calls; 2. `frontend/src/index.html` — `<link rel="preconnect">`; 3. `frontend/src/index.html` — `<link rel="dns-prefetch">`; 4. `docs/openapi.yaml` — the production `servers:` entry. `frontend/src/api-origin-hints.spec.ts` fails if 2, 3 or 4 disagrees with 1. Editing 4 is a contract edit, so run `npm run generate:api` as for any other; it should produce no diff, since the client takes its default base path from the *first*, local, entry |
 | CORS config | **exists** since PR #172 — exact origins, no patterns | `SecurityConfig.java`; issue #44, deployed and verified live 2026-09-03 |
 | Dockerfile | **does not exist** | issue #41 |
-| CI workflows | **none** — `.github/workflows/` contains only a `README.md` | issues #38, #45 |
+| CI workflows | `ci.yml` (both suites and the API-client staleness check, on every PR and every push to `dev` or `main`), `deploy-frontend.yml` and `deploy-backend.yml` (on every push to `main`, or dispatched by hand) — this row said **none** until 2026-09-30, long after #193, #38 and #45 had landed | `.github/workflows/`; `docs/CI_PLAN.md`, `docs/DEPLOY_PIPELINE_SETUP.md` |
 
 ### Resolved during the deployment
 
