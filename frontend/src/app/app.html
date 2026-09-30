@@ -6,15 +6,18 @@
     <ul>
       <!-- About is the landing page, at '/', and comes first. Its active match must be exact: every
            URL starts with '/', so a prefix match would light it up on every page. Projects is a
-           prefix match, so it stays lit on /projects/:id as well as the list. -->
-      <li><a routerLink="/" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: true }">About</a></li>
-      <li><a routerLink="/projects" routerLinkActive="is-active">Projects</a></li>
-      <li><a routerLink="/contact" routerLinkActive="is-active">Contact</a></li>
+           prefix match, so it stays lit on /projects/:id as well as the list.
+           ariaCurrentWhenActive (#225) puts aria-current="page" on whichever link is lit, so a
+           screen reader announces the current page the underline shows. It matters most on About:
+           its heading is the owner's name, so nothing else on that page says "About". -->
+      <li><a routerLink="/" routerLinkActive="is-active" ariaCurrentWhenActive="page" [routerLinkActiveOptions]="{ exact: true }">About</a></li>
+      <li><a routerLink="/projects" routerLinkActive="is-active" ariaCurrentWhenActive="page">Projects</a></li>
+      <li><a routerLink="/contact" routerLinkActive="is-active" ariaCurrentWhenActive="page">Contact</a></li>
       @if (auth.isLoggedIn()) {
-        <li><a routerLink="/admin/projects" routerLinkActive="is-active">Admin</a></li>
+        <li><a routerLink="/admin/projects" routerLinkActive="is-active" ariaCurrentWhenActive="page">Admin</a></li>
         <li><button type="button" class="link-button" (click)="logout()">Log out</button></li>
       } @else {
-        <li><a routerLink="/admin/login" routerLinkActive="is-active">Admin</a></li>
+        <li><a routerLink="/admin/login" routerLinkActive="is-active" ariaCurrentWhenActive="page">Admin</a></li>
       }
     </ul>
   </nav>
