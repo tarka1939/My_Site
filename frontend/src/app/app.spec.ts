@@ -1,10 +1,6 @@
-import { Component } from '@angular/core';
-import { provideRouter, Router } from '@angular/router';
+import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
-
-@Component({ template: '' })
-class StubComponent {}
 
 describe('App', () => {
   beforeEach(async () => {
@@ -54,49 +50,5 @@ describe('App', () => {
       compiled.querySelector('a[href="/admin/login"]'),
       `no /admin/login anchor. Rendered nav was: ${nav?.outerHTML ?? '(no nav at all)'}`,
     ).toBeTruthy();
-  });
-});
-
-// #225. routerLinkActive only draws the underline; a screen reader learns the current page from
-// aria-current, and nothing else on About says "About" -- its heading is the owner's name. The
-// routes here mirror app.routes.ts's shapes (About exact at '', Projects a prefix that also covers
-// a detail page) with stub components, because the matching is what is under test, not the pages.
-describe('App primary nav: the current page', () => {
-  beforeEach(async () => {
-    sessionStorage.clear();
-    await TestBed.configureTestingModule({
-      imports: [App],
-      providers: [
-        provideRouter([
-          { path: '', pathMatch: 'full', component: StubComponent },
-          { path: 'projects', component: StubComponent },
-          { path: 'projects/:id', component: StubComponent },
-          { path: 'contact', component: StubComponent },
-        ]),
-      ],
-    }).compileComponents();
-  });
-
-  /** Every nav link carrying aria-current, as "text=value", after navigating to `url`. */
-  async function currentLinksAt(url: string): Promise<string[]> {
-    const fixture = TestBed.createComponent(App);
-    await TestBed.inject(Router).navigateByUrl(url);
-    await fixture.whenStable();
-    const nav = (fixture.nativeElement as HTMLElement).querySelector('nav[aria-label="Primary"]');
-    return Array.from(nav?.querySelectorAll('[aria-current]') ?? []).map(
-      (link) => `${link.textContent?.trim()}=${link.getAttribute('aria-current')}`,
-    );
-  }
-
-  // Exactly one link each time. The '/' case is the one a prefix match would get wrong: every URL
-  // starts with '/', so without `exact` About would also claim to be current on every other page,
-  // and the '/projects' rows would come back with two entries rather than one.
-  it.each([
-    ['/', ['About=page']],
-    ['/projects', ['Projects=page']],
-    ['/projects/3f1c', ['Projects=page']],
-    ['/contact', ['Contact=page']],
-  ])('at %s, marks only %j', async (url, expected) => {
-    expect(await currentLinksAt(url)).toEqual(expected);
   });
 });

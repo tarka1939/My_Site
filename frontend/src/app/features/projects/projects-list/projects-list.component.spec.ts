@@ -547,7 +547,7 @@ describe('ProjectsListComponent', () => {
     expect(slotRatio(slot)).toBeCloseTo(4 / 3, 5);
     expect(getComputedStyle(slot).overflow).toBe('hidden');
     // No pixel sizing introduced anywhere on the way. The slot's height is now derived from its
-    // width, and that width comes from a `minmax(20rem, 1fr)` column -- so it still tracks a
+    // width, and that width comes from a `minmax(min(20rem, 100%), 1fr)` column -- so it still tracks a
     // visitor's font size, and a pixel value slipped in here would still make rows go ragged for
     // them alone.
     expect(getComputedStyle(slot.children[0]).height).toBe('100%');
