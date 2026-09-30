@@ -313,6 +313,36 @@ optgroup {
   letter-spacing: inherit;
 }
 
+// Every form's primary action, as a default rather than a per-form copy (#222). The site has six
+// submit buttons. Five of their forms style theirs in their own stylesheet; the sixth, the About
+// editor, did not, and its Save button fell through to the UA's own colours. In Chromium's dark
+// mode that is white on #6b6b6b, which the owner reported as hard to read. Measured, it is 5.33:1
+// -- over AA, so not a failure a ratio check would flag, but it was the one grey primary action
+// on a site whose others are all on the accent (5.83:1 light, 5.79:1 dark).
+//
+// Where a component rule exists it still applies, but not always by specificity. Emulated
+// encapsulation turns a component's bare `button {` into `button[_ngcontent-x]`, which *ties* with
+// this at (0,1,1) -- four of the five are written that way -- and wins only because component
+// styles are injected after this file. Only admin-project-form's `button[type='submit']` really
+// out-specifies it. Nothing visible rides on which one wins: each copy sets every property below
+// to the same value. They are not identical, though -- all five add `align-self: flex-start`,
+// which this deliberately does not, because it is right only in a flex column. The About form's
+// button sits in a centred flex row and needs no alignment; the next form in a column does.
+// Removing the copies is a refactor, not this fix.
+button[type='submit'] {
+  padding: 0.5rem 1.25rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  cursor: pointer;
+}
+
+button[type='submit']:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 h1,
 h2,
 h3,

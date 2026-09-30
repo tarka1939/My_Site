@@ -35,7 +35,10 @@ h1 {
   // `contain`, which is the pattern the cards were moved *to*. But #205's conclusion was that the
   // fit rule was never the cause and the slot size was. Having the right fit rule on an undersized
   // box looks like a solved problem and is not one.
-  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  //
+  // `min(20rem, 100%)`, not a bare 20rem, for the reason on .project-grid (#228): a 320px phone's
+  // content box is 288px, which a bare 20rem column overflows.
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
   gap: 1rem;
   list-style: none;
   padding: 0;
