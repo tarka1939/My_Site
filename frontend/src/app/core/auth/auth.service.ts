@@ -58,6 +58,22 @@ export class AuthService {
     this.expiresAtSignal.set(null);
     clearStoredSession();
   }
+
+  /**
+   * Drop the session if, and only if, it has already expired (#151). A live session is never
+   * touched, and there is nothing to do when no token is held.
+   *
+   * Exists so authGuard can clean up on its way to the login page without inheriting the problem
+   * #151 raised about guards: they can re-run, resolve concurrently and be cancelled, so a guard
+   * that called logout() could end a session for a navigation that never happened. This cannot,
+   * because what it removes is dead whatever the navigation does -- the outcome is the same
+   * whether it runs once, twice, or for a navigation that is later cancelled.
+   */
+  clearExpiredSession(): void {
+    if (this.hasToken() && !this.isLoggedIn()) {
+      this.logout();
+    }
+  }
 }
 
 function readStoredSession(): StoredSession | null {
