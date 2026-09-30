@@ -18,16 +18,28 @@ export class AuthService {
   readonly token = this.tokenSignal.asReadonly();
   readonly expiresAt = this.expiresAtSignal.asReadonly();
 
-  // Pull-based, not push-based: this only re-evaluates when read (a guard check, an interceptor
-  // reading token()), not on a timer as wall-clock time passes. An idle admin past the token's
-  // expiresAt stays visually "logged in" until the next navigation or API call touches this.
-  // Acceptable for a single-admin, no-refresh-flow site (see docs/DECISIONS.md) -- revisit with a
-  // timer-driven check only if silent post-expiry idle state becomes an actual problem.
-  readonly isLoggedIn = computed(() => {
+  /**
+   * Whether the held session is still inside its lifetime, by the clock as it reads *now*.
+   *
+   * A method, deliberately not a computed() (#151). A computed memoizes, and re-runs only when a
+   * signal it read has changed -- the clock is not a signal. So once this had answered true, which
+   * the header asks for straight after login, it went on answering true after the hour ran out:
+   * authGuard let an expired admin into the admin area, and authInterceptor kept sending the dead
+   * token onto public reads, which the backend answers 401 even on a permitAll endpoint. The
+   * comment that stood here called it "pull-based: this only re-evaluates when read", and that was
+   * the mistake -- a computed does not re-evaluate on read unless an input moved.
+   *
+   * Reading the two signals still gives a template or computed that calls this a dependency on
+   * them, so the header re-renders on login and logout. What nothing does is re-render on expiry by
+   * itself: an idle admin past expiresAt stays visually "logged in" until the next navigation or
+   * API call asks. Acceptable for a single-admin, no-refresh-flow site (see docs/DECISIONS.md) --
+   * revisit with a timer only if that idle state becomes an actual problem.
+   */
+  isLoggedIn(): boolean {
     const token = this.tokenSignal();
     const expiresAt = this.expiresAtSignal();
     return token !== null && expiresAt !== null && Date.parse(expiresAt) > Date.now();
-  });
+  }
 
   /**
    * Whether this tab is holding a token at all, expired or not.
@@ -57,6 +69,22 @@ export class AuthService {
     this.tokenSignal.set(null);
     this.expiresAtSignal.set(null);
     clearStoredSession();
+  }
+
+  /**
+   * Drop the session if, and only if, it has already expired (#151). A live session is never
+   * touched, and there is nothing to do when no token is held.
+   *
+   * Exists so authGuard can clean up on its way to the login page without inheriting the problem
+   * #151 raised about guards: they can re-run, resolve concurrently and be cancelled, so a guard
+   * that called logout() could end a session for a navigation that never happened. This cannot,
+   * because what it removes is dead whatever the navigation does -- the outcome is the same
+   * whether it runs once, twice, or for a navigation that is later cancelled.
+   */
+  clearExpiredSession(): void {
+    if (this.hasToken() && !this.isLoggedIn()) {
+      this.logout();
+    }
   }
 }
 
