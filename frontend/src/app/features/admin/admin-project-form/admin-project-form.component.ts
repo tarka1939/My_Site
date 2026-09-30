@@ -422,13 +422,12 @@ export class AdminProjectFormComponent {
         }),
         catchError((problem: ApiProblem) => {
           // No notifications.error() here on purpose: errorInterceptor already toasts every non-field
-          // error. It also logs out and redirects on a 401 -- but only while auth.isLoggedIn() is
-          // still true, and that is a wall-clock check on the token's expiresAt. A token that simply
-          // expired while this page sat open, one of the triggers this guard exists for, makes
-          // isLoggedIn() false before the 401 ever arrives: nothing redirects, and every retry fails
-          // identically. Say that instead of offering the admin the same dead end again. Leaving is
-          // what recovers, because navigating re-runs authGuard. The interceptor's side of this is
-          // issue #108, not this component's business.
+          // error. On a 401 it also ends the session and redirects to the login page whenever a
+          // token was held (#108), which covers a token that expired while this page sat open --
+          // since #151 that token is not even sent, and the admin endpoint refuses the anonymous
+          // request. This message is for a 401 that reaches the page anyway: a retry would fail
+          // identically, so say what recovers instead of offering the same dead end again. Leaving
+          // is what recovers, because navigating re-runs authGuard.
           this.loadError.set(
             problem?.status === 401
               ? 'Your admin session has expired. Log in again to edit this project -- "Back to projects" above will take you there.'

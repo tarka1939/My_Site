@@ -1,4 +1,4 @@
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpContext, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -8,7 +8,7 @@ import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notifications/notification.service';
 import { ApiProblem } from './api-problem';
-import { errorInterceptor } from './error.interceptor';
+import { errorInterceptor, SKIP_ERROR_TOAST } from './error.interceptor';
 
 @Component({ template: '' })
 class StubComponent {}
@@ -163,14 +163,18 @@ describe('errorInterceptor', () => {
     expect(url).toBe(before);
   });
 
-  it('does not treat a rejected login as an expired session, and leaves its returnUrl alone', async () => {
+  // The login page has no guard, so an admin can reach it still holding a token: an expired one
+  // through the header's Admin link, which shows once isLoggedIn() goes false, or a live one by URL.
+  // docs/openapi.yaml documents /auth/login's 401 as "Invalid credentials", so without the login
+  // exclusion one mistyped password would be reported as an expired session and rewrite returnUrl
+  // to the login page itself -- stranding the admin there after a successful retry.
+  it.each([
+    ['an expired', -60_000],
+    ['a live', 60_000],
+  ])('does not treat a rejected login as an expired session when holding %s token', async (_, offset) => {
     await router.navigate(['/admin/login'], { queryParams: { returnUrl: '/admin/projects' } });
     const before = router.url;
-    // authGuard redirects on expiry without calling logout(), so the stale token is still in the
-    // signal when the admin lands here. docs/openapi.yaml documents /auth/login's 401 as "Invalid
-    // credentials", so one mistyped password would otherwise be reported as an expired session and
-    // rewrite returnUrl to the login page itself -- stranding them there after a successful retry.
-    auth.setSession({ token: 'stale', expiresAt: new Date(Date.now() - 60_000).toISOString() });
+    auth.setSession({ token: 'held', expiresAt: new Date(Date.now() + offset).toISOString() });
 
     const { toasts, url, returnUrl } = await fail401(LOGIN_URL, {
       method: 'POST',
@@ -281,9 +285,104 @@ describe('errorInterceptor', () => {
       // Rendered straight into the toast, so a non-string is "[object Object]" on screen.
       const { problem, toasts } = await reject({ title: { code: 400 }, detail: 42 });
 
-      expect(problem.title).toBe('Request failed (400).');
+      expect(problem.title).toBe('The server did not accept this request (error 400).');
       expect(problem.detail).toBeUndefined();
-      expect(toasts).toEqual(['Request failed (400).']);
+      expect(toasts).toEqual(['The server did not accept this request (error 400).']);
+    });
+  });
+
+  /**
+   * A GET to `url` that fails the way `fail` says, with or without SKIP_ERROR_TOAST. Returns what
+   * the caller received and what the visitor was told.
+   */
+  async function failWith(
+    url: string,
+    fail: (request: ReturnType<HttpTestingController['expectOne']>) => void,
+    skipToast: boolean,
+  ): Promise<{ problem: ApiProblem; toasts: string[] }> {
+    const context = skipToast ? new HttpContext().set(SKIP_ERROR_TOAST, true) : undefined;
+    const promise = firstValueFrom(httpClient.get(url, { context })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    fail(httpMock.expectOne(url));
+    const problem = (await promise) as ApiProblem;
+    await TestBed.inject(ApplicationRef).whenStable();
+    return { problem, toasts: notifications.notifications().map((n) => n.message) };
+  }
+
+  const bareStatus = (status: number) => (request: ReturnType<HttpTestingController['expectOne']>) =>
+    request.flush(null, { status, statusText: 'Error' });
+
+  // #191. The reset page explains a failed token check itself; the toast arrived beside that
+  // explanation in red and said the opposite.
+  describe('SKIP_ERROR_TOAST', () => {
+    it('toasts a failure by default', async () => {
+      const { toasts } = await failWith('/api/v1/auth/password-reset/validate', bareStatus(503), false);
+
+      expect(toasts).toHaveLength(1);
+    });
+
+    it('suppresses the toast for a request that sets it, and still hands the caller the problem', async () => {
+      const { problem, toasts } = await failWith(
+        '/api/v1/auth/password-reset/validate',
+        bareStatus(503),
+        true,
+      );
+
+      expect(toasts).toEqual([]);
+      expect(problem.status).toBe(503);
+      expect(problem.rateLimited).toBe(false);
+    });
+
+    it('suppresses the rate-limit toast too, since the caller renders that state as well', async () => {
+      const { problem, toasts } = await failWith(
+        '/api/v1/auth/password-reset/validate',
+        (request) =>
+          request.flush({ title: 'Too Many Requests', status: 429 }, { status: 429, statusText: 'Too Many Requests' }),
+        true,
+      );
+
+      expect(toasts).toEqual([]);
+      expect(problem.rateLimited).toBe(true);
+    });
+
+    it('does not stop a 401 from ending a session that was held -- that news is not the caller to give', async () => {
+      await router.navigateByUrl('/admin/projects');
+      auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+      const { toasts } = await failWith('/api/v1/contact-messages', bareStatus(401), true);
+
+      expect(toasts).toEqual(['Your admin session has expired. Please log in again.']);
+      expect(auth.hasToken()).toBe(false);
+      expect(router.url.startsWith('/admin/login')).toBe(true);
+    });
+  });
+
+  // #191's second half. These titles are used when the response body names nothing itself -- a
+  // proxy error page, a gateway timeout -- and the toast they land in is mounted in the root
+  // layout, so visitors read them. "Request failed (404)." was a developer's message.
+  describe('the title a failure gets when its body names none', () => {
+    it.each([
+      [502, 'The server could not complete this just now. Please try again in a moment (error 502).'],
+      [500, 'The server could not complete this just now. Please try again in a moment (error 500).'],
+      [404, 'That could not be found on the server (error 404).'],
+      [403, 'The server did not accept this request (error 403).'],
+    ])('a bare %i reads as a sentence and keeps its status', async (status, expected) => {
+      const { problem, toasts } = await failWith('/api/v1/projects', bareStatus(status), false);
+
+      expect(problem.title).toBe(expected);
+      expect(toasts).toEqual([expected]);
+    });
+
+    it('a request that never reached the server says so', async () => {
+      const { problem, toasts } = await failWith(
+        '/api/v1/projects',
+        (request) => request.error(new ProgressEvent('error')),
+        false,
+      );
+
+      expect(problem.status).toBe(0);
+      expect(toasts).toEqual(['Could not reach the server. Check your connection and try again.']);
     });
   });
 });
