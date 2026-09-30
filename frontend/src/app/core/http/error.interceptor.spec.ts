@@ -163,14 +163,18 @@ describe('errorInterceptor', () => {
     expect(url).toBe(before);
   });
 
-  it('does not treat a rejected login as an expired session, and leaves its returnUrl alone', async () => {
+  // The login page has no guard, so an admin can reach it still holding a token: an expired one
+  // through the header's Admin link, which shows once isLoggedIn() goes false, or a live one by URL.
+  // docs/openapi.yaml documents /auth/login's 401 as "Invalid credentials", so without the login
+  // exclusion one mistyped password would be reported as an expired session and rewrite returnUrl
+  // to the login page itself -- stranding the admin there after a successful retry.
+  it.each([
+    ['an expired', -60_000],
+    ['a live', 60_000],
+  ])('does not treat a rejected login as an expired session when holding %s token', async (_, offset) => {
     await router.navigate(['/admin/login'], { queryParams: { returnUrl: '/admin/projects' } });
     const before = router.url;
-    // authGuard redirects on expiry without calling logout(), so the stale token is still in the
-    // signal when the admin lands here. docs/openapi.yaml documents /auth/login's 401 as "Invalid
-    // credentials", so one mistyped password would otherwise be reported as an expired session and
-    // rewrite returnUrl to the login page itself -- stranding them there after a successful retry.
-    auth.setSession({ token: 'stale', expiresAt: new Date(Date.now() - 60_000).toISOString() });
+    auth.setSession({ token: 'held', expiresAt: new Date(Date.now() + offset).toISOString() });
 
     const { toasts, url, returnUrl } = await fail401(LOGIN_URL, {
       method: 'POST',

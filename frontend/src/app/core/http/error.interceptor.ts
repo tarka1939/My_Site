@@ -62,7 +62,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       // hasToken(), not isLoggedIn(). isLoggedIn() is already false once the token has expired by
       // wall clock, which is the most common way a session ends -- so gating on it meant ordinary
-      // expiry fell through to the generic toast below ("Request failed (401).") with no logout and
+      // expiry fell through to the generic toast below (then "Request failed (401).") with no logout and
       // no redirect, and only the rare server-side rejection of a still-believed-valid token (clock
       // skew, rotated signing secret, revocation) ever took this path. Both mean the same thing to
       // the admin: log in again. See issue #108 and hasToken()'s comment in auth.service.ts.
