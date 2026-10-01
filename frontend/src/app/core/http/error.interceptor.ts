@@ -88,6 +88,17 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         auth.logout();
         notifications.error('Your admin session has expired. Please log in again.');
         router.navigate(['/admin/login'], { queryParams: { returnUrl: router.url } });
+      } else if (error.status === 401 && !auth.hasToken() && req.headers.has('Authorization')) {
+        // A request that carried a token, answered 401 after something else had already ended
+        // the session (#237). Usually that is a sibling request in flight at the same moment: its
+        // 401 took the branch above, which logged out, said so and redirected, and this one then
+        // found no token. A generic "did not accept this request (error 401)" toast would describe
+        // the same event a second time, as a failure. So nothing more is said; the caller still
+        // receives the problem.
+        //
+        // !hasToken() is what keeps a wrong password out of here. An admin holding a live token
+        // sends it on every API request, the login request included, and that 401 must still
+        // reach the toast below. A visitor's 401 carries no header, so it reaches the toast too.
       } else if (req.context.get(SKIP_ERROR_TOAST)) {
         // The caller renders this failure itself; see SKIP_ERROR_TOAST.
       } else if (problem.rateLimited) {
