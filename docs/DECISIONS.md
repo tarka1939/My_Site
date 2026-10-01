@@ -457,7 +457,8 @@ Measured on the deployed host, because the numbers change the answer:
 - **Admin session takeover via XSS** (#123). The JWT is readable from JavaScript, so any injection
   is a full session. Its compensating control is a content security policy — **#122, still open**
   — and #123's own body says that keeping `sessionStorage` without #122 is "a trade-off with
-  nothing on the other side of it". Treat the two as one item.
+  nothing on the other side of it". Treat the two as one item. *(Update 2026-10-01: #122's policy
+  is the entry of that date below. It narrows this risk rather than closing it; #123 is open.)*
 
 **2. What it explicitly does not defend against, and will not try to:**
 
@@ -562,7 +563,8 @@ because `POST /auth/password-reset-request` returns 202 whether or not an addres
   scrollback. That is a real and common failure mode, and a weaker claim than "security".
 - **`#123` rises in priority relative to secret handling**, and carries **#122** with it. It is the
   shortest attack path into the data that does not require the host, and its compensating control
-  is the CSP that #122 has not delivered. Both are open.
+  is the CSP that #122 has not delivered. Both are open. *(Update 2026-10-01: see the CSP entry of
+  that date. #123 remains.)*
 - **The deployment runbook's three credential sections now agree**, and a fourth will inherit the
   rule rather than re-derive it.
 - **§6 of the runbook needs two edits to match clause 5 and clause 3**, and they are made in the
@@ -784,6 +786,43 @@ anything.
 Also considered: a draft/publish state and edit history, as projects have. Rejected for the same reason. One page, one author, and the public GET is the only surface that exists to be careful about.
 
 **Consequences:** The frontend has no "not created yet" branch and the admin form no "create" mode, which is most of what makes both small. If a second static page is ever wanted, the honest first step is to reread this entry and decide whether it is really a second *page* or a second *field on this one*.
+
+### 2026-10-01 — Content-Security-Policy: one static header file, no critical-CSS inlining, https images
+
+**Context:** #122, filed 2026-08-17, found no security response headers. Two of its findings have aged. The API always sent some: Spring Security's defaults include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and `Cache-Control`, and production was confirmed sending all three on 2026-10-01. Netlify sent only HSTS. And the issue's audit of "zero uses of `innerHTML`" predates #206: project descriptions and the About page now render Markdown through `[innerHTML]`, sanitized by Angular and never passed to `bypassSecurityTrustHtml`, so the injection surface a policy backs up is now real rather than hypothetical. The 2026-09-03 security-posture entry names a CSP as the compensating control for #123's script-readable JWT.
+
+**Decision:**
+
+1. **The site's policy is a response header from `frontend/public/_headers`**, which the build copies beside `_redirects` and Netlify applies to every path, the SPA fallback included:
+   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; font-src 'self'; connect-src 'self' https://tarka1939.bieda.it; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`. With it: `X-Frame-Options: DENY`, for browsers that predate `frame-ancestors`; `X-Content-Type-Options: nosniff`; and `Referrer-Policy: strict-origin-when-cross-origin`.
+2. **The production build does not inline critical CSS** (`optimization.styles.inlineCritical: false` in `angular.json`). Inlining loads the global stylesheet as `<link media="print" onload="this.media='all'">`, and `script-src 'self'` refuses that inline handler, so the stylesheet never applies. This was measured in a browser rather than inferred: a probe link of that shape stayed at `print`. The cost is one render-blocking stylesheet in place of inlined critical rules painted first.
+3. **`style-src` keeps `'unsafe-inline'`.** Angular inserts component styles as `<style>` elements at runtime, and the alternative, a nonce, needs a fresh value per response that a static host cannot issue.
+4. **`img-src` allows any `https:` origin.** Project images are admin-pasted URLs (`docs/DATA_MODEL.md`). Every production image is on `raw.githubusercontent.com` today, but a host allowlist would turn a URL pasted from anywhere else into a broken image whose cause shows only in the console. Plain `http:` stays blocked.
+5. **The API sends its own, minimal policy:** `default-src 'none'; frame-ancestors 'none'` and `Referrer-Policy: no-referrer`, added in `SecurityConfig` to Spring Security's defaults, not in place of them. Every response is JSON, so the policy grants nothing; it matters only if a response is ever opened as a document.
+6. **What keeps it true.** `security-headers.spec.ts` pins the policy's shape and the inlining setting. `api-origin-hints.spec.ts` checks `connect-src` against `apiBaseUrl`, so a backend host change is now six edits (`docs/DEPLOYMENT.md` §1). The frontend deploy refuses a build whose `index.html` holds an inline script or handler, and after publishing checks that the live site sends the header. `SecurityIntegrationTest` checks the API's headers on a 200 and on a 401 from the resource server.
+
+**Alternatives considered:**
+- *Angular's `security.autoCsp`.* Tried and rejected. It replaces the onload handler with hashed inline scripts and emits its own `<meta http-equiv>` policy (`script-src 'strict-dynamic' 'sha256-…' https: 'unsafe-inline'`, regenerated every build). The policy would then live in two places. And because a browser enforces every policy it receives, a header with `script-src 'self'` beside it would block the very scripts the meta tag hashes. Turning inlining off buys a stricter policy, from one file.
+- *A `<meta>` tag in `index.html`.* Cannot carry `frame-ancestors`, and applies only from the point the parser reaches it.
+- *`[[headers]]` in a `netlify.toml`.* Same effect. `_headers` sits beside `_redirects`, which is already how this site configures Netlify; there is no `netlify.toml`.
+- *`Content-Security-Policy-Report-Only` first.* Nothing here would collect the reports. The policy was instead exercised page by page in a browser against the built bundle (below).
+
+**Consequences:**
+- **It reaches visitors with the release that carries it.** Until then Netlify sends HSTS and nothing else.
+- **What it protects, and what it does not.** Its strength is `script-src 'self'`: injected markup cannot run script, inline or from another host. It does not contain a script that *does* run, since `img-src https:` alone is an exfiltration channel. So it lowers the odds of #123's token theft rather than closing it, and #123 stays open.
+- **A backend host change gains an edit,** `connect-src`, and a test that names it.
+- **Any future inline `<script>` in `index.html`** (an analytics snippet, a theme bootstrap) must come with a policy change, and the deploy refuses the build until it does.
+- **Browser verification, 2026-10-01**, using the production build served locally with these exact headers:
+  - An injected `<script>` and an `onerror` handler were refused.
+  - These ran with no violation:
+    - About;
+    - the project list, with its external images;
+    - project detail, with the image viewer;
+    - contact-form validation;
+    - the admin list;
+    - the project form's live Markdown preview;
+    - the About editor.
+- **The one directive not exercised locally is the API origin in `connect-src`.** The local build called its API same-origin through a proxy. The first production page load after the release is that check: the browser console, on any page that lists projects.
 
 ### [YYYY-MM-DD] — [Decision title]
 
