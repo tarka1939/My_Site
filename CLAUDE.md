@@ -141,7 +141,7 @@ cd backend && mvn test
 # Run a single test:
 cd backend && mvn test -Dtest=ProjectServiceTest
 
-# Lint: no linter is configured (#210) — nothing to run.
+# Lint: none for the backend, by decision (docs/DECISIONS.md, 2026-10-01) — nothing to run.
 
 # Package an executable jar:
 cd backend && mvn clean package
@@ -175,12 +175,15 @@ cd frontend && npx ng test --include='**/projects-list.component.spec.ts'
 # Regenerate the typed API client from docs/openapi.yaml:
 cd frontend && npm run generate:api
 
-# Lint: no linter is configured (#210). `frontend/.prettierrc` exists from the Angular scaffold
-# but no script or CI job runs it — don't reformat files wholesale with it.
+# Lint (ESLint via angular-eslint, #210; CI runs it). Its one essential rule bans the
+# bypassSecurityTrust* calls that would turn the Markdown renderer into an XSS sink:
+cd frontend && npm run lint
+# No formatter: `frontend/.prettierrc` exists from the Angular scaffold but nothing runs it —
+# don't reformat files wholesale with it.
 ```
 
 ### Other suites (none of these run in CI — `.github/workflows/ci.yml` runs only `mvn -B test`,
-`npm test`, and the API-client staleness check)
+`npm test`, `npm run lint`, and the API-client staleness check)
 
 ```bash
 # E2E (Playwright, /e2e — kept out of /frontend so Netlify never installs it). Needs Postgres

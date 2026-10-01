@@ -79,6 +79,31 @@ jobs:
         working-directory: frontend
         run: npm test
 
+  # Its own job rather than a step in the one above, so a lint failure shows by name in the PR's
+  # checks instead of reading as a failed test run. The rule that matters most here is the
+  # bypassSecurityTrust* ban in frontend/eslint.config.js (#210): no test can catch that call, so
+  # this job is the only thing that does.
+  frontend-lint:
+    name: Frontend lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
   api-client-in-sync:
     name: Generated API client matches the contract
     runs-on: ubuntu-latest
