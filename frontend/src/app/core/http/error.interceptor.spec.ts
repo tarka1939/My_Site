@@ -90,11 +90,11 @@ describe('errorInterceptor', () => {
    */
   async function fail401(
     url: string,
-    options: { method?: string; body?: Record<string, unknown> } = {},
+    options: { method?: string; body?: Record<string, unknown>; headers?: Record<string, string> } = {},
   ): Promise<{ toasts: string[]; url: string; returnUrl: string | undefined }> {
     const body = options.body ?? { type: 'about:blank', title: 'Unauthorized', status: 401 };
     const promise = firstValueFrom(
-      httpClient.request(options.method ?? 'GET', url, { body: {} }),
+      httpClient.request(options.method ?? 'GET', url, { body: {}, headers: options.headers }),
     ).catch((problem: ApiProblem) => problem);
 
     httpMock.expectOne(url).flush(body, { status: 401, statusText: 'Unauthorized' });
@@ -126,6 +126,36 @@ describe('errorInterceptor', () => {
     expect(auth.hasToken()).toBe(false);
     expect(url.startsWith('/admin/login')).toBe(true);
     expect(returnUrl).toBe('/admin/projects');
+  });
+
+  // #237. Two admin requests in flight when the server stops accepting the token: clock skew, a
+  // rotated signing secret, revocation. The first 401 ends the session and says so. The second
+  // then finds no token, and used to add "The server did not accept this request (error 401)."
+  // about the same event. This spec installs no authInterceptor, so the header it would have
+  // attached is set by hand.
+  it('says the session ended once when two requests carrying the token both come back 401', async () => {
+    await router.navigateByUrl('/admin/projects');
+    auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const headers = { Authorization: 'Bearer t' };
+    const unauthorized = { status: 401, statusText: 'Unauthorized' };
+    const body = { type: 'about:blank', title: 'Unauthorized', status: 401 };
+
+    const first = firstValueFrom(httpClient.get('/api/v1/contact-messages', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    const second = firstValueFrom(httpClient.get('/api/v1/admin/projects', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    httpMock.expectOne('/api/v1/contact-messages').flush(body, unauthorized);
+    httpMock.expectOne('/api/v1/admin/projects').flush(body, unauthorized);
+    const [, secondProblem] = await Promise.all([first, second]);
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'Your admin session has expired. Please log in again.',
+    ]);
+    expect((secondProblem as ApiProblem).status).toBe(401);
+    expect(router.url.startsWith('/admin/login')).toBe(true);
   });
 
   it('logs the admin out on a 401 for a token that has already expired by wall clock', async () => {
@@ -185,6 +215,23 @@ describe('errorInterceptor', () => {
     expect(auth.hasToken()).toBe(true);
     expect(url).toBe(before);
     expect(returnUrl).toBe('/admin/projects');
+  });
+
+  // The other side of #237's branch. authInterceptor attaches a live token to every API request,
+  // the login request included, so "it carried a token" alone would also silence a mistyped
+  // password from an admin who opened the login page while still signed in.
+  it('still reports a wrong password when the login request carried a live token', async () => {
+    await router.navigateByUrl('/admin/login');
+    auth.setSession({ token: 'held', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+    const { toasts } = await fail401(LOGIN_URL, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer held' },
+      body: { type: 'about:blank', title: 'Unauthorized', detail: 'Invalid credentials', status: 401 },
+    });
+
+    expect(toasts).toEqual(['Invalid credentials']);
+    expect(auth.hasToken()).toBe(true);
   });
 
   /**
