@@ -77,6 +77,28 @@ jobs:
           }
           echo "SPA fallback present: $(cat "$out/_redirects")"
 
+      # The Content-Security-Policy lives in frontend/public/_headers and reaches Netlify the same
+      # way _redirects does (#122). Its script-src 'self' refuses inline script, so the built
+      # index.html is checked for any: an inline handler such as the onload Angular's critical-CSS
+      # inlining emits would deploy a site whose stylesheet never applies. security-headers.spec.ts
+      # pins the setting that stops that; this checks what the build actually emitted.
+      - name: Verify the security headers survived the build
+        working-directory: frontend
+        run: |
+          out=dist/frontend/browser
+          grep -q '^ *Content-Security-Policy:' "$out/_headers" 2>/dev/null || {
+            echo "$out/_headers is missing or sets no Content-Security-Policy (#122)." >&2
+            exit 1
+          }
+          handlers=$(grep -oE '\son[a-z]+=' "$out/index.html" || true)
+          inline=$(grep -oE '<script[^>]*>' "$out/index.html" | grep -v 'src=' || true)
+          if [ -n "$handlers$inline" ]; then
+            echo "index.html has inline script the CSP will refuse:" >&2
+            echo "$handlers$inline" >&2
+            exit 1
+          fi
+          echo "_headers present; index.html has no inline script or handler"
+
       # The official CLI rather than a third-party action: fewer links in the supply chain of a job
       # that holds a deploy token. Both values are read from the environment, never passed as
       # arguments, because an argument is visible in `ps` to anything else on the runner.
@@ -104,3 +126,15 @@ jobs:
           echo "The site did not answer as expected after publishing." >&2
           echo "A deep link returning 404 means _redirects did not reach Netlify." >&2
           exit 1
+
+      # _headers being in the artifact does not prove Netlify applied it. By this step the deploy
+      # is already live, so a failure here reports rather than prevents; it is still the only
+      # place that sees the header a visitor receives.
+      - name: Verify the deployed site sends its Content-Security-Policy
+        run: |
+          csp=$(curl -sS -D - -o /dev/null --max-time 10 https://krzysztof-tarka.netlify.app/ | grep -i '^content-security-policy:' || true)
+          if [ -z "$csp" ]; then
+            echo "The live site sends no Content-Security-Policy; _headers did not reach Netlify (#122)." >&2
+            exit 1
+          fi
+          echo "$csp"
