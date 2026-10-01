@@ -1,6 +1,10 @@
 <!-- Always in the DOM, so `showModal()` has an element to open; everything that depends on which
      image is showing is inside @if blocks, so the closed dialog holds no <img> and fetches
      nothing until someone asks for it. -->
+<!-- The handlers here are not controls that need focus. (click) closes on a press outside the
+     picture, a pointer shortcut whose keyboard equivalent is Escape, which the native dialog
+     handles; (keydown) listens while focus is on a button inside. -->
+<!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -->
 <dialog
   #dialog
   class="viewer"
