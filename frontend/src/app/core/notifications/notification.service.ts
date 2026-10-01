@@ -27,8 +27,18 @@ export class NotificationService {
     this.notificationsSignal.update((current) => current.filter((n) => n.id !== id));
   }
 
+  /**
+   * A message already on screen is not shown again (#236). One page load can make several
+   * requests, and when the backend is down each failure toasts on its own: /projects showed the
+   * same sentence twice. The repeat tells the visitor nothing, and nothing here dismisses on a
+   * timer, so a stack would stay until closed one by one. Once dismissed, the same message can
+   * appear again, because by then it is news.
+   */
   private push(level: NotificationLevel, message: string): void {
-    const notification: Notification = { id: nextId++, level, message };
-    this.notificationsSignal.update((current) => [...current, notification]);
+    this.notificationsSignal.update((current) =>
+      current.some((n) => n.level === level && n.message === message)
+        ? current
+        : [...current, { id: nextId++, level, message }],
+    );
   }
 }
