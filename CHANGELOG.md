@@ -10,7 +10,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - **Security headers on the site and the API** (2026-10-01, #122, PR #240, frontend + backend + infra).
   - **The site.** It now sends a Content-Security-Policy from `frontend/public/_headers`, with `X-Frame-Options: DENY`, `nosniff` and `Referrer-Policy`. The policy's core is `script-src 'self'`, so no inline script and no other host. `img-src https:` covers admin-pasted images, and `connect-src` names the API.
   - **The API.** It adds `default-src 'none'; frame-ancestors 'none'` and `no-referrer` to the headers Spring Security already sent.
-  - **One build change.** For `script-src 'self'` to hold, Angular's critical-CSS inlining is off: its stylesheet `onload` handler is inline script, which the policy refuses, so the stylesheet never applied. Angular's `autoCsp` was tried and rejected; see the ADR in `docs/DECISIONS.md`, 2026-10-01.
+  - **One build change.** For `script-src 'self'` to hold, Angular's critical-CSS inlining is off: its stylesheet `onload` handler is inline script, which the policy refuses, so the stylesheet would never have applied. Angular's `autoCsp` was tried and rejected; see the ADR in `docs/DECISIONS.md`, 2026-10-01.
   - **Checks.** Tests pin the policy and its `connect-src`. The deploy refuses a build with inline script, and checks the header on the live site.
 
 - **Full-screen image viewer on project pages** (2026-09-24, #227, frontend). Any gallery image opens full screen — by click, tap or keyboard — with Previous/Next and arrow keys between a project's images, and Escape or a click outside the picture to close. Built on the native `<dialog>`, so focus is trapped while open and returns to the image afterwards; no new dependencies.

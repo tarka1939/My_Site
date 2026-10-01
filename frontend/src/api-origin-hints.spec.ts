@@ -6,9 +6,9 @@ import { dirname, join } from 'node:path';
  * This file checks five of them against `apiBaseUrl` in `src/environments/environment.ts`: the
  * `preconnect` and `dns-prefetch` hints in `src/index.html`, the production `servers:` entry in
  * `docs/openapi.yaml`, the public health check in `.github/workflows/deploy-backend.yml` (those two
- * added by #181), and `connect-src` in `public/_headers` (#122). The subdomain moved during Phase 5 (`tojest.dev` -> `bieda.it`), and
- * the rename commit (67cdaf1, 2026-09-03) edited only openapi.yaml, leaving the app and its hints
- * on the retired host until PR #175 (issue #178).
+ * added by #181), and `connect-src` in `public/_headers` (#122). The subdomain moved during
+ * Phase 5 (`tojest.dev` -> `bieda.it`), and the rename commit (67cdaf1, 2026-09-03) edited only
+ * openapi.yaml, leaving the app and its hints on the retired host until PR #175 (issue #178).
  *
  * One more copy is deliberately left out: content-seed/locality.mjs's approved-hosts list. Allowing
  * the seed to write to a host is its own decision, and following a host change automatically would

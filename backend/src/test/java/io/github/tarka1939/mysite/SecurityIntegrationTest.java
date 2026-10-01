@@ -141,8 +141,9 @@ class SecurityIntegrationTest {
 
     /**
      * #122. Checked on a refusal as well as a success: the 401 is written by the resource
-     * server's entry point rather than a controller, and a header that only reached controller
-     * responses would miss exactly the answers an attacker probing the API gets most of.
+     * server's entry point rather than a controller, so this shows the headers are not confined to
+     * controller responses. It does not cover everything: a request the firewall rejects outright,
+     * or an error rendered on the container's error dispatch, is answered without them.
      */
     @Test
     void apiResponsesCarryTheSecurityHeaders() {
