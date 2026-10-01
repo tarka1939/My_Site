@@ -385,4 +385,19 @@ describe('errorInterceptor', () => {
       expect(toasts).toEqual(['Could not reach the server. Check your connection and try again.']);
     });
   });
+
+  // #236, as a visitor met it: /projects asks for the list and the tag filter at once, and with
+  // the backend down both fail the same way. One sentence, said once.
+  it('toasts once when two requests fail with the same message', async () => {
+    const list = firstValueFrom(httpClient.get('/api/v1/projects')).catch(() => undefined);
+    const tags = firstValueFrom(httpClient.get('/api/v1/tags')).catch(() => undefined);
+
+    httpMock.expectOne('/api/v1/projects').flush(null, { status: 502, statusText: 'Bad Gateway' });
+    httpMock.expectOne('/api/v1/tags').flush(null, { status: 502, statusText: 'Bad Gateway' });
+    await Promise.all([list, tags]);
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'The server could not complete this just now. Please try again in a moment (error 502).',
+    ]);
+  });
 });

@@ -127,6 +127,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
+- **The error toast keeps its gutters on a phone, and says a repeated message once** (2026-10-01, #236, PR #241, frontend). Below 26rem of viewport the banner's left gutter shrank, and below 25rem it ran to the screen's edge; it now caps at the viewport less both gutters. With the backend down, `/projects` made two failing requests and showed the same sentence twice. A message already on screen now replaces its earlier copy instead of stacking beside it, so a repeat still shows, and a screen reader still announces it.
+
 - **`npm audit` is at zero again, and Angular is on 21.2.24** (2026-10-01, #235, PR #238, frontend + infra). Two lockfile-only `npm audit fix` passes cleared the dev-tooling advisories. The second pass caught an axios advisory published after the first. The undici 7 that `@angular/build` pins exactly could only move with the whole Angular family, so every `@angular/*` specifier is now `^21.2.24`. That is a runtime change, and it also clears a high `@angular/router` advisory that was published the day the issue was filed. The advisory is an SSR denial of service this app, with no SSR, is barely exposed to. Tests, the build size (+0.11 kB) and a browser smoke test are unchanged.
 
 - **An admin session that ran out logged visitors out of public pages, and still let them into the admin area** (2026-09-30, #151, PR #232, frontend).
