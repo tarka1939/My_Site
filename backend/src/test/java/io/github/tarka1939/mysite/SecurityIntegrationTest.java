@@ -139,6 +139,32 @@ class SecurityIntegrationTest {
             .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * #122. Checked on a refusal as well as a success: the 401 is written by the resource
+     * server's entry point rather than a controller, so this shows the headers are not confined to
+     * controller responses. It does not cover everything: a request the firewall rejects outright,
+     * or an error rendered on the container's error dispatch, is answered without them.
+     */
+    @Test
+    void apiResponsesCarryTheSecurityHeaders() {
+        ResponseEntity<String> ok = restTemplate.getForEntity(url("/api/v1/projects"), String.class);
+        ResponseEntity<String> refused = restTemplate.exchange(url("/api/v1/projects"),
+            HttpMethod.POST, new HttpEntity<>(Map.of()), String.class);
+
+        assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        for (ResponseEntity<String> response : java.util.List.of(ok, refused)) {
+            HttpHeaders headers = response.getHeaders();
+            assertThat(headers.getFirst("Content-Security-Policy"))
+                .isEqualTo("default-src 'none'; frame-ancestors 'none'");
+            assertThat(headers.getFirst("Referrer-Policy")).isEqualTo("no-referrer");
+            // Spring Security's defaults, asserted so that configuring headers() never
+            // silently replaces them.
+            assertThat(headers.getFirst("X-Frame-Options")).isEqualTo("DENY");
+            assertThat(headers.getFirst("X-Content-Type-Options")).isEqualTo("nosniff");
+        }
+    }
+
     @Test
     void loginWithWrongPasswordReturns401() {
         seedAdmin("wrong-pw-admin", "wrong-pw-admin@example.com", "the-real-password");
