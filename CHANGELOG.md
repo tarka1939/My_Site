@@ -121,6 +121,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
+- **`npm audit` is at zero again, and Angular is on 21.2.24** (2026-10-01, #235, PR #238, frontend + infra). Two lockfile-only `npm audit fix` passes cleared the dev-tooling advisories. The second pass caught an axios advisory published after the first. The undici 7 that `@angular/build` pins exactly could only move with the whole Angular family, so every `@angular/*` specifier is now `^21.2.24`. That is a runtime change, and it also clears a high `@angular/router` advisory that was published the day the issue was filed. The advisory is an SSR denial of service this app, with no SSR, is barely exposed to. Tests, the build size (+0.11 kB) and a browser smoke test are unchanged.
+
 - **An admin session that ran out logged visitors out of public pages, and still let them into the admin area** (2026-09-30, #151, PR #232, frontend).
   - **The symptom.** An admin whose hour was up and who then opened the public project list was sent to the login page, from a page that needs no login. The backend answers a dead bearer token with 401 even on `permitAll` endpoints, and the interceptor kept attaching one.
   - **The real cause was one word.** `isLoggedIn` was a `computed()` over `Date.now()`, which is not a signal. So after its first `true` it answered `true` for the life of the tab. It kept the dead token attached and kept the admin guard open. No spec moved the clock after a `true` answer, so none of them could see this. A browser tab left open across an expiry did.

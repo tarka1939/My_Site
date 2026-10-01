@@ -279,7 +279,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 - [ ] #123 — the admin JWT is readable from JavaScript, so any XSS is a full admin session takeover. Wants #122 first: a CSP is the cheaper half of the same problem, and doing the cookie rework without one just moves the exposure
 
 **Smaller, filed 2026-09-30** while working the fixes above.
-- [ ] #235 — the frontend's `npm audit` advisories, all in dev-only tooling. PR #238 is in review: it applies `npm audit fix` and raises every `@angular/*` package to 21.2.24
+- [x] #235 — the frontend's `npm audit` advisories. PR #238, merged to `dev` 2026-10-01: two lockfile-only `npm audit fix` passes, and every `@angular/*` package raised to 21.2.24. That last part is a runtime change, and it also clears a high `@angular/router` advisory published on 2026-09-30, after the issue was filed. `npm audit` is 0, with and without `--omit=dev`
 - [ ] #236 — the error toast has no left gutter at phone width, and identical toasts stack, one per failed request
 - [ ] #237 — when a second request's 401 lands just after a session-expiry notice, it adds a generic error toast
 
