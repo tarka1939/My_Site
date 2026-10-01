@@ -121,6 +121,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
+- **An ended admin session is reported once, not twice** (2026-10-01, #237, PR #242, frontend). When the server stopped accepting a token two requests were carrying, the first 401 said the session had expired, and the second added "The server did not accept this request (error 401)." about the same event. A 401 on a request that carried a token, once no token is held, now raises no toast. A wrong password on the login page still does.
+
 - **`npm audit` is at zero again, and Angular is on 21.2.24** (2026-10-01, #235, PR #238, frontend + infra). Two lockfile-only `npm audit fix` passes cleared the dev-tooling advisories. The second pass caught an axios advisory published after the first. The undici 7 that `@angular/build` pins exactly could only move with the whole Angular family, so every `@angular/*` specifier is now `^21.2.24`. That is a runtime change, and it also clears a high `@angular/router` advisory that was published the day the issue was filed. The advisory is an SSR denial of service this app, with no SSR, is barely exposed to. Tests, the build size (+0.11 kB) and a browser smoke test are unchanged.
 
 - **An admin session that ran out logged visitors out of public pages, and still let them into the admin area** (2026-09-30, #151, PR #232, frontend).
