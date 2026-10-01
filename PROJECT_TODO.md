@@ -280,7 +280,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 
 **Smaller, filed 2026-09-30** while working the fixes above.
 - [x] #235 — the frontend's `npm audit` advisories. PR #238, merged to `dev` 2026-10-01: two lockfile-only `npm audit fix` passes, and every `@angular/*` package raised to 21.2.24. That last part is a runtime change, and it also clears a high `@angular/router` advisory published on 2026-09-30, after the issue was filed. `npm audit` is 0, with and without `--omit=dev`
-- [ ] #236 — the error toast has no left gutter at phone width, and identical toasts stack, one per failed request
+- [x] #236 — the error toast has no left gutter at phone width, and identical toasts stack, one per failed request. PR #241, merged to `dev`, not yet released. The region caps at `min(24rem, 100vw - 2rem)`, and a message already on screen is not pushed again; once dismissed, it can show again. Checked at 375px with the backend down: one toast, 16px each side
 - [ ] #237 — when a second request's 401 lands just after a session-expiry notice, it adds a generic error toast
 
 **Open design questions, the owner's to answer.**
