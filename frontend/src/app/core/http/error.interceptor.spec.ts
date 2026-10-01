@@ -9,6 +9,7 @@ import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notifications/notification.service';
 import { ApiProblem } from './api-problem';
 import { errorInterceptor, SKIP_ERROR_TOAST } from './error.interceptor';
+import { httpInterceptors } from '../../app.config';
 
 @Component({ template: '' })
 class StubComponent {}
@@ -139,6 +140,10 @@ describe('errorInterceptor', () => {
     const headers = { Authorization: 'Bearer t' };
     const unauthorized = { status: 401, statusText: 'Unauthorized' };
     const body = { type: 'about:blank', title: 'Unauthorized', status: 401 };
+    // Counted at the source, not read off the list: NotificationService replaces a repeated
+    // message (#236), so a second "session expired" would still leave one entry. It would also
+    // be announced to a screen reader twice.
+    const error = vi.spyOn(notifications, 'error');
 
     const first = firstValueFrom(httpClient.get('/api/v1/contact-messages', { headers })).catch(
       (problem: ApiProblem) => problem,
@@ -154,8 +159,37 @@ describe('errorInterceptor', () => {
     expect(notifications.notifications().map((n) => n.message)).toEqual([
       'Your admin session has expired. Please log in again.',
     ]);
+    expect(error).toHaveBeenCalledTimes(1);
     expect((secondProblem as ApiProblem).status).toBe(401);
     expect(router.url.startsWith('/admin/login')).toBe(true);
+  });
+
+  // The silence is for a second 401 only. Any other failure on a request that carried the token
+  // is news the session toast does not cover, and is reported as usual.
+  it('still reports a request carrying the token that fails some other way after the session ended', async () => {
+    await router.navigateByUrl('/admin/projects');
+    auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const headers = { Authorization: 'Bearer t' };
+
+    const first = firstValueFrom(httpClient.get('/api/v1/contact-messages', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    const second = firstValueFrom(httpClient.get('/api/v1/admin/projects', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    httpMock
+      .expectOne('/api/v1/contact-messages')
+      .flush({ type: 'about:blank', title: 'Unauthorized', status: 401 }, { status: 401, statusText: 'Unauthorized' });
+    httpMock
+      .expectOne('/api/v1/admin/projects')
+      .flush(null, { status: 500, statusText: 'Internal Server Error' });
+    await Promise.all([first, second]);
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'Your admin session has expired. Please log in again.',
+      'The server could not complete this just now. Please try again in a moment (error 500).',
+    ]);
   });
 
   it('logs the admin out on a 401 for a token that has already expired by wall clock', async () => {
@@ -446,5 +480,51 @@ describe('errorInterceptor', () => {
     expect(notifications.notifications().map((n) => n.message)).toEqual([
       'The server could not complete this just now. Please try again in a moment (error 502).',
     ]);
+  });
+});
+
+/**
+ * The same #237 scenario through the interceptors the app registers, in the app's order, with the
+ * Authorization header added by authInterceptor rather than written into the test. The suite above
+ * installs errorInterceptor alone, so it would stay green if app.config.ts swapped the two.
+ */
+describe('errorInterceptor, in the order app.config.ts registers it', () => {
+  it('says the session ended once when two requests the app signed both come back 401', async () => {
+    sessionStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          { path: 'admin/login', component: StubComponent },
+          { path: 'admin/projects', component: StubComponent },
+        ]),
+        provideHttpClient(withInterceptors(httpInterceptors)),
+        provideHttpClientTesting(),
+      ],
+    });
+    const httpClient = TestBed.inject(HttpClient);
+    const httpMock = TestBed.inject(HttpTestingController);
+    const notifications = TestBed.inject(NotificationService);
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/admin/projects');
+    TestBed.inject(AuthService).setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const error = vi.spyOn(notifications, 'error');
+    const urls = [`${environment.apiBaseUrl}/contact-messages`, `${environment.apiBaseUrl}/admin/projects`];
+
+    const settled = Promise.all(
+      urls.map((url) => firstValueFrom(httpClient.get(url)).catch((problem: ApiProblem) => problem)),
+    );
+    for (const url of urls) {
+      const req = httpMock.expectOne(url);
+      expect(req.request.headers.get('Authorization')).toBe('Bearer t');
+      req.flush({ type: 'about:blank', title: 'Unauthorized', status: 401 }, { status: 401, statusText: 'Unauthorized' });
+    }
+    await settled;
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'Your admin session has expired. Please log in again.',
+    ]);
+    httpMock.verify();
   });
 });
