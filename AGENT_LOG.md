@@ -297,6 +297,47 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-09-30 — Senior Dev: a memoised clock, a fix that exposed a guard, and keywords that stopped linking
+
+**Task given:** Work the open issues autonomously. Merged that day: #231 (#228, #222, #225), #232 (#151, #191), #233 (#181) and #234 (#209). #235 is in review as #238.
+
+**Agent(s) used:** Senior Dev (Opus) implemented, with a browser. Each PR had a cold review by a fresh Opus agent.
+
+**What went right:**
+- The real cause of #151 was found by reproducing it in a browser after the first fix, not by reasoning about the code.
+- Every cold review found something real: a regression, an undercount, or a history stated wrongly.
+- Mutation checks were run on every new test. One mutation survived for a reason worth recording (below).
+
+**What went wrong (be specific):**
+1. **`isLoggedIn` was a `computed()` over `Date.now()`.** A `computed` re-runs only when a signal it read changes, and the clock is not a signal. The header reads `isLoggedIn()` straight after login, so from then on it answered `true` for the life of the tab. The interceptor kept attaching the dead token, so #151's first fix did nothing in a real tab, and `authGuard` kept letting an expired admin in. Its comment called it "pull-based: this only re-evaluates when read", which is the misconception written down. Every existing spec set up a session that had already expired, so the first evaluation came after expiry and the cache never showed.
+2. **The #151 fix exposed a guard gap.** `authGuard` sat as `canActivate` on the componentless admin parent. Angular reuses that parent between sibling pages, so the guard ran once on the way in. That had always been true, but the dead token had been hiding it. Each admin page's first request carried the token, got a 401, and the interceptor treated that as a session expiry. Once expired tokens stopped being sent, an admin whose session lapsed on `/admin/projects` could open the About editor. Its load is a public GET, so the form filled, and the edit was lost on save.
+3. **Closing keywords stopped linking, repo-wide.** `closingIssuesReferences` came back empty on every PR opened that day, and #231–#234 each carry `Closes #N` one per line with base `dev`. Seven issues were closed by hand after merge, each with a comment naming the PR.
+4. **#233 took its count from the issue without recounting.** #181 said a host change touches four places. Two more had been added the day after it was filed. The first draft also stated the row's history as fact: that the 2026-09-03 rename had edited the app. `git show` says it touched only `openapi.yaml`.
+5. **A mutation aimed at the wrong path.** #234's first mutations edited the artwork's fill (`paths[1]`), but the bounds test reads the stroked curve (`paths[2]`). They survived, correctly. Re-aimed at the stroke, both were caught. The fill's bounds are deliberately not checked, since it closes to the bottom corners.
+6. **Two leftovers from #214 surfaced in #231.** The About editor shipped with no submit-button rule, so its Save was the UA's grey (#222). Also, the local dev database had recorded Flyway V8 with the checksum of an uncommitted draft, applied nine minutes before the first commit, so the backend refused to start locally. Production only ever applied the merged file.
+
+**How it was caught:**
+1. A browser tab: a fake session left to expire on `/contact`, then Projects clicked. Still 401s after the first fix.
+2. Cold review of #232.
+3. Checking `closingIssuesReferences` before merging, as CLAUDE.md requires.
+4. Cold review of #233.
+5. The surviving mutation, then reading which path `curveOf` returns.
+6. The owner's report (#222), and the backend failing to start.
+
+**Fix applied:**
+1. `isLoggedIn` became a method. A new service test fails on the `computed` and passes on the method.
+2. `canActivateChild`, which runs on every navigation into the subtree, including the first. Tested on the real `ADMIN_ROUTES`, with each case first checking it really was on `/admin/projects`, so a guard bounce cannot pass it vacuously. Then checked in a real tab with a real JWT and the clock moved forward.
+3. Manual closes. The cause is not known. The owner should check Settings → General for the option to auto-close issues linked by merged pull requests; changing it is their call, not an agent's.
+4. Recounted to five places plus the seed allowlist as a separate decision, and the history corrected from git. The spec now also checks the contract and the deploy health check.
+5. Re-aimed, and the reason recorded in the PR.
+6. A global `button[type='submit']` rule, so the next form cannot miss it. The one local `flyway_schema_history` row was corrected, which is what `flyway repair` would do.
+
+**Takeaway for next time:**
+- A `computed()` is a cache. Anything it reads that is not a signal — the clock, `localStorage`, a plain field — is read once and kept. A test cannot catch this unless it changes that value *after* the first read.
+- Removing an accidental safety net is a behaviour change. Ask what the dead token's 401 was doing before stopping it.
+- A number copied from an issue is a claim from the day it was filed. Recount it.
+- Run a mutation against the code path the test actually reads.
+
 ## 2026-09-24 — claude (cloud session): eleven commits under the wrong name, and a cherry-pick that billed the promotion
 
 **Task given:** Documentation review, the deploy pipeline's first runs, and the first `dev` → `main` promotion through it — the first work on this project from a Claude Code cloud session.
