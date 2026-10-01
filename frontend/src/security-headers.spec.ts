@@ -33,7 +33,9 @@ const ROOT = projectRoot();
 
 /**
  * Netlify's format: a path on its own line, then indented `Name: value` lines that apply to it.
- * `#` lines are comments. Only the `/*` block matters here; every path is under it.
+ * `#` lines are comments. Only the `/*` block matters here; every path is under it. A path written
+ * twice is refused rather than merged: Netlify would apply both blocks, and keeping only one here
+ * would leave the other's headers unchecked.
  */
 function headersFor(path: string): Map<string, string[]> {
   const blocks = new Map<string, [string, string][]>();
@@ -41,6 +43,7 @@ function headersFor(path: string): Map<string, string[]> {
   for (const raw of readFileSync(join(ROOT, 'public', '_headers'), 'utf8').split(/\r?\n/)) {
     if (raw.trim() === '' || raw.trimStart().startsWith('#')) continue;
     if (!/^\s/.test(raw)) {
+      if (blocks.has(raw.trim())) throw new Error(`public/_headers names the path ${raw.trim()} twice`);
       current = [];
       blocks.set(raw.trim(), current);
       continue;
@@ -64,12 +67,18 @@ function single(name: string): string {
   return values[0];
 }
 
-/** The policy as directive -> sources. */
+/**
+ * The policy as directive -> sources. A repeated directive is refused: a browser obeys the first
+ * and ignores the rest, so a loose copy ahead of a strict one would pass any check that read only
+ * one of them.
+ */
 function policy(): Map<string, string[]> {
   const directives = new Map<string, string[]>();
   for (const part of single('content-security-policy').split(';')) {
     const [name, ...sources] = part.trim().split(/\s+/);
-    if (name) directives.set(name.toLowerCase(), sources);
+    if (!name) continue;
+    if (directives.has(name.toLowerCase())) throw new Error(`the policy sets ${name} twice`);
+    directives.set(name.toLowerCase(), sources);
   }
   return directives;
 }
@@ -77,6 +86,15 @@ function policy(): Map<string, string[]> {
 describe('public/_headers', () => {
   it('runs only this origin\'s own scripts: no inline script, no eval, no other host', () => {
     expect(policy().get('script-src')).toEqual(["'self'"]);
+  });
+
+  // CSP3 browsers read these two in place of script-src, for <script> elements and for inline
+  // handlers respectively, so either could reopen what script-src closes without touching it.
+  it('does not widen script-src through script-src-elem or script-src-attr', () => {
+    const csp = policy();
+    for (const directive of ['script-src-elem', 'script-src-attr']) {
+      if (csp.has(directive)) expect(csp.get(directive), directive).toEqual(["'self'"]);
+    }
   });
 
   it('allows inline sources only where Angular needs them, which is styles', () => {

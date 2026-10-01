@@ -18,14 +18,16 @@
 #   img-src https:          Project images are external URLs an admin pastes in
 #                           (docs/DATA_MODEL.md). An allowlist of hosts would break the next
 #                           image from a new host silently: the card would fall back to its
-#                           generated artwork and look intentional. Plain http: stays blocked.
+#                           generated artwork and look intentional. http: is not listed;
+#                           browsers upgrade an http image on an https page before this applies.
 #   connect-src             This origin, plus the API's. KEEP IT IN STEP with apiBaseUrl in
 #                           src/environments/environment.ts: a stale origin here blocks every
-#                           API call. api-origin-hints.spec.ts fails if they disagree.
+#                           API call. api-origin-hints.spec.ts fails if apiBaseUrl's origin is
+#                           missing from this line.
 #   frame-ancestors 'none'  Nothing may frame this site, the admin pages included: clickjacking.
 #                           X-Frame-Options: DENY says the same to browsers that predate CSP2.
 #
-# default-src 'self' covers everything not named (fonts, frames, workers, media, manifests).
+# default-src 'self' covers everything not named (frames, workers, media, manifests).
 # object-src and base-uri are named because default-src does not cover base-uri, and object-src
 # 'none' is cheaper to state than to reason about.
 

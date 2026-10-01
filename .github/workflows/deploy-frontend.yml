@@ -86,12 +86,14 @@ jobs:
         working-directory: frontend
         run: |
           out=dist/frontend/browser
-          grep -q '^ *Content-Security-Policy:' "$out/_headers" 2>/dev/null || {
+          grep -qiE '^[[:space:]]+content-security-policy[[:space:]]*:' "$out/_headers" 2>/dev/null || {
             echo "$out/_headers is missing or sets no Content-Security-Policy (#122)." >&2
             exit 1
           }
-          handlers=$(grep -oE '\son[a-z]+=' "$out/index.html" || true)
-          inline=$(grep -oE '<script[^>]*>' "$out/index.html" | grep -v 'src=' || true)
+          # The build keeps index.html's comments, and prose in one could match below; strip them.
+          page=$(perl -0777 -pe 's/<!--.*?-->//gs' "$out/index.html")
+          handlers=$(printf '%s' "$page" | grep -oiE '\son[a-z]+[[:space:]]*=' || true)
+          inline=$(printf '%s' "$page" | grep -oiE '<script[^>]*>' | grep -viE '\ssrc[[:space:]]*=' || true)
           if [ -n "$handlers$inline" ]; then
             echo "index.html has inline script the CSP will refuse:" >&2
             echo "$handlers$inline" >&2
@@ -129,12 +131,19 @@ jobs:
 
       # _headers being in the artifact does not prove Netlify applied it. By this step the deploy
       # is already live, so a failure here reports rather than prevents; it is still the only
-      # place that sees the header a visitor receives.
+      # place that sees the header a visitor receives. It looks for the policy's point, script-src
+      # 'self', rather than comparing the whole value: whether Netlify passes the value through
+      # byte for byte is unverified until the first release, and security-headers.spec.ts already
+      # pins the file itself.
       - name: Verify the deployed site sends its Content-Security-Policy
         run: |
-          csp=$(curl -sS -D - -o /dev/null --max-time 10 https://krzysztof-tarka.netlify.app/ | grep -i '^content-security-policy:' || true)
-          if [ -z "$csp" ]; then
-            echo "The live site sends no Content-Security-Policy; _headers did not reach Netlify (#122)." >&2
-            exit 1
-          fi
-          echo "$csp"
+          for i in $(seq 5); do
+            csp=$(curl -sS -D - -o /dev/null --max-time 10 https://krzysztof-tarka.netlify.app/ | grep -i '^content-security-policy:' || true)
+            if printf '%s' "$csp" | grep -qi "script-src 'self'"; then
+              echo "$csp"
+              exit 0
+            fi
+            echo "attempt $i: ${csp:-no Content-Security-Policy header}"; sleep 6
+          done
+          echo "The live site sends no Content-Security-Policy with script-src 'self'; _headers did not reach Netlify (#122)." >&2
+          exit 1
