@@ -2,10 +2,11 @@
 // out, e.g. the "development" configuration replaces this with environment.development.ts).
 //
 // apiBaseUrl is the real deployed backend: a Mikrus VPS reached through the bieda.it subdomain,
-// fronted by Cloudflare and served over TLS. It must stay in agreement with four other places --
+// fronted by Cloudflare and served over TLS. It must stay in agreement with five other places --
 // the <link rel="preconnect"> and <link rel="dns-prefetch"> to this origin in src/index.html,
 // which only help if they name the origin actually requested; the production `servers:` entry in
-// docs/openapi.yaml; and the public health check in .github/workflows/deploy-backend.yml.
+// docs/openapi.yaml; the public health check in .github/workflows/deploy-backend.yml; and
+// connect-src in public/_headers, without which the browser blocks every call to it (#122).
 // src/api-origin-hints.spec.ts fails if any of them disagrees (#180, #181). docs/DEPLOYMENT.md §1
 // lists every place for a host change, including the content seed's allowlist, which is left to a
 // separate decision on purpose.

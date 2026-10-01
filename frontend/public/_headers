@@ -1,0 +1,38 @@
+# Security response headers for every path Netlify serves (#122). Netlify reads this file from
+# the publish directory on every deploy, CLI deploys included; the build copies it there from
+# public/, like _redirects. The ADR is docs/DECISIONS.md, 2026-10-01.
+#
+# The Content-Security-Policy, directive by directive:
+#
+#   script-src 'self'       Nothing but this origin's own files. No inline script and no eval:
+#                           the app loads no third-party script, and Angular's AOT output needs
+#                           neither. This is the line that turns an injected <script> or event
+#                           handler into a console error. It is also why angular.json turns off
+#                           critical-CSS inlining: that emits <link onload="this.media='all'">,
+#                           an inline handler this directive blocks, which would leave the full
+#                           stylesheet stuck at media="print" (security-headers.spec.ts).
+#   style-src 'unsafe-inline'  Required, not a shortcut. Angular injects every component's
+#                           styles as <style> elements at runtime, and the nonce that would avoid
+#                           this has to be fresh per response, which a static host cannot do.
+#                           Injected CSS can restyle the page; it cannot run script.
+#   img-src https:          Project images are external URLs an admin pastes in
+#                           (docs/DATA_MODEL.md). An allowlist of hosts would break the next
+#                           image from a new host silently: the card would fall back to its
+#                           generated artwork and look intentional. http: is not listed;
+#                           browsers upgrade an http image on an https page before this applies.
+#   connect-src             This origin, plus the API's. KEEP IT IN STEP with apiBaseUrl in
+#                           src/environments/environment.ts: a stale origin here blocks every
+#                           API call. api-origin-hints.spec.ts fails if apiBaseUrl's origin is
+#                           missing from this line.
+#   frame-ancestors 'none'  Nothing may frame this site, the admin pages included: clickjacking.
+#                           X-Frame-Options: DENY says the same to browsers that predate CSP2.
+#
+# default-src 'self' covers everything not named (frames, workers, media, manifests).
+# object-src and base-uri are named because default-src does not cover base-uri, and object-src
+# 'none' is cheaper to state than to reason about.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; font-src 'self'; connect-src 'self' https://tarka1939.bieda.it; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

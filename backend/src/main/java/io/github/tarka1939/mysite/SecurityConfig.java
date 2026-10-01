@@ -27,6 +27,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -208,6 +209,15 @@ public class SecurityConfig {
             // CORS error. This ordering is why no OPTIONS permitAll rule is needed below.
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
+            // Added to Spring Security's defaults, not in place of them: X-Content-Type-Options,
+            // X-Frame-Options: DENY and Cache-Control were already sent, and still are (#122).
+            // Every response here is JSON, which no browser should render or run anything from,
+            // so the policy grants nothing -- it only matters if a response is ever opened as a
+            // document. The site's own policy, which has to permit the app, is a separate file:
+            // frontend/public/_headers. No referrer: nothing in an API response links anywhere.
+            .headers(headers -> headers
+                .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
+                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER)))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
