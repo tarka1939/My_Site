@@ -7,6 +7,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Security headers on the site and the API** (2026-10-01, #122, PR #240, frontend + backend + infra).
+  - **The site.** It now sends a Content-Security-Policy from `frontend/public/_headers`, with `X-Frame-Options: DENY`, `nosniff` and `Referrer-Policy`. The policy's core is `script-src 'self'`, so no inline script and no other host. `img-src https:` covers admin-pasted images, and `connect-src` names the API.
+  - **The API.** It adds `default-src 'none'; frame-ancestors 'none'` and `no-referrer` to the headers Spring Security already sent.
+  - **One build change.** For `script-src 'self'` to hold, Angular's critical-CSS inlining is off: its stylesheet `onload` handler is inline script, which the policy refuses, so the stylesheet would never have applied. Angular's `autoCsp` was tried and rejected; see the ADR in `docs/DECISIONS.md`, 2026-10-01.
+  - **Checks.** Tests pin the policy and its `connect-src`. The deploy refuses a build with inline script, and checks the header on the live site.
+
 - **Full-screen image viewer on project pages** (2026-09-24, #227, frontend). Any gallery image opens full screen — by click, tap or keyboard — with Previous/Next and arrow keys between a project's images, and Escape or a click outside the picture to close. Built on the native `<dialog>`, so focus is trapped while open and returns to the image afterwards; no new dependencies.
 
 - **Releases now go out through the pipelines** (2026-09-24, #218, #220, infra). The first promotion since 2026-09-03 — 87 commits (52 excluding merges), including the About page's migration — deployed on merge with no hands on the server: backend healthy 39s after the swap, frontend verified with a deep link. About an hour later a one-tag release (#220) went the same way.
@@ -122,6 +128,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 ### Fixed
 
 - **An ended admin session is reported once, not twice** (2026-10-01, #237, PR #242, frontend). When the server stopped accepting a token two requests were carrying, the first 401 said the session had expired, and the second added "The server did not accept this request (error 401)." about the same event. A 401 on a request that carried a token, once no token is held, now raises no toast. A wrong password on the login page still does.
+
+- **The error toast keeps its gutters on a phone, and says a repeated message once** (2026-10-01, #236, PR #241, frontend). Below 26rem of viewport the banner's left gutter shrank, and below 25rem it ran to the screen's edge; it now caps at the viewport less both gutters. With the backend down, `/projects` made two failing requests and showed the same sentence twice. A message already on screen now replaces its earlier copy instead of stacking beside it, so a repeat still shows, and a screen reader still announces it.
 
 - **`npm audit` is at zero again, and Angular is on 21.2.24** (2026-10-01, #235, PR #238, frontend + infra). Two lockfile-only `npm audit fix` passes cleared the dev-tooling advisories. The second pass caught an axios advisory published after the first. The undici 7 that `@angular/build` pins exactly could only move with the whole Angular family, so every `@angular/*` specifier is now `^21.2.24`. That is a runtime change, and it also clears a high `@angular/router` advisory that was published the day the issue was filed. The advisory is an SSR denial of service this app, with no SSR, is barely exposed to. Tests, the build size (+0.11 kB) and a browser smoke test are unchanged.
 

@@ -297,6 +297,35 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-01 — Senior Dev: a CSP that would have shipped unstyled, and errors from an earlier page
+
+**Task given:** #122, a Content-Security-Policy and security headers for the site and the API. It became PR #240.
+
+**Agent(s) used:** Senior Dev (Opus) implemented, with a browser.
+
+**What went right:**
+- The policy was exercised in a browser against the built bundle, served locally with the exact headers. This was done before trusting any test, as the issue asked.
+
+**What went wrong (be specific):**
+1. **The issue's plan would have shipped a site without its stylesheet.** #122 said the frontend half needed "No build change, no code change". In fact the production build inlines critical CSS and loads the global stylesheet with an `onload` handler. `script-src 'self'` refuses that handler, so the stylesheet would have stayed at `media="print"`. Nothing but a browser on the built output could show this. `ng serve` neither inlines nor reads `_headers`, and no unit test loads a stylesheet.
+2. **Two of the issue's facts had aged.** Its audit found "zero uses of `innerHTML`"; #206 has added `[innerHTML]`, sanitized, for Markdown. It said `SecurityConfig` adds no headers. That was true of the file, but Spring Security's defaults had been sending `nosniff` and `X-Frame-Options: DENY` all along, and production confirmed it.
+3. **Console errors from earlier pages looked like regressions.** After the merge of `dev` (Angular 21.2.24), the preview pane's console showed two `script-src` violations on a fresh load of `/projects`. They were from my own deliberate injection tests earlier in that tab: the console buffer survives navigation.
+
+**How it was caught:**
+1. A probe `<link media="print" onload>` in the served build, which stayed at `print`.
+2. Reading the code and production's headers before writing the ADR.
+3. Doubting the timing. A `ReportingObserver` with `buffered: true` reports only the current document's violations, and it found none. An injected script, as a control, was reported.
+
+**Fix applied:**
+1. `inlineCritical: false` in the production configuration. A spec pins it, and the deploy refuses a build whose `index.html` has inline script or a handler.
+2. The ADR records both facts, so the issue's claims are not the record.
+3. Each page was checked with the buffered observer instead of the console.
+
+**Takeaway for next time:**
+- A CSP is checked against the *built* bundle with the real headers, or it is not checked. The dev server differs from production in exactly the ways a policy cares about.
+- An issue's audit is dated evidence. Re-verify its facts against the code and production before building on them.
+- A tab's console is not scoped to the current page. Use a buffered `ReportingObserver` for "did *this* load violate the policy", and inject a known violation as a control.
+
 ## 2026-09-30 — Senior Dev: a memoised clock, a fix that exposed a guard, and keywords that looked unlinked
 
 **Task given:** Work the open issues autonomously. Merged that day: #231 (#228, #222, #225), #232 (#151, #191), #233 (#181) and #234 (#209). #235 is in review as #238.
