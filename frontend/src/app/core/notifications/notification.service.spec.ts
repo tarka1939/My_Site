@@ -25,6 +25,18 @@ describe('NotificationService', () => {
     expect(shown()).toEqual(['error: First.', 'error: Second.', 'info: First.']);
   });
 
+  // Replaced rather than ignored, so the banner renders a new element and a screen reader hears
+  // the repeat: a second wrong password must not pass in silence.
+  it('replaces the earlier copy with a new one, moved to the end', () => {
+    service.error('Repeated.');
+    service.error('Other.');
+    const firstId = service.notifications()[0].id;
+    service.error('Repeated.');
+
+    expect(shown()).toEqual(['error: Other.', 'error: Repeated.']);
+    expect(service.notifications()[1].id).not.toBe(firstId);
+  });
+
   it('shows a message again once the earlier copy has been dismissed', () => {
     service.error('Again.');
     service.dismiss(service.notifications()[0].id);

@@ -29,10 +29,12 @@ import { NotificationService } from './notification.service';
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
-      /* Only right is set, so below about 26rem a 24rem cap ran the box to the left edge with
-         no gutter (#236). Capping at the viewport less both gutters keeps them equal, and keeps
-         a short message's toast as narrow as its text, which left: 1rem would not. */
-      max-width: min(24rem, 100vw - 2rem);
+      /* Only right is set, so below 26rem a 24rem cap squeezed the left gutter, and below 25rem
+         ran the box to the screen's edge (#236). Capping at the viewport less both gutters keeps
+         them equal, and keeps a short message's toast as narrow as its text, which left: 1rem
+         would not. 100%, not 100vw: for a fixed box it is the viewport less a classic scrollbar,
+         which is what right: 1rem is measured from; 100vw counts the scrollbar in. */
+      max-width: min(24rem, 100% - 2rem);
     }
 
     .notification {

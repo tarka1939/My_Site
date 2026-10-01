@@ -28,17 +28,20 @@ export class NotificationService {
   }
 
   /**
-   * A message already on screen is not shown again (#236). One page load can make several
-   * requests, and when the backend is down each failure toasts on its own: /projects showed the
-   * same sentence twice. The repeat tells the visitor nothing, and nothing here dismisses on a
-   * timer, so a stack would stay until closed one by one. Once dismissed, the same message can
-   * appear again, because by then it is news.
+   * A message already on screen replaces its earlier copy rather than stacking beside it (#236).
+   * One page load can make several requests, and when the backend is down each failure toasts on
+   * its own: /projects showed the same sentence twice, and nothing here dismisses on a timer, so a
+   * stack would stay until closed one by one.
+   *
+   * Replaced, not ignored. The banner renders each toast as role="alert", which is announced when
+   * its element is inserted; the new id makes `track notification.id` insert a fresh one. Ignoring
+   * the repeat would leave a second wrong password, or a retried form, with no announcement and no
+   * visible change, so nobody could tell the retry had been answered.
    */
   private push(level: NotificationLevel, message: string): void {
-    this.notificationsSignal.update((current) =>
-      current.some((n) => n.level === level && n.message === message)
-        ? current
-        : [...current, { id: nextId++, level, message }],
-    );
+    this.notificationsSignal.update((current) => [
+      ...current.filter((n) => !(n.level === level && n.message === message)),
+      { id: nextId++, level, message },
+    ]);
   }
 }
