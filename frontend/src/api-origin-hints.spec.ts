@@ -3,10 +3,10 @@ import { dirname, join } from 'node:path';
 
 /**
  * The backend host is written down by hand in several places that nothing else forces to agree.
- * This file checks four of them against `apiBaseUrl` in `src/environments/environment.ts`: the
+ * This file checks five of them against `apiBaseUrl` in `src/environments/environment.ts`: the
  * `preconnect` and `dns-prefetch` hints in `src/index.html`, the production `servers:` entry in
- * `docs/openapi.yaml`, and the public health check in `.github/workflows/deploy-backend.yml` (the
- * last two added by #181). The subdomain moved during Phase 5 (`tojest.dev` -> `bieda.it`), and
+ * `docs/openapi.yaml`, the public health check in `.github/workflows/deploy-backend.yml` (those two
+ * added by #181), and `connect-src` in `public/_headers` (#122). The subdomain moved during Phase 5 (`tojest.dev` -> `bieda.it`), and
  * the rename commit (67cdaf1, 2026-09-03) edited only openapi.yaml, leaving the app and its hints
  * on the retired host until PR #175 (issue #178).
  *
@@ -342,5 +342,40 @@ describe('deploy-backend.yml health-checks the origin environment.ts calls', () 
           ', not the environment.ts apiBaseUrl origin; docs/DEPLOYMENT.md §1 lists every place.',
       ).toBe(apiOrigin);
     }
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// Reading public/_headers' connect-src
+// -------------------------------------------------------------------------------------------
+
+/** Netlify's header rules, copied into the build from public/ and read by nothing else. */
+const NETLIFY_HEADERS = join(ROOT, 'public', '_headers');
+
+// #122. Unlike a stale hint, a stale connect-src is not silent: the browser refuses every API call
+// and the deployed site renders its error states on every page. But it is silent everywhere a
+// developer looks -- `ng serve` never reads _headers, and the unit tests never send a request --
+// so the first place it would show is production. security-headers.spec.ts pins the rest of the
+// policy.
+describe('public/_headers lets the deployed app call the origin environment.ts names', () => {
+  it('allows the apiBaseUrl origin in connect-src', () => {
+    const apiOrigin = requireOrigin(productionApiBaseUrl());
+    const policies = readFileSync(NETLIFY_HEADERS, 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => /^\s+content-security-policy\s*:/i.test(line));
+
+    expect(policies, 'expected exactly one Content-Security-Policy in ' + NETLIFY_HEADERS).toHaveLength(1);
+    const connect = policies[0]
+      .split(';')
+      .map((part) => part.trim().split(/\s+/))
+      .find(([name]) => /connect-src$/i.test(name));
+
+    expect(
+      connect?.slice(1),
+      NETLIFY_HEADERS +
+        "'s connect-src does not allow " +
+        apiOrigin +
+        '; the deployed site could not reach its API. docs/DEPLOYMENT.md §1 lists every place.',
+    ).toContain(apiOrigin);
   });
 });
