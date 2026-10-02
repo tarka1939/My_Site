@@ -142,8 +142,8 @@ class SecurityIntegrationTest {
     /**
      * #122. Checked on a refusal as well as a success: the 401 is written by the resource
      * server's entry point rather than a controller, so this shows the headers are not confined to
-     * controller responses. It does not cover everything: a request the firewall rejects outright,
-     * or an error rendered on the container's error dispatch, is answered without them.
+     * controller responses. A request the firewall rejects outright is covered by the next test; an
+     * error rendered on the container's error dispatch is still answered without them.
      */
     @Test
     void apiResponsesCarryTheSecurityHeaders() {
@@ -162,6 +162,31 @@ class SecurityIntegrationTest {
             // silently replaces them.
             assertThat(headers.getFirst("X-Frame-Options")).isEqualTo("DENY");
             assertThat(headers.getFirst("X-Content-Type-Options")).isEqualTo("nosniff");
+        }
+    }
+
+    /**
+     * #243. The firewall refuses these before the filter chain runs, so neither its header
+     * writers nor its rules see them; production answered with a bare 401. Compared against an
+     * ordinary response rather than against fixed values, so a header added to SecurityConfig
+     * later is checked here without anyone remembering to.
+     */
+    @Test
+    void firewallRejectedRequestsGetA400WithTheSameSecurityHeaders() {
+        HttpHeaders ordinary = restTemplate.getForEntity(url("/api/v1/projects"), String.class).getHeaders();
+        // One rule stands for all of them: the handler does not look at why. Not "//", which the
+        // client collapses to "/" before sending; curl showed the firewall refuses that one too.
+        ResponseEntity<String> rejected = restTemplate.getForEntity(url("/api/v1/projects;x"), String.class);
+
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rejected.getHeaders().getContentType()).hasToString("application/problem+json;charset=UTF-8");
+        assertThat(rejected.getBody()).contains("\"title\":\"Bad Request\"");
+        // The 401 production sent came from the error dispatch's entry point.
+        assertThat(rejected.getHeaders().containsHeader(HttpHeaders.WWW_AUTHENTICATE)).isFalse();
+        for (String name : java.util.List.of("Content-Security-Policy", "Referrer-Policy",
+                "X-Frame-Options", "X-Content-Type-Options", "Cache-Control")) {
+            assertThat(ordinary.get(name)).as(name).isNotEmpty();
+            assertThat(rejected.getHeaders().get(name)).as(name).isEqualTo(ordinary.get(name));
         }
     }
 

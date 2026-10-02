@@ -27,6 +27,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
@@ -244,5 +245,14 @@ public class SecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();
+    }
+
+    /**
+     * The firewall refuses some requests before the chain above runs at all, so its headers and
+     * its rules never reach them. Spring Security picks this bean up by type (#243).
+     */
+    @Bean
+    public RequestRejectedHandler requestRejectedHandler(SecurityFilterChain securityFilterChain) {
+        return new SecurityHeadersRequestRejectedHandler(securityFilterChain);
     }
 }
