@@ -283,7 +283,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 **Smaller, filed 2026-09-30** while working the fixes above.
 - [x] #235 — the frontend's `npm audit` advisories. PR #238, merged to `dev` 2026-10-01: two lockfile-only `npm audit fix` passes, and every `@angular/*` package raised to 21.2.24. That last part is a runtime change, and it also clears a high `@angular/router` advisory published on 2026-09-30, after the issue was filed. `npm audit` is 0, with and without `--omit=dev`
 - [x] #236 — the error toast has no left gutter at phone width, and identical toasts stack, one per failed request. PR #241, merged to `dev` 2026-10-01, not yet released. The region caps at `min(24rem, 100% - 2rem)` (`100%`, not `100vw`, so a desktop scrollbar does not eat the left gutter), and a message already on screen replaces its earlier copy rather than stacking, so a repeat is still announced. Checked at 375px with the backend down: one toast, 16px each side
-- [ ] #237 — when a second request's 401 lands just after a session-expiry notice, it adds a generic error toast
+- [x] #237 — when a second request's 401 lands just after a session-expiry notice, it adds a generic error toast. PR #242, merged to `dev` 2026-10-01, not yet released. A 401 on a request that carried a token, once no token is held, now raises no toast. Reproduced in a browser before the fix, with a server-rejected token on `/projects`, and gone after it
 
 **Open design questions, the owner's to answer.**
 - [ ] #160 — a dead gallery image on the detail page leaves a labelled empty letterbox, and nobody has decided whether that is right
