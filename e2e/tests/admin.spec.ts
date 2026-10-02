@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { listProjectsByTag, purgeE2eProjectsByTag, requireCachedToken } from '../support/api';
 import {
@@ -122,4 +123,48 @@ test('an admin can log in, publish a project, and log back out', async ({ page }
   await expect(page).toHaveURL(/\/admin\/login\?returnUrl=%2Fadmin%2Fprojects$/);
   await expect(page.getByRole('heading', { name: 'Admin login', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Manage projects' })).toBeHidden();
+});
+
+/**
+ * A well-formed HS256 JWT for the e2e admin, signed with a key made here that the backend has never
+ * seen: what a browser holds after the server's signing secret has changed.
+ */
+function tokenSignedElsewhere(): string {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: E2E_ADMIN_USERNAME, iat: now, exp: now + 3600 })}`;
+  return `${unsigned}.${createHmac('sha256', randomBytes(32)).update(unsigned).digest('base64url')}`;
+}
+
+/**
+ * #246. The browser trusts a token until its own clock says it has expired, so it can hold one the
+ * server already refuses, and the server refuses a request carrying one before reading anything
+ * else. A login that sent it failed with the right password, and nothing cleared it, so the admin
+ * stayed locked out until the hour ran out. The unit specs show the token is withheld; this shows
+ * the real backend then lets the admin in.
+ */
+test('an admin holding a token the server no longer accepts can still log in', async ({ page }) => {
+  await page.goto('/admin/login');
+  await page.evaluate(
+    (session) => sessionStorage.setItem('mysite.admin.session', JSON.stringify(session)),
+    { token: tokenSignedElsewhere(), expiresAt: new Date(Date.now() + 3_600_000).toISOString() },
+  );
+  // AuthService reads the stored session once, when the app starts.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Admin login', level: 1 })).toBeVisible();
+
+  await page.getByRole('textbox', { name: 'Username' }).fill(E2E_ADMIN_USERNAME);
+  await page.getByLabel('Password').fill(E2E_ADMIN_PASSWORD);
+  const [loginResponse] = await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes('/api/v1/auth/login') && r.request().method() === 'POST',
+    ),
+    page.getByRole('button', { name: 'Log in' }).click(),
+  ]);
+
+  // allHeaders(), not headers(): the latter leaves out headers Playwright counts as security ones.
+  expect((await loginResponse.request().allHeaders())['authorization']).toBeUndefined();
+  expect(loginResponse.status()).toBe(200);
+  await expect(page).toHaveURL(/\/admin\/projects$/);
+  await expect(page.getByRole('heading', { name: 'Manage projects', level: 1 })).toBeVisible();
 });
