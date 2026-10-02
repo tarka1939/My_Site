@@ -1,3 +1,5 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
@@ -67,5 +69,95 @@ describe('authInterceptor', () => {
     auth.setSession({ token: 'live', expiresAt: new Date(Date.now() + 60_000).toISOString() });
 
     expect(authorizationSentTo('https://example.invalid/elsewhere')).toBeNull();
+  });
+
+  // #246. The browser can trust a token the server has stopped accepting, and the server refuses
+  // a request carrying one before reading anything else -- on /auth/login, before the password.
+  // None of these endpoints wants a token, so none is sent and a stale one cannot block them.
+  it.each(['/auth/login', '/auth/password-reset-request', '/auth/password-reset', '/auth/password-reset/validate'])(
+    'sends no token to %s, which takes none',
+    (path) => {
+      auth.setSession({ token: 'live', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+      expect(authorizationSentTo(`${environment.apiBaseUrl}${path}`)).toBeNull();
+    },
+  );
+
+  // The other side of the prefix's trailing slash: a path that only begins with the letters.
+  it('still sends the token to a sibling path such as /authors', () => {
+    auth.setSession({ token: 'live', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+    expect(authorizationSentTo(`${environment.apiBaseUrl}/authors`)).toBe('Bearer live');
+  });
+});
+
+/** Walk up from cwd to the frontend root, as `api-origin-hints.spec.ts` does; throw, never guess. */
+function projectRoot(): string {
+  let dir = process.cwd();
+  for (;;) {
+    for (const candidate of [dir, join(dir, 'frontend')]) {
+      if (existsSync(join(candidate, 'angular.json')) && existsSync(join(candidate, GENERATED_SERVICES))) {
+        return candidate;
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      throw new Error('could not locate the frontend project root (angular.json + ' + GENERATED_SERVICES + ') from cwd ' + process.cwd());
+    }
+    dir = parent;
+  }
+}
+
+const GENERATED_SERVICES = join('src', 'app', 'core', 'api', 'api');
+
+/**
+ * Every operation in the generated client, as its path and whether it sends a credential.
+ *
+ * Read from the generated source rather than from docs/openapi.yaml, because the frontend has no
+ * YAML parser and the generator has already done the reading. Each operation is overloaded, and
+ * only its implementation signature returns `Observable<any> {`, so the text from one of those to
+ * the next is one operation's body: its path and its credential line, in whichever order the
+ * generator writes them. A body holding any other number of paths throws instead of being guessed
+ * at. Any scheme counts, not only `bearerAuth`: a credential of any kind under /auth/ is worth a
+ * look.
+ */
+function generatedOperations(): { path: string; secured: boolean }[] {
+  const dir = join(projectRoot(), GENERATED_SERVICES);
+  return readdirSync(dir)
+    .filter((file) => file.endsWith('.service.ts'))
+    .flatMap((file) =>
+      readFileSync(join(dir, file), 'utf8')
+        .split('): Observable<any> {')
+        .slice(1)
+        .map((body) => {
+          const paths = [...body.matchAll(/let localVarPath = `([^`]*)`/g)].map((match) => match[1]);
+          if (paths.length !== 1) {
+            throw new Error(`${file}: expected one path per operation body, found ${paths.length}`);
+          }
+          return { path: paths[0], secured: body.includes('addCredentialToHeaders(') };
+        }),
+    );
+}
+
+/**
+ * The assumption authInterceptor's AUTH_PREFIX rests on: nothing under /auth/ takes a token. An
+ * operation there that did would have its token withheld, get a 401 for it, and log the admin out
+ * on every call. This turns that into a failing test at the moment the contract gains one.
+ */
+describe('the /auth/ operations authInterceptor sends no token to', () => {
+  const operations = generatedOperations();
+
+  // Both guard the reading above. Without them, a generator that stopped matching the pattern
+  // would pass the real test on an empty list.
+  it('finds the auth operations in the generated client', () => {
+    expect(operations.map((op) => op.path)).toContain('/auth/login');
+  });
+
+  it('sees the credential on the operations that do send one', () => {
+    expect(operations.filter((op) => op.secured).map((op) => op.path)).toContain('/admin/projects');
+  });
+
+  it('includes none that sends a credential', () => {
+    expect(operations.filter((op) => op.path.startsWith('/auth/') && op.secured)).toEqual([]);
   });
 });

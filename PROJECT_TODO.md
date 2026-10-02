@@ -285,6 +285,11 @@ Opened as the home for work that is neither a new feature nor a bug in something
 - [x] #236 — the error toast has no left gutter at phone width, and identical toasts stack, one per failed request. PR #241, merged to `dev` 2026-10-01, not yet released. The region caps at `min(24rem, 100% - 2rem)` (`100%`, not `100vw`, so a desktop scrollbar does not eat the left gutter), and a message already on screen replaces its earlier copy rather than stacking, so a repeat is still announced. Checked at 375px with the backend down: one toast, 16px each side
 - [x] #237 — when a second request's 401 lands just after a session-expiry notice, it adds a generic error toast. PR #242, merged to `dev` 2026-10-01, not yet released. A 401 on a request that carried a token, once no token is held, now raises no toast. Reproduced in a browser before the fix, with a server-rejected token on `/projects`, and gone after it
 
+**Smaller, filed 2026-10-01.**
+- [ ] #243 — the API answers a path Spring's firewall rejects without the security headers #122 added.
+- [ ] #244 — the frontend's `npm audit` is red again: two advisories in build tooling, published after #235.
+- [x] #246 — a token the browser trusts and the server no longer accepts blocks logging in again, since it was sent with the login request. Raised by PR #242's cold review and confirmed against a local backend. PR #247, merged to `dev` 2026-10-02, not yet released. `authInterceptor` sends no token under `/auth/`, and a test reading the generated client fails if an operation there ever needs one.
+
 **Open design questions, the owner's to answer.**
 - [ ] #160 — a dead gallery image on the detail page leaves a labelled empty letterbox, and nobody has decided whether that is right
 - [ ] #165 — `--color-surface-muted`'s recorded ratios are measured against a ground it is never painted on

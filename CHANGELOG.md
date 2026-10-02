@@ -129,6 +129,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
+- **A token the server stopped accepting no longer blocks logging in again** (2026-10-02, #246, PR #247, frontend). If the browser held a token it believed valid and the server had stopped accepting it, as after a signing-secret rotation, the login request carried that token and was refused before the password was read. The admin could not log in until the token expired. No request under `/auth/` carries a token now, since none of those endpoints takes one, and a test fails if the API contract ever adds one that does. An end-to-end journey reproduces the case against the real backend: on the old interceptor the right password got a 401, and now it gets in.
+
 - **An ended admin session is reported once, not twice** (2026-10-01, #237, PR #242, frontend). When the server stopped accepting a token two requests were carrying, the first 401 said the session had expired, and the second added "The server did not accept this request (error 401)." about the same event. A 401 on a request that carried a token, once no token is held, now raises no toast. A wrong password on the login page still does.
 
 - **The error toast keeps its gutters on a phone, and says a repeated message once** (2026-10-01, #236, PR #241, frontend). Below 26rem of viewport the banner's left gutter shrank, and below 25rem it ran to the screen's edge; it now caps at the viewport less both gutters. With the backend down, `/projects` made two failing requests and showed the same sentence twice. A message already on screen now replaces its earlier copy instead of stacking beside it, so a repeat still shows, and a screen reader still announces it.
