@@ -129,7 +129,7 @@ export class ProjectArtworkComponent implements AfterViewInit, OnChanges {
     canvas.width = Math.round(ARTWORK_WIDTH * ratio);
     canvas.height = Math.round(ARTWORK_HEIGHT * ratio);
 
-    let context: CanvasRenderingContext2D | null = null;
+    let context: CanvasRenderingContext2D | null;
     try {
       // One `try` covering both shapes of "no canvas here": a context that comes back null, and a
       // `getContext` that is missing or throws. Neither is an error worth reporting -- the card

@@ -84,7 +84,7 @@ export function canonicalHref(): string | null {
  * is seeded matches what the code under test produces instead of merely resembling it.
  */
 export function seedStaticSeoTags(description = 'STATIC SITE DESCRIPTION'): void {
-  const staticTags: ReadonlyArray<readonly [key: 'name' | 'property', value: string, content: string]> = [
+  const staticTags: readonly (readonly [key: 'name' | 'property', value: string, content: string])[] = [
     ['name', 'description', description],
     ['property', 'og:type', 'website'],
     ['property', 'og:site_name', SITE_NAME],

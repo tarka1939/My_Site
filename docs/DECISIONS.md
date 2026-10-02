@@ -824,6 +824,38 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
     - the About editor.
 - **The one directive not exercised locally is the API origin in `connect-src`.** The local build called its API same-origin through a proxy. The first production page load after the release is that check: the browser console, on any page that lists projects.
 
+### 2026-10-01 — Frontend lint: angular-eslint's recommended sets, and a ban on sanitizer bypasses
+
+**Context:** No linter had been configured since Phase 0. #210 asked for one for a specific reason found in #206's cold review. Admin-authored Markdown is rendered by `shared/markdown/markdown.ts` and bound through `[innerHTML]`. Two layers keep it safe: `markdown-it` at `html: false`, and Angular's sanitizer at the binding. A single `bypassSecurityTrustHtml` call removes the second layer, and **every test still passes**, because the DOM assertions hold with either layer alone. That was checked again while building this: the project page's and the Markdown module's 61 tests all pass with the description bound through `bypassSecurityTrustHtml`. Until now the only guard was three comments warning against the call.
+
+**Decision:**
+
+1. **ESLint, set up by `ng add angular-eslint@21`.** That brings ESLint 10, typescript-eslint 8, and the generated `frontend/eslint.config.js` with its sets: `@eslint/js` recommended, typescript-eslint recommended and stylistic, angular-eslint's TypeScript recommended, and its template recommended and template accessibility sets. Run as `npm run lint` (`ng lint`) with `maxWarnings: 0`, so a warning fails as an error does.
+2. **A ban on all five `bypassSecurityTrust*` methods, in code and in templates**, with a message naming the Markdown module and #210.
+   - In TypeScript, `no-restricted-properties` catches a call, a destructured method, a bracketed string name, optional chaining and `.bind`. Shown failing in CI on a branch that added the call to the project page.
+   - In templates, inline ones included, `no-restricted-syntax` matches any node named `bypassSecurityTrust*`. The property rule never sees template code, so `[innerHTML]="sanitizer.bypassSecurityTrustHtml(x)"` passed until PR #245's cold review found it.
+   - Neither catches a deliberately computed name. The rules guard against a mistake, not an adversary in the repository.
+3. **A ban on writing HTML straight into the DOM**, which skips the sanitizer altogether: assigning `innerHTML` or `outerHTML`, `insertAdjacentHTML`, `document.write`, and `Renderer2.setProperty` with either property. The codebase had none, so this cost nothing. Reading `outerHTML`, as some specs do, is still allowed. Also from the cold review.
+4. **A CI job of its own, "Frontend lint"**, in `ci.yml`, so a failure shows by name in a PR's checks.
+5. **The generated API client is ignored** (`src/app/core/api/**`). It drew 315 of the 324 findings, and it is regenerated from `docs/openapi.yaml`, never edited by hand.
+6. **The other nine findings were handled as follows:**
+   - Four fixed in place: an import kept only for a doc link, a dead initialiser, an `any`, and a `ReadonlyArray`.
+   - Four were empty methods in one spec's canvas stub. `no-empty-function` is off for every `*.spec.ts`, not only that one, since a stub method's job is to do nothing wherever it is.
+   - The image viewer's `<dialog>` keeps its `(click)` and `(keydown)` handlers under an `eslint-disable-next-line` that explains them. The click is a pointer shortcut whose keyboard equivalent is Escape.
+7. **No formatter.** `frontend/.prettierrc` stays as the scaffold left it, run by nothing. #210 asked for a formatter to be a separate decision if it is ever made, because this repository's long explanatory comments would be reflowed on every touch.
+8. **No backend linter.** #210's motivating gap is a frontend one. The backend has no equivalent single call that the tests cannot see, and `ApplicationModules.verify()` already enforces its structural rule.
+
+**Alternatives considered:**
+- *Only the bans, without the recommended sets.* That would be smaller. But the sets found real dead code at a cost of nine findings, and adding them later would mean a second sweep over a larger codebase.
+- *A test that greps the source for `bypassSecurityTrust`.* It would work without a new dependency. It would also not know a comment from a call, or a string from a property, and it would be a hand-built linter.
+- *Banning `eslint-disable` for this rule* (`eslint-comments/no-restricted-disable`). That means another plugin to guard a guard. An inline disable is visible in the diff that adds it, which is the property the silent bypass lacked.
+
+**Consequences:**
+- A frontend PR now has a fourth check. Its first run took 26 seconds: 14 for `npm ci` and 3 for the lint itself.
+- New code follows the stylistic set, for example `readonly T[]` over `ReadonlyArray<T>`. That is the generator's choice, kept because nothing here argued against it.
+- The template accessibility set now runs on every template, which is a standing check the visual-design work never had. It found one thing, the dialog above.
+- Upgrading Angular now includes upgrading `angular-eslint` to the matching major, because the two are versioned together.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
