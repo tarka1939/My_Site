@@ -37,6 +37,8 @@ function projectRoot(): string {
 const ROOT = projectRoot();
 
 interface LockEntry {
+  /** Present only when the package is installed under another name, as an npm alias. */
+  name?: string;
   version?: string;
   dependencies?: Record<string, string>;
 }
@@ -48,10 +50,15 @@ const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8')) a
   packages: Record<string, LockEntry>;
 };
 
-/** Every installed copy of `name`, wherever npm nested it. The root project's own key is ''. */
+/**
+ * Every installed copy of `name`, wherever npm nested it and whatever it is installed as. A key
+ * names the folder, which is the package's name unless it is an alias (`"x": "npm:basic-ftp@5"`):
+ * then the entry's own `name` says what it really is, and the folder name says nothing.
+ */
 function installed(name: string): LockEntry[] {
+  const marker = 'node_modules/';
   return Object.entries(lock.packages)
-    .filter(([path]) => path === `node_modules/${name}` || path.endsWith(`/node_modules/${name}`))
+    .filter(([path, entry]) => (entry.name ?? path.slice(path.lastIndexOf(marker) + marker.length)) === name)
     .map(([, entry]) => entry);
 }
 
@@ -71,12 +78,18 @@ function atLeast(version: string, floor: string): boolean {
 }
 
 /**
- * The lowest version a dependency range admits: the first x.y.z in it. Right for the forms these
- * parents use -- an exact pin (`5.2.0`) and a caret (`^5.3.1`) -- and for `~` and `>=`. A range it
- * cannot read, such as `5.x`, throws rather than passing.
+ * The lowest version a dependency range admits, for the forms where that is the version written:
+ * an exact pin (`5.2.0`, as `@angular/build` pins piscina), `=`, `^` (as `get-uri` asks for
+ * basic-ftp), `~` and `>=`. Anything else throws rather than guessing: `>5.3.1` admits nothing
+ * at 5.3.1, so reading its digits would keep an override its parent no longer needs, and `5.x`,
+ * a hyphen range or a `||` union has no single version to read.
  */
 function lowestAdmitted(range: string): string {
-  return parse(range).join('.');
+  const match = /^(?:\^|~|>=|=)?(\d+\.\d+\.\d+)$/.exec(range.trim());
+  if (!match) {
+    throw new Error(`cannot read the lowest version of the range ${range}; teach lowestAdmitted this form`);
+  }
+  return match[1];
 }
 
 describe('package.json overrides', () => {
