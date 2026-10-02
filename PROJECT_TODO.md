@@ -287,7 +287,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 
 **Smaller, filed 2026-10-01.**
 - [ ] #243 — the API answers a path Spring's firewall rejects without the security headers #122 added.
-- [ ] #244 — the frontend's `npm audit` is red again: two advisories in build tooling, published after #235.
+- [x] #244 — the frontend's `npm audit` is red again: two advisories in build tooling, published after #235. PR #248, merged to `dev` 2026-10-02, not yet released. `package.json` overrides piscina under `@angular/build` and basic-ftp under `get-uri`, each under its one parent, and `npm audit` is at 0. `dependency-overrides.spec.ts` fails in the PR that makes either override unnecessary, so neither outlives its reason.
 - [x] #246 — a token the browser trusts and the server no longer accepts blocks logging in again, since it was sent with the login request. Raised by PR #242's cold review and confirmed against a local backend. PR #247, merged to `dev` 2026-10-02, not yet released. `authInterceptor` sends no token under `/auth/`, and a test reading the generated client fails if an operation there ever needs one.
 
 **Open design questions, the owner's to answer.**
