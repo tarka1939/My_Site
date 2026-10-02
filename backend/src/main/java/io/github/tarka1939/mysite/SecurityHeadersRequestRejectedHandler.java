@@ -56,9 +56,19 @@ final class SecurityHeadersRequestRejectedHandler implements RequestRejectedHand
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response, RequestRejectedException ex)
             throws IOException, ServletException {
-        // DEBUG, as Spring's own handler logs it. These are scanners probing for path traversal,
-        // and none of them is anything to act on.
+        // DEBUG for two reasons. Scanners probe for path traversal all day, and none of it is
+        // anything to act on. And the message can quote the offending header's value, an
+        // Authorization header's included -- which is why it goes here and never into the body.
+        // This package logs at INFO in prod (application-prod.yml), so the line is never written
+        // there; dev turns it on, where the token in it is one the local backend issued, and why
+        // a request was refused is exactly what someone debugging it wants to know.
         log.debug("Rejecting request: {}", ex.getMessage());
+        if (response.isCommitted()) {
+            // Too late to answer: a status and headers have already gone out.
+            return;
+        }
+        // Drop anything written before the rejection, as sendError would have.
+        response.resetBuffer();
         // Run with nothing after it, the filter only writes its headers onto the response.
         headerWriter.doFilter(request, response, (req, res) -> { });
         response.setStatus(HttpServletResponse.SC_BAD_REQUEST);

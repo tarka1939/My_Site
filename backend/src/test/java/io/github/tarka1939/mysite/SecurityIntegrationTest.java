@@ -142,8 +142,10 @@ class SecurityIntegrationTest {
     /**
      * #122. Checked on a refusal as well as a success: the 401 is written by the resource
      * server's entry point rather than a controller, so this shows the headers are not confined to
-     * controller responses. A request the firewall rejects outright is covered by the next test; an
-     * error rendered on the container's error dispatch is still answered without them.
+     * controller responses. A request the firewall rejects outright is covered by the next test.
+     * Two kinds of answer still go without them: an error rendered on the container's error
+     * dispatch, and a 400 Tomcat writes itself, before Spring sees the request at all -- an
+     * encoded slash or NUL in the path ({@code %2f}, {@code %00}) gets Tomcat's own HTML page.
      */
     @Test
     void apiResponsesCarryTheSecurityHeaders() {
@@ -167,9 +169,10 @@ class SecurityIntegrationTest {
 
     /**
      * #243. The firewall refuses these before the filter chain runs, so neither its header
-     * writers nor its rules see them; production answered with a bare 401. Compared against an
-     * ordinary response rather than against fixed values, so a header added to SecurityConfig
-     * later is checked here without anyone remembering to.
+     * writers nor its rules see them; production answered with a bare 401. Compared against every
+     * header an ordinary response carries rather than against a list here, so a header added to
+     * SecurityConfig later is checked without anyone remembering to -- and a handler that wrote
+     * a copied list of headers instead of running the chain's own writers would fail it.
      */
     @Test
     void firewallRejectedRequestsGetA400WithTheSameSecurityHeaders() {
@@ -180,12 +183,25 @@ class SecurityIntegrationTest {
 
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(rejected.getHeaders().getContentType()).hasToString("application/problem+json;charset=UTF-8");
-        assertThat(rejected.getBody()).contains("\"title\":\"Bad Request\"");
+        // Exactly the fixed body: the firewall's message can quote a header's value, a bearer
+        // token included, and must never be reflected back.
+        assertThat(rejected.getBody()).isEqualTo(SecurityHeadersRequestRejectedHandler.BODY);
         // The 401 production sent came from the error dispatch's entry point.
         assertThat(rejected.getHeaders().containsHeader(HttpHeaders.WWW_AUTHENTICATE)).isFalse();
+
+        // Everything else the 200 carries is a security header. These differ per response, or come
+        // from a filter a rejected request never reaches (Vary is CorsFilter's).
+        java.util.Set<String> perResponse = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        perResponse.addAll(java.util.List.of(HttpHeaders.CONTENT_TYPE, HttpHeaders.CONTENT_LENGTH,
+            HttpHeaders.TRANSFER_ENCODING, HttpHeaders.DATE, "Keep-Alive", HttpHeaders.CONNECTION, HttpHeaders.VARY));
+        java.util.List<String> security = ordinary.headerNames().stream()
+            .filter(name -> !perResponse.contains(name)).toList();
+        // Guards the comparison: a 200 that had lost its headers would otherwise compare nothing.
         for (String name : java.util.List.of("Content-Security-Policy", "Referrer-Policy",
                 "X-Frame-Options", "X-Content-Type-Options", "Cache-Control")) {
             assertThat(ordinary.get(name)).as(name).isNotEmpty();
+        }
+        for (String name : security) {
             assertThat(rejected.getHeaders().get(name)).as(name).isEqualTo(ordinary.get(name));
         }
     }
