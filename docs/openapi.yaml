@@ -1214,13 +1214,21 @@ components:
 
     ProblemDetail:
       type: object
-      description: RFC 7807 Problem Details, as returned natively by Spring Boot 3's ProblemDetail / @ControllerAdvice.
-      required: [type, title, status]
+      description: |
+        RFC 9457 Problem Details (which obsoletes RFC 7807), as returned natively by Spring's
+        ProblemDetail / @ControllerAdvice.
+      required: [title, status]
       properties:
         type:
           type: string
           format: uri
           default: about:blank
+          description: |
+            Usually absent. Spring leaves `type` out of the body when it is the default
+            `about:blank`, which is every problem this API returns, and RFC 9457 says an absent
+            `type` means exactly that. Read a missing value as `about:blank`. Do not treat it as an
+            error. The one body that does carry it is the fixed answer to a request the security
+            firewall refuses, which is written outside Spring MVC.
         title:
           type: string
         status:
