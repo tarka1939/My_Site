@@ -62,6 +62,9 @@ class SecurityIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private io.micrometer.core.instrument.MeterRegistry meterRegistry;
+
     private final RestTemplate restTemplate = nonThrowingRestTemplate();
 
     private static RestTemplate nonThrowingRestTemplate() {
@@ -171,8 +174,9 @@ class SecurityIntegrationTest {
      * #243. The firewall refuses these before the filter chain runs, so neither its header
      * writers nor its rules see them; production answered with a bare 401. Compared against every
      * header an ordinary response carries rather than against a list here, so a header added to
-     * SecurityConfig later is checked without anyone remembering to -- and a handler that wrote
-     * a copied list of headers instead of running the chain's own writers would fail it.
+     * SecurityConfig later is checked without anyone remembering to. A handler that wrote a copied
+     * list of headers instead of running the chain's own writers passes only while the copy is
+     * complete, and fails as soon as the two drift: a header added to SecurityConfig, say.
      */
     @Test
     void firewallRejectedRequestsGetA400WithTheSameSecurityHeaders() {
@@ -204,6 +208,22 @@ class SecurityIntegrationTest {
         for (String name : security) {
             assertThat(rejected.getHeaders().get(name)).as(name).isEqualTo(ordinary.get(name));
         }
+    }
+
+    /**
+     * Supplying our own RequestRejectedHandler drops the marker Spring composes in when it is given
+     * none, so SecurityConfig composes it back. Without it the request metrics record a rejection
+     * as {@code exception=none}, the same as a 400 a controller chose to send.
+     */
+    @Test
+    void firewallRejectionsAreStillMarkedInTheRequestMetrics() {
+        restTemplate.getForEntity(url("/api/v1/projects;x"), String.class);
+
+        // The server stops the observation as the exchange completes, which can be after the
+        // client already has the response.
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() ->
+            assertThat(meterRegistry.find("http.server.requests")
+                .tag("exception", "RequestRejectedException").timer()).isNotNull());
     }
 
     @Test
