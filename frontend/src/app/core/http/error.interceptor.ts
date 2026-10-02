@@ -96,9 +96,11 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         // the same event a second time, as a failure. So nothing more is said; the caller still
         // receives the problem.
         //
-        // !hasToken() is what keeps a wrong password out of here. An admin holding a live token
-        // sends it on every API request, the login request included, and that 401 must still
-        // reach the toast below. A visitor's 401 carries no header, so it reaches the toast too.
+        // A wrong password does not come here: authInterceptor sends no token to /auth/ (#246),
+        // so a login request carries no header. !hasToken() is a second guard on the same case. If
+        // a token ever went out with a login request again, the admin would still hold it, and
+        // the wrong password's 401 would still reach the toast below. A visitor's 401 carries no
+        // header, so it reaches the toast too.
       } else if (req.context.get(SKIP_ERROR_TOAST)) {
         // The caller renders this failure itself; see SKIP_ERROR_TOAST.
       } else if (problem.rateLimited) {

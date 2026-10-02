@@ -251,9 +251,10 @@ describe('errorInterceptor', () => {
     expect(returnUrl).toBe('/admin/projects');
   });
 
-  // The other side of #237's branch. authInterceptor attaches a live token to every API request,
-  // the login request included, so "it carried a token" alone would also silence a mistyped
-  // password from an admin who opened the login page while still signed in.
+  // The other side of #237's branch. Since #246, authInterceptor sends no token with a login
+  // request, so in the app this header never arrives on one. This keeps the second guard,
+  // !hasToken(), honest: if a token were ever sent, "it carried a token" alone would also silence
+  // a mistyped password from an admin who opened the login page while still signed in.
   it('still reports a wrong password when the login request carried a live token', async () => {
     await router.navigateByUrl('/admin/login');
     auth.setSession({ token: 'held', expiresAt: new Date(Date.now() + 60_000).toISOString() });
@@ -525,6 +526,40 @@ describe('errorInterceptor, in the order app.config.ts registers it', () => {
     expect(notifications.notifications().map((n) => n.message)).toEqual([
       'Your admin session has expired. Please log in again.',
     ]);
+    httpMock.verify();
+  });
+
+  // #246, through the same chain. The browser trusts its token, which keeps authInterceptor
+  // willing to send it. The login request must still go out without it, because the server would
+  // refuse that token before reading the password. A wrong password is still reported as one.
+  it('logs in without the held token, and still reports a wrong password', async () => {
+    sessionStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([{ path: 'admin/login', component: StubComponent }]),
+        provideHttpClient(withInterceptors(httpInterceptors)),
+        provideHttpClientTesting(),
+      ],
+    });
+    const httpClient = TestBed.inject(HttpClient);
+    const httpMock = TestBed.inject(HttpTestingController);
+    const notifications = TestBed.inject(NotificationService);
+    const auth = TestBed.inject(AuthService);
+    await TestBed.inject(Router).navigateByUrl('/admin/login');
+    auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+    const settled = firstValueFrom(httpClient.post(LOGIN_URL, {})).catch((problem: ApiProblem) => problem);
+    const req = httpMock.expectOne(LOGIN_URL);
+    expect(req.request.headers.has('Authorization')).toBe(false);
+    req.flush(
+      { type: 'about:blank', title: 'Unauthorized', detail: 'Invalid credentials', status: 401 },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+    await settled;
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual(['Invalid credentials']);
+    expect(auth.hasToken()).toBe(true);
     httpMock.verify();
   });
 });
