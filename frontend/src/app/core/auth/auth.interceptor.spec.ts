@@ -82,6 +82,13 @@ describe('authInterceptor', () => {
       expect(authorizationSentTo(`${environment.apiBaseUrl}${path}`)).toBeNull();
     },
   );
+
+  // The other side of the prefix's trailing slash: a path that only begins with the letters.
+  it('still sends the token to a sibling path such as /authors', () => {
+    auth.setSession({ token: 'live', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+    expect(authorizationSentTo(`${environment.apiBaseUrl}/authors`)).toBe('Bearer live');
+  });
 });
 
 /** Walk up from cwd to the frontend root, as `api-origin-hints.spec.ts` does; throw, never guess. */
@@ -104,24 +111,32 @@ function projectRoot(): string {
 const GENERATED_SERVICES = join('src', 'app', 'core', 'api', 'api');
 
 /**
- * Every operation in the generated client, as its path and whether it sends the bearer token.
+ * Every operation in the generated client, as its path and whether it sends a credential.
  *
  * Read from the generated source rather than from docs/openapi.yaml, because the frontend has no
- * YAML parser and the generator has already done the reading. Each operation sets its credential
- * header, if it has one, before it builds its path. So the text between one `let localVarPath =`
- * and the next holds exactly the next operation's credential line.
+ * YAML parser and the generator has already done the reading. Each operation is overloaded, and
+ * only its implementation signature returns `Observable<any> {`, so the text from one of those to
+ * the next is one operation's body: its path and its credential line, in whichever order the
+ * generator writes them. A body holding any other number of paths throws instead of being guessed
+ * at. Any scheme counts, not only `bearerAuth`: a credential of any kind under /auth/ is worth a
+ * look.
  */
-function generatedOperations(): { path: string; sendsToken: boolean }[] {
+function generatedOperations(): { path: string; secured: boolean }[] {
   const dir = join(projectRoot(), GENERATED_SERVICES);
   return readdirSync(dir)
     .filter((file) => file.endsWith('.service.ts'))
-    .flatMap((file) => {
-      const parts = readFileSync(join(dir, file), 'utf8').split('let localVarPath = `');
-      return parts.slice(1).map((part, i) => ({
-        path: part.slice(0, part.indexOf('`')),
-        sendsToken: parts[i].includes("addCredentialToHeaders('bearerAuth'"),
-      }));
-    });
+    .flatMap((file) =>
+      readFileSync(join(dir, file), 'utf8')
+        .split('): Observable<any> {')
+        .slice(1)
+        .map((body) => {
+          const paths = [...body.matchAll(/let localVarPath = `([^`]*)`/g)].map((match) => match[1]);
+          if (paths.length !== 1) {
+            throw new Error(`${file}: expected one path per operation body, found ${paths.length}`);
+          }
+          return { path: paths[0], secured: body.includes('addCredentialToHeaders(') };
+        }),
+    );
 }
 
 /**
@@ -138,11 +153,11 @@ describe('the /auth/ operations authInterceptor sends no token to', () => {
     expect(operations.map((op) => op.path)).toContain('/auth/login');
   });
 
-  it('sees the token on the operations that do send it', () => {
-    expect(operations.filter((op) => op.sendsToken).map((op) => op.path)).toContain('/admin/projects');
+  it('sees the credential on the operations that do send one', () => {
+    expect(operations.filter((op) => op.secured).map((op) => op.path)).toContain('/admin/projects');
   });
 
-  it('includes none that sends a token', () => {
-    expect(operations.filter((op) => op.path.startsWith('/auth/') && op.sendsToken)).toEqual([]);
+  it('includes none that sends a credential', () => {
+    expect(operations.filter((op) => op.path.startsWith('/auth/') && op.secured)).toEqual([]);
   });
 });
