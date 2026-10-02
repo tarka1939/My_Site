@@ -831,18 +831,22 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 **Decision:**
 
 1. **ESLint, set up by `ng add angular-eslint@21`.** That brings ESLint 10, typescript-eslint 8, and the generated `frontend/eslint.config.js` with its sets: `@eslint/js` recommended, typescript-eslint recommended and stylistic, angular-eslint's TypeScript recommended, and its template recommended and template accessibility sets. Run as `npm run lint` (`ng lint`) with `maxWarnings: 0`, so a warning fails as an error does.
-2. **`no-restricted-properties` on all five `bypassSecurityTrust*` methods**, with a message naming the Markdown module and #210. It catches a call, a destructured method and a bracketed string name. Shown failing on a branch that added the call to the project page. It does not catch a deliberately computed property name; the rule guards against a mistake, not an adversary in the repository.
-3. **A CI job of its own, "Frontend lint"**, in `ci.yml`, so a failure shows by name in a PR's checks.
-4. **The generated API client is ignored** (`src/app/core/api/**`). It drew 315 of the 324 findings, and it is regenerated from `docs/openapi.yaml`, never edited by hand.
-5. **The other nine findings were handled as follows:**
+2. **A ban on all five `bypassSecurityTrust*` methods, in code and in templates**, with a message naming the Markdown module and #210.
+   - In TypeScript, `no-restricted-properties` catches a call, a destructured method, a bracketed string name, optional chaining and `.bind`. Shown failing in CI on a branch that added the call to the project page.
+   - In templates, inline ones included, `no-restricted-syntax` matches any node named `bypassSecurityTrust*`. The property rule never sees template code, so `[innerHTML]="sanitizer.bypassSecurityTrustHtml(x)"` passed until PR #245's cold review found it.
+   - Neither catches a deliberately computed name. The rules guard against a mistake, not an adversary in the repository.
+3. **A ban on writing HTML straight into the DOM**, which skips the sanitizer altogether: assigning `innerHTML` or `outerHTML`, `insertAdjacentHTML`, `document.write`, and `Renderer2.setProperty` with either property. The codebase had none, so this cost nothing. Reading `outerHTML`, as some specs do, is still allowed. Also from the cold review.
+4. **A CI job of its own, "Frontend lint"**, in `ci.yml`, so a failure shows by name in a PR's checks.
+5. **The generated API client is ignored** (`src/app/core/api/**`). It drew 315 of the 324 findings, and it is regenerated from `docs/openapi.yaml`, never edited by hand.
+6. **The other nine findings were handled as follows:**
    - Four fixed in place: an import kept only for a doc link, a dead initialiser, an `any`, and a `ReadonlyArray`.
-   - Four were empty methods in one spec's canvas stub. They are allowed by a rule scoped to `*.spec.ts`, since a stub method's job is to do nothing.
+   - Four were empty methods in one spec's canvas stub. `no-empty-function` is off for every `*.spec.ts`, not only that one, since a stub method's job is to do nothing wherever it is.
    - The image viewer's `<dialog>` keeps its `(click)` and `(keydown)` handlers under an `eslint-disable-next-line` that explains them. The click is a pointer shortcut whose keyboard equivalent is Escape.
-6. **No formatter.** `frontend/.prettierrc` stays as the scaffold left it, run by nothing. #210 asked for a formatter to be a separate decision if it is ever made, because this repository's long explanatory comments would be reflowed on every touch.
-7. **No backend linter.** #210's motivating gap is a frontend one. The backend has no equivalent single call that the tests cannot see, and `ApplicationModules.verify()` already enforces its structural rule.
+7. **No formatter.** `frontend/.prettierrc` stays as the scaffold left it, run by nothing. #210 asked for a formatter to be a separate decision if it is ever made, because this repository's long explanatory comments would be reflowed on every touch.
+8. **No backend linter.** #210's motivating gap is a frontend one. The backend has no equivalent single call that the tests cannot see, and `ApplicationModules.verify()` already enforces its structural rule.
 
 **Alternatives considered:**
-- *Only the one rule, without the recommended sets.* That would be smaller. But the sets found real dead code at a cost of nine findings, and adding them later would mean a second sweep over a larger codebase.
+- *Only the bans, without the recommended sets.* That would be smaller. But the sets found real dead code at a cost of nine findings, and adding them later would mean a second sweep over a larger codebase.
 - *A test that greps the source for `bypassSecurityTrust`.* It would work without a new dependency. It would also not know a comment from a call, or a string from a property, and it would be a hand-built linter.
 - *Banning `eslint-disable` for this rule* (`eslint-comments/no-restricted-disable`). That means another plugin to guard a guard. An inline disable is visible in the diff that adds it, which is the property the silent bypass lacked.
 

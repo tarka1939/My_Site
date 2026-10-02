@@ -175,8 +175,9 @@ cd frontend && npx ng test --include='**/projects-list.component.spec.ts'
 # Regenerate the typed API client from docs/openapi.yaml:
 cd frontend && npm run generate:api
 
-# Lint (ESLint via angular-eslint, #210; CI runs it). Its one essential rule bans the
-# bypassSecurityTrust* calls that would turn the Markdown renderer into an XSS sink:
+# Lint (ESLint via angular-eslint, #210; CI runs it). Its essential rules ban the
+# bypassSecurityTrust* calls and raw innerHTML-style DOM writes, either of which would make the
+# Markdown renderer an XSS sink:
 cd frontend && npm run lint
 # No formatter: `frontend/.prettierrc` exists from the Angular scaffold but nothing runs it —
 # don't reformat files wholesale with it.
