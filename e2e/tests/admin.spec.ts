@@ -88,7 +88,9 @@ test('an admin can log in, publish a project, and log back out', async ({ page }
   expect(createResponse.status()).toBe(201);
 
   await expect(page).toHaveURL(/\/admin\/projects$/);
-  await expect(page.getByRole('cell', { name: title })).toBeVisible();
+  // Exact: the actions cell's name contains the title too, because its buttons' labels name the
+  // project they act on.
+  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
 
   // The write also has to be visible to an anonymous visitor, which is a different code path
   // (public list endpoint, no bearer token) than the admin table above.
