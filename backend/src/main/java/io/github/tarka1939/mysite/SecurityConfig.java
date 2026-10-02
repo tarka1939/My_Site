@@ -8,6 +8,7 @@ import java.util.List;
 
 import javax.crypto.spec.SecretKeySpec;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +28,9 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.firewall.CompositeRequestRejectedHandler;
+import org.springframework.security.web.firewall.ObservationMarkingRequestRejectedHandler;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
@@ -35,6 +39,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;
+
+import io.micrometer.observation.ObservationRegistry;
 
 /**
  * Real JWT auth, replacing the Phase 1 permit-all/deny-all placeholder chains. Stateless
@@ -244,5 +250,21 @@ public class SecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();
+    }
+
+    /**
+     * The firewall refuses some requests before the chain above runs at all, so its headers and
+     * its rules never reach them. Spring Security picks this bean up by type (#243).
+     *
+     * <p>Left to itself, Spring puts an observation marker in front of its own handler, which
+     * records the rejection as the request's error; supplying a handler drops it. It is put back
+     * here, so a rejected request's {@code http.server.requests} observation keeps its error.
+     */
+    @Bean
+    public RequestRejectedHandler requestRejectedHandler(SecurityFilterChain securityFilterChain,
+            ObjectProvider<ObservationRegistry> observationRegistry) {
+        return new CompositeRequestRejectedHandler(
+            new ObservationMarkingRequestRejectedHandler(observationRegistry.getIfAvailable(() -> ObservationRegistry.NOOP)),
+            new SecurityHeadersRequestRejectedHandler(securityFilterChain));
     }
 }

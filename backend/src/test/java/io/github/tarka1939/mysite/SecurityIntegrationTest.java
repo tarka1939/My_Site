@@ -62,6 +62,9 @@ class SecurityIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private io.micrometer.core.instrument.MeterRegistry meterRegistry;
+
     private final RestTemplate restTemplate = nonThrowingRestTemplate();
 
     private static RestTemplate nonThrowingRestTemplate() {
@@ -142,8 +145,10 @@ class SecurityIntegrationTest {
     /**
      * #122. Checked on a refusal as well as a success: the 401 is written by the resource
      * server's entry point rather than a controller, so this shows the headers are not confined to
-     * controller responses. It does not cover everything: a request the firewall rejects outright,
-     * or an error rendered on the container's error dispatch, is answered without them.
+     * controller responses. A request the firewall rejects outright is covered by the next test.
+     * Two kinds of answer still go without them: an error rendered on the container's error
+     * dispatch, and a 400 Tomcat writes itself, before Spring sees the request at all -- an
+     * encoded slash or NUL in the path ({@code %2f}, {@code %00}) gets Tomcat's own HTML page.
      */
     @Test
     void apiResponsesCarryTheSecurityHeaders() {
@@ -163,6 +168,62 @@ class SecurityIntegrationTest {
             assertThat(headers.getFirst("X-Frame-Options")).isEqualTo("DENY");
             assertThat(headers.getFirst("X-Content-Type-Options")).isEqualTo("nosniff");
         }
+    }
+
+    /**
+     * #243. The firewall refuses these before the filter chain runs, so neither its header
+     * writers nor its rules see them; production answered with a bare 401. Compared against every
+     * header an ordinary response carries rather than against a list here, so a header added to
+     * SecurityConfig later is checked without anyone remembering to. A handler that wrote a copied
+     * list of headers instead of running the chain's own writers passes only while the copy is
+     * complete, and fails as soon as the two drift: a header added to SecurityConfig, say.
+     */
+    @Test
+    void firewallRejectedRequestsGetA400WithTheSameSecurityHeaders() {
+        HttpHeaders ordinary = restTemplate.getForEntity(url("/api/v1/projects"), String.class).getHeaders();
+        // One rule stands for all of them: the handler does not look at why. Not "//", which the
+        // client collapses to "/" before sending; curl showed the firewall refuses that one too.
+        ResponseEntity<String> rejected = restTemplate.getForEntity(url("/api/v1/projects;x"), String.class);
+
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rejected.getHeaders().getContentType()).hasToString("application/problem+json;charset=UTF-8");
+        // Exactly the fixed body: the firewall's message can quote a header's value, a bearer
+        // token included, and must never be reflected back.
+        assertThat(rejected.getBody()).isEqualTo(SecurityHeadersRequestRejectedHandler.BODY);
+        // The 401 production sent came from the error dispatch's entry point.
+        assertThat(rejected.getHeaders().containsHeader(HttpHeaders.WWW_AUTHENTICATE)).isFalse();
+
+        // Everything else the 200 carries is a security header. These differ per response, or come
+        // from a filter a rejected request never reaches (Vary is CorsFilter's).
+        java.util.Set<String> perResponse = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        perResponse.addAll(java.util.List.of(HttpHeaders.CONTENT_TYPE, HttpHeaders.CONTENT_LENGTH,
+            HttpHeaders.TRANSFER_ENCODING, HttpHeaders.DATE, "Keep-Alive", HttpHeaders.CONNECTION, HttpHeaders.VARY));
+        java.util.List<String> security = ordinary.headerNames().stream()
+            .filter(name -> !perResponse.contains(name)).toList();
+        // Guards the comparison: a 200 that had lost its headers would otherwise compare nothing.
+        for (String name : java.util.List.of("Content-Security-Policy", "Referrer-Policy",
+                "X-Frame-Options", "X-Content-Type-Options", "Cache-Control")) {
+            assertThat(ordinary.get(name)).as(name).isNotEmpty();
+        }
+        for (String name : security) {
+            assertThat(rejected.getHeaders().get(name)).as(name).isEqualTo(ordinary.get(name));
+        }
+    }
+
+    /**
+     * Supplying our own RequestRejectedHandler drops the marker Spring composes in when it is given
+     * none, so SecurityConfig composes it back. Without it the request metrics record a rejection
+     * as {@code exception=none}, the same as a 400 a controller chose to send.
+     */
+    @Test
+    void firewallRejectionsAreStillMarkedInTheRequestMetrics() {
+        restTemplate.getForEntity(url("/api/v1/projects;x"), String.class);
+
+        // The server stops the observation as the exchange completes, which can be after the
+        // client already has the response.
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() ->
+            assertThat(meterRegistry.find("http.server.requests")
+                .tag("exception", "RequestRejectedException").timer()).isNotNull());
     }
 
     @Test
