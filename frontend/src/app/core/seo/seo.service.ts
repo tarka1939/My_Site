@@ -1,6 +1,6 @@
 import { DOCUMENT, Injectable, inject } from '@angular/core';
 import { Meta, Title } from '@angular/platform-browser';
-import { NOINDEX, SITE_DESCRIPTION, SITE_TITLE, toMetaDescription } from './site-meta';
+import { SITE_DESCRIPTION, SITE_TITLE, toMetaDescription } from './site-meta';
 
 /** What a route (or a loaded page) declares about itself. Every field is optional. */
 export interface PageMeta {
@@ -8,7 +8,7 @@ export interface PageMeta {
   readonly title?: string;
   /** Raw description text -- truncated and whitespace-collapsed here, not by the caller. */
   readonly description?: string | null;
-  /** `robots` content, i.e. {@link NOINDEX}. Absent means indexable, and *removes* any stale tag. */
+  /** `robots` content, i.e. `NOINDEX` (site-meta). Absent means indexable, and *removes* a stale tag. */
   readonly robots?: string;
   /** Router URL of the page, e.g. `'/projects/abc?tag=dsp'`. Used to build `og:url`. */
   readonly url?: string;

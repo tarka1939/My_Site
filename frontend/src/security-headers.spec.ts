@@ -135,9 +135,14 @@ describe('angular.json, against the policy above', () => {
   // for good: the page renders with only the inlined critical rules. Measured in a browser while
   // building #122. `optimization: true`, or dropping the key, turns inlining back on.
   it('does not inline critical CSS in the production build', () => {
-    const angular = JSON.parse(readFileSync(join(ROOT, 'angular.json'), 'utf8'));
-    const production = Object.values(angular.projects as Record<string, any>)[0].architect.build
-      .configurations.production;
+    interface Production {
+      optimization?: { styles?: { inlineCritical?: boolean } };
+    }
+    interface Workspace {
+      projects: Record<string, { architect: { build: { configurations: { production: Production } } } }>;
+    }
+    const angular = JSON.parse(readFileSync(join(ROOT, 'angular.json'), 'utf8')) as Workspace;
+    const production = Object.values(angular.projects)[0].architect.build.configurations.production;
 
     expect(
       production.optimization?.styles?.inlineCritical,
