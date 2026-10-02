@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EMPTY, Observable, catchError, filter, map, switchMap, tap } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
@@ -22,6 +23,7 @@ export class ProjectDetailComponent {
   private readonly projectsApi = inject(ProjectsService);
   private readonly route = inject(ActivatedRoute);
   private readonly seo = inject(SeoService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   protected readonly project = signal<Project | null>(null);
   protected readonly loading = signal(true);
@@ -35,7 +37,9 @@ export class ProjectDetailComponent {
    * shared/markdown/markdown.ts, which escapes raw HTML before it is ever markup. Trusting the
    * string here would remove the layer that is actually load-bearing at the DOM boundary.
    */
-  protected readonly descriptionHtml = computed(() => renderMarkdown(this.project()?.description));
+  protected readonly descriptionHtml = computed(() =>
+    this.sanitizer.bypassSecurityTrustHtml(renderMarkdown(this.project()?.description)),
+  );
 
   constructor() {
     // Both operators exist for the same reason, and neither is optional now that the callbacks
