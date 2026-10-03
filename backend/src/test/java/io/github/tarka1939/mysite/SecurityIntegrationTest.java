@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpEntity;
@@ -47,6 +50,7 @@ import io.github.tarka1939.mysite.auth.LoginResponse;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class SecurityIntegrationTest {
 
     @Container
@@ -224,6 +228,45 @@ class SecurityIntegrationTest {
         org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() ->
             assertThat(meterRegistry.find("http.server.requests")
                 .tag("exception", "RequestRejectedException").timer()).isNotNull());
+    }
+
+    /**
+     * #252. A header value is checked only when something reads it, so a bad one the firewall
+     * first sees inside Spring MVC is thrown there -- here by the body converter reading
+     * {@code Content-Type} on a public endpoint -- and the catch-all answered 500, with an ERROR
+     * stack trace quoting the value. {@code 0x85} is obs-text to Tomcat, which lets it through,
+     * and a C1 control to the firewall, which refuses it.
+     *
+     * <p>A raw socket rather than either client: both validate header values before sending, so
+     * neither can put this byte on the wire.
+     */
+    @Test
+    void aHeaderTheFirewallRefusesInsideSpringMvcGetsA400NotA500(CapturedOutput output) throws Exception {
+        String body = "{\"username\":\"nobody\",\"password\":\"x\"}";
+        java.io.ByteArrayOutputStream request = new java.io.ByteArrayOutputStream();
+        request.writeBytes(("POST /api/v1/auth/login HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
+            + "Content-Length: " + body.length() + "\r\nContent-Type: application/json")
+            .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+        request.write(0x85);
+        request.writeBytes(("\r\n\r\n" + body).getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+
+        String response;
+        try (java.net.Socket socket = new java.net.Socket("localhost", port)) {
+            socket.setSoTimeout(10_000);
+            socket.getOutputStream().write(request.toByteArray());
+            response = new String(socket.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.ISO_8859_1);
+        }
+        String head = response.substring(0, response.indexOf("\r\n\r\n")).toLowerCase(java.util.Locale.ROOT);
+
+        assertThat(response).startsWith("HTTP/1.1 400 ");
+        assertThat(head).contains("content-type: application/problem+json");
+        // Rendered inside the chain, so it carries the headers every other answer does.
+        assertThat(head).contains("content-security-policy: default-src 'none'; frame-ancestors 'none'");
+        // The same fixed detail the firewall's own handler sends; nothing of the value comes back.
+        assertThat(response).contains("\"detail\":\"The request was rejected.\"");
+        assertThat(response.substring(response.indexOf("\r\n\r\n"))).doesNotContain("application/json");
+        // A client error, so no ERROR line and no stack trace for a caller to produce at will.
+        assertThat(output.getAll()).doesNotContain("Unhandled exception");
     }
 
     @Test

@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -153,6 +154,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleWebhookPayloadTooLarge(WebhookPayloadTooLargeException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, ex.getMessage());
         problem.setTitle("Payload Too Large");
+        return problem;
+    }
+
+    /**
+     * A header value the firewall refuses, first read inside Spring MVC (#252). The firewall checks
+     * a header only when something reads it, so a bad one that no filter touched surfaces here --
+     * for instance from the body converter reading {@code Content-Type} on any {@code @RequestBody}
+     * endpoint -- rather than in {@link SecurityHeadersRequestRejectedHandler}, and without this it
+     * fell to the catch-all below as a 500 with an ERROR stack trace. It is a client error, so it
+     * gets that handler's 400 and its fixed detail: the exception's message can quote the value,
+     * an Authorization header's included, so it is never echoed. Logged at DEBUG for the reasons
+     * that handler gives. The body has no {@code type}, as Spring omits the default
+     * {@code about:blank}; the firewall's handler writes the same value out in full.
+     */
+    @ExceptionHandler(RequestRejectedException.class)
+    public ProblemDetail handleRequestRejected(RequestRejectedException ex) {
+        log.debug("Rejecting request: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "The request was rejected.");
+        problem.setTitle("Bad Request");
         return problem;
     }
 
