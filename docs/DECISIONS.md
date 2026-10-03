@@ -457,7 +457,8 @@ Measured on the deployed host, because the numbers change the answer:
 - **Admin session takeover via XSS** (#123). The JWT is readable from JavaScript, so any injection
   is a full session. Its compensating control is a content security policy — **#122, still open**
   — and #123's own body says that keeping `sessionStorage` without #122 is "a trade-off with
-  nothing on the other side of it". Treat the two as one item.
+  nothing on the other side of it". Treat the two as one item. *(Update 2026-10-01: #122's policy
+  is the entry of that date below. It narrows this risk rather than closing it; #123 is open.)*
 
 **2. What it explicitly does not defend against, and will not try to:**
 
@@ -562,7 +563,8 @@ because `POST /auth/password-reset-request` returns 202 whether or not an addres
   scrollback. That is a real and common failure mode, and a weaker claim than "security".
 - **`#123` rises in priority relative to secret handling**, and carries **#122** with it. It is the
   shortest attack path into the data that does not require the host, and its compensating control
-  is the CSP that #122 has not delivered. Both are open.
+  is the CSP that #122 has not delivered. Both are open. *(Update 2026-10-01: see the CSP entry of
+  that date. #123 remains.)*
 - **The deployment runbook's three credential sections now agree**, and a fourth will inherit the
   rule rather than re-derive it.
 - **§6 of the runbook needs two edits to match clause 5 and clause 3**, and they are made in the
@@ -784,6 +786,75 @@ anything.
 Also considered: a draft/publish state and edit history, as projects have. Rejected for the same reason. One page, one author, and the public GET is the only surface that exists to be careful about.
 
 **Consequences:** The frontend has no "not created yet" branch and the admin form no "create" mode, which is most of what makes both small. If a second static page is ever wanted, the honest first step is to reread this entry and decide whether it is really a second *page* or a second *field on this one*.
+
+### 2026-10-01 — Content-Security-Policy: one static header file, no critical-CSS inlining, https images
+
+**Context:** #122, filed 2026-08-17, found no security response headers. Two of its findings have aged. The API always sent some: Spring Security's defaults include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and `Cache-Control`, and production was confirmed sending all three on 2026-10-01. Netlify sent only HSTS. And the issue's audit of "zero uses of `innerHTML`" predates #206: project descriptions and the About page now render Markdown through `[innerHTML]`, sanitized by Angular and never passed to `bypassSecurityTrustHtml`, so the injection surface a policy backs up is now real rather than hypothetical. The 2026-09-03 security-posture entry names a CSP as the compensating control for #123's script-readable JWT.
+
+**Decision:**
+
+1. **The site's policy is a response header from `frontend/public/_headers`**, which the build copies beside `_redirects` and Netlify applies to every path, the SPA fallback included:
+   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; font-src 'self'; connect-src 'self' https://tarka1939.bieda.it; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`. With it: `X-Frame-Options: DENY`, for browsers that predate `frame-ancestors`; `X-Content-Type-Options: nosniff`; and `Referrer-Policy: strict-origin-when-cross-origin`.
+2. **The production build does not inline critical CSS** (`optimization.styles.inlineCritical: false` in `angular.json`). Inlining loads the global stylesheet as `<link media="print" onload="this.media='all'">`, and `script-src 'self'` refuses that inline handler, so the stylesheet never applies. This was measured in a browser rather than inferred: a probe link of that shape stayed at `print`. The cost is one render-blocking stylesheet in place of inlined critical rules painted first.
+3. **`style-src` keeps `'unsafe-inline'`.** Angular inserts component styles as `<style>` elements at runtime, and the alternative, a nonce, needs a fresh value per response that a static host cannot issue.
+4. **`img-src` allows any `https:` origin.** Project images are admin-pasted URLs (`docs/DATA_MODEL.md`). Every production image is on `raw.githubusercontent.com` today, but a host allowlist would turn a URL pasted from anywhere else into a broken image whose cause shows only in the console. `http:` is not listed, though that matters less than it looks: browsers upgrade an `http:` image on an `https:` page before the policy sees it. `data:` is blocked. Nothing in the source or the built CSS and JS uses a data URI today, and Markdown images are disabled in the renderer (`shared/markdown/markdown.ts`), so the one way in is an admin pasting a `data:` URI into a project's `images` field: the backend accepts it (it checks length, not scheme), and the browser would refuse to draw it.
+5. **The API sends its own, minimal policy:** `default-src 'none'; frame-ancestors 'none'` and `Referrer-Policy: no-referrer`, added in `SecurityConfig` to Spring Security's defaults, not in place of them. Every response is JSON, so the policy grants nothing; it matters only if a response is ever opened as a document. *(Update 2026-10-02, #243: "every response" now includes requests the firewall refuses before the chain runs. They had been answered with a bare 401 and no headers at all. A `RequestRejectedHandler` writes a 400 with the headers the chain's own `HeaderWriterFilter` produces. Two kinds of answer still go without them. One is an error rendered on the container's error dispatch; a controller's error never gets there, because `GlobalExceptionHandler` renders every one, its catch-all included, so only an exception thrown from a filter would. The other is a 400 that Tomcat writes before Spring sees the request at all: an encoded slash or NUL in the path (`%2f`, `%00`) gets Tomcat's own HTML error page. Spring's observation marker, which it puts in front of its default handler and drops once a handler is supplied, is composed back in, so a rejected request's observation still records its error.)*
+6. **What keeps it true.** `security-headers.spec.ts` pins the policy's shape and the inlining setting. `api-origin-hints.spec.ts` checks `connect-src` against `apiBaseUrl`, so a backend host change is now six edits (`docs/DEPLOYMENT.md` §1). The frontend deploy refuses a build whose `index.html` holds an inline script or handler, and after publishing checks that the live site sends the header. `SecurityIntegrationTest` checks the API's headers on a 200, on a 401 from the resource server, and, since #243, on a firewall-rejected 400, compared against the 200's.
+
+**Alternatives considered:**
+- *Angular's `security.autoCsp`.* Tried and rejected. It replaces the onload handler with hashed inline scripts and emits its own `<meta http-equiv>` policy (`script-src 'strict-dynamic' 'sha256-…' https: 'unsafe-inline'`, regenerated every build). The policy would then live in two places. And because a browser enforces every policy it receives, a header with `script-src 'self'` beside it would block the very scripts the meta tag hashes. Turning inlining off buys a stricter policy, from one file.
+- *A `<meta>` tag in `index.html`.* Cannot carry `frame-ancestors`, and applies only from the point the parser reaches it.
+- *`[[headers]]` in a `netlify.toml`.* Same effect. `_headers` sits beside `_redirects`, which is already how this site configures Netlify; there is no `netlify.toml`.
+- *`Content-Security-Policy-Report-Only` first.* Nothing here would collect the reports. The policy was instead exercised page by page in a browser against the built bundle (below).
+
+**Consequences:**
+- **It reaches visitors with the release that carries it.** Until then Netlify sends HSTS and nothing else.
+- **What it protects, and what it does not.** Its strength is `script-src 'self'`: injected markup cannot run script, inline or from another host. It does not contain a script that *does* run, since `img-src https:` alone is an exfiltration channel. So it lowers the odds of #123's token theft rather than closing it, and #123 stays open.
+- **A backend host change gains an edit,** `connect-src`, and a test that names it.
+- **Any future inline `<script>` in `index.html`** (an analytics snippet, a theme bootstrap) must come with a policy change, and the deploy refuses the build until it does: the workflow step that greps the built `index.html` for inline script has to change with it.
+- **Browser verification, 2026-10-01**, using the production build served locally with these exact headers:
+  - An injected `<script>` and an `onerror` handler were refused.
+  - These ran with no violation:
+    - About;
+    - the project list, with its external images;
+    - project detail, with the image viewer;
+    - contact-form validation;
+    - the admin list;
+    - the project form's live Markdown preview;
+    - the About editor.
+- **The one directive not exercised locally is the API origin in `connect-src`.** The local build called its API same-origin through a proxy. The first production page load after the release is that check: the browser console, on any page that lists projects.
+
+### 2026-10-01 — Frontend lint: angular-eslint's recommended sets, and a ban on sanitizer bypasses
+
+**Context:** No linter had been configured since Phase 0. #210 asked for one for a specific reason found in #206's cold review. Admin-authored Markdown is rendered by `shared/markdown/markdown.ts` and bound through `[innerHTML]`. Two layers keep it safe: `markdown-it` at `html: false`, and Angular's sanitizer at the binding. A single `bypassSecurityTrustHtml` call removes the second layer, and **every test still passes**, because the DOM assertions hold with either layer alone. That was checked again while building this: the project page's and the Markdown module's 61 tests all pass with the description bound through `bypassSecurityTrustHtml`. Until now the only guard was three comments warning against the call.
+
+**Decision:**
+
+1. **ESLint, set up by `ng add angular-eslint@21`.** That brings ESLint 10, typescript-eslint 8, and the generated `frontend/eslint.config.js` with its sets: `@eslint/js` recommended, typescript-eslint recommended and stylistic, angular-eslint's TypeScript recommended, and its template recommended and template accessibility sets. Run as `npm run lint` (`ng lint`) with `maxWarnings: 0`, so a warning fails as an error does.
+2. **A ban on all five `bypassSecurityTrust*` methods, in code and in templates**, with a message naming the Markdown module and #210.
+   - In TypeScript, `no-restricted-properties` catches a call, a destructured method, a bracketed string name, optional chaining and `.bind`. Shown failing in CI on a branch that added the call to the project page.
+   - In templates, inline ones included, `no-restricted-syntax` matches any node named `bypassSecurityTrust*`. The property rule never sees template code, so `[innerHTML]="sanitizer.bypassSecurityTrustHtml(x)"` passed until PR #245's cold review found it.
+   - Neither catches a deliberately computed name. The rules guard against a mistake, not an adversary in the repository.
+3. **A ban on writing HTML straight into the DOM**, which skips the sanitizer altogether: assigning `innerHTML` or `outerHTML`, `insertAdjacentHTML`, `document.write`, and `Renderer2.setProperty` with either property. The codebase had none, so this cost nothing. Reading `outerHTML`, as some specs do, is still allowed. Also from the cold review.
+4. **A CI job of its own, "Frontend lint"**, in `ci.yml`, so a failure shows by name in a PR's checks.
+5. **The generated API client is ignored** (`src/app/core/api/**`). It drew 315 of the 324 findings, and it is regenerated from `docs/openapi.yaml`, never edited by hand.
+6. **The other nine findings were handled as follows:**
+   - Four fixed in place: an import kept only for a doc link, a dead initialiser, an `any`, and a `ReadonlyArray`.
+   - Four were empty methods in one spec's canvas stub. `no-empty-function` is off for every `*.spec.ts`, not only that one, since a stub method's job is to do nothing wherever it is.
+   - The image viewer's `<dialog>` keeps its `(click)` and `(keydown)` handlers under an `eslint-disable-next-line` that explains them. The click is a pointer shortcut whose keyboard equivalent is Escape.
+7. **No formatter.** `frontend/.prettierrc` stays as the scaffold left it, run by nothing. #210 asked for a formatter to be a separate decision if it is ever made, because this repository's long explanatory comments would be reflowed on every touch.
+8. **No backend linter.** #210's motivating gap is a frontend one. The backend has no equivalent single call that the tests cannot see, and `ApplicationModules.verify()` already enforces its structural rule.
+
+**Alternatives considered:**
+- *Only the bans, without the recommended sets.* That would be smaller. But the sets found real dead code at a cost of nine findings, and adding them later would mean a second sweep over a larger codebase.
+- *A test that greps the source for `bypassSecurityTrust`.* It would work without a new dependency. It would also not know a comment from a call, or a string from a property, and it would be a hand-built linter.
+- *Banning `eslint-disable` for this rule* (`eslint-comments/no-restricted-disable`). That means another plugin to guard a guard. An inline disable is visible in the diff that adds it, which is the property the silent bypass lacked.
+
+**Consequences:**
+- A frontend PR now has a fourth check. Its first run took 26 seconds: 14 for `npm ci` and 3 for the lint itself.
+- New code follows the stylistic set, for example `readonly T[]` over `ReadonlyArray<T>`. That is the generator's choice, kept because nothing here argued against it.
+- The template accessibility set now runs on every template, which is a standing check the visual-design work never had. It found one thing, the dialog above.
+- Upgrading Angular now includes upgrading `angular-eslint` to the matching major, because the two are versioned together.
 
 ### [YYYY-MM-DD] — [Decision title]
 

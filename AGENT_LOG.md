@@ -297,6 +297,77 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-01 — Senior Dev: a CSP that would have shipped unstyled, and errors from an earlier page
+
+**Task given:** #122, a Content-Security-Policy and security headers for the site and the API. It became PR #240.
+
+**Agent(s) used:** Senior Dev (Opus) implemented, with a browser.
+
+**What went right:**
+- The policy was exercised in a browser against the built bundle, served locally with the exact headers. This was done before trusting any test, as the issue asked.
+
+**What went wrong (be specific):**
+1. **The issue's plan would have shipped a site without its stylesheet.** #122 said the frontend half needed "No build change, no code change". In fact the production build inlines critical CSS and loads the global stylesheet with an `onload` handler. `script-src 'self'` refuses that handler, so the stylesheet would have stayed at `media="print"`. Nothing but a browser on the built output could show this. `ng serve` neither inlines nor reads `_headers`, and no unit test loads a stylesheet.
+2. **Two of the issue's facts had aged.** Its audit found "zero uses of `innerHTML`"; #206 has added `[innerHTML]`, sanitized, for Markdown. It said `SecurityConfig` adds no headers. That was true of the file, but Spring Security's defaults had been sending `nosniff` and `X-Frame-Options: DENY` all along, and production confirmed it.
+3. **Console errors from earlier pages looked like regressions.** After the merge of `dev` (Angular 21.2.24), the preview pane's console showed two `script-src` violations on a fresh load of `/projects`. They were from my own deliberate injection tests earlier in that tab: the console buffer survives navigation.
+
+**How it was caught:**
+1. A probe `<link media="print" onload>` in the served build, which stayed at `print`.
+2. Reading the code and production's headers before writing the ADR.
+3. Doubting the timing. A `ReportingObserver` with `buffered: true` reports only the current document's violations, and it found none. An injected script, as a control, was reported.
+
+**Fix applied:**
+1. `inlineCritical: false` in the production configuration. A spec pins it, and the deploy refuses a build whose `index.html` has inline script or a handler.
+2. The ADR records both facts, so the issue's claims are not the record.
+3. Each page was checked with the buffered observer instead of the console.
+
+**Takeaway for next time:**
+- A CSP is checked against the *built* bundle with the real headers, or it is not checked. The dev server differs from production in exactly the ways a policy cares about.
+- An issue's audit is dated evidence. Re-verify its facts against the code and production before building on them.
+- A tab's console is not scoped to the current page. Use a buffered `ReportingObserver` for "did *this* load violate the policy", and inject a known violation as a control.
+
+## 2026-09-30 — Senior Dev: a memoised clock, a fix that exposed a guard, and keywords that looked unlinked
+
+**Task given:** Work the open issues autonomously. Merged that day: #231 (#228, #222, #225), #232 (#151, #191), #233 (#181) and #234 (#209). #235 is in review as #238.
+
+**Agent(s) used:** Senior Dev (Opus) implemented, with a browser. Each PR had a cold review by a fresh Opus agent.
+
+**What went right:**
+- The real cause of #151 was found by reproducing it in a browser after the first fix, not by reasoning about the code.
+- Every cold review found something real: a regression, an undercount, or a history stated wrongly.
+- Mutation checks were run on every new test. One mutation survived for a reason worth recording (below).
+
+**What went wrong (be specific):**
+1. **`isLoggedIn` was a `computed()` over `Date.now()`.** A `computed` re-runs only when a signal it read changes, and the clock is not a signal. The header reads `isLoggedIn()` straight after login, so from then on it answered `true` for the life of the tab. The interceptor kept attaching the dead token, so #151's first fix did nothing in a real tab, and `authGuard` kept letting an expired admin in. Its comment said "Pull-based, not push-based: this only re-evaluates when read", which is the misconception written down. Some specs used an expired session and some a live one, but none moved the clock after a `true` answer, which is the only way the cache shows.
+2. **The #151 fix exposed a guard gap.** `authGuard` sat as `canActivate` on the componentless admin parent. Angular reuses that parent between sibling pages, so the guard ran once on the way in. That had always been true, but the dead token had been hiding it. Each admin page's first request carried the token, got a 401, and the interceptor treated that as a session expiry. Once expired tokens stopped being sent, an admin whose session lapsed on `/admin/projects` could open the About editor. Its load is a public GET, so the form filled, and the edit was lost on save.
+3. **Closing keywords looked unlinked, and that was called a repo-wide failure.** `closingIssuesReferences` came back empty on every PR opened that day, though #231–#234 each carry `Closes #N` one per line with base `dev`. The reviews of #232 and #233 listed it as a should-fix. Seven issues were closed by hand, 4 to 25 seconds after each merge. Their comments said the cause had been raised with the owner; it had not been yet. The gap was not brief. GitHub showed "None yet" for #231's issues at merge, and #232's review still found #231's references empty at 13:31, 23 minutes after it merged. The next day the same query returned every expected issue on all four PRs, and on #238. Each `ClosedEvent` has no `closer`. That shows only that GitHub had not closed the issue when the manual close landed. Why the references stayed empty for at least that long is not known.
+4. **#233 took its count from the issue without recounting.** #181 said a host change touches four places. Two more had been added the day after it was filed. The first draft also stated the row's history as fact: that the 2026-09-03 rename had edited the app. `git show` says it touched only `openapi.yaml`.
+5. **A mutation aimed at the wrong path.** #234's first mutations edited the artwork's fill (`paths[1]`), but the bounds test reads the stroked curve (`paths[2]`). They survived, correctly. Re-aimed at the stroke, both were caught. The fill's bounds are deliberately not checked, since it closes to the bottom corners.
+6. **Two leftovers from #214 surfaced in #231.** The About editor shipped with no submit-button rule, so its Save was the UA's grey (#222). Also, the local dev database had recorded Flyway V8 with the checksum of an uncommitted draft, applied nine minutes before the first commit, so the backend refused to start locally. Production only ever applied the merged file.
+
+**How it was caught:**
+1. A browser tab: a fake session left to expire on `/contact`, then Projects clicked. Still 401s after the first fix.
+2. Cold review of #232.
+3. Checking `closingIssuesReferences` before merging, as CLAUDE.md requires. The correction came from querying again a day later, while writing this entry.
+4. Cold review of #233.
+5. The surviving mutation, then reading which path `curveOf` returns.
+6. The owner's report (#222), and the backend failing to start.
+
+**Fix applied:**
+1. `isLoggedIn` became a method. A new service test fails on the `computed` and passes on the method.
+2. `canActivateChild`, which runs on every navigation into the subtree, including the first. Tested on the real `ADMIN_ROUTES`, with each case first checking it really was on `/admin/projects`, so a guard bounce cannot pass it vacuously. Then checked in a real tab with a real JWT and the clock moved forward.
+3. Manual closes, which did no harm. The setting advice is withdrawn: the final report to the owner carries this account instead, which corrects the close comments on #228, #222 and #225. On 2026-10-01 #238 settled the setting question: its reference was populated, nobody closed #235 by hand, and GitHub closed it one second after merge with #238 as the `closer`. So auto-close works when the reference is present. What went wrong on 2026-09-30 was the references themselves.
+4. Recounted to five places plus the seed allowlist as a separate decision, and the history corrected from git. The spec now also checks the contract and the deploy health check.
+5. Re-aimed, and the reason recorded in the PR.
+6. A global `button[type='submit']` rule, so the next form cannot miss it. The one local `flyway_schema_history` row was corrected, which is what `flyway repair` would do.
+
+**Takeaway for next time:**
+- A `computed()` is a cache. Anything it reads that is not a signal — the clock, `localStorage`, a plain field — is read once and kept. A test cannot catch this unless it changes that value *after* the first read.
+- Removing an accidental safety net is a behaviour change. Ask what the dead token's 401 was doing before stopping it.
+- A number copied from an issue is a claim from the day it was filed. Recount it.
+- An empty `closingIssuesReferences` is an observation, not a diagnosis. Here it stayed empty for at least 23 minutes after a merge and was populated a day later. Query again, and say what is unknown, before telling anyone what to change.
+- Run a mutation against the code path the test actually reads.
+
 ## 2026-09-24 — claude (cloud session): eleven commits under the wrong name, and a cherry-pick that billed the promotion
 
 **Task given:** Documentation review, the deploy pipeline's first runs, and the first `dev` → `main` promotion through it — the first work on this project from a Claude Code cloud session.

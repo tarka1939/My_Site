@@ -1,9 +1,11 @@
+import { HttpContext } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService as AuthApiService } from '../../../core/api/api/auth.service';
 import { ApiProblem } from '../../../core/http/api-problem';
+import { SKIP_ERROR_TOAST } from '../../../core/http/error.interceptor';
 import {
   clientErrorSignal,
   groupFieldErrors,
@@ -163,8 +165,14 @@ export class ResetPasswordConfirmComponent {
       return;
     }
 
+    // Every failure of this call is explained on the page: 400 as a dead link, 429 and anything
+    // else as the calm "not checked" notice. So the interceptor's toast is switched off for it
+    // (#191) -- otherwise a red role="alert" banner contradicted that notice for the same
+    // condition. Only for this call: the submit below still toasts what it cannot render.
     this.authApi
-      .validatePasswordResetToken({ passwordResetValidateBody: { token } })
+      .validatePasswordResetToken({ passwordResetValidateBody: { token } }, 'body', false, {
+        context: new HttpContext().set(SKIP_ERROR_TOAST, true),
+      })
       .pipe(takeUntilDestroyed())
       .subscribe({
         next: () => this.linkState.set('usable'),

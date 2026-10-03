@@ -8,6 +8,7 @@ import java.util.List;
 
 import javax.crypto.spec.SecretKeySpec;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +28,10 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.firewall.CompositeRequestRejectedHandler;
+import org.springframework.security.web.firewall.ObservationMarkingRequestRejectedHandler;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -34,6 +39,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;
+
+import io.micrometer.observation.ObservationRegistry;
 
 /**
  * Real JWT auth, replacing the Phase 1 permit-all/deny-all placeholder chains. Stateless
@@ -208,6 +215,15 @@ public class SecurityConfig {
             // CORS error. This ordering is why no OPTIONS permitAll rule is needed below.
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
+            // Added to Spring Security's defaults, not in place of them: X-Content-Type-Options,
+            // X-Frame-Options: DENY and Cache-Control were already sent, and still are (#122).
+            // Every response here is JSON, which no browser should render or run anything from,
+            // so the policy grants nothing -- it only matters if a response is ever opened as a
+            // document. The site's own policy, which has to permit the app, is a separate file:
+            // frontend/public/_headers. No referrer: nothing in an API response links anywhere.
+            .headers(headers -> headers
+                .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
+                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER)))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
@@ -234,5 +250,21 @@ public class SecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
         return http.build();
+    }
+
+    /**
+     * The firewall refuses some requests before the chain above runs at all, so its headers and
+     * its rules never reach them. Spring Security picks this bean up by type (#243).
+     *
+     * <p>Left to itself, Spring puts an observation marker in front of its own handler, which
+     * records the rejection as the request's error; supplying a handler drops it. It is put back
+     * here, so a rejected request's {@code http.server.requests} observation keeps its error.
+     */
+    @Bean
+    public RequestRejectedHandler requestRejectedHandler(SecurityFilterChain securityFilterChain,
+            ObjectProvider<ObservationRegistry> observationRegistry) {
+        return new CompositeRequestRejectedHandler(
+            new ObservationMarkingRequestRejectedHandler(observationRegistry.getIfAvailable(() -> ObservationRegistry.NOOP)),
+            new SecurityHeadersRequestRejectedHandler(securityFilterChain));
     }
 }

@@ -1,3 +1,4 @@
+import { HttpContext } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { Mock } from 'vitest';
 import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
@@ -5,6 +6,7 @@ import { of, Subject, throwError } from 'rxjs';
 import { renderComponent, submitForm, typeInto } from '../../../../testing/zoneless';
 import { AuthService as AuthApiService } from '../../../core/api/api/auth.service';
 import { ApiProblem } from '../../../core/http/api-problem';
+import { SKIP_ERROR_TOAST } from '../../../core/http/error.interceptor';
 import { ResetPasswordConfirmComponent } from './reset-password-confirm.component';
 
 /**
@@ -100,7 +102,28 @@ describe('ResetPasswordConfirmComponent', () => {
   it('checks the token on route entry rather than waiting for a submit', async () => {
     await renderComponent(ResetPasswordConfirmComponent);
 
-    expect(validate).toHaveBeenCalledWith({ passwordResetValidateBody: { token: 'good-token' } });
+    expect(validate).toHaveBeenCalledTimes(1);
+    expect(validate.mock.calls[0][0]).toEqual({ passwordResetValidateBody: { token: 'good-token' } });
+  });
+
+  // #191. Every way the check can fail is explained on this page, so the call opts out of
+  // errorInterceptor's toast; that interceptor's own spec proves the opt-out is honoured. Without
+  // it a red role="alert" banner arrived beside the calm "not checked" notice, contradicting it.
+  it('asks errorInterceptor not to toast a failed check, which the page explains itself', async () => {
+    await renderComponent(ResetPasswordConfirmComponent);
+
+    const options = validate.mock.calls[0][3] as { context?: HttpContext } | undefined;
+    expect(options?.context?.get(SKIP_ERROR_TOAST)).toBe(true);
+  });
+
+  it('leaves the submit to be toasted as before, since the page cannot render every failure of it', async () => {
+    const fixture = await renderComponent(ResetPasswordConfirmComponent);
+    await fillPasswords(fixture);
+    await submitForm(fixture);
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const options = confirm.mock.calls[0][3] as { context?: HttpContext } | undefined;
+    expect(options?.context?.get(SKIP_ERROR_TOAST) ?? false).toBe(false);
   });
 
   it('shows no form while the check is still in flight', async () => {

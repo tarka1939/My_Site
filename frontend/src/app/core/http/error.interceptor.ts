@@ -1,4 +1,4 @@
-import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { HttpContextToken, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, throwError } from 'rxjs';
@@ -18,6 +18,24 @@ import { ApiFieldError, ApiProblem } from './api-problem';
  * client's `${basePath}/auth/login` is this string.
  */
 const LOGIN_URL = `${environment.apiBaseUrl}/auth/login`;
+
+/**
+ * Set on a request whose caller explains its own failures in place, so errorInterceptor does not
+ * also raise a toast for them (#191). The caller still receives the normalised ApiProblem and is
+ * then the only thing that speaks.
+ *
+ *     this.api.someCall(params, 'body', false, { context: new HttpContext().set(SKIP_ERROR_TOAST, true) })
+ *
+ * The first caller is the reset page's token check, which renders a calm "not checked, probably
+ * fine" notice for a 429, a 5xx or a network failure. The toast arrived beside it in red, with
+ * role="alert", saying the opposite -- two messages for one condition, and the louder one wrong.
+ *
+ * It suppresses the toast and nothing else. A 401 on a request that carried a token is still a
+ * session ending, which is not the caller's news to deliver; that branch runs first and ignores
+ * this. And it is opt-in per request, never per URL, so no other caller of the same endpoint can
+ * lose its message by accident.
+ */
+export const SKIP_ERROR_TOAST = new HttpContextToken<boolean>(() => false);
 
 /**
  * Normalizes every failed API response into an ApiProblem and rethrows that instead of the raw
@@ -44,7 +62,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       // hasToken(), not isLoggedIn(). isLoggedIn() is already false once the token has expired by
       // wall clock, which is the most common way a session ends -- so gating on it meant ordinary
-      // expiry fell through to the generic toast below ("Request failed (401).") with no logout and
+      // expiry fell through to the generic toast below (then "Request failed (401).") with no logout and
       // no redirect, and only the rare server-side rejection of a still-believed-valid token (clock
       // skew, rotated signing secret, revocation) ever took this path. Both mean the same thing to
       // the admin: log in again. See issue #108 and hasToken()'s comment in auth.service.ts.
@@ -59,15 +77,32 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
       //
       //   not the login endpoint -- a wrong password answers 401 too, and this branch would then
       //   report it as an expired session and navigate to /admin/login with returnUrl set to the
-      //   login page itself, destroying the returnUrl authGuard had just put there. That is not
-      //   hypothetical: authGuard redirects on expiry *without* calling logout(), so an admin
-      //   arriving at the login page after an expiry still has the stale token in this signal, and
-      //   one typo would strand them. A login 401 falls through to the generic toast, which is
+      //   login page itself, destroying the returnUrl authGuard had just put there. When this was
+      //   written authGuard redirected on expiry without clearing the session, so an admin arrived
+      //   at the login page still holding the stale token and one typo would strand them. The
+      //   guard now clears an expired session (#151), but the exclusion stays: an admin whose
+      //   token is still live can open the login page directly, and a wrong password there must
+      //   not end the session they have. A login 401 falls through to the generic toast, which is
       //   where AdminLoginComponent already expects invalid credentials to be surfaced.
       if (error.status === 401 && auth.hasToken() && req.url !== LOGIN_URL) {
         auth.logout();
         notifications.error('Your admin session has expired. Please log in again.');
         router.navigate(['/admin/login'], { queryParams: { returnUrl: router.url } });
+      } else if (error.status === 401 && !auth.hasToken() && req.headers.has('Authorization')) {
+        // A request that carried a token, answered 401 after something else had already ended
+        // the session (#237). Usually that is a sibling request in flight at the same moment: its
+        // 401 took the branch above, which logged out, said so and redirected, and this one then
+        // found no token. A generic "did not accept this request (error 401)" toast would describe
+        // the same event a second time, as a failure. So nothing more is said; the caller still
+        // receives the problem.
+        //
+        // A wrong password does not come here: authInterceptor sends no token to /auth/ (#246),
+        // so a login request carries no header. !hasToken() is a second guard on the same case. If
+        // a token ever went out with a login request again, the admin would still hold it, and
+        // the wrong password's 401 would still reach the toast below. A visitor's 401 carries no
+        // header, so it reaches the toast too.
+      } else if (req.context.get(SKIP_ERROR_TOAST)) {
+        // The caller renders this failure itself; see SKIP_ERROR_TOAST.
       } else if (problem.rateLimited) {
         notifications.error(problem.detail || 'Too many requests -- please wait a moment and try again.');
       } else if (problem.fieldErrors.length === 0 || discardedFieldErrors) {
@@ -174,9 +209,24 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/**
+ * What a failure says when the response body names nothing itself -- a proxy's error page, a
+ * gateway timeout, a bare 404 from a path the backend does not map. These reach *visitors*, not
+ * only the admin: the toast is mounted in the root layout, so the public contact form and the reset
+ * page show it too. "Request failed (404)." was written for a developer (#191).
+ *
+ * The status stays in every message, in brackets at the end: it is what makes a visitor's report
+ * ("it said error 502") something the owner can act on, and it costs the reader nothing.
+ */
 function defaultTitleFor(status: number): string {
   if (status === 0) {
-    return 'Network error -- could not reach the server.';
+    return 'Could not reach the server. Check your connection and try again.';
   }
-  return `Request failed (${status}).`;
+  if (status >= 500) {
+    return `The server could not complete this just now. Please try again in a moment (error ${status}).`;
+  }
+  if (status === 404) {
+    return `That could not be found on the server (error ${status}).`;
+  }
+  return `The server did not accept this request (error ${status}).`;
 }

@@ -53,9 +53,13 @@
 // 402x244 (2.88x the area) and from 180x144 to 371x298 (4.28x) -- measured in the browser, not
 // derived. It is still `auto-fill minmax`, so a narrower viewport drops to one column as before,
 // and a wider container would go back to three on its own.
+//
+// `min(20rem, 100%)` rather than a bare 20rem (#228): a bare minimum is a floor the column keeps
+// even when the container is narrower, and on a 320px phone `main`'s content box is 288px, so one
+// 320px column overflowed it and widened the whole page. Above 20rem of container the two agree.
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
   gap: 1.5rem;
   list-style: none;
   padding: 0;

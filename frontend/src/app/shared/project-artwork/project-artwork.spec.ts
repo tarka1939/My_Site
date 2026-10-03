@@ -254,14 +254,37 @@ describe('drawProjectArtwork', () => {
     // The response is normalised into the slot rather than plotted at absolute magnitude. Without
     // that, a project whose resonances happen to stack draws a curve clipped flat against the top
     // edge -- deterministically, so it would look intentional.
-    for (const seed of SEEDS) {
-      for (const [x, y] of curveOf(seed)) {
-        expect(x, `seed ${seed}`).toBeGreaterThanOrEqual(0);
-        expect(x, `seed ${seed}`).toBeLessThanOrEqual(ARTWORK_WIDTH);
-        expect(y, `seed ${seed}`).toBeGreaterThanOrEqual(0);
-        expect(y, `seed ${seed}`).toBeLessThanOrEqual(ARTWORK_HEIGHT);
+    //
+    // Every point of every seed is still checked; what changed is how (#209). This asserted four
+    // times per point, about 130,000 expect() calls in all, and the calls themselves were the cost:
+    // over a second alone and over three in a full-suite run, where drawing all 400 seeds takes
+    // tens of milliseconds. Under enough parallel load that passed Vitest's 5s default and the
+    // test timed out. Collecting the escapes and asserting once keeps the whole sweep, and fails
+    // better: it counts every point that left the box, not only the first.
+    //
+    // Written as "not inside" rather than "outside" so a NaN coordinate counts as an escape, and
+    // typed so a non-number does too -- both failed when each comparison was its own expect().
+    const inside = (x: unknown, y: unknown): boolean =>
+      typeof x === 'number' &&
+      typeof y === 'number' &&
+      x >= 0 &&
+      x <= ARTWORK_WIDTH &&
+      y >= 0 &&
+      y <= ARTWORK_HEIGHT;
+    const unlined: number[] = [];
+    const escapes = SEEDS.flatMap((seed) => {
+      const curve = curveOf(seed);
+      if (curve.length < 2) {
+        unlined.push(seed);
       }
-    }
+      return curve.filter(([x, y]) => !inside(x, y)).map(([x, y]) => `seed ${seed}: (${x}, ${y})`);
+    });
+    // The count and the first twenty, not the list: a regression that moves every point would
+    // print tens of thousands of entries, and the first twenty say what all of them would.
+    expect(escapes.slice(0, 20), `${escapes.length} points outside the box`).toEqual([]);
+    // Nothing is outside the box for a curve with no points in it, so the sweep also has to show
+    // it measured a line for every seed.
+    expect(unlined, 'seeds whose curve has fewer than two points').toEqual([]);
   });
 
   it('uses the full height of the slot rather than a band in the middle', () => {

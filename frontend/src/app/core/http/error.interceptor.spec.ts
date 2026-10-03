@@ -1,4 +1,4 @@
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpContext, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -8,7 +8,8 @@ import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
 import { NotificationService } from '../notifications/notification.service';
 import { ApiProblem } from './api-problem';
-import { errorInterceptor } from './error.interceptor';
+import { errorInterceptor, SKIP_ERROR_TOAST } from './error.interceptor';
+import { httpInterceptors } from '../../app.config';
 
 @Component({ template: '' })
 class StubComponent {}
@@ -90,11 +91,11 @@ describe('errorInterceptor', () => {
    */
   async function fail401(
     url: string,
-    options: { method?: string; body?: Record<string, unknown> } = {},
+    options: { method?: string; body?: Record<string, unknown>; headers?: Record<string, string> } = {},
   ): Promise<{ toasts: string[]; url: string; returnUrl: string | undefined }> {
     const body = options.body ?? { type: 'about:blank', title: 'Unauthorized', status: 401 };
     const promise = firstValueFrom(
-      httpClient.request(options.method ?? 'GET', url, { body: {} }),
+      httpClient.request(options.method ?? 'GET', url, { body: {}, headers: options.headers }),
     ).catch((problem: ApiProblem) => problem);
 
     httpMock.expectOne(url).flush(body, { status: 401, statusText: 'Unauthorized' });
@@ -126,6 +127,69 @@ describe('errorInterceptor', () => {
     expect(auth.hasToken()).toBe(false);
     expect(url.startsWith('/admin/login')).toBe(true);
     expect(returnUrl).toBe('/admin/projects');
+  });
+
+  // #237. Two admin requests in flight when the server stops accepting the token: clock skew, a
+  // rotated signing secret, revocation. The first 401 ends the session and says so. The second
+  // then finds no token, and used to add "The server did not accept this request (error 401)."
+  // about the same event. This spec installs no authInterceptor, so the header it would have
+  // attached is set by hand.
+  it('says the session ended once when two requests carrying the token both come back 401', async () => {
+    await router.navigateByUrl('/admin/projects');
+    auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const headers = { Authorization: 'Bearer t' };
+    const unauthorized = { status: 401, statusText: 'Unauthorized' };
+    const body = { type: 'about:blank', title: 'Unauthorized', status: 401 };
+    // Counted at the source, not read off the list: NotificationService replaces a repeated
+    // message (#236), so a second "session expired" would still leave one entry. It would also
+    // be announced to a screen reader twice.
+    const error = vi.spyOn(notifications, 'error');
+
+    const first = firstValueFrom(httpClient.get('/api/v1/contact-messages', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    const second = firstValueFrom(httpClient.get('/api/v1/admin/projects', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    httpMock.expectOne('/api/v1/contact-messages').flush(body, unauthorized);
+    httpMock.expectOne('/api/v1/admin/projects').flush(body, unauthorized);
+    const [, secondProblem] = await Promise.all([first, second]);
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'Your admin session has expired. Please log in again.',
+    ]);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect((secondProblem as ApiProblem).status).toBe(401);
+    expect(router.url.startsWith('/admin/login')).toBe(true);
+  });
+
+  // The silence is for a second 401 only. Any other failure on a request that carried the token
+  // is news the session toast does not cover, and is reported as usual.
+  it('still reports a request carrying the token that fails some other way after the session ended', async () => {
+    await router.navigateByUrl('/admin/projects');
+    auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const headers = { Authorization: 'Bearer t' };
+
+    const first = firstValueFrom(httpClient.get('/api/v1/contact-messages', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    const second = firstValueFrom(httpClient.get('/api/v1/admin/projects', { headers })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    httpMock
+      .expectOne('/api/v1/contact-messages')
+      .flush({ type: 'about:blank', title: 'Unauthorized', status: 401 }, { status: 401, statusText: 'Unauthorized' });
+    httpMock
+      .expectOne('/api/v1/admin/projects')
+      .flush(null, { status: 500, statusText: 'Internal Server Error' });
+    await Promise.all([first, second]);
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'Your admin session has expired. Please log in again.',
+      'The server could not complete this just now. Please try again in a moment (error 500).',
+    ]);
   });
 
   it('logs the admin out on a 401 for a token that has already expired by wall clock', async () => {
@@ -163,14 +227,18 @@ describe('errorInterceptor', () => {
     expect(url).toBe(before);
   });
 
-  it('does not treat a rejected login as an expired session, and leaves its returnUrl alone', async () => {
+  // The login page has no guard, so an admin can reach it still holding a token: an expired one
+  // through the header's Admin link, which shows once isLoggedIn() goes false, or a live one by URL.
+  // docs/openapi.yaml documents /auth/login's 401 as "Invalid credentials", so without the login
+  // exclusion one mistyped password would be reported as an expired session and rewrite returnUrl
+  // to the login page itself -- stranding the admin there after a successful retry.
+  it.each([
+    ['an expired', -60_000],
+    ['a live', 60_000],
+  ])('does not treat a rejected login as an expired session when holding %s token', async (_, offset) => {
     await router.navigate(['/admin/login'], { queryParams: { returnUrl: '/admin/projects' } });
     const before = router.url;
-    // authGuard redirects on expiry without calling logout(), so the stale token is still in the
-    // signal when the admin lands here. docs/openapi.yaml documents /auth/login's 401 as "Invalid
-    // credentials", so one mistyped password would otherwise be reported as an expired session and
-    // rewrite returnUrl to the login page itself -- stranding them there after a successful retry.
-    auth.setSession({ token: 'stale', expiresAt: new Date(Date.now() - 60_000).toISOString() });
+    auth.setSession({ token: 'held', expiresAt: new Date(Date.now() + offset).toISOString() });
 
     const { toasts, url, returnUrl } = await fail401(LOGIN_URL, {
       method: 'POST',
@@ -181,6 +249,24 @@ describe('errorInterceptor', () => {
     expect(auth.hasToken()).toBe(true);
     expect(url).toBe(before);
     expect(returnUrl).toBe('/admin/projects');
+  });
+
+  // The other side of #237's branch. Since #246, authInterceptor sends no token with a login
+  // request, so in the app this header never arrives on one. This keeps the second guard,
+  // !hasToken(), honest: if a token were ever sent, "it carried a token" alone would also silence
+  // a mistyped password from an admin who opened the login page while still signed in.
+  it('still reports a wrong password when the login request carried a live token', async () => {
+    await router.navigateByUrl('/admin/login');
+    auth.setSession({ token: 'held', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+    const { toasts } = await fail401(LOGIN_URL, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer held' },
+      body: { type: 'about:blank', title: 'Unauthorized', detail: 'Invalid credentials', status: 401 },
+    });
+
+    expect(toasts).toEqual(['Invalid credentials']);
+    expect(auth.hasToken()).toBe(true);
   });
 
   /**
@@ -281,9 +367,199 @@ describe('errorInterceptor', () => {
       // Rendered straight into the toast, so a non-string is "[object Object]" on screen.
       const { problem, toasts } = await reject({ title: { code: 400 }, detail: 42 });
 
-      expect(problem.title).toBe('Request failed (400).');
+      expect(problem.title).toBe('The server did not accept this request (error 400).');
       expect(problem.detail).toBeUndefined();
-      expect(toasts).toEqual(['Request failed (400).']);
+      expect(toasts).toEqual(['The server did not accept this request (error 400).']);
     });
+  });
+
+  /**
+   * A GET to `url` that fails the way `fail` says, with or without SKIP_ERROR_TOAST. Returns what
+   * the caller received and what the visitor was told.
+   */
+  async function failWith(
+    url: string,
+    fail: (request: ReturnType<HttpTestingController['expectOne']>) => void,
+    skipToast: boolean,
+  ): Promise<{ problem: ApiProblem; toasts: string[] }> {
+    const context = skipToast ? new HttpContext().set(SKIP_ERROR_TOAST, true) : undefined;
+    const promise = firstValueFrom(httpClient.get(url, { context })).catch(
+      (problem: ApiProblem) => problem,
+    );
+    fail(httpMock.expectOne(url));
+    const problem = (await promise) as ApiProblem;
+    await TestBed.inject(ApplicationRef).whenStable();
+    return { problem, toasts: notifications.notifications().map((n) => n.message) };
+  }
+
+  const bareStatus = (status: number) => (request: ReturnType<HttpTestingController['expectOne']>) =>
+    request.flush(null, { status, statusText: 'Error' });
+
+  // #191. The reset page explains a failed token check itself; the toast arrived beside that
+  // explanation in red and said the opposite.
+  describe('SKIP_ERROR_TOAST', () => {
+    it('toasts a failure by default', async () => {
+      const { toasts } = await failWith('/api/v1/auth/password-reset/validate', bareStatus(503), false);
+
+      expect(toasts).toHaveLength(1);
+    });
+
+    it('suppresses the toast for a request that sets it, and still hands the caller the problem', async () => {
+      const { problem, toasts } = await failWith(
+        '/api/v1/auth/password-reset/validate',
+        bareStatus(503),
+        true,
+      );
+
+      expect(toasts).toEqual([]);
+      expect(problem.status).toBe(503);
+      expect(problem.rateLimited).toBe(false);
+    });
+
+    it('suppresses the rate-limit toast too, since the caller renders that state as well', async () => {
+      const { problem, toasts } = await failWith(
+        '/api/v1/auth/password-reset/validate',
+        (request) =>
+          request.flush({ title: 'Too Many Requests', status: 429 }, { status: 429, statusText: 'Too Many Requests' }),
+        true,
+      );
+
+      expect(toasts).toEqual([]);
+      expect(problem.rateLimited).toBe(true);
+    });
+
+    it('does not stop a 401 from ending a session that was held -- that news is not the caller to give', async () => {
+      await router.navigateByUrl('/admin/projects');
+      auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+      const { toasts } = await failWith('/api/v1/contact-messages', bareStatus(401), true);
+
+      expect(toasts).toEqual(['Your admin session has expired. Please log in again.']);
+      expect(auth.hasToken()).toBe(false);
+      expect(router.url.startsWith('/admin/login')).toBe(true);
+    });
+  });
+
+  // #191's second half. These titles are used when the response body names nothing itself -- a
+  // proxy error page, a gateway timeout -- and the toast they land in is mounted in the root
+  // layout, so visitors read them. "Request failed (404)." was a developer's message.
+  describe('the title a failure gets when its body names none', () => {
+    it.each([
+      [502, 'The server could not complete this just now. Please try again in a moment (error 502).'],
+      [500, 'The server could not complete this just now. Please try again in a moment (error 500).'],
+      [404, 'That could not be found on the server (error 404).'],
+      [403, 'The server did not accept this request (error 403).'],
+    ])('a bare %i reads as a sentence and keeps its status', async (status, expected) => {
+      const { problem, toasts } = await failWith('/api/v1/projects', bareStatus(status), false);
+
+      expect(problem.title).toBe(expected);
+      expect(toasts).toEqual([expected]);
+    });
+
+    it('a request that never reached the server says so', async () => {
+      const { problem, toasts } = await failWith(
+        '/api/v1/projects',
+        (request) => request.error(new ProgressEvent('error')),
+        false,
+      );
+
+      expect(problem.status).toBe(0);
+      expect(toasts).toEqual(['Could not reach the server. Check your connection and try again.']);
+    });
+  });
+
+  // #236, as a visitor met it: /projects asks for the list and the tag filter at once, and with
+  // the backend down both fail the same way. One sentence, said once.
+  it('toasts once when two requests fail with the same message', async () => {
+    const list = firstValueFrom(httpClient.get('/api/v1/projects')).catch(() => undefined);
+    const tags = firstValueFrom(httpClient.get('/api/v1/tags')).catch(() => undefined);
+
+    httpMock.expectOne('/api/v1/projects').flush(null, { status: 502, statusText: 'Bad Gateway' });
+    httpMock.expectOne('/api/v1/tags').flush(null, { status: 502, statusText: 'Bad Gateway' });
+    await Promise.all([list, tags]);
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'The server could not complete this just now. Please try again in a moment (error 502).',
+    ]);
+  });
+});
+
+/**
+ * The same #237 scenario through the interceptors the app registers, in the app's order, with the
+ * Authorization header added by authInterceptor rather than written into the test. The suite above
+ * installs errorInterceptor alone, so it would stay green if app.config.ts swapped the two.
+ */
+describe('errorInterceptor, in the order app.config.ts registers it', () => {
+  it('says the session ended once when two requests the app signed both come back 401', async () => {
+    sessionStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          { path: 'admin/login', component: StubComponent },
+          { path: 'admin/projects', component: StubComponent },
+        ]),
+        provideHttpClient(withInterceptors(httpInterceptors)),
+        provideHttpClientTesting(),
+      ],
+    });
+    const httpClient = TestBed.inject(HttpClient);
+    const httpMock = TestBed.inject(HttpTestingController);
+    const notifications = TestBed.inject(NotificationService);
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/admin/projects');
+    TestBed.inject(AuthService).setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    const error = vi.spyOn(notifications, 'error');
+    const urls = [`${environment.apiBaseUrl}/contact-messages`, `${environment.apiBaseUrl}/admin/projects`];
+
+    const settled = Promise.all(
+      urls.map((url) => firstValueFrom(httpClient.get(url)).catch((problem: ApiProblem) => problem)),
+    );
+    for (const url of urls) {
+      const req = httpMock.expectOne(url);
+      expect(req.request.headers.get('Authorization')).toBe('Bearer t');
+      req.flush({ type: 'about:blank', title: 'Unauthorized', status: 401 }, { status: 401, statusText: 'Unauthorized' });
+    }
+    await settled;
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(notifications.notifications().map((n) => n.message)).toEqual([
+      'Your admin session has expired. Please log in again.',
+    ]);
+    httpMock.verify();
+  });
+
+  // #246, through the same chain. The browser trusts its token, which keeps authInterceptor
+  // willing to send it. The login request must still go out without it, because the server would
+  // refuse that token before reading the password. A wrong password is still reported as one.
+  it('logs in without the held token, and still reports a wrong password', async () => {
+    sessionStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([{ path: 'admin/login', component: StubComponent }]),
+        provideHttpClient(withInterceptors(httpInterceptors)),
+        provideHttpClientTesting(),
+      ],
+    });
+    const httpClient = TestBed.inject(HttpClient);
+    const httpMock = TestBed.inject(HttpTestingController);
+    const notifications = TestBed.inject(NotificationService);
+    const auth = TestBed.inject(AuthService);
+    await TestBed.inject(Router).navigateByUrl('/admin/login');
+    auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+
+    const settled = firstValueFrom(httpClient.post(LOGIN_URL, {})).catch((problem: ApiProblem) => problem);
+    const req = httpMock.expectOne(LOGIN_URL);
+    expect(req.request.headers.has('Authorization')).toBe(false);
+    req.flush(
+      { type: 'about:blank', title: 'Unauthorized', detail: 'Invalid credentials', status: 401 },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+    await settled;
+    await TestBed.inject(ApplicationRef).whenStable();
+
+    expect(notifications.notifications().map((n) => n.message)).toEqual(['Invalid credentials']);
+    expect(auth.hasToken()).toBe(true);
+    httpMock.verify();
   });
 });
