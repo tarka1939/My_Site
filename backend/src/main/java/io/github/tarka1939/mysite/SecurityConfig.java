@@ -248,7 +248,17 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/github").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                // Spring Security 7 serves OAuth protected-resource metadata (RFC 9728) at
+                // /.well-known/oauth-protected-resource and names it in every 401's
+                // WWW-Authenticate (#256). Nothing here asked for either, and 7.1 has no switch
+                // for them. The filter answers before authorizeHttpRequests above, which is why no
+                // rule names the path. It is kept, and made true, rather than suppressed with a
+                // filter of our own. Its default claims certificate-bound tokens, and these are
+                // HS256 JWTs bound to nothing. The resource URL it builds from the request says
+                // https in production because of UpstreamTlsConfig.
+                .protectedResourceMetadata(metadata -> metadata
+                    .protectedResourceMetadataCustomizer(builder -> builder.tlsClientCertificateBoundAccessTokens(false))));
         return http.build();
     }
 
