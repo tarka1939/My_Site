@@ -17,8 +17,8 @@ info:
       signature over the raw request body rather than by a bearer token. It is documented here
       because this file is the record of every HTTP endpoint the backend serves, not only the
       subset the SPA calls -- see that operation's description for the reasoning.
-    - Errors use RFC 7807 Problem Details (application/problem+json), matching Spring Boot 3's
-      native ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas.
+    - Errors use RFC 9457 Problem Details (application/problem+json), matching Spring's native
+      ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas.
     - List endpoints return a page wrapper (content/page/size/totalElements/totalPages), not
       Spring Data's raw Page<T> serialization.
     - Multiple `tag` query params on GET /projects are OR'd together (any matching tag), not AND'd.
@@ -1224,11 +1224,11 @@ components:
           format: uri
           default: about:blank
           description: |
-            Usually absent. Every problem this API returns has the default type `about:blank`,
-            Spring leaves that default out of the body, and RFC 9457 says an absent `type` means
-            exactly that. Read a missing value as `about:blank`. Do not treat it as an error. The
-            one body that spells it out is the fixed answer to a request the security firewall
-            refuses, which is written outside Spring MVC; its value is `about:blank` too.
+            Usually absent. Spring's ProblemDetail leaves `type` unset unless a handler sets one,
+            and unset fields stay out of the body; no handler here sets one. RFC 9457 says an
+            absent `type` means `about:blank`, so read a missing value that way. Do not treat it as
+            an error. The one body that spells it out is the fixed answer to a request the security
+            firewall refuses, which is written outside Spring MVC; its value is `about:blank` too.
         title:
           type: string
         status:

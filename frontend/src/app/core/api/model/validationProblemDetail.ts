@@ -15,7 +15,7 @@ import { ValidationProblemDetailAllOfErrors } from './validationProblemDetailAll
  */
 export interface ValidationProblemDetail { 
     /**
-     * Usually absent. Every problem this API returns has the default type `about:blank`, Spring leaves that default out of the body, and RFC 9457 says an absent `type` means exactly that. Read a missing value as `about:blank`. Do not treat it as an error. The one body that spells it out is the fixed answer to a request the security firewall refuses, which is written outside Spring MVC; its value is `about:blank` too. 
+     * Usually absent. Spring\'s ProblemDetail leaves `type` unset unless a handler sets one, and unset fields stay out of the body; no handler here sets one. RFC 9457 says an absent `type` means `about:blank`, so read a missing value that way. Do not treat it as an error. The one body that spells it out is the fixed answer to a request the security firewall refuses, which is written outside Spring MVC; its value is `about:blank` too. 
      */
     type?: string;
     title: string;
