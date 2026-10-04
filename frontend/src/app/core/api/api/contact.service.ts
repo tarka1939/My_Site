@@ -184,10 +184,10 @@ export class ContactService extends BaseService implements ContactServiceInterfa
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<ContactMessagePageResponse>;
-    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ContactMessagePageResponse>>;
-    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ContactMessagePageResponse>>;
-    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ContactMessagePageResponse>;
+    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ContactMessagePageResponse>>;
+    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ContactMessagePageResponse>>;
+    public listContactMessages(requestParameters?: ListContactMessagesRequestParams, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         const page = requestParameters?.page;
         const size = requestParameters?.size;
 
@@ -217,8 +217,7 @@ export class ContactService extends BaseService implements ContactServiceInterfa
         localVarHeaders = this.configuration.addCredentialToHeaders('bearerAuth', 'Authorization', localVarHeaders, 'Bearer ');
 
         const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
-            'application/json',
-            'application/problem+json'
+            'application/json'
         ]);
         if (localVarHttpHeaderAcceptSelected !== undefined) {
             localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);

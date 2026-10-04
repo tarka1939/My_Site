@@ -18,7 +18,10 @@ info:
       because this file is the record of every HTTP endpoint the backend serves, not only the
       subset the SPA calls -- see that operation's description for the reasoning.
     - Errors use RFC 9457 Problem Details (application/problem+json), matching Spring's native
-      ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas.
+      ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas. The
+      exception is a missing or refused bearer token: that 401 has no body, and its reason is in
+      the WWW-Authenticate header (RFC 6750). See the Unauthorized response. POST /auth/login and
+      POST /webhooks/github answer 401 for their own reasons, with a problem body.
     - List endpoints return a page wrapper (content/page/size/totalElements/totalPages), not
       Spring Data's raw Page<T> serialization.
     - Multiple `tag` query params on GET /projects are OR'd together (any matching tag), not AND'd.
@@ -745,11 +748,22 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
     Unauthorized:
-      description: Missing or invalid bearer token
-      content:
-        application/problem+json:
+      description: |
+        Missing or refused bearer token. There is no body: Spring Security's bearer-token entry
+        point writes the status and a `WWW-Authenticate` challenge, as RFC 6750 describes, and
+        nothing else. Read the reason from that header, not from a problem body.
+
+        A token is checked on every request that carries one, so a refused token gets this 401
+        from any endpoint it is sent to, public reads included. Send no token rather than one known
+        to have expired.
+      headers:
+        WWW-Authenticate:
+          description: |
+            `Bearer`, with `error="invalid_token"` and an `error_description` when a token was sent
+            and refused, and with no `error` when none was sent. Either way it also carries a
+            `resource_metadata` URL (RFC 9728) pointing at `/.well-known/oauth-protected-resource`.
           schema:
-            $ref: '#/components/schemas/ProblemDetail'
+            type: string
     ValidationError:
       description: Request failed validation
       content:

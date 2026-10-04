@@ -147,6 +147,31 @@ class SecurityIntegrationTest {
     }
 
     /**
+     * #255. A missing or refused bearer token gets a 401 with no body: Spring Security's entry
+     * point writes the status and an RFC 6750 {@code WWW-Authenticate} challenge, and nothing else.
+     * docs/openapi.yaml says so, and this is what keeps it true. A token is checked wherever it is
+     * sent, so a bad one is refused on a public read as well.
+     */
+    @Test
+    void aMissingOrRefusedTokenGetsAChallengeAndNoBody() {
+        HttpHeaders badToken = new HttpHeaders();
+        badToken.setBearerAuth("x.y.z");
+
+        ResponseEntity<String> missing = restTemplate.getForEntity(url("/api/v1/contact-messages"), String.class);
+        ResponseEntity<String> refused = restTemplate.exchange(
+            url("/api/v1/projects"), HttpMethod.GET, new HttpEntity<>(badToken), String.class);
+
+        for (ResponseEntity<String> response : java.util.List.of(missing, refused)) {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getBody()).isNull();
+            assertThat(response.getHeaders().getContentType()).isNull();
+            assertThat(response.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).startsWith("Bearer ");
+        }
+        assertThat(missing.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).doesNotContain("error=");
+        assertThat(refused.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).contains("error=\"invalid_token\"");
+    }
+
+    /**
      * #122. Checked on a refusal as well as a success: the 401 is written by the resource
      * server's entry point rather than a controller, so this shows the headers are not confined to
      * controller responses. A request the firewall rejects outright is covered by the next test.
