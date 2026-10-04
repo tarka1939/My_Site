@@ -171,7 +171,32 @@ class SecurityIntegrationTest {
             // silently replaces them.
             assertThat(headers.getFirst("X-Frame-Options")).isEqualTo("DENY");
             assertThat(headers.getFirst("X-Content-Type-Options")).isEqualTo("nosniff");
+            // Plain HTTP, with app.tls-terminated-upstream off as in dev: no HSTS (#260).
+            // UpstreamTlsIntegrationTest boots with the production setting and gets it.
+            assertThat(headers.getFirst("Strict-Transport-Security")).isNull();
         }
+    }
+
+    /**
+     * #256. Spring Security 7 publishes this whether or not anything asks for it, and answers it
+     * before the rules in SecurityConfig, so it is public. Pinned so that a change to what it
+     * claims, or to whether it answers at all, fails here rather than surfacing in production.
+     */
+    @Test
+    void theResourceMetadataSpringPublishesClaimsNothingFalse() {
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+            url("/.well-known/oauth-protected-resource"), HttpMethod.GET, HttpEntity.EMPTY,
+            new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsOnlyKeys(
+            "resource", "bearer_methods_supported", "tls_client_certificate_bound_access_tokens");
+        // HS256 JWTs, bound to no client certificate. Spring's default says they are.
+        assertThat(response.getBody()).containsEntry("tls_client_certificate_bound_access_tokens", false);
+        // The default BearerTokenResolver reads the Authorization header and nothing else.
+        assertThat(response.getBody()).containsEntry("bearer_methods_supported", java.util.List.of("header"));
+        // Plain HTTP here; UpstreamTlsIntegrationTest has the production scheme.
+        assertThat(response.getBody()).containsEntry("resource", "http://localhost:" + port);
     }
 
     /**

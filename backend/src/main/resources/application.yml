@@ -65,6 +65,10 @@ app:
     trusted-proxies: ${TRUSTED_PROXIES:}
     client-ip-header: ${CLIENT_IP_HEADER:}
     trusted-hop-count: ${TRUSTED_HOP_COUNT:0}
+  # Issue #260. Whether TLS ends before requests reach this app, so Tomcat reports them as https
+  # and secure. Off here: dev and test really are plain HTTP. On in application-prod.yml. See
+  # UpstreamTlsConfig.
+  tls-terminated-upstream: ${TLS_TERMINATED_UPSTREAM:false}
   contact:
     # Issue #186. Where a new contact-form submission is announced. Before this existed the form
     # notified nobody and messages sat in the database until someone opened the admin panel.
