@@ -856,6 +856,25 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - The template accessibility set now runs on every template, which is a standing check the visual-design work never had. It found one thing, the dialog above.
 - Upgrading Angular now includes upgrading `angular-eslint` to the matching major, because the two are versioned together.
 
+### 2026-10-04 — The API states its scheme on the connector, and keeps Spring's resource metadata
+
+**Context:** TLS ends at Cloudflare and the provider's nginx, and the app listens on plain HTTP, so every request reached it as `http` and not secure. Two effects were seen in production on 2026-10-04. The API sent no `Strict-Transport-Security`, because Spring Security's HSTS writer only answers secure requests. URLs built from a request said `http://`. The ones seen were in the OAuth protected-resource metadata (RFC 9728) that Spring Security 7 publishes by default, and in the `resource_metadata` parameter it adds to every 401. That metadata also claimed certificate-bound tokens, which these are not (#256, #260).
+
+**Decision:**
+
+1. **The `prod` profile sets `app.tls-terminated-upstream`, which sets the Tomcat connector's `scheme` to `https` and `secure` to `true`** (`UpstreamTlsConfig`). The port still comes from the `Host` header and defaults to 443. Cloudflare answers plain HTTP with a 301 to HTTPS, so every request that reaches the app through it arrived over HTTPS. That is a fact about the deployment, and it is configured once rather than read from each request.
+2. **The metadata endpoint stays, with its one false claim corrected.** Spring Security 7.1 adds the filter and the `resource_metadata` parameter unconditionally; the configurer exposes only a customizer. The customizer sets `tls_client_certificate_bound_access_tokens` to false. With the scheme right, what remains is true: the resource's URL, and bearer tokens in the `Authorization` header. A test pins the document's exact keys, so a Spring upgrade that adds a claim fails the build rather than publishing it.
+
+**Alternatives considered:**
+- *`server.forward-headers-strategy: native`.* Tomcat's `RemoteIpValve` would read `X-Forwarded-Proto`, but it would also rewrite `getRemoteAddr()` from `X-Forwarded-For`, which breaks `ClientIpResolver`'s trusted-peer check (#168). `framework` trusts the headers from any caller.
+- *A filter that reads `X-Forwarded-Proto` only from trusted proxies.* It would be correct per request. But it is new code in the request path to learn something already known, and what the provider's nginx forwards in that header has not been observed.
+- *Suppressing the metadata endpoint and the `resource_metadata` parameter.* Neither has a switch, so this would need a filter answering ahead of Spring's and an entry point rewriting its header. That is custom code in the authentication path to remove a document that, once corrected, says nothing false.
+
+**Consequences:**
+- When released, the API sends `Strict-Transport-Security: max-age=31536000 ; includeSubDomains`. A browser that sees it will refuse plain HTTP to this host and its subdomains for a year. Cloudflare's 301 already makes plain HTTP unusable there.
+- A request that bypasses Cloudflare over plain HTTP is also reported as secure. Nothing depends on that: there are no cookies, and browsers ignore HSTS sent over HTTP.
+- If the app is ever served without a TLS-terminating proxy in front, `TLS_TERMINATED_UPSTREAM=false` turns this off.
+
 ### [YYYY-MM-DD] — [Decision title]
 
 **Context:**
