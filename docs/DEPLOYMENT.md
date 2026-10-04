@@ -93,6 +93,7 @@ start without them.**
 | `GITHUB_SYNC_ENABLED` | `false` | Leave off. Phase 7a is built but not meant to be live yet |
 | `GITHUB_WEBHOOK_SECRET` | empty | Only read when sync is enabled |
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
+| `TLS_TERMINATED_UPSTREAM` | `true` in `prod`, `false` otherwise | #260. Tells Tomcat that TLS ended before the request arrived, so the app sees `https` and sends HSTS. Leave it alone unless the app is ever served without a TLS-terminating proxy in front — see "Certificates" in 4.8 |
 
 > **Note a naming trap.** `CLAUDE.md`'s local-development section tells you to set `DB_NAME`,
 > `DB_USERNAME`, `DB_PASSWORD` — that is the **dev** profile. The **prod** profile takes a full
@@ -798,6 +799,19 @@ the bug being fixed.
 Nothing to do. The provider terminates TLS and renews its own certificate. `openssl s_client` showed
 a valid Google Trust Services certificate for the provider's domain. That covers issue #47 for the
 backend; Netlify handles the frontend's.
+
+One consequence on the app's side: it receives plain HTTP. Until #260 it treated every request as
+`http` and insecure, so Spring Security sent no `Strict-Transport-Security`, and URLs built from a
+request said `http://`. The `prod` profile now sets `app.tls-terminated-upstream`, which tells Tomcat's
+connector the scheme is `https` on port 443. This is safe to state rather than detect because
+Cloudflare answers plain HTTP with a 301 to HTTPS. It is not `server.forward-headers-strategy`, which
+would also rewrite the client address `ClientIpResolver` relies on (#168). Once released, the API's
+HSTS (`max-age=31536000 ; includeSubDomains`) tells browsers to use HTTPS for this host and its
+subdomains for a year.
+
+Setting `TLS_TERMINATED_UPSTREAM=false` later stops the header, but browsers that already have the
+policy keep it until it expires. Clearing it early takes a response over HTTPS with `max-age=0`, which
+reaches only browsers that come back. Plan on a year if this host ever has to serve plain HTTP.
 
 #### If you leave this provider
 

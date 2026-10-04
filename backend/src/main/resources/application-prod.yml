@@ -39,6 +39,12 @@ app:
     # entry FROM THE RIGHT. Neither end of that list is right: the first is caller-controlled,
     # the last is a Cloudflare edge node. Used only when CF-Connecting-IP is missing.
     trusted-hop-count: ${TRUSTED_HOP_COUNT:2}
+  # Issue #260. TLS ends at Cloudflare, which answers plain HTTP with a 301 to HTTPS, so every
+  # request that reaches the app through it arrived over HTTPS. Without this the app sees plain
+  # HTTP: Spring Security sends no HSTS, and URLs built from a request say http://. Changes the
+  # scheme, secure flag and port (443) Tomcat reports; client addresses are untouched, and are
+  # ClientIpResolver's business.
+  tls-terminated-upstream: ${TLS_TERMINATED_UPSTREAM:true}
 
 logging:
   # Structured (JSON) log output, available and OFF by default. Issue #48.
