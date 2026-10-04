@@ -803,10 +803,15 @@ backend; Netlify handles the frontend's.
 One consequence on the app's side: it receives plain HTTP. Until #260 it treated every request as
 `http` and insecure, so Spring Security sent no `Strict-Transport-Security`, and URLs built from a
 request said `http://`. The `prod` profile now sets `app.tls-terminated-upstream`, which tells Tomcat's
-connector the scheme is `https`. This is safe to state rather than detect because Cloudflare answers
-plain HTTP with a 301 to HTTPS. It is not `server.forward-headers-strategy`, which would also rewrite
-the client address `ClientIpResolver` relies on (#168). Once released, the API's HSTS
-(`max-age=31536000 ; includeSubDomains`) tells browsers to use HTTPS for this host for a year.
+connector the scheme is `https` on port 443. This is safe to state rather than detect because
+Cloudflare answers plain HTTP with a 301 to HTTPS. It is not `server.forward-headers-strategy`, which
+would also rewrite the client address `ClientIpResolver` relies on (#168). Once released, the API's
+HSTS (`max-age=31536000 ; includeSubDomains`) tells browsers to use HTTPS for this host and its
+subdomains for a year.
+
+Setting `TLS_TERMINATED_UPSTREAM=false` later stops the header, but browsers that already have the
+policy keep it until it expires. Clearing it early takes a response over HTTPS with `max-age=0`, which
+reaches only browsers that come back. Plan on a year if this host ever has to serve plain HTTP.
 
 #### If you leave this provider
 

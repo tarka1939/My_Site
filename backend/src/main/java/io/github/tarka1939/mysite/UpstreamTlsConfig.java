@@ -21,10 +21,14 @@ import org.springframework.context.annotation.Configuration;
  * the edge arrived over HTTPS. That is a fact about the deployment, so it is configured once, on
  * the connector, which is the use Tomcat documents for {@code scheme} and {@code secure}. Deriving
  * it per request would mean {@code server.forward-headers-strategy}, and that also rewrites
- * {@code getRemoteAddr()}, which {@link ClientIpResolver} depends on (see its Javadoc). These two
- * attributes change {@code getScheme()} and {@code isSecure()} and nothing else. The port still
- * comes from the {@code Host} header, and with none, as the proxy sends it, Tomcat takes the
- * scheme's default, 443.
+ * {@code getRemoteAddr()}, which {@link ClientIpResolver} depends on (see its Javadoc). These
+ * attributes change what {@code getScheme()}, {@code isSecure()} and {@code getServerPort()}
+ * report, and {@code getRemoteAddr()} is not among them.
+ *
+ * <p>The port is fixed at 443 for the same reason: every request arrived on it at the edge. Left
+ * to the {@code Host} header, it would be 443 if the proxy sends a bare name and 80 if it sends
+ * {@code name:80}, and which one it sends has not been observed. With 80, every URL built from a
+ * request would say {@code https://host:80}.
  *
  * <p>A request that bypasses Cloudflare and reaches the app over plain HTTP is also called secure.
  * Nothing here depends on that being true: there are no cookies to mark {@code Secure}, and a
@@ -47,6 +51,7 @@ public class UpstreamTlsConfig {
             factory.addConnectorCustomizers(connector -> {
                 connector.setScheme("https");
                 connector.setSecure(true);
+                connector.setProxyPort(443);
             });
         };
     }

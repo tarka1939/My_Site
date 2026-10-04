@@ -42,7 +42,8 @@ app:
   # Issue #260. TLS ends at Cloudflare, which answers plain HTTP with a 301 to HTTPS, so every
   # request that reaches the app through it arrived over HTTPS. Without this the app sees plain
   # HTTP: Spring Security sends no HSTS, and URLs built from a request say http://. Changes the
-  # scheme Tomcat reports and nothing else; client addresses are ClientIpResolver's business.
+  # scheme, secure flag and port (443) Tomcat reports; client addresses are untouched, and are
+  # ClientIpResolver's business.
   tls-terminated-upstream: ${TLS_TERMINATED_UPSTREAM:true}
 
 logging:

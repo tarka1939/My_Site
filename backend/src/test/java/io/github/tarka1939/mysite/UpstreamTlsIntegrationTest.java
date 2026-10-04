@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -20,9 +22,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * #260, with the setting production uses: {@code app.tls-terminated-upstream=true}.
  * {@link SecurityIntegrationTest} runs with it off and checks the opposite.
  *
- * <p>Requests go over a raw socket so that each one carries the {@code Host} header the
- * production proxy sends, a bare name with no port. That is the case where the port Tomcat
- * reports has to come from the scheme, and an HTTP client would always add one.
+ * <p>Requests go over a raw socket so that each one carries exactly the {@code Host} header under
+ * test; an HTTP client would always add the real port. What the production proxy sends has not
+ * been observed, so both shapes it could send are covered: a bare name, and the name with
+ * {@code :80}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = "app.tls-terminated-upstream=true")
@@ -40,8 +43,8 @@ class UpstreamTlsIntegrationTest {
     @LocalServerPort
     private int port;
 
-    private String get(String path) throws IOException {
-        String request = "GET " + path + " HTTP/1.1\r\nHost: " + HOST + "\r\nConnection: close\r\n\r\n";
+    private String get(String path, String host) throws IOException {
+        String request = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n";
         try (Socket socket = new Socket("localhost", port)) {
             socket.setSoTimeout(10_000);
             socket.getOutputStream().write(request.getBytes(StandardCharsets.ISO_8859_1));
@@ -55,17 +58,18 @@ class UpstreamTlsIntegrationTest {
 
     @Test
     void responsesCarryHsts() throws IOException {
-        String response = get("/api/v1/tags");
+        String response = get("/api/v1/tags", HOST);
 
         assertThat(response).startsWith("HTTP/1.1 200 ");
         // Spring Security's default value, written once the request reports itself secure.
         assertThat(head(response)).contains("strict-transport-security: max-age=31536000 ; includesubdomains");
     }
 
-    @Test
-    void urlsBuiltFromTheRequestSayHttpsWithNoPort() throws IOException {
-        String metadata = get("/.well-known/oauth-protected-resource");
-        String refused = get("/api/v1/contact-messages");
+    @ParameterizedTest
+    @ValueSource(strings = {HOST, HOST + ":80"})
+    void urlsBuiltFromTheRequestSayHttpsWithNoPort(String hostHeader) throws IOException {
+        String metadata = get("/.well-known/oauth-protected-resource", hostHeader);
+        String refused = get("/api/v1/contact-messages", hostHeader);
 
         assertThat(metadata).startsWith("HTTP/1.1 200 ");
         assertThat(metadata).contains("\"resource\":\"https://" + HOST + "\"");
