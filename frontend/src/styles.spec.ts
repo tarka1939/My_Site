@@ -229,7 +229,10 @@ type TokenCheck = (scheme: 'light' | 'dark') => void;
 
 const atLeast = (fg: string, bg: string, threshold: number, what: string) => {
   const ratio = contrastRatio(fg, bg);
-  expect(ratio, what + ' measured ' + ratio.toFixed(2) + ':1, needs ' + threshold + ':1').
+  // Floored to three places, not rounded to two: a ratio of 4.4978 rounds to "4.50", which made a
+  // failure read "measured 4.50:1, needs 4.5:1".
+  const shown = (Math.floor(ratio * 1000) / 1000).toFixed(3);
+  expect(ratio, what + ' measured ' + shown + ':1, needs ' + threshold + ':1').
     toBeGreaterThanOrEqual(threshold);
 };
 
@@ -394,33 +397,50 @@ describe('colour tokens', () => {
 
   it('keeps the composited muted surface readable on the page ground and on a card', () => {
     const value = tokens().get('--color-surface-muted');
-    const match = /rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)%\s*\)/.exec(value?.light ?? '');
-    expect(match, '--color-surface-muted is no longer an rgb() with an alpha percentage').not.toBeNull();
-    const [r, g, b] = [1, 2, 3].map((i) => Number(match![i]));
-    const alpha = Number(match![4]) / 100;
+    expect(value, '--color-surface-muted is not declared in :root').toBeDefined();
 
-    // Both grounds it is painted on (#165). Only --color-bg was checked here at first, while the
-    // card thumbnails composite it over --color-surface -- and that pairing is the tight one: muted
-    // text on the dark card clears AA by 0.0025. Rounding to 8 bits before measuring matters at that
-    // margin, because the browser paints the rounded composite, not the float.
-    for (const groundToken of ['--color-bg', '--color-surface']) {
-      for (const scheme of ['light', 'dark'] as const) {
-        const ground = expand(hexToken(groundToken)[scheme]);
-        const composited =
-          '#' +
-          [r, g, b]
-            .map((c, i) => Math.round(alpha * c + (1 - alpha) * ground[i]))
-            .map((c) => c.toString(16).padStart(2, '0'))
-            .join('');
-        const where = ' on muted surface over ' + groundToken + ' (' + scheme + ')';
-        atLeast(hexToken('--color-text')[scheme], composited, AA_NORMAL_TEXT, 'ink' + where);
-        atLeast(
-          hexToken('--color-text-muted')[scheme],
-          composited,
-          AA_NORMAL_TEXT,
-          'muted text' + where,
-        );
+    for (const scheme of ['light', 'dark'] as const) {
+      // Parsed per scheme, not once from the light value: a dark-only alpha is a likely answer to
+      // #165's open question, and reading :root's value for both would let it through unmeasured.
+      const match = /rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)%\s*\)/.exec(value![scheme]);
+      expect(
+        match,
+        '--color-surface-muted (' + scheme + ') is no longer an rgb() with an alpha percentage',
+      ).not.toBeNull();
+      const [r, g, b] = [1, 2, 3].map((i) => Number(match![i]));
+      const alpha = Number(match![4]) / 100;
+
+      // Rounded to 8 bits before measuring, because the browser paints the rounded composite, not
+      // the float -- at a 0.0025 margin the difference decides the result. (`1 - alpha` is
+      // 0.8200000000000001 here, which is what tips the light ground's exact tie at 230.5 to
+      // #e6e5e7; styles.scss records that tie.)
+      const over = (ground: string): string =>
+        '#' +
+        [r, g, b]
+          .map((c, i) => Math.round(alpha * c + (1 - alpha) * expand(ground)[i]))
+          .map((c) => c.toString(16).padStart(2, '0'))
+          .join('');
+      const [pageGround, card] = grounds()[scheme];
+
+      // Both grounds it is painted on (#165). Only the page ground was checked here at first,
+      // while the card thumbnails composite it over --color-surface -- where muted text on the
+      // dark scheme clears AA by 0.0025.
+      for (const [where, ground] of [['the page ground', pageGround], ['a card', card]]) {
+        const plate = over(ground);
+        const label = ' on muted surface over ' + where + ' (' + scheme + ')';
+        atLeast(hexToken('--color-text')[scheme], plate, AA_NORMAL_TEXT, 'ink' + label);
+        atLeast(hexToken('--color-text-muted')[scheme], plate, AA_NORMAL_TEXT, 'muted text' + label);
       }
+
+      // Accent lands on it as code inside a Markdown link, which only ever renders on the page
+      // ground. Over a card it is 4.27:1 light and 4.41:1 dark, under AA -- recorded in styles.scss
+      // and left to #165 rather than asserted here, since nothing paints that pairing today.
+      atLeast(
+        hexToken('--color-accent')[scheme],
+        over(pageGround),
+        AA_NORMAL_TEXT,
+        'accent on muted surface over the page ground (' + scheme + ')',
+      );
     }
   });
 

@@ -227,18 +227,24 @@
   //   over --color-bg        composite      #e6e5e7        #1f1f22
   //                          ink            14.84:1        14.62:1
   //                          muted text      4.92:1         4.92:1
+  //                          accent          4.64:1         4.81:1
   //   over --color-surface   composite      #dddce1        #26262b
   //                          ink            13.66:1        13.39:1
   //                          muted text      4.53:1         4.50:1
+  //                          accent          4.27:1         4.41:1   <- under AA
   //
   // Over the page ground: the detail gallery's letterbox, which shows a failed image's alt text in
-  // ink; the admin draft badge, ink; and code in rendered Markdown, which is ink, or muted inside
-  // a blockquote. Over a card: only .card-media in projects-list, which carries no text. So the
-  // tight figure, muted text on a dark card, is a pairing nothing renders today. It clears AA by
-  // 0.0025 -- 4.5025, measured on the 8-bit composite a browser actually paints, not on the float
-  // -- so a small nudge to the dark --color-surface or to this alpha takes it under, and the spec
-  // fails when it does. The light composite's blue channel is an exact tie (230.5), so a renderer
-  // may paint #e6e5e6; that moves ink to 14.83:1 and nothing else.
+  // ink; the admin draft badge, ink; and code in rendered Markdown, which is ink, muted inside a
+  // blockquote, and accent inside a link (markdown-it renders [`x`](url) as <a><code>). Over a
+  // card: only .card-media in projects-list, which carries no text.
+  //
+  // So the two weak pairings are both over a card, and nothing renders either today. Accent fails
+  // AA there outright, so it is recorded and deliberately not asserted. Muted text clears AA by
+  // 0.0025 -- 4.5025, on the 8-bit composite a browser actually paints, not on the float -- so a
+  // small nudge to the dark --color-surface, or to this alpha in either scheme, takes it under,
+  // and the spec fails when it does. Text on a card thumbnail would need one of these settled
+  // first (#165). The light composite's blue channel is an exact tie (230.5), so a renderer may
+  // paint #e6e5e6; that moves ink to 14.83:1 and nothing else.
   --color-surface-muted: rgb(128 128 128 / 18%);
 
   // -- Type -------------------------------------------------------------------------------------
