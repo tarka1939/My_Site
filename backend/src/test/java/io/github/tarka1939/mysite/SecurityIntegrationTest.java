@@ -147,6 +147,36 @@ class SecurityIntegrationTest {
     }
 
     /**
+     * #255. A missing or refused bearer token gets a 401 with no body: Spring Security's entry
+     * point writes the status and an RFC 6750 {@code WWW-Authenticate} challenge, and nothing else.
+     * docs/openapi.yaml says so, and this is what keeps it true. A token is checked wherever it is
+     * sent, so a bad one is refused on a public read as well.
+     *
+     * <p>GETs only: this client has been seen to return no body for a POST's 401 even when one was
+     * sent, so a POST case here would pass either way.
+     */
+    @Test
+    void aMissingOrRefusedTokenGetsAChallengeAndNoBody() {
+        HttpHeaders badToken = new HttpHeaders();
+        badToken.setBearerAuth("x.y.z");
+
+        ResponseEntity<String> missing = restTemplate.getForEntity(url("/api/v1/contact-messages"), String.class);
+        ResponseEntity<String> refused = restTemplate.exchange(
+            url("/api/v1/projects"), HttpMethod.GET, new HttpEntity<>(badToken), String.class);
+
+        for (ResponseEntity<String> response : java.util.List.of(missing, refused)) {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getBody()).isNull();
+            assertThat(response.getHeaders().getContentType()).isNull();
+            // Not "Bearer " with a space: before Spring Security 7 the missing-token challenge
+            // was a bare "Bearer", and it would be again if resource_metadata were ever dropped.
+            assertThat(response.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).matches("Bearer( .*)?");
+        }
+        assertThat(missing.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).doesNotContain("error=");
+        assertThat(refused.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).contains("error=\"invalid_token\"");
+    }
+
+    /**
      * #122. Checked on a refusal as well as a success: the 401 is written by the resource
      * server's entry point rather than a controller, so this shows the headers are not confined to
      * controller responses. A request the firewall rejects outright is covered by the next test.

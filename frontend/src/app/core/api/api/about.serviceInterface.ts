@@ -13,7 +13,6 @@ import { Observable }                                        from 'rxjs';
 
 import { AboutPage } from '../model/models';
 import { AboutPageWriteRequest } from '../model/models';
-import { ProblemDetail } from '../model/models';
 import { ValidationProblemDetail } from '../model/models';
 
 
