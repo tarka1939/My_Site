@@ -392,28 +392,35 @@ describe('colour tokens', () => {
     }
   });
 
-  it('keeps the composited muted surface readable on both grounds', () => {
+  it('keeps the composited muted surface readable on the page ground and on a card', () => {
     const value = tokens().get('--color-surface-muted');
     const match = /rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)%\s*\)/.exec(value?.light ?? '');
     expect(match, '--color-surface-muted is no longer an rgb() with an alpha percentage').not.toBeNull();
     const [r, g, b] = [1, 2, 3].map((i) => Number(match![i]));
     const alpha = Number(match![4]) / 100;
 
-    for (const scheme of ['light', 'dark'] as const) {
-      const ground = expand(hexToken('--color-bg')[scheme]);
-      const composited =
-        '#' +
-        [r, g, b]
-          .map((c, i) => Math.round(alpha * c + (1 - alpha) * ground[i]))
-          .map((c) => c.toString(16).padStart(2, '0'))
-          .join('');
-      atLeast(hexToken('--color-text')[scheme], composited, AA_NORMAL_TEXT, 'ink on muted surface');
-      atLeast(
-        hexToken('--color-text-muted')[scheme],
-        composited,
-        AA_NORMAL_TEXT,
-        'muted text on muted surface',
-      );
+    // Both grounds it is painted on (#165). Only --color-bg was checked here at first, while the
+    // card thumbnails composite it over --color-surface -- and that pairing is the tight one: muted
+    // text on the dark card clears AA by 0.0025. Rounding to 8 bits before measuring matters at that
+    // margin, because the browser paints the rounded composite, not the float.
+    for (const groundToken of ['--color-bg', '--color-surface']) {
+      for (const scheme of ['light', 'dark'] as const) {
+        const ground = expand(hexToken(groundToken)[scheme]);
+        const composited =
+          '#' +
+          [r, g, b]
+            .map((c, i) => Math.round(alpha * c + (1 - alpha) * ground[i]))
+            .map((c) => c.toString(16).padStart(2, '0'))
+            .join('');
+        const where = ' on muted surface over ' + groundToken + ' (' + scheme + ')';
+        atLeast(hexToken('--color-text')[scheme], composited, AA_NORMAL_TEXT, 'ink' + where);
+        atLeast(
+          hexToken('--color-text-muted')[scheme],
+          composited,
+          AA_NORMAL_TEXT,
+          'muted text' + where,
+        );
+      }
     }
   });
 
