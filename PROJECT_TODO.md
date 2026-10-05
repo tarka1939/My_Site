@@ -298,7 +298,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 
 **Open design questions, the owner's to answer.**
 - [ ] #160 — a dead gallery image on the detail page leaves a labelled empty letterbox, and nobody has decided whether that is right
-- [ ] #165 — `--color-surface-muted`'s recorded ratios are measured against a ground it is never painted on
+- [ ] #165 — `--color-surface-muted`'s recorded ratios were measured over one of the two grounds it is painted on. The record and the guard are done in PR #264, merged to `dev` 2026-10-05. The docblock now gives both grounds, and `styles.spec.ts` asserts both. On the page ground are the gallery letterbox, the admin draft badge and code in rendered Markdown. On a card there is only the card thumbnail, which carries no text, so the issue's premise that every usage sits on a card was wrong for three of the four. **Still the owner's call:** muted text on a dark card measures 4.5025:1, a pairing nothing renders today. Is that enough margin, or should the dark `--color-surface` or the alpha move?
 
 ## Ongoing / meta
 
