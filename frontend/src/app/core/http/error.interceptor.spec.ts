@@ -93,7 +93,10 @@ describe('errorInterceptor', () => {
     url: string,
     options: { method?: string; body?: Record<string, unknown>; headers?: Record<string, string> } = {},
   ): Promise<{ toasts: string[]; url: string; returnUrl: string | undefined }> {
-    const body = options.body ?? { type: 'about:blank', title: 'Unauthorized', status: 401 };
+    // No body unless a test passes one, because the API sends none when it refuses a bearer token:
+    // Spring Security's entry point writes the status and WWW-Authenticate, and nothing else (#255).
+    // The login endpoint's 401 is the one that carries a problem body, and its tests pass it.
+    const body = options.body ?? null;
     const promise = firstValueFrom(
       httpClient.request(options.method ?? 'GET', url, { body: {}, headers: options.headers }),
     ).catch((problem: ApiProblem) => problem);
@@ -139,7 +142,6 @@ describe('errorInterceptor', () => {
     auth.setSession({ token: 't', expiresAt: new Date(Date.now() + 60_000).toISOString() });
     const headers = { Authorization: 'Bearer t' };
     const unauthorized = { status: 401, statusText: 'Unauthorized' };
-    const body = { type: 'about:blank', title: 'Unauthorized', status: 401 };
     // Counted at the source, not read off the list: NotificationService replaces a repeated
     // message (#236), so a second "session expired" would still leave one entry. It would also
     // be announced to a screen reader twice.
@@ -151,8 +153,8 @@ describe('errorInterceptor', () => {
     const second = firstValueFrom(httpClient.get('/api/v1/admin/projects', { headers })).catch(
       (problem: ApiProblem) => problem,
     );
-    httpMock.expectOne('/api/v1/contact-messages').flush(body, unauthorized);
-    httpMock.expectOne('/api/v1/admin/projects').flush(body, unauthorized);
+    httpMock.expectOne('/api/v1/contact-messages').flush(null, unauthorized);
+    httpMock.expectOne('/api/v1/admin/projects').flush(null, unauthorized);
     const [, secondProblem] = await Promise.all([first, second]);
     await TestBed.inject(ApplicationRef).whenStable();
 
@@ -177,9 +179,7 @@ describe('errorInterceptor', () => {
     const second = firstValueFrom(httpClient.get('/api/v1/admin/projects', { headers })).catch(
       (problem: ApiProblem) => problem,
     );
-    httpMock
-      .expectOne('/api/v1/contact-messages')
-      .flush({ type: 'about:blank', title: 'Unauthorized', status: 401 }, { status: 401, statusText: 'Unauthorized' });
+    httpMock.expectOne('/api/v1/contact-messages').flush(null, { status: 401, statusText: 'Unauthorized' });
     httpMock
       .expectOne('/api/v1/admin/projects')
       .flush(null, { status: 500, statusText: 'Internal Server Error' });
@@ -517,7 +517,7 @@ describe('errorInterceptor, in the order app.config.ts registers it', () => {
     for (const url of urls) {
       const req = httpMock.expectOne(url);
       expect(req.request.headers.get('Authorization')).toBe('Bearer t');
-      req.flush({ type: 'about:blank', title: 'Unauthorized', status: 401 }, { status: 401, statusText: 'Unauthorized' });
+      req.flush(null, { status: 401, statusText: 'Unauthorized' });
     }
     await settled;
     await TestBed.inject(ApplicationRef).whenStable();
