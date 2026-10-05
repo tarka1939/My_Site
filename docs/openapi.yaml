@@ -21,7 +21,8 @@ info:
       ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas. The
       exception is a missing or refused bearer token: that 401 has no body, and its reason is in
       the WWW-Authenticate header (RFC 6750). See the Unauthorized response. POST /auth/login and
-      POST /webhooks/github answer 401 for their own reasons, with a problem body.
+      POST /webhooks/github also answer 401 for their own reasons, with a problem body -- but a
+      request to either that carries a refused bearer token gets the empty 401 first.
     - List endpoints return a page wrapper (content/page/size/totalElements/totalPages), not
       Spring Data's raw Page<T> serialization.
     - Multiple `tag` query params on GET /projects are OR'd together (any matching tag), not AND'd.
@@ -470,7 +471,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
         '401':
-          description: Invalid credentials
+          description: |
+            Invalid credentials. A request that also carries a bearer token the API refuses never
+            reaches this check: it gets the empty Unauthorized response instead. Send no token here.
           content:
             application/problem+json:
               schema:
@@ -751,11 +754,12 @@ components:
       description: |
         Missing or refused bearer token. There is no body: Spring Security's bearer-token entry
         point writes the status and a `WWW-Authenticate` challenge, as RFC 6750 describes, and
-        nothing else. Read the reason from that header, not from a problem body.
+        nothing else. The reason is in that header, not in a problem body. A browser client on
+        another origin cannot read it, since CORS does not expose it, and needs only the status.
 
         A token is checked on every request that carries one, so a refused token gets this 401
-        from any endpoint it is sent to, public reads included. Send no token rather than one known
-        to have expired.
+        from any operation in this contract it is sent to, public reads and POST /auth/login
+        included. Send no token rather than one known to have expired.
       headers:
         WWW-Authenticate:
           description: |

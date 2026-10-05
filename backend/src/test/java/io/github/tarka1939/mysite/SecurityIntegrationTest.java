@@ -151,6 +151,9 @@ class SecurityIntegrationTest {
      * point writes the status and an RFC 6750 {@code WWW-Authenticate} challenge, and nothing else.
      * docs/openapi.yaml says so, and this is what keeps it true. A token is checked wherever it is
      * sent, so a bad one is refused on a public read as well.
+     *
+     * <p>GETs only: this client has been seen to return no body for a POST's 401 even when one was
+     * sent, so a POST case here would pass either way.
      */
     @Test
     void aMissingOrRefusedTokenGetsAChallengeAndNoBody() {
@@ -165,7 +168,9 @@ class SecurityIntegrationTest {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
             assertThat(response.getBody()).isNull();
             assertThat(response.getHeaders().getContentType()).isNull();
-            assertThat(response.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).startsWith("Bearer ");
+            // Not "Bearer " with a space: before Spring Security 7 the missing-token challenge
+            // was a bare "Bearer", and it would be again if resource_metadata were ever dropped.
+            assertThat(response.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).matches("Bearer( .*)?");
         }
         assertThat(missing.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).doesNotContain("error=");
         assertThat(refused.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).contains("error=\"invalid_token\"");
