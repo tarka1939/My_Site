@@ -215,12 +215,36 @@
   --color-surface-notice: #131218;
   --color-on-notice: #fcfbfd;
 
-  // Semi-transparent grey, so it composites against whatever --color-bg resolves to and stays a
-  // subtle backdrop in both light and dark. Use this for a fill that must not commit to a colour
-  // -- the image letterbox, the draft badge -- where --color-surface would read as a second card.
-  // Composites to #e6e5e7 on the light ground and #1f1f22 on the dark one; ink is 14.84:1 /
-  // 14.62:1 on it and muted text 4.92:1 on both, so it clears AA either way without a per-scheme
-  // value.
+  // Semi-transparent grey, so it composites against whatever it is painted on and stays a subtle
+  // backdrop in both light and dark. Use this for a fill that must not commit to a colour -- the
+  // image letterbox, the draft badge, code in a description -- where --color-surface would read as
+  // a second card.
+  //
+  // It lands on two grounds, and they give different ratios, so both are recorded here and both
+  // are asserted in styles.spec.ts (#165):
+  //
+  //                                       light ground   dark ground
+  //   over --color-bg        composite      #e6e5e7        #1f1f22
+  //                          ink            14.84:1        14.62:1
+  //                          muted text      4.92:1         4.92:1
+  //                          accent          4.64:1         4.81:1
+  //   over --color-surface   composite      #dddce1        #26262b
+  //                          ink            13.66:1        13.39:1
+  //                          muted text      4.53:1         4.50:1
+  //                          accent          4.27:1         4.41:1   <- under AA
+  //
+  // Over the page ground: the detail gallery's letterbox, which shows a failed image's alt text in
+  // ink; the admin draft badge, ink; and code in rendered Markdown, which is ink, muted inside a
+  // blockquote, and accent inside a link (markdown-it renders [`x`](url) as <a><code>). Over a
+  // card: only .card-media in projects-list, which carries no text.
+  //
+  // So the two weak pairings are both over a card, and nothing renders either today. Accent fails
+  // AA there outright, so it is recorded and deliberately not asserted. Muted text clears AA by
+  // 0.0025 -- 4.5025, on the 8-bit composite a browser actually paints, not on the float -- so a
+  // small nudge to the dark --color-surface, or to this alpha in either scheme, takes it under,
+  // and the spec fails when it does. Text on a card thumbnail would need one of these settled
+  // first (#165). The light composite's blue channel is an exact tie (230.5), so a renderer may
+  // paint #e6e5e6; that moves ink to 14.83:1 and nothing else.
   --color-surface-muted: rgb(128 128 128 / 18%);
 
   // -- Type -------------------------------------------------------------------------------------
