@@ -297,6 +297,76 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-08 — Senior Dev: an audit reading stale within a day, a journey unfinished for four weeks, and instructions read from a checkout 141 commits behind
+
+**Task given:** Work the open issues autonomously from 2026-10-05, and keep the owner-decisions list current. The work became four PRs to `dev`, all merged on 2026-10-08:
+- PR #264: #165, the muted surface's contrast record and its test;
+- PR #266: #265, `http-cache-semantics` to 4.3.0;
+- PR #270: #267, four dev-tooling advisories, which moved the Angular family to 21.2.25 and 21.2.26;
+- PR #269: #268, a stale E2E locator, found while testing #270.
+
+**Agent(s) used:** Senior Dev (Opus) implemented all four. A fresh Opus session gave each a cold review.
+
+**What went right:**
+- **#248's override spec retired an override, which is what it was built for.** `@angular/build` 21.2.25 pins piscina 5.3.2 itself. On b82fc13, #270's second lockfile commit, `dependency-overrides.spec.ts` failed with "Remove the override from package.json and from OVERRIDES in this file". The next commit removed it.
+- **A framework patch got the whole E2E suite, not only the unit tests.** That run is what found #268.
+- **#270's exposure was checked in installed code, not argued from package names:**
+  - Loading the three MCP SDK modules `ng mcp` requires pulls in 221 modules, none of them express, `proxy-addr` or the OAuth client.
+  - Of `source-map-js`'s three dependents, only postcss calls its `SourceMapConsumer`, and parsing is where the advisory is.
+  - `concurrently` reaches `shell-quote` only with passthrough arguments, and the generator never passes them.
+- **#264's guard was mutation-tested three ways,** and each mutation failed only the composite test.
+
+**What went wrong (be specific):**
+1. **A test looped over both schemes and read one scheme's value.** `styles.spec.ts` parsed `--color-surface-muted`'s alpha from the light value and used it for dark too. #264 fixed which ground the test measured, but its first version kept that read. A dark-only alpha passed unmeasured, and a dark-only alpha is a likely answer to #165 itself. The reviewer set one: dark muted text fell under AA on both grounds, 3.76:1 on a card, and `styles.spec.ts` still passed 54 of 54.
+2. **The record listed the colours that sit on the fill, and missed one.** The docblock said "ink, or muted inside a blockquote". The PR body said "right for every pairing that carries text". But markdown-it renders `` [`x`](url) `` as code inside a link, so accent text lands on the fill too: 4.27:1 light and 4.41:1 dark over a card, under AA. Nothing paints that pairing today.
+3. **"Published" was written for "reviewed".** #266's first CHANGELOG and PROJECT_TODO said the `http-cache-semantics` advisory "entered GitHub's database after PR #248". It was published, unreviewed, on 2026-09-18. What happened 57 minutes after #248 merged was the review, and that is when `npm audit` starts reporting an advisory.
+4. **"Audit is at zero" went stale within a day, and the issue reporting it cited a check that does not exist.** #266 was checked on 2026-10-05 and said audit was at zero. Over the next day, four advisories were reviewed into the database and took it to 6 findings. #267, filed to report them, first said #266's "last CI run on 2026-10-05 saw `npm audit` at zero". CI does not run `npm audit`.
+5. **The E2E projects journey had failed at one line on `dev` for four weeks.**
+   - Descriptions became Markdown on 2026-09-10 (df5e0fa, PR #208), so the description became a `<div>` holding paragraphs. The journey still looked for `p.description`.
+   - Every check after that line went unrun, the gallery's alt text and #227's viewer buttons among them.
+   - The suite is in no CI job (#250), and nobody ran the projects journey in between. The one recorded run in those weeks, for PR #247 on 2026-10-02, was `tests/admin.spec.ts` alone. That run found #250's stale locator. This one was in another file, `tests/projects.spec.ts`, which nobody ran.
+6. **`npm update @angular/build` exited 0 and changed nothing.** Re-resolving the build's peer selects `@angular/compiler-cli` 21.2.25. That pins `@angular/compiler` 21.2.25 exactly, which conflicted with the locked 21.2.24. npm skipped the move silently. Only an `npm install` of an exact version printed the ERESOLVE.
+7. **A reason lost its load-bearing half when it was shortened.** The CHANGELOG and commit b82fc13 said npm cannot move "the CLI and `@angular/build`" without the framework. That is true of the pair, because of the build. The PR body said outright that the CLI could move alone. PROJECT_TODO's one-line version dropped the build: "npm cannot move the CLI ... without the framework". That is false: cb03e61 had moved the CLI alone.
+8. **An E2E pass could not show which servers it tested.** #270's first 8 of 8 ran with `reuseExistingServer` on, while another worktree, on Angular 21.2.24, existed. A server left running from that checkout would have been tested instead, and the run would have reported green: the 2026-08-09 false verification again. Nothing suggests a server was reused, but nothing recorded showed that none was.
+9. **CLAUDE.md was read from a checkout 141 commits behind `dev`, and reported to the owner as stale.**
+   - The session started in the main checkout, whose `dev` sat at 27f680f, 141 commits behind `dev`'s 613c1c3, so that copy of CLAUDE.md is the one injected into it and into every agent it dispatched.
+   - That copy still says the frontend has no linter, and that CI runs three jobs. `dev`'s has documented ESLint and the lint job since 2026-10-02, when PR #245 merged (162123e).
+   - The owner-decisions list and a status message told the owner those two lines were stale. #264's and #270's cold reviewers reported the same, from the same copy.
+   - It is the first rule under "Never quote a working tree without naming its branch", applied to the file that states the rule.
+
+**How it was caught:**
+1–2. #264's cold review: 1 by a mutation, 2 by rendering a linked code span with the repo's markdown-it configuration.
+3. #266's cold review, from the advisory's `published_at` and `github_reviewed_at`.
+4. Rerunning `npm audit` before merging #266. The CI claim was caught on rereading the issue, 70 seconds after filing it and before #266 merged.
+5. Running the full suite for #270's router change.
+6. The lockfile diff was empty. #270's reviewer reproduced the ERESOLVE on `dev`'s files.
+7–8. #270's cold review. 8 because `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`.
+9. This PR's cold review, which read `dev`'s CLAUDE.md with `git show`, compared its lint lines with the copy in its own context, and measured the lag with `git rev-list`.
+
+**Fix applied:**
+1. The spec parses the alpha per scheme, inside the loop. A dark-only alpha now fails at 4.10:1.
+2. Accent is recorded on both grounds and asserted on the page ground. The card pairing joins #165's question for the owner.
+3. Both files now say it was reviewed into GitHub's database 57 minutes after PR #248 merged.
+4. #266's docs say audit read zero when the change was checked on 2026-10-05, and point to #267. #267's body and title say "checked", not "CI run". No doc says CI reads audit. #270 took audit back to zero.
+5. PR #269 locates `.description` inside the article, with no tag name, since the tag is what went stale. The journey passes again, and its later checks pass on their first run in four weeks.
+6. All 17 Angular, devkit and schematics entries were deleted from the lockfile and re-resolved with `npm install --package-lock-only`: 13 top-level entries, plus 4 nested devkit copies left by moving the CLI alone. 13 remain. The review checked every changed entry's integrity against the registry.
+7. PROJECT_TODO now names `@angular/build` as what cannot move, and adds that moving the CLI alone leaves two copies of the devkit packages.
+8. A rerun with `CI=1`, which forbids reuse, passed 8 of 8:
+   - the log has Playwright's own `[WebServer]` output;
+   - ports 4200 and 8080 were free before and after;
+   - the checkout's installed Angular versions were read back.
+9. The decisions list now reports only CLAUDE.md's 2026-09-24 status line, which is stale on `dev` too, and the correction went to the owner. CLAUDE.md is the owner's file, and the main checkout is the owner's working copy. Fast-forwarding its `dev` is on the owner's list, since that is what every session started there will read.
+
+**Takeaway for next time:**
+- **In a loop over schemes, every value should come from the loop variable.** A value read once outside the loop is the light scheme's by accident. A test of that shape passes whatever happens to the other scheme.
+- **An advisory is published, then reviewed, and `npm audit` reports only reviewed ones.** One can sit unreviewed for weeks, then turn audit red overnight with nothing changed here. "Audit is at zero" is an observation with a date, so write the date. (2026-08-18 said the same of an audit issue's numbers: a snapshot that drifts silently.)
+- **Name who ran a check.** CI runs the tests, lint and the API-client check. Anything else was a person, on a day.
+- **A suite nobody is made to run stops being run.** This is the second stale E2E locator found by someone happening to run the suite. #250, a CI job for it, is the owner's call.
+- **An exit code of 0 from `npm update` means npm did not fail, not that anything moved.** Read the lockfile diff. This belongs with the index's section 5.
+- **When you shorten a reason, re-derive it rather than compress the sentence.** The long versions were right. The one-line version kept the sentence's shape and dropped the half that made it true.
+- **Prove which server a local E2E run used.** Run with `CI=1`, or check the ports before and after: outside CI, reuse is the default. This is 2026-08-10's "check the port, not the process", which this run nearly needed again.
+- **The CLAUDE.md in your context is the one in the directory the session started in, at whatever commit that checkout is on.** Before reporting it stale, read `dev`'s with `git show My_Site/dev:CLAUDE.md`. Agents you dispatch load the same copy, so their reports about CLAUDE.md share the error.
+
 ## 2026-10-04 — Senior Dev: a port nobody had observed, a property only a test set, and a mechanism named one layer too low
 
 **Task given:** Work the open issues autonomously after the 2026-10-03 release (#258). The work became three PRs to `dev`:
