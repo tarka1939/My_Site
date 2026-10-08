@@ -143,7 +143,7 @@ That ordering was deliberate — the runbook argues a first deploy should introd
     - `@angular/cli` 21.2.26 pins the MCP SDK fix exactly. npm cannot move the CLI and `@angular/build` without the framework, because re-resolving the build's `compiler-cli` peer selects 21.2.25, which pins `@angular/compiler` 21.2.25 exactly.
     - So the framework moves from 21.2.24 to 21.2.25 (router hardening, plus a platform-server fix this app does not load), and the tooling moves to 21.2.26.
   - **One override retired.** `@angular/build` 21.2.25 pins piscina 5.3.2 itself, so PR #248's override is gone. `dependency-overrides.spec.ts` failed on the lockfile change and said to remove it, which is what it was built to do.
-  - **Checks.** The initial bundle grows 0.50 kB raw and 0.17 kB transferred, all of it in the chunk that carries the router. The API client regenerates unchanged.
+  - **Checks.** The initial bundle grows 0.50 kB raw and 0.17 kB transferred, all of it in the chunk that carries the router. The API client regenerates unchanged. The E2E suite passes 8 of 8 with #268's stale locator fixed (PR #269); that one failure is the same on `dev`.
 
 - **`npm audit` stops reporting the `http-cache-semantics` advisory, though that advisory is not what changed** (2026-10-08, #265, PR #266, frontend + infra).
   - **What audit flagged:** GHSA-ch52-4w7c-c8xp, a `max-stale` claim against `http-cache-semantics` ≤ 4.2.0. It was published unreviewed on 2026-09-18, and reviewed into GitHub's database 57 minutes after PR #248 merged; that review is when `npm audit` started reporting it.
