@@ -129,7 +129,7 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
-- **`npm audit` is at zero, and the Angular family is on its latest 21.2 patch** (2026-10-08, #267, PR #NNN, frontend + infra).
+- **`npm audit` is at zero, and the Angular family is on its latest 21.2 patch** (2026-10-08, #267, PR #270, frontend + infra).
   - **What audit flagged:** four advisories against developer tooling, reviewed into GitHub's database on 2026-10-05 and 06:
     - `proxy-addr` (critical) and the MCP SDK (high), under Angular CLI's `ng mcp` server;
     - `shell-quote` (critical), under the API generator's `concurrently`;
