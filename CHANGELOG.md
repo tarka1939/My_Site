@@ -129,6 +129,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
+- **The E2E projects journey runs to its end again** (2026-10-08, #268, PR #NNN, frontend). Since descriptions became Markdown on 2026-09-10, the detail page's description has been a `<div>` with one `<p>` per paragraph. The journey still looked for `p.description`, so on `dev` it failed at that line, and none of its later checks ran, the gallery's alt text among them. It now locates `div.description` and passes. The suite runs in no CI job (#250), which is how this went unnoticed for four weeks.
+
 - **`npm audit` stops reporting the `http-cache-semantics` advisory, though that advisory is not what changed** (2026-10-08, #265, PR #266, frontend + infra).
   - **What audit flagged:** GHSA-ch52-4w7c-c8xp, a `max-stale` claim against `http-cache-semantics` ≤ 4.2.0. It was published unreviewed on 2026-09-18, and reviewed into GitHub's database 57 minutes after PR #248 merged; that review is when `npm audit` started reporting it.
   - **Where the package is used:** only under `@angular/cli` → pacote, by its registry client and its Sigstore verification.
