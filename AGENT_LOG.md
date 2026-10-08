@@ -324,13 +324,13 @@ Copy this block per entry:
 5. **The E2E projects journey had failed at one line on `dev` for four weeks.**
    - Descriptions became Markdown on 2026-09-10 (df5e0fa, PR #208), so the description became a `<div>` holding paragraphs. The journey still looked for `p.description`.
    - Every check after that line went unrun, the gallery's alt text and #227's viewer buttons among them.
-   - The suite is in no CI job (#250), and nobody ran the projects journey in between. The one recorded run in those weeks, for PR #247 on 2026-10-02, was `tests/admin.spec.ts` alone. That run found #250's stale locator. This one was in the next file, which nobody ran.
+   - The suite is in no CI job (#250), and nobody ran the projects journey in between. The one recorded run in those weeks, for PR #247 on 2026-10-02, was `tests/admin.spec.ts` alone. That run found #250's stale locator. This one was in another file, `tests/projects.spec.ts`, which nobody ran.
 6. **`npm update @angular/build` exited 0 and changed nothing.** Re-resolving the build's peer selects `@angular/compiler-cli` 21.2.25. That pins `@angular/compiler` 21.2.25 exactly, which conflicted with the locked 21.2.24. npm skipped the move silently. Only an `npm install` of an exact version printed the ERESOLVE.
 7. **A reason lost its load-bearing half when it was shortened.** The CHANGELOG and commit b82fc13 said npm cannot move "the CLI and `@angular/build`" without the framework. That is true of the pair, because of the build. The PR body said outright that the CLI could move alone. PROJECT_TODO's one-line version dropped the build: "npm cannot move the CLI ... without the framework". That is false: cb03e61 had moved the CLI alone.
 8. **An E2E pass could not show which servers it tested.** #270's first 8 of 8 ran with `reuseExistingServer` on, while another worktree, on Angular 21.2.24, existed. A server left running from that checkout would have been tested instead, and the run would have reported green: the 2026-08-09 false verification again. Nothing suggests a server was reused, but nothing recorded showed that none was.
 9. **CLAUDE.md was read from a checkout 141 commits behind `dev`, and reported to the owner as stale.**
-   - The session started in the main checkout, whose `dev` sat at 27f680f, so that copy of CLAUDE.md is the one injected into it and into every agent it dispatched.
-   - That copy still says the frontend has no linter, and that CI runs three jobs. `dev`'s has documented ESLint and the lint job since 2026-10-01 (162123e).
+   - The session started in the main checkout, whose `dev` sat at 27f680f, 141 commits behind `dev`'s 613c1c3, so that copy of CLAUDE.md is the one injected into it and into every agent it dispatched.
+   - That copy still says the frontend has no linter, and that CI runs three jobs. `dev`'s has documented ESLint and the lint job since 2026-10-02, when PR #245 merged (162123e).
    - The owner-decisions list and a status message told the owner those two lines were stale. #264's and #270's cold reviewers reported the same, from the same copy.
    - It is the first rule under "Never quote a working tree without naming its branch", applied to the file that states the rule.
 
@@ -341,7 +341,7 @@ Copy this block per entry:
 5. Running the full suite for #270's router change.
 6. The lockfile diff was empty. #270's reviewer reproduced the ERESOLVE on `dev`'s files.
 7–8. #270's cold review. 8 because `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`.
-9. This PR's cold review, which read `dev`'s CLAUDE.md with `git show` and diffed it against the main checkout's.
+9. This PR's cold review, which read `dev`'s CLAUDE.md with `git show`, compared its lint lines with the copy in its own context, and measured the lag with `git rev-list`.
 
 **Fix applied:**
 1. The spec parses the alpha per scheme, inside the loop. A dark-only alpha now fails at 4.10:1.
