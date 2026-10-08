@@ -129,6 +129,22 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
+- **`npm audit` is at zero, and the Angular family is on its latest 21.2 patch** (2026-10-08, #267, PR #NNN, frontend + infra).
+  - **What audit flagged:** four advisories against developer tooling, reviewed into GitHub's database on 2026-10-05 and 06:
+    - `proxy-addr` (critical) and the MCP SDK (high), under Angular CLI's `ng mcp` server;
+    - `shell-quote` (critical), under the API generator's `concurrently`;
+    - `source-map-js` (high), under the Sass and PostCSS build and under jsdom in the tests.
+  - **Exposure here:** none.
+    - Nothing runs or configures `ng mcp`.
+    - The generator calls `concurrently` only for generators listed in `openapitools.json`, and that file lists none. Even then, `concurrently` reaches `quote()` only when given passthrough arguments, which the generator never passes.
+    - `source-map-js` reads only maps from this repo's sources and installed packages.
+  - **The fix:** lockfile only, and every version is one that a `package.json` range already admits.
+    - `proxy-addr` 2.0.8, `source-map-js` 1.2.2 and `concurrently` 10.0.6 (which brings `shell-quote` 1.12.0) move inside their parents' ranges.
+    - `@angular/cli` 21.2.26 pins the MCP SDK fix exactly. npm cannot move the CLI and `@angular/build` without the framework, because re-resolving the build's `compiler-cli` peer selects 21.2.25, which pins `@angular/compiler` 21.2.25 exactly.
+    - So the framework moves from 21.2.24 to 21.2.25 (router hardening, plus a platform-server fix this app does not load), and the tooling moves to 21.2.26.
+  - **One override retired.** `@angular/build` 21.2.25 pins piscina 5.3.2 itself, so PR #248's override is gone. `dependency-overrides.spec.ts` failed on the lockfile change and said to remove it, which is what it was built to do.
+  - **Checks.** The initial bundle grows 0.50 kB raw and 0.17 kB transferred, all of it in the chunk that carries the router. The API client regenerates unchanged.
+
 - **`npm audit` stops reporting the `http-cache-semantics` advisory, though that advisory is not what changed** (2026-10-08, #265, PR #266, frontend + infra).
   - **What audit flagged:** GHSA-ch52-4w7c-c8xp, a `max-stale` claim against `http-cache-semantics` ≤ 4.2.0. It was published unreviewed on 2026-09-18, and reviewed into GitHub's database 57 minutes after PR #248 merged; that review is when `npm audit` started reporting it.
   - **Where the package is used:** only under `@angular/cli` → pacote, by its registry client and its Sigstore verification.
