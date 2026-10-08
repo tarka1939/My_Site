@@ -42,9 +42,6 @@
     "vitest": "^4.0.8"
   },
   "overrides": {
-    "@angular/build": {
-      "piscina": "5.3.2"
-    },
     "get-uri": {
       "basic-ftp": "^6.2.1"
     }
