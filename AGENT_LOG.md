@@ -297,6 +297,68 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-08 — Senior Dev: an audit reading stale within a day, a journey unfinished for four weeks, and a reason that drifted when shortened
+
+**Task given:** Work the open issues autonomously after 2026-10-05, and keep the owner-decisions list current. The work became four PRs to `dev`, all merged on 2026-10-08:
+- PR #264: #165, the muted surface's contrast record and its test;
+- PR #266: #265, `http-cache-semantics` to 4.3.0;
+- PR #270: #267, four dev-tooling advisories, which moved the Angular family to 21.2.25 and 21.2.26;
+- PR #269: #268, a stale E2E locator, found while testing #270.
+
+**Agent(s) used:** Senior Dev (Opus) implemented all four. A fresh Opus session gave each a cold review.
+
+**What went right:**
+- **#248's override spec retired an override, which is what it was built for.** `@angular/build` 21.2.25 pins piscina 5.3.2 itself. On #270's lockfile commit, `dependency-overrides.spec.ts` failed with "Remove the override from package.json and from OVERRIDES in this file". The next commit removed it.
+- **A framework patch got the whole E2E suite, not only the unit tests.** That run is what found #268.
+- **#270's exposure was checked in installed code, not argued from package names:**
+  - Loading the three MCP SDK modules `ng mcp` requires pulls in 222 modules, none of them express, `proxy-addr` or the OAuth client.
+  - Only postcss calls `SourceMapConsumer`.
+  - `concurrently` reaches `shell-quote` only with passthrough arguments, and the generator never passes them.
+- **#264's guard was mutation-tested three ways,** and each mutation failed only the composite test.
+
+**What went wrong (be specific):**
+1. **A test looped over both schemes and read one scheme's value.** `styles.spec.ts` parsed `--color-surface-muted`'s alpha from the light value and used it for dark too. #264 fixed which ground the test measured, but its first version kept that read. A dark-only alpha passed unmeasured, and a dark-only alpha is a likely answer to #165 itself. The reviewer set one: dark muted text fell under AA on both grounds, 3.76:1 on a card, and the suite still passed 54 of 54.
+2. **The record listed the colours that sit on the fill, and missed one.** The docblock said "ink, or muted inside a blockquote". The PR body said "right for every pairing that carries text". But markdown-it renders `` [`x`](url) `` as code inside a link, so accent text lands on the fill too: 4.27:1 light and 4.41:1 dark over a card, under AA. Nothing paints that pairing today.
+3. **"Published" was written for "reviewed".** #266's first CHANGELOG and PROJECT_TODO said the `http-cache-semantics` advisory "entered GitHub's database after PR #248". It was published, unreviewed, on 2026-09-18. What happened 57 minutes after #248 merged was the review, and that is when `npm audit` starts reporting an advisory.
+4. **"Audit is at zero" went stale within a day, and its correction cited a check that does not exist.** #266 was checked on 2026-10-05 and said audit was at zero. Over the next day, four advisories were reviewed into the database and took it to 6 findings (#267). The first rewording said the last CI run had read zero. CI does not run `npm audit`.
+5. **The E2E projects journey had failed at one line on `dev` for four weeks.**
+   - Descriptions became Markdown on 2026-09-10 (df5e0fa, PR #208), so the description became a `<div>` holding paragraphs. The journey still looked for `p.description`.
+   - Every check after that line went unrun, the gallery's alt text and #227's viewer buttons among them.
+   - The suite is in no CI job (#250), and nobody ran it in between.
+6. **`npm update @angular/build` exited 0 and changed nothing.** Re-resolving the build's peer selects `@angular/compiler-cli` 21.2.25. That pins `@angular/compiler` 21.2.25 exactly, which conflicted with the locked 21.2.24. npm skipped the move silently. Only an `npm install` of an exact version printed the ERESOLVE.
+7. **A reason drifted when it was shortened.** The CHANGELOG, the PR body and commit b82fc13 said npm cannot move `@angular/build` without the framework. PROJECT_TODO's one-line version said it cannot move the CLI. That is false: cb03e61 had moved the CLI alone.
+8. **An E2E pass could not show which servers it tested.** #270's first 8 of 8 ran with `reuseExistingServer` on, while another worktree, on Angular 21.2.24, existed. A server left running from that checkout would have been tested instead, and the run would have reported green: the 2026-08-09 false verification again. Nothing suggests a server was reused, but nothing recorded showed that none was.
+
+**How it was caught:**
+1–2. #264's cold review: 1 by a mutation, 2 by rendering a linked code span with the repo's markdown-it configuration.
+3. #266's cold review, from the advisory's `published_at` and `github_reviewed_at`.
+4. Rerunning `npm audit` before merging #266. The CI claim was caught on rereading the correction, before either PR merged.
+5. Running the full suite for #270's router change.
+6. The lockfile diff was empty. #270's reviewer reproduced it on `dev`'s files.
+7–8. #270's cold review. 8 because `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`.
+
+**Fix applied:**
+1. The spec parses the alpha per scheme, inside the loop. A dark-only alpha now fails at 4.10:1.
+2. Accent is recorded on both grounds and asserted on the page ground. The card pairing joins #165's question for the owner.
+3. Both files say "reviewed into GitHub's database 57 minutes after PR #248 merged".
+4. #266's docs say audit read zero "when this change was checked on 2026-10-05" and point to #267. No doc says CI reads audit. #270 took audit back to zero.
+5. PR #269 locates `.description` inside the article, with no tag name, since the tag is what went stale. The journey passes again, and its later checks pass on their first run in four weeks.
+6. All 17 Angular, devkit and schematics entries were deleted from the lockfile and re-resolved with `npm install --package-lock-only`. The review checked every changed entry's integrity against the registry.
+7. PROJECT_TODO now says what the other three say, and adds that moving the CLI alone leaves two copies of the devkit packages.
+8. A rerun with `CI=1`, which forbids reuse, passed 8 of 8:
+   - the log has Playwright's own `[WebServer]` output;
+   - ports 4200 and 8080 were free before and after;
+   - the checkout's installed Angular versions were read back.
+
+**Takeaway for next time:**
+- **In a loop over schemes, every value should come from the loop variable.** A value read once outside the loop is the light scheme's by accident. A test of that shape passes whatever happens to the other scheme.
+- **An advisory is published, then reviewed, and `npm audit` reports only reviewed ones.** One can sit unreviewed for weeks, then turn audit red overnight with nothing changed here. "Audit is at zero" is an observation with a date, so write the date.
+- **Name who ran a check.** CI runs the tests, lint and the API-client check. Anything else was a person, on a day.
+- **A suite nobody is made to run stops being run.** This is the second stale E2E locator found by someone happening to run the suite. #250, a CI job for it, is the owner's call.
+- **An exit code of 0 from `npm update` means npm did not fail, not that anything moved.** Read the lockfile diff. This belongs with the index's section 5.
+- **When you shorten a reason, re-derive it rather than compress the sentence.** The long versions were right. The one-line version kept the sentence's shape and swapped its subject.
+- **Prove which server a local E2E run used.** Run with `CI=1`, or check the ports before and after: outside CI, reuse is the default.
+
 ## 2026-10-04 — Senior Dev: a port nobody had observed, a property only a test set, and a mechanism named one layer too low
 
 **Task given:** Work the open issues autonomously after the 2026-10-03 release (#258). The work became three PRs to `dev`:
