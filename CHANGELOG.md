@@ -129,12 +129,13 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
-- **`npm audit` is at zero again, though the advisory it showed is not what changed** (2026-10-08, #265, PR #266, frontend + infra).
+- **`npm audit` stops reporting the `http-cache-semantics` advisory, though that advisory is not what changed** (2026-10-08, #265, PR #266, frontend + infra).
   - **What audit flagged:** GHSA-ch52-4w7c-c8xp, a `max-stale` claim against `http-cache-semantics` ≤ 4.2.0. It was published unreviewed on 2026-09-18, and reviewed into GitHub's database 57 minutes after PR #248 merged; that review is when `npm audit` started reporting it.
   - **Where the package is used:** only under `@angular/cli` → pacote, by its registry client and its Sigstore verification.
   - **Exposure here:** none. `make-fetch-happen` constructs every cache policy with `shared: false`, so the shared-cache branches the advisory depends on never run.
   - **The fix:** the lockfile now has 4.3.0, which fixes a different CVE upstream, CVE-2026-93750 (`Vary: *` matching), and adds a `status()` method nothing here calls.
-  - **Why audit is green:** the advisory's range was written before 4.3.0 existed. The `max-stale` code did not change. The advisory has not been withdrawn: the maintainer rebutted its `Set-Cookie` case, but not its `proxy-revalidate` one. If the range widens, audit goes red again until the advisory database decides, and that is acceptable for the same `shared: false` reason.
+  - **Why audit stops reporting it:** the advisory's range was written before 4.3.0 existed. The `max-stale` code did not change. The advisory has not been withdrawn: the maintainer rebutted its `Set-Cookie` case, but not its `proxy-revalidate` one. If the range widens, audit reports it again until the advisory database decides, and that is acceptable for the same `shared: false` reason.
+  - **Audit is not at zero.** It read zero when this change was checked on 2026-10-05. Four more advisories against developer tooling were reviewed into GitHub's database within the next day and take it to 6 findings. They are #267.
 
 - **The API contract describes the 401 a bearer token gets as it is: empty** (2026-10-05, #255, PR #262, documentation + backend + frontend). `docs/openapi.yaml` said a missing or refused token got a problem body. Spring Security's bearer-token entry point sends the status and a `WWW-Authenticate` challenge (RFC 6750) and nothing else, which production confirmed. The contract's `Unauthorized` response now has no body and documents the header. It also says that a refused token is refused on any endpoint it is sent to, public reads included. The login and webhook 401s are unchanged and still carry problem bodies. The regenerated client changes in types only. A backend test pins the empty challenge, and the interceptor spec stops modelling a body that never arrives.
 
