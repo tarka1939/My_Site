@@ -211,9 +211,10 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
 
   // The whole description, every paragraph of it -- the other half of the excerpt claim. The card
   // is allowed to cut only because this page does not: both markers the card had to suppress have
-  // to be here. Class locator for the same reason as on the card: the article holds two <p>
-  // elements and a paragraph has no role or name.
-  const detailDescription = page.locator('p.description');
+  // to be here. A class locator, because nothing here has a role or a name. The description is
+  // rendered Markdown (since 2026-09-10), so it is a <div> holding one <p> per paragraph, and
+  // `toHaveText`'s whitespace normalisation makes the joined paragraphs compare equal to them.
+  const detailDescription = page.locator('div.description');
   await expect(detailDescription).toHaveText(FIXTURE_ALPHA.description);
   for (const marker of FIXTURE_ALPHA_CARD_TEXT.hiddenOnCard) {
     await expect(detailDescription).toContainText(marker);
