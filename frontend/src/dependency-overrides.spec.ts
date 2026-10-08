@@ -13,8 +13,8 @@ import { dirname, join } from 'node:path';
  * what CI and Netlify install, and needs no install to run.
  */
 const OVERRIDES = [
-  // piscina under @angular/build (GHSA-67c8-pqhq-4rmx) was the other, until @angular/build
-  // 21.2.25 pinned 5.3.2 itself. This file failed in #267 and said so, which is the design.
+  // The piscina override under @angular/build (GHSA-67c8-pqhq-4rmx) was removed in #267:
+  // @angular/build 21.2.25 pins 5.3.2 itself, and the 'still needed' case below failed and said so.
   { parent: 'get-uri', child: 'basic-ftp', fixedIn: '6.2.1', advisory: 'GHSA-c475-qrg2-pj4r' },
 ];
 
