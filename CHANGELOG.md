@@ -129,7 +129,7 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
-- **`npm audit` is at zero again, though the advisory it showed is not what changed** (2026-10-05, #265, PR #266, frontend + infra).
+- **`npm audit` is at zero again, though the advisory it showed is not what changed** (2026-10-08, #265, PR #266, frontend + infra).
   - **What audit flagged:** GHSA-ch52-4w7c-c8xp, a `max-stale` claim against `http-cache-semantics` ≤ 4.2.0. It was published unreviewed on 2026-09-18, and reviewed into GitHub's database 57 minutes after PR #248 merged; that review is when `npm audit` started reporting it.
   - **Where the package is used:** only under `@angular/cli` → pacote, by its registry client and its Sigstore verification.
   - **Exposure here:** none. `make-fetch-happen` constructs every cache policy with `shared: false`, so the shared-cache branches the advisory depends on never run.
