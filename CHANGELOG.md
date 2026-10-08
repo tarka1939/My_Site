@@ -145,6 +145,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
   - **One override retired.** `@angular/build` 21.2.25 pins piscina 5.3.2 itself, so PR #248's override is gone. `dependency-overrides.spec.ts` failed on the lockfile change and said to remove it, which is what it was built to do.
   - **Checks.** The initial bundle grows 0.50 kB raw and 0.17 kB transferred, all of it in the chunk that carries the router. The API client regenerates unchanged. The E2E suite passes 8 of 8 with #268's stale locator fixed (PR #269); that one failure is the same on `dev`.
 
+- **The E2E projects journey runs to its end again** (2026-10-08, #268, PR #269, frontend). Since descriptions became Markdown on 2026-09-10, the detail page's description has been a `<div>` with one `<p>` per paragraph. The journey still looked for `p.description`, so on `dev` it failed at that line, and none of its later checks ran, the gallery's alt text among them. It now locates `.description` inside the article, without the tag name that went stale, and passes. The suite runs in no CI job (#250), which is how this went unnoticed for four weeks.
+
 - **`npm audit` stops reporting the `http-cache-semantics` advisory, though that advisory is not what changed** (2026-10-08, #265, PR #266, frontend + infra).
   - **What audit flagged:** GHSA-ch52-4w7c-c8xp, a `max-stale` claim against `http-cache-semantics` ≤ 4.2.0. It was published unreviewed on 2026-09-18, and reviewed into GitHub's database 57 minutes after PR #248 merged; that review is when `npm audit` started reporting it.
   - **Where the package is used:** only under `@angular/cli` → pacote, by its registry client and its Sigstore verification.
