@@ -29,7 +29,10 @@ if [ -z "$PY" ]; then
 fi
 
 # Reads a hook's stdout and prints "deny" or "allow". Empty output is allow,
-# which is what Claude Code itself does with it.
+# which is what Claude Code itself does with it. The deny each hook ends with,
+# when no interpreter ran, prints "deny-fallback" instead: otherwise a case that
+# expects a pattern's deny would also pass with no interpreter at all, which is
+# a pass for the wrong reason (#284 review).
 verdict() {
   "$PY" -c '
 import json, sys
@@ -38,7 +41,11 @@ if not raw:
     print("allow")
 else:
     try:
-        print(json.loads(raw)["hookSpecificOutput"]["permissionDecision"])
+        out = json.loads(raw)["hookSpecificOutput"]
+        decision = out["permissionDecision"]
+        if decision == "deny" and "could not run an interpreter" in out.get("permissionDecisionReason", ""):
+            decision = "deny-fallback"
+        print(decision)
     except Exception:
         print("malformed")
 ' 2>/dev/null || echo "no-python"
@@ -51,11 +58,11 @@ check() { # check <expected> <label> <hook> [env assignment...]
     PASS=$((PASS + 1))
   else
     FAIL=$((FAIL + 1))
-    printf '  FAIL  expected %-5s got %-9s  %s\n' "$expected" "$got" "$label"
+    printf '  FAIL  expected %-13s got %-13s  %s\n' "$expected" "$got" "$label"
   fi
 }
 
-cmd() { # build a Bash-tool payload with the given command string
+cmd() { # build a Bash or PowerShell tool payload with the given command string
   STDIN=$("$PY" -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$1")
 }
 
@@ -109,10 +116,22 @@ for c in \
 cmd "$(printf 'git push My_Site feat/x\nrm -f /tmp/scratch\n')"
 check allow "multi-line push followed by rm -f" "$GUARD"
 
+# The same holds for `;`, `&&` and `|`: a match must stop at each. Every one of
+# these is denied if its separator is dropped from SPAN's class. Until the #284
+# review nothing tested that, and removing `;` from all three classes still
+# passed every case.
+for c in \
+  "git checkout feat/x; git log --oneline dev" \
+  "git checkout feat/x && git log --oneline dev" \
+  "git checkout feat/x | grep dev" \
+  "git push -u My_Site feat/x; git branch -f tmp HEAD" \
+  ; do cmd "$c"; check allow "separator: $c" "$GUARD"; done
+
 # --- PowerShell spellings (#283) -------------------------------------------
 # The same payload arrives from the PowerShell tool, so these are the reflexes
-# as a Windows session types them: `;` and `if ($?)` rather than `&&`,
-# backslashed paths, and `-Force` on a cmdlet after a separator.
+# as a Windows session types them: `;` and `if ($?)` rather than `&&`, and
+# backslashed paths. A backslash is a path separator, not a token boundary, so
+# a Maven `src\main` in a restored path is not a checkout of `main`.
 for c in \
   "git checkout dev; if (\$?) { git status }" \
   "Set-Location D:\\repos\\My_Site; git checkout main" \
@@ -126,6 +145,8 @@ for c in \
   "git log --oneline main | Select-Object -First 5" \
   "git push -u My_Site feat/x; Remove-Item -Recurse -Force \$env:TEMP\\scratch" \
   "git worktree remove D:\\repos\\My_Site\\.claude\\worktrees\\x" \
+  "git checkout -- backend\\src\\main\\java\\X.java" \
+  "git checkout My_Site/dev -- backend\\src\\main\\resources\\application.yml" \
   ; do cmd "$c"; check allow "PowerShell: $c" "$GUARD"; done
 
 echo "check-worktree-scope.sh"
@@ -159,14 +180,24 @@ chmod +x "$STUB/python" "$STUB/python3" "$STUB/py"
 # makes the case prove nothing. A broken python *earlier on the path* than the
 # real one is the situation being modelled.
 #
-# `git status` and a file inside the worktree are allowed by a working hook, so
-# a deny here can only come from the hard-coded line each hook ends with. This
-# case used `git checkout main` until #282, which any interpreter slipping past
-# the stubs would also have denied.
+# `git status` and a file inside the worktree are allowed by a working hook, and
+# "deny-fallback" names the hard-coded line each hook ends with, so these pass
+# only through that line. This case used `git checkout main` until #282, which
+# any interpreter slipping past the stubs would also have denied.
 cmd "git status"
-check deny "no interpreter runs"                  "$GUARD" "PATH=$STUB:$PATH"
+check deny-fallback "no interpreter runs"           "$GUARD" "PATH=$STUB:$PATH"
 scope "$R/CLAUDE.md"
-check deny "no interpreter runs, opted in"        "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
+check deny-fallback "no interpreter runs, opted in" "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
+
+# An interpreter that exits 0 with something other than the hook's JSON has not
+# answered. Claude Code would read a printed notice as plain text, an allow, so
+# the hooks must move on and end at their deny instead.
+printf '#!/bin/bash\necho "a notice from the interpreter"\n' > "$STUB/python"
+cmd "git checkout main"
+check deny-fallback "exit 0 with a notice, not JSON" "$GUARD" "PATH=$STUB:$PATH"
+scope "$R/CLAUDE.md"
+check deny-fallback "exit 0 with a notice, opted in" "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
+printf '#!/bin/bash\nexit 9009\n' > "$STUB/python"
 
 # Now `py` alone works, and the hooks must reach it rather than stop at the two
 # broken names before it. REAL is an absolute path, so the shim cannot find
@@ -184,18 +215,32 @@ rm -rf "$STUB"
 # Every case above calls a hook directly, so none of them can tell whether
 # Claude Code ever sends it a call. The matchers in .claude/settings.json decide
 # that, and until #283 the branch guard's was `Bash` alone, so PowerShell calls
-# never reached it. fullmatch is at least as strict as Claude Code's matching:
-# a "yes" here is a yes there.
+# never reached it.
+#
+# `matches` follows the rules in Claude Code's hooks documentation, "Matcher
+# patterns": "*", "" or no matcher matches every tool; a matcher made only of
+# letters, digits, `_`, `-`, spaces, `,` and `|` is a list of exact names; any
+# other matcher is an unanchored JavaScript regex, approximated here with
+# Python's re.search. It does not model a hook-level `if`, `disableAllHooks`,
+# or .claude/settings.local.json, any of which can still keep a call away.
 echo "settings.json wiring"
 wired() { # wired <hook script> <tool name>: "yes" if a PreToolUse matcher sends that tool to it
   "$PY" -c '
 import json, re, sys
 script, tool = sys.argv[1], sys.argv[2]
+
+def matches(matcher, tool):
+    if matcher in (None, "", "*"):
+        return True
+    if re.fullmatch(r"[A-Za-z0-9_ ,|-]+", matcher):
+        return tool in [name.strip() for name in re.split(r"[,|]", matcher)]
+    return re.search(matcher, tool) is not None
+
 try:
     with open(".claude/settings.json", encoding="utf-8") as f:
         entries = json.load(f)["hooks"]["PreToolUse"]
     print("yes" if any(
-        re.fullmatch(e["matcher"], tool)
+        matches(e.get("matcher"), tool)
         and any(script in h.get("command", "") for h in e.get("hooks", []))
         for e in entries) else "no")
 except Exception as error:
@@ -208,10 +253,10 @@ for pair in \
   "check-worktree-scope.sh Edit" \
   "check-worktree-scope.sh Write" \
   ; do
-  set -- $pair
-  got=$(wired "$1" "$2")
+  read -r script tool <<<"$pair"
+  got=$(wired "$script" "$tool")
   if [ "$got" = "yes" ]; then PASS=$((PASS + 1)); else
-    FAIL=$((FAIL + 1)); printf '  FAIL  expected yes   got %-9s  %s calls reach %s\n' "$got" "$2" "$1"; fi
+    FAIL=$((FAIL + 1)); printf '  FAIL  expected yes   got %-13s  %s calls reach %s\n' "$got" "$tool" "$script"; fi
 done
 
 echo

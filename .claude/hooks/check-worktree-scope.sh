@@ -122,8 +122,12 @@ emit("Blocked: " + path + " is outside this session assigned worktree (" + root 
      "session on the shared repo. See docs/AGENT_WORKFLOW.md.")
 sys.exit(0)
 ' 2>/dev/null); then
-    printf '%s' "$OUTPUT"
-    exit 0
+    # Only nothing, or this script's own JSON, counts as an answer. Anything
+    # else would reach Claude Code as plain text, which is an allow; see the
+    # same check in block-protected-branch-ops.sh.
+    case "$OUTPUT" in
+      '' | '{"hookSpecificOutput"'*) printf '%s' "$OUTPUT"; exit 0 ;;
+    esac
   fi
 done
 

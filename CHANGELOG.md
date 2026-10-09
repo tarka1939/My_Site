@@ -131,7 +131,8 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 - **The branch guard works again on Windows, and sees PowerShell too** (2026-10-09, #282, #283, PR #284, infra).
   - **It refused every Bash call.** The Store's app-execution aliases for `python` and `python3` came back ahead of the real interpreter on PATH. The guard tried only those two names, so it fell through to its deny, as designed, and refused everything. Both hooks now also try `py`. `hooks.test.sh` picks its interpreter the same way: before this, it read 0 passed, 42 failed on this machine.
-  - **PowerShell calls never reached it.** Its matcher was `Bash`, while the desktop app's primary shell is a `PowerShell` tool, so `git checkout dev` typed there ran unguarded. The matcher is now `Bash|PowerShell`. PowerShell-spelled cases cover the patterns, and a check reads the wiring in `.claude/settings.json`.
+  - **PowerShell calls never reached it.** Its matcher was `Bash`, while the desktop app's primary shell is a `PowerShell` tool, so `git checkout dev` typed there ran unguarded. The matcher is now `Bash|PowerShell`. PowerShell-spelled cases cover the patterns, and a check reads the wiring in `.claude/settings.json`. A backslash now counts as a path separator, so restoring `backend\src\main\...` is not read as a checkout of `main`.
+  - **Its tests could pass for the wrong reason, and now cannot.** The hooks' last-line deny reads differently from a pattern's, so a case can't pass with no interpreter at all. New cases show that a match stops at `;`, `&&` and `|`. An interpreter that exits 0 with anything but the hook's JSON no longer counts as an answer, because Claude Code would read that as an allow.
   - **It reaches sessions** once the checkout they start in is fast-forwarded, because hooks load from there.
 
 - **The backend moves past 16 published advisories, and its version overrides retire themselves** (2026-10-09, #272, PR #274, backend).
