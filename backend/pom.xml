@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.0</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -19,8 +19,14 @@
 
     <properties>
         <java.version>25</java.version>
-        <spring-modulith.version>2.1.0</spring-modulith.version>
-        <testcontainers.version>2.0.5</testcontainers.version>
+        <spring-modulith.version>2.1.1</spring-modulith.version>
+
+        <!-- Overrides of versions Spring Boot manages, each ahead of the parent for an advisory
+             (#272). A property here pins: when the parent moves past it, it holds the library
+             back instead. DependencyOverridesTest lists each one and fails in the build that
+             makes it unnecessary, saying to delete it. -->
+        <tomcat.version>11.0.26</tomcat.version>
+        <jackson-bom.version>3.1.7</jackson-bom.version>
     </properties>
 
     <dependencyManagement>
@@ -29,13 +35,6 @@
                 <groupId>org.springframework.modulith</groupId>
                 <artifactId>spring-modulith-bom</artifactId>
                 <version>${spring-modulith.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.testcontainers</groupId>
-                <artifactId>testcontainers-bom</artifactId>
-                <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -130,6 +129,19 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- For DependencyOverridesTest: the versions the parent would manage
+                             without this file's overrides. Maven resolved this pom to build the
+                             project at all, so it is always in the local repository. -->
+                        <spring-boot.dependencies-pom>${settings.localRepository}/org/springframework/boot/spring-boot-dependencies/${project.parent.version}/spring-boot-dependencies-${project.parent.version}.pom</spring-boot.dependencies-pom>
+                        <project.pom>${project.basedir}/pom.xml</project.pom>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
         </plugins>
     </build>
