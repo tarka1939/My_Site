@@ -873,6 +873,7 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 
 **Consequences:**
 - When released, the API sends `Strict-Transport-Security: max-age=31536000 ; includeSubDomains`. A browser that sees it will refuse plain HTTP to this host and its subdomains for a year. Cloudflare's 301 already makes plain HTTP unusable there.
+- **Released 2026-10-09 in PR #277.** The owner chose the full year over a short first `max-age`. After the deploy, production sent the header, and the resource metadata said `https://` and `"tls_client_certificate_bound_access_tokens":false`.
 - A request that bypasses Cloudflare over plain HTTP is also reported as secure. Nothing depends on that: there are no cookies, and browsers ignore HSTS sent over HTTP.
 - If the app is ever served without a TLS-terminating proxy in front, `TLS_TERMINATED_UPSTREAM=false` turns this off. That stops the header being sent, not browsers obeying it: one that already has the policy keeps it until it expires. Only a response over HTTPS carrying `max-age=0` clears it early, and only in browsers that come back to receive it. Retiring HTTPS on this host safely means serving that for a year first.
 

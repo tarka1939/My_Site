@@ -805,9 +805,9 @@ One consequence on the app's side: it receives plain HTTP. Until #260 it treated
 request said `http://`. The `prod` profile now sets `app.tls-terminated-upstream`, which tells Tomcat's
 connector the scheme is `https` on port 443. This is safe to state rather than detect because
 Cloudflare answers plain HTTP with a 301 to HTTPS. It is not `server.forward-headers-strategy`, which
-would also rewrite the client address `ClientIpResolver` relies on (#168). Once released, the API's
-HSTS (`max-age=31536000 ; includeSubDomains`) tells browsers to use HTTPS for this host and its
-subdomains for a year.
+would also rewrite the client address `ClientIpResolver` relies on (#168). Since the
+2026-10-09 release (PR #277), the API's HSTS (`max-age=31536000 ; includeSubDomains`) tells browsers
+to use HTTPS for this host and its subdomains for a year.
 
 Setting `TLS_TERMINATED_UPSTREAM=false` later stops the header, but browsers that already have the
 policy keep it until it expires. Clearing it early takes a response over HTTPS with `max-age=0`, which
