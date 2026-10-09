@@ -297,6 +297,64 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-09 — Senior Dev: an audit that covered half the stack, a pin on a premise nobody checked, and Javadoc described from its source
+
+**Task given:** Continue autonomously from 2026-10-08. That meant a tech-debt pass (#68), which became two PRs to `dev`, both merged on 2026-10-09:
+- PR #274: #272, 16 published advisories against the backend's runtime libraries;
+- PR #275: two Javadoc blocks the generated docs were dropping.
+
+It also filed #273 (nothing alerts on vulnerable dependencies) and #276 (Angular 22), and recorded the pass on #68. After the owner's go-ahead, it opened the 2026-10-09 promotion, PR #277.
+
+**Agent(s) used:** Senior Dev (Opus) implemented both PRs. A fresh Opus session gave each a cold review.
+
+**What went right:**
+- **The backend's advisories were found by a script, not by recall.** It ran `mvn dependency:list`, then queried GitHub's advisory database for each artifact and evaluated each advisory's version range. #274's reviewer wrote their own script and got the same 16 on `dev`, and 0 on the branch.
+- **Exposure was checked in compiled code.** For the Jackson number-parsing ReDoS, the reviewer listed the callers of `looksLikeValidNumber` from the 3.1.4 jars' bytecode. Then they checked that no request type reaches any of them.
+- **`DependencyOverridesTest` failed loudly on its own misconfiguration.** Surefire's `${project.file}` interpolated to an empty string. The test checks that each path it is given exists, so it failed with "project.pom names , which does not exist" rather than passing on nothing. `${project.basedir}/pom.xml` works.
+- **The release has a recorded "before".** Ahead of #277, production's API was read: no HSTS header, `http://` in the 401's `WWW-Authenticate` and in the resource metadata, and `tls_client_certificate_bound_access_tokens: true`. Each is a value the release should change, so checking the deploy is a comparison rather than a judgement.
+
+**What went wrong (be specific):**
+1. **The backend had never had a dependency audit.** The frontend's `npm audit` has been tracked since #235, and every "audit is at zero" in the docs is the frontend's. Nothing said the backend was clean, but nothing had checked it either. The 16 advisories were published between 2026-07-11 and 2026-10-01, five of them critical. Production runs all of them until #277 merges.
+2. **A pin sat on `dev` for two months on a false premise.** The 2026-08-01 entry says the explicit `testcontainers-bom` import was needed because Spring Boot 4.1.0's BOM "didn't manage a version for these". It did: the BOM sets `testcontainers.version` to 2.0.5 and imports `testcontainers-bom` itself. The import restated the same version, so nothing broke. Once Boot moved on, it would have held Testcontainers back.
+3. **The guard's first version could not see the shape of pin it was written beside.** It compared only `pom.xml`'s properties with the BOM's. The `testcontainers-bom` import it helped remove was a literal `<version>`, out of its sight. Its version comparison also read `3.1.7-rc1` as `3.1.7`, though Maven orders a qualifier before its release.
+4. **A version bump updated one README and missed another.** Root `README.md` said 4.1.1, while `backend/README.md` still said "Spring Boot 4.1.0 app". So did the `docs/DECISIONS.md` table row.
+5. **Three claims about rendered Javadoc were made from the source:**
+   - In chat, before PR #275 was opened, the Senior Dev said Javadoc copies a record's `@param` text to its accessors. It does not: each accessor gets the generic "Returns the value of the ... record component".
+   - The class doc said the reasons were "with each component, below". The rendered page puts Record Components *above* the class description.
+   - PR #275's body said a `{@link #published()}` would land on a dead end. The generic accessor line links to the `@param` text.
+6. **Two security notes were worded wider than what was checked:**
+   - The CHANGELOG listed binding `Duration` from JSON as an exposure. The advisory means `javax.xml.datatype.Duration`, and the app uses `java.time.Duration` in five classes.
+   - PROJECT_TODO's one-line exposure list read as exhaustive. It left out pgJDBC's `channelBinding`, log4j's `MapMessage`, `DataInput` and more.
+7. **Two references were wrong in drafts:**
+   - #273's draft cited #248, a PR, where it meant the issue, #244.
+   - PR #274's draft said every classpath move was in Boot 4.1.1's release notes. Nimbus is not Boot-managed. It moved because `spring-security-oauth2-jose` 7.1.1 declares 10.9.1.
+
+**How it was caught:**
+1. The tech-debt pass's advisory script, the first time anyone ran one against the backend.
+2. `DependencyOverridesTest`'s first run. `testcontainers.version` is also a property of Boot's BOM, so the "exactly the ones listed" case flagged it. #274's reviewer confirmed from `~/.m2` that the 4.1.0 BOM already managed Testcontainers.
+3. #274's cold review.
+4. #274's cold review.
+5. The first by generating the HTML with `javadoc`. The other two by #275's cold review, which also generated it.
+6. #274's cold review. It found the five `java.time.Duration` uses, and listed the advisories PROJECT_TODO's line did not cover.
+7. Rereading each draft against the sources before it was published. Neither reached GitHub.
+
+**Fix applied:**
+1. PR #274 moves the backend to Boot 4.1.1, with Tomcat 11.0.26 and Jackson 3.1.7 as overrides. After it, 0 advisories apply, runtime or test. Until #273 is settled, the pass's script, recorded on #68, is the backend's only audit.
+2. PR #274 removed the property and the import, with the resolved artifacts unchanged. The 2026-08-01 entry now carries a correction.
+3. The guard now holds every `<version>` in `pom.xml` to a list of three: the project's, the parent's and the Spring Modulith BOM's. It also refuses any version that is not a plain `x.y.z`, apart from Tomcat's trailing `.0`. Three new mutations each failed the case aimed at them: the import restored, a literal version on a dependency, and the comparison loosened.
+4. Both now name 4.1.1. The DECISIONS row is amended rather than rewritten, and the ADR below it still records the original choice.
+5. The class doc says "documented with each component", and PR #275's body states what the accessor line links to.
+6. The CHANGELOG names XML's `Duration` and `XMLGregorianCalendar`, and says the app's own `Duration`s are `java.time` and never bound from a request. PROJECT_TODO says "such as", and points to the CHANGELOG for the full list.
+7. Corrected before filing.
+
+**Takeaway for next time:**
+- **An audit covers the ecosystem it was run on.** "Audit is at zero" needs its ecosystem as well as its date. The backend's check is the script in #68's record until #273 gives it an owner.
+- **A premise recorded in the log is not a fact.** "Boot doesn't manage this" was one read of one error, and stood for two months. Before adding an override, read the parent BOM for the property, as #274 did.
+- **Test a guard against the bug that prompted it.** This one was written beside the Testcontainers pin, and its first version would have caught only the property half of it. The second half was the mutation that mattered.
+- **After a version bump, grep for the old version.** `git grep -n "4\.1\.0"` finds every place that still names it. Here, that was two docs the bump never touched.
+- **Check claims about rendered output in the rendered output.** Source order, link targets and what a tool copies are not visible in the source. The same applies to Javadoc, a Markdown renderer, or a generated client's JSDoc.
+- **In a security note, name a type in full when its simple name matches one the app uses.** Otherwise the reader either worries for nothing or relaxes about the wrong one.
+
 ## 2026-10-08 — Senior Dev: an audit reading stale within a day, a journey unfinished for four weeks, and instructions read from a checkout 141 commits behind
 
 **Task given:** Work the open issues autonomously from 2026-10-05, and keep the owner-decisions list current. The work became four PRs to `dev`, all merged on 2026-10-08:
