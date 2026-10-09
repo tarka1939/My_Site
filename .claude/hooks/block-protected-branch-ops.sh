@@ -1,11 +1,18 @@
 #!/bin/bash
-# PreToolUse hook (matcher: Bash) — see docs/AGENT_WORKFLOW.md
+# PreToolUse hook (matcher: Bash|PowerShell) — see docs/AGENT_WORKFLOW.md
 #
 # Always active, regardless of worktree. Blocks destructive or protected-branch
-# git operations from any Bash tool call: force-push, checking out a shared
-# integration branch directly, and hard resets. Defense in depth on top of
-# worktree isolation — a task session should never need to touch a shared
+# git operations from any Bash or PowerShell tool call: force-push, checking out
+# a shared integration branch directly, and hard resets. Defense in depth on top
+# of worktree isolation — a task session should never need to touch a shared
 # branch directly.
+#
+# PowerShell joined on 2026-10-09 (#283). Claude Code on Windows has a
+# PowerShell tool, the primary shell in the desktop app, and until then its
+# calls never reached this file: `git checkout dev` typed there just ran. Its
+# payload carries `tool_input.command` like Bash's, and the patterns below hold
+# there too. `;` separates commands in both shells, and Windows PowerShell 5.1
+# has no `&&`.
 #
 # `dev` joined main/master on 2026-08-27, when `dev` became the branch feature
 # work is cut from and merged into and `main` became production-only. `dev` is
@@ -110,7 +117,7 @@ def emit(reason):
 try:
     command = json.load(sys.stdin).get("tool_input", {}).get("command")
     if not isinstance(command, str):
-        # A Bash tool call always carries a string command. Anything else is a
+        # A Bash or PowerShell call always carries a string command. Anything else is a
         # payload this hook does not understand, and coercing it with str() --
         # which the first rewrite did -- turns "I cannot read this" into an
         # allow, which is the whole defect being fixed.

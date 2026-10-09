@@ -109,6 +109,25 @@ for c in \
 cmd "$(printf 'git push My_Site feat/x\nrm -f /tmp/scratch\n')"
 check allow "multi-line push followed by rm -f" "$GUARD"
 
+# --- PowerShell spellings (#283) -------------------------------------------
+# The same payload arrives from the PowerShell tool, so these are the reflexes
+# as a Windows session types them: `;` and `if ($?)` rather than `&&`,
+# backslashed paths, and `-Force` on a cmdlet after a separator.
+for c in \
+  "git checkout dev; if (\$?) { git status }" \
+  "Set-Location D:\\repos\\My_Site; git checkout main" \
+  "git -C D:\\repos\\My_Site checkout dev" \
+  "git -C \"D:\\repos\\My_Site\" reset --hard HEAD~1" \
+  "git push --force My_Site main 2>&1 | Out-Null" \
+  ; do cmd "$c"; check deny "PowerShell: $c" "$GUARD"; done
+
+for c in \
+  "git switch dev; if (\$?) { git merge --ff-only My_Site/dev }" \
+  "git log --oneline main | Select-Object -First 5" \
+  "git push -u My_Site feat/x; Remove-Item -Recurse -Force \$env:TEMP\\scratch" \
+  "git worktree remove D:\\repos\\My_Site\\.claude\\worktrees\\x" \
+  ; do cmd "$c"; check allow "PowerShell: $c" "$GUARD"; done
+
 echo "check-worktree-scope.sh"
 R="$(pwd)"
 
@@ -160,6 +179,40 @@ check deny  "python and python3 broken, py runs, and denies" "$GUARD" "PATH=$STU
 scope "$R/CLAUDE.md"
 check allow "python and python3 broken, py runs, opted in" "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
 rm -rf "$STUB"
+
+# --- wiring -----------------------------------------------------------------
+# Every case above calls a hook directly, so none of them can tell whether
+# Claude Code ever sends it a call. The matchers in .claude/settings.json decide
+# that, and until #283 the branch guard's was `Bash` alone, so PowerShell calls
+# never reached it. fullmatch is at least as strict as Claude Code's matching:
+# a "yes" here is a yes there.
+echo "settings.json wiring"
+wired() { # wired <hook script> <tool name>: "yes" if a PreToolUse matcher sends that tool to it
+  "$PY" -c '
+import json, re, sys
+script, tool = sys.argv[1], sys.argv[2]
+try:
+    with open(".claude/settings.json", encoding="utf-8") as f:
+        entries = json.load(f)["hooks"]["PreToolUse"]
+    print("yes" if any(
+        re.fullmatch(e["matcher"], tool)
+        and any(script in h.get("command", "") for h in e.get("hooks", []))
+        for e in entries) else "no")
+except Exception as error:
+    print("unreadable:" + type(error).__name__)
+' "$1" "$2" 2>/dev/null || echo "no-python"
+}
+for pair in \
+  "block-protected-branch-ops.sh Bash" \
+  "block-protected-branch-ops.sh PowerShell" \
+  "check-worktree-scope.sh Edit" \
+  "check-worktree-scope.sh Write" \
+  ; do
+  set -- $pair
+  got=$(wired "$1" "$2")
+  if [ "$got" = "yes" ]; then PASS=$((PASS + 1)); else
+    FAIL=$((FAIL + 1)); printf '  FAIL  expected yes   got %-9s  %s calls reach %s\n' "$got" "$2" "$1"; fi
+done
 
 echo
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
