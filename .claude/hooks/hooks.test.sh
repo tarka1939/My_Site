@@ -15,35 +15,55 @@ SCOPE=.claude/hooks/check-worktree-scope.sh
 PASS=0
 FAIL=0
 
+# The helpers below need a Python of their own: the first name that actually
+# runs, in the hooks' own order. They called `python` directly until 2026-10-09,
+# when that name and `python3` were both the Store's stub, and every case read
+# "no-python" (#282).
+PY=
+for p in python python3 py; do
+  if "$p" -c '' >/dev/null 2>&1; then PY=$p; break; fi
+done
+if [ -z "$PY" ]; then
+  echo "None of python, python3 or py runs here, so no hook verdict can be read."
+  exit 2
+fi
+
 # Reads a hook's stdout and prints "deny" or "allow". Empty output is allow,
-# which is what Claude Code itself does with it.
+# which is what Claude Code itself does with it. The deny each hook ends with,
+# when no interpreter ran, prints "deny-fallback" instead: otherwise a case that
+# expects a pattern's deny would also pass with no interpreter at all, which is
+# a pass for the wrong reason (#284 review).
 verdict() {
-  python -c '
+  "$PY" -c '
 import json, sys
 raw = sys.stdin.read().strip()
 if not raw:
     print("allow")
 else:
     try:
-        print(json.loads(raw)["hookSpecificOutput"]["permissionDecision"])
+        out = json.loads(raw)["hookSpecificOutput"]
+        decision = out["permissionDecision"]
+        if decision == "deny" and "could not run an interpreter" in out.get("permissionDecisionReason", ""):
+            decision = "deny-fallback"
+        print(decision)
     except Exception:
         print("malformed")
 ' 2>/dev/null || echo "no-python"
 }
 
-check() { # check <expected> <label> <hook> [env assignment]
+check() { # check <expected> <label> <hook> [env assignment...]
   local expected="$1" label="$2" hook="$3" got
-  got=$(printf '%s' "$STDIN" | env $4 bash "$hook" 2>/dev/null | verdict)
+  got=$(printf '%s' "$STDIN" | env "${@:4}" bash "$hook" 2>/dev/null | verdict)
   if [ "$got" = "$expected" ]; then
     PASS=$((PASS + 1))
   else
     FAIL=$((FAIL + 1))
-    printf '  FAIL  expected %-5s got %-9s  %s\n' "$expected" "$got" "$label"
+    printf '  FAIL  expected %-13s got %-13s  %s\n' "$expected" "$got" "$label"
   fi
 }
 
-cmd() { # build a Bash-tool payload with the given command string
-  STDIN=$(python -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$1")
+cmd() { # build a Bash or PowerShell tool payload with the given command string
+  STDIN=$("$PY" -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$1")
 }
 
 raw() { STDIN="$1"; }
@@ -96,10 +116,43 @@ for c in \
 cmd "$(printf 'git push My_Site feat/x\nrm -f /tmp/scratch\n')"
 check allow "multi-line push followed by rm -f" "$GUARD"
 
+# The same holds for `;`, `&&` and `|`: a match must stop at each. Every one of
+# these is denied if its separator is dropped from SPAN's class. Until the #284
+# review nothing tested that, and removing `;` from all three classes still
+# passed every case.
+for c in \
+  "git checkout feat/x; git log --oneline dev" \
+  "git checkout feat/x && git log --oneline dev" \
+  "git checkout feat/x | grep dev" \
+  "git push -u My_Site feat/x; git branch -f tmp HEAD" \
+  ; do cmd "$c"; check allow "separator: $c" "$GUARD"; done
+
+# --- PowerShell spellings (#283) -------------------------------------------
+# The same payload arrives from the PowerShell tool, so these are the reflexes
+# as a Windows session types them: `;` and `if ($?)` rather than `&&`, and
+# backslashed paths. A backslash is a path separator, not a token boundary, so
+# a Maven `src\main` in a restored path is not a checkout of `main`.
+for c in \
+  "git checkout dev; if (\$?) { git status }" \
+  "Set-Location D:\\repos\\My_Site; git checkout main" \
+  "git -C D:\\repos\\My_Site checkout dev" \
+  "git -C \"D:\\repos\\My_Site\" reset --hard HEAD~1" \
+  "git push --force My_Site main 2>&1 | Out-Null" \
+  ; do cmd "$c"; check deny "PowerShell: $c" "$GUARD"; done
+
+for c in \
+  "git switch dev; if (\$?) { git merge --ff-only My_Site/dev }" \
+  "git log --oneline main | Select-Object -First 5" \
+  "git push -u My_Site feat/x; Remove-Item -Recurse -Force \$env:TEMP\\scratch" \
+  "git worktree remove D:\\repos\\My_Site\\.claude\\worktrees\\x" \
+  "git checkout -- backend\\src\\main\\java\\X.java" \
+  "git checkout My_Site/dev -- backend\\src\\main\\resources\\application.yml" \
+  ; do cmd "$c"; check allow "PowerShell: $c" "$GUARD"; done
+
 echo "check-worktree-scope.sh"
 R="$(pwd)"
 
-scope() { STDIN=$(python -c 'import json,sys; print(json.dumps({"tool_input":{"file_path":sys.argv[1]}}))' "$1"); }
+scope() { STDIN=$("$PY" -c 'import json,sys; print(json.dumps({"tool_input":{"file_path":sys.argv[1]}}))' "$1"); }
 
 scope "$R/CLAUDE.md";                       check allow "inside the worktree"            "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R"
 scope "$R/docs/../CLAUDE.md";               check allow "inside, via .."                 "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R"
@@ -114,22 +167,97 @@ scope "$R/../My_Site/CLAUDE.md";            check allow "not opted in: a no-op" 
 
 # --- the fail-open regression, tested directly -----------------------------
 # An interpreter that exists but cannot run must not become an allow. This is
-# the exact shape of the Windows Store python.exe app-execution alias, which is
-# what `python` resolves to on the machine this repo is developed on.
+# the exact shape of the Windows Store app-execution aliases, which on
+# 2026-10-09 shadowed both `python` and `python3` on the machine this repo is
+# developed on (#282).
 echo "interpreter failure"
 STUB=$(mktemp -d) || exit 2
-printf '#!/bin/bash\nexit 9009\n' > "$STUB/python"
-printf '#!/bin/bash\nexit 9009\n' > "$STUB/python3"
-chmod +x "$STUB/python" "$STUB/python3"
+REAL=$(command -v "$PY")
+for p in python python3 py; do printf '#!/bin/bash\nexit 9009\n' > "$STUB/$p"; done
+chmod +x "$STUB/python" "$STUB/python3" "$STUB/py"
 # Prepended, not replaced: replacing PATH removes `cat` and `bash` too, which
 # breaks the hook for a reason that has nothing to do with the interpreter and
 # makes the case prove nothing. A broken python *earlier on the path* than the
 # real one is the situation being modelled.
+#
+# `git status` and a file inside the worktree are allowed by a working hook, and
+# "deny-fallback" names the hard-coded line each hook ends with, so these pass
+# only through that line. This case used `git checkout main` until #282, which
+# any interpreter slipping past the stubs would also have denied.
+cmd "git status"
+check deny-fallback "no interpreter runs"           "$GUARD" "PATH=$STUB:$PATH"
+scope "$R/CLAUDE.md"
+check deny-fallback "no interpreter runs, opted in" "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
+
+# An interpreter that exits 0 with something other than the hook's JSON has not
+# answered. Claude Code would read a printed notice as plain text, an allow, so
+# the hooks must move on and end at their deny instead.
+printf '#!/bin/bash\necho "a notice from the interpreter"\n' > "$STUB/python"
 cmd "git checkout main"
-got=$(printf '%s' "$STDIN" | PATH="$STUB:$PATH" bash "$GUARD" 2>/dev/null | verdict)
-if [ "$got" = "deny" ]; then PASS=$((PASS + 1)); else
-  FAIL=$((FAIL + 1)); printf '  FAIL  expected deny got %-9s  broken interpreter on PATH\n' "$got"; fi
+check deny-fallback "exit 0 with a notice, not JSON" "$GUARD" "PATH=$STUB:$PATH"
+scope "$R/CLAUDE.md"
+check deny-fallback "exit 0 with a notice, opted in" "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
+printf '#!/bin/bash\nexit 9009\n' > "$STUB/python"
+
+# Now `py` alone works, and the hooks must reach it rather than stop at the two
+# broken names before it. REAL is an absolute path, so the shim cannot find
+# itself on PATH and loop.
+printf '#!/bin/bash\nexec %q "$@"\n' "$REAL" > "$STUB/py"
+cmd "git status"
+check allow "python and python3 broken, py runs"  "$GUARD" "PATH=$STUB:$PATH"
+cmd "git checkout main"
+check deny  "python and python3 broken, py runs, and denies" "$GUARD" "PATH=$STUB:$PATH"
+scope "$R/CLAUDE.md"
+check allow "python and python3 broken, py runs, opted in" "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
 rm -rf "$STUB"
+
+# --- wiring -----------------------------------------------------------------
+# Every case above calls a hook directly, so none of them can tell whether
+# Claude Code ever sends it a call. The matchers in .claude/settings.json decide
+# that, and until #283 the branch guard's was `Bash` alone, so PowerShell calls
+# never reached it.
+#
+# `matches` follows the rules in Claude Code's hooks documentation, "Matcher
+# patterns": "*", "" or no matcher matches every tool; a matcher made only of
+# letters, digits, `_`, `-`, spaces, `,` and `|` is a list of exact names; any
+# other matcher is an unanchored JavaScript regex, approximated here with
+# Python's re.search. It does not model a hook-level `if`, `disableAllHooks`,
+# or .claude/settings.local.json, any of which can still keep a call away.
+echo "settings.json wiring"
+wired() { # wired <hook script> <tool name>: "yes" if a PreToolUse matcher sends that tool to it
+  "$PY" -c '
+import json, re, sys
+script, tool = sys.argv[1], sys.argv[2]
+
+def matches(matcher, tool):
+    if matcher in (None, "", "*"):
+        return True
+    if re.fullmatch(r"[A-Za-z0-9_ ,|-]+", matcher):
+        return tool in [name.strip() for name in re.split(r"[,|]", matcher)]
+    return re.search(matcher, tool) is not None
+
+try:
+    with open(".claude/settings.json", encoding="utf-8") as f:
+        entries = json.load(f)["hooks"]["PreToolUse"]
+    print("yes" if any(
+        matches(e.get("matcher"), tool)
+        and any(script in h.get("command", "") for h in e.get("hooks", []))
+        for e in entries) else "no")
+except Exception as error:
+    print("unreadable:" + type(error).__name__)
+' "$1" "$2" 2>/dev/null || echo "no-python"
+}
+for pair in \
+  "block-protected-branch-ops.sh Bash" \
+  "block-protected-branch-ops.sh PowerShell" \
+  "check-worktree-scope.sh Edit" \
+  "check-worktree-scope.sh Write" \
+  ; do
+  read -r script tool <<<"$pair"
+  got=$(wired "$script" "$tool")
+  if [ "$got" = "yes" ]; then PASS=$((PASS + 1)); else
+    FAIL=$((FAIL + 1)); printf '  FAIL  expected yes   got %-13s  %s calls reach %s\n' "$got" "$tool" "$script"; fi
+done
 
 echo
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"

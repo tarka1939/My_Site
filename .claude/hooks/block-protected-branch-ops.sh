@@ -1,11 +1,21 @@
 #!/bin/bash
-# PreToolUse hook (matcher: Bash) — see docs/AGENT_WORKFLOW.md
+# PreToolUse hook (matcher: Bash|PowerShell) — see docs/AGENT_WORKFLOW.md
 #
 # Always active, regardless of worktree. Blocks destructive or protected-branch
-# git operations from any Bash tool call: force-push, checking out a shared
-# integration branch directly, and hard resets. Defense in depth on top of
-# worktree isolation — a task session should never need to touch a shared
+# git operations from any Bash or PowerShell tool call: force-push, checking out
+# a shared integration branch directly, and hard resets. Defense in depth on top
+# of worktree isolation — a task session should never need to touch a shared
 # branch directly.
+#
+# PowerShell joined on 2026-10-09 (#283). Claude Code on Windows has a
+# PowerShell tool, the primary shell in the desktop app, and until then its
+# calls never reached this file: `git checkout dev` typed there just ran. Its
+# payload carries `tool_input.command` like Bash's, and the patterns below hold
+# there too: `;` separates commands in both shells, Windows PowerShell 5.1 has
+# no `&&`, and a backslash counts as a path separator, so `src\main\java` is a
+# path rather than a checkout of `main`. Every PowerShell call now pays for this
+# hook as well: about half a second with a working `python`, 1 to 1.3 s while
+# two Store stubs sit ahead of `py` (two measurements, 2026-10-09).
 #
 # `dev` joined main/master on 2026-08-27, when `dev` became the branch feature
 # work is cut from and merged into and `main` became production-only. `dev` is
@@ -50,7 +60,15 @@
 # read-only `grep -rn "git checkout main" docs/` or a `git log --grep` — is
 # denied. Writing files with Write/Edit instead of heredocs avoids the common
 # case but not this one. Searching for these strings needs a different spelling
-# (a character class, or `git' 'checkout`).
+# (a character class, or `git' 'checkout`). Since #283 that includes a commit
+# message or PR body passed inline from PowerShell: pass them as files
+# (`git commit -F`, `gh ... --body-file`). PowerShell has one false positive of
+# its own: the `-f` format operator on a push line, as in
+# `git push My_Site ("feat/{0}" -f $name)`, reads as a force flag.
+#
+# Known gap: a line continuation (`\` in bash, a backtick in PowerShell) puts a
+# flag on the next line, and a match stops at a newline, so a `--force` there is
+# not seen. Nobody types a force-push that way by reflex.
 #
 # Deliberate-effort bypasses, documented rather than chased, because this is a
 # guard against reflex and not against an adversary: `git push My_Site +dev:dev`
@@ -61,7 +79,14 @@
 
 INPUT=$(cat)
 
-for PY in python python3; do
+# `py`, the launcher name on Windows, is tried last. On 2026-10-09 the Store's
+# app-execution aliases came back for both `python` and `python3`, ahead of the
+# real interpreter on PATH, and this hook denied every Bash call until it
+# learned a third name (#282). On that machine `py` is itself an alias, the
+# Python install manager's, and it still ran. Rule 2 above is what makes adding
+# a name safe: one that does not run still falls through to the deny. Where
+# there is no `py`, as on Linux, `command -v` skips it.
+for PY in python python3 py; do
   command -v "$PY" >/dev/null 2>&1 || continue
 
   # Capture separately from printing, so a non-zero exit means "this
@@ -71,11 +96,13 @@ for PY in python python3; do
 import json, re, sys
 
 # Branch names are matched as whole tokens: not preceded or followed by a word
-# character, dot, slash or hyphen. That keeps "main.ts", "dev-notes" and
-# "My_Site/dev" (a detach, not a branch move) out, while catching the reflex
+# character, dot, slash, backslash or hyphen. That keeps "main.ts", "dev-notes"
+# and "My_Site/dev" (a detach, not a branch move) out, while catching the reflex
 # spellings the old anchored patterns missed -- "git -C <path> checkout dev"
-# and "git checkout -q dev" both sailed through until 2026-08-27.
-BRANCH = r"(?<![\w./-])(?:main|master|dev)(?![\w./-])"
+# and "git checkout -q dev" both sailed through until 2026-08-27. The backslash
+# joined with PowerShell (#283): "git checkout -- backend\src\main\X.java"
+# restores a file, and the Maven layout puts a main directory in most paths.
+BRANCH = r"(?<![\w./\\-])(?:main|master|dev)(?![\w./\\-])"
 
 # [^;&|\n]* rather than .* so a match cannot run across a command separator or
 # a newline. The newline mattered: without it, "git push My_Site x" on one line
@@ -104,7 +131,7 @@ def emit(reason):
 try:
     command = json.load(sys.stdin).get("tool_input", {}).get("command")
     if not isinstance(command, str):
-        # A Bash tool call always carries a string command. Anything else is a
+        # A Bash or PowerShell call always carries a string command. Anything else is a
         # payload this hook does not understand, and coercing it with str() --
         # which the first rewrite did -- turns "I cannot read this" into an
         # allow, which is the whole defect being fixed.
@@ -126,10 +153,16 @@ if matched:
 
 sys.exit(0)
 ' 2>/dev/null); then
-    printf '%s' "$OUTPUT"
-    exit 0
+    # Exit 0 is not an answer on its own. Claude Code reads stdout that does not
+    # start with `{` as plain text, and plain text on exit 0 is a success, which
+    # is an allow. So an interpreter that printed a notice ahead of a deny would
+    # turn it into an allow. Only nothing, or this script's own JSON, counts;
+    # anything else moves on to the next name (#284 review).
+    case "$OUTPUT" in
+      '' | '{"hookSpecificOutput"'*) printf '%s' "$OUTPUT"; exit 0 ;;
+    esac
   fi
 done
 
-# Either no interpreter exists, or every one of them failed to run. Deny.
-printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"block-protected-branch-ops.sh could not run an interpreter to inspect this command, so it cannot tell whether it is a force-push, a hard reset, or a checkout of a shared branch. Denying rather than guessing. Check that python is on PATH and actually runs."}}'
+# Either no interpreter exists, or none of them ran and answered. Deny.
+printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"block-protected-branch-ops.sh could not run an interpreter to inspect this command, so it cannot tell whether it is a force-push, a hard reset, or a checkout of a shared branch. Denying rather than guessing. Check that python, python3 or py is on PATH and actually runs. On Windows, the App Installer aliases for python.exe and python3.exe (Settings > Apps > Advanced app settings > App execution aliases) can shadow a real install, see #282."}}'
