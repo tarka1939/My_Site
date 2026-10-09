@@ -808,7 +808,7 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - *`Content-Security-Policy-Report-Only` first.* Nothing here would collect the reports. The policy was instead exercised page by page in a browser against the built bundle (below).
 
 **Consequences:**
-- **It reaches visitors with the release that carries it.** Until then Netlify sends HSTS and nothing else.
+- **It reaches visitors with the release that carries it.** Until then Netlify sends HSTS and nothing else. *(Update 2026-10-09: released 2026-10-03 in PR #258.)*
 - **What it protects, and what it does not.** Its strength is `script-src 'self'`: injected markup cannot run script, inline or from another host. It does not contain a script that *does* run, since `img-src https:` alone is an exfiltration channel. So it lowers the odds of #123's token theft rather than closing it, and #123 stays open.
 - **A backend host change gains an edit,** `connect-src`, and a test that names it.
 - **Any future inline `<script>` in `index.html`** (an analytics snippet, a theme bootstrap) must come with a policy change, and the deploy refuses the build until it does: the workflow step that greps the built `index.html` for inline script has to change with it.
@@ -872,7 +872,7 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - *Fixing only the two symptoms.* An HSTS writer whose request matcher always matches, plus `builder.resource(...)` and the entry point's `setResourceMetadataParameterResolver` to write `https://` by hand. Narrower, since nothing else would see `https`, but it patches each URL-building site separately; the next one Spring adds would say `http://` again. Stating the scheme once fixes every site, present and future.
 
 **Consequences:**
-- When released, the API sends `Strict-Transport-Security: max-age=31536000 ; includeSubDomains`. A browser that sees it will refuse plain HTTP to this host and its subdomains for a year. Cloudflare's 301 already makes plain HTTP unusable there.
+- When released, the API sends `Strict-Transport-Security: max-age=31536000 ; includeSubDomains`. A browser that sees it will refuse plain HTTP to this host and its subdomains for a year. Cloudflare's 301 already makes plain HTTP unusable there. *(Update 2026-10-09: released in PR #277. The owner chose to ship the full year rather than a shorter first `max-age`. After the deploy, production sent the header, and the resource metadata said `https://` and `"tls_client_certificate_bound_access_tokens":false`.)*
 - A request that bypasses Cloudflare over plain HTTP is also reported as secure. Nothing depends on that: there are no cookies, and browsers ignore HSTS sent over HTTP.
 - If the app is ever served without a TLS-terminating proxy in front, `TLS_TERMINATED_UPSTREAM=false` turns this off. That stops the header being sent, not browsers obeying it: one that already has the policy keeps it until it expires. Only a response over HTTPS carrying `max-age=0` clears it early, and only in browsers that come back to receive it. Retiring HTTPS on this host safely means serving that for a year first.
 
