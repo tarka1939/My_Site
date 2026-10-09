@@ -97,9 +97,9 @@ class ContactNotificationIntegrationTest {
 
     /**
      * Plain RestTemplate with the errors turned off rather than TestRestTemplate, matching
-     * GithubWebhookIntegrationTest: this Boot 4.1.0 setup does not put TestRestTemplate on the
-     * test classpath. Non-throwing so an unexpected status fails as a readable assertion instead
-     * of an exception thrown from the call itself.
+     * GithubWebhookIntegrationTest and the reasoning in SecurityIntegrationTest's class note.
+     * Non-throwing so an unexpected status fails as a readable assertion instead of an exception
+     * thrown from the call itself.
      */
     private final RestTemplate restTemplate = nonThrowingRestTemplate();
 

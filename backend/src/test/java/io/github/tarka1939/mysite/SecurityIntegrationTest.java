@@ -37,11 +37,13 @@ import io.github.tarka1939.mysite.auth.LoginResponse;
  * annotations and the SecurityFilterChain's authorizeHttpRequests rules are only meaningfully
  * verified by an actual request passing through them.
  *
- * <p>Uses a plain {@link RestTemplate} rather than Boot's {@code TestRestTemplate} --
- * unlike Boot 3, {@code TestRestTemplate} isn't resolvable from spring-boot-starter-test's
- * declared dependencies in this Boot 4.1.0 setup (a further instance of the test-artifact
- * fragmentation AGENT_LOG.md already documents for @DataJpaTest). A custom error handler that
- * never throws on 4xx/5xx reproduces the one behavior actually needed from it.
+ * <p>Uses a plain {@link RestTemplate} rather than Boot's {@code TestRestTemplate}, by choice. When
+ * this was written, {@code TestRestTemplate} was not on the test classpath: Boot 4 moved it out of
+ * spring-boot-starter-test into its own spring-boot-resttestclient module (a further instance of
+ * the test-artifact fragmentation AGENT_LOG.md documents for @DataJpaTest). The
+ * spring-boot-starter-webmvc-test dependency added later the same day brings that module in, so it
+ * is available now (#279). Nothing here needs it: a custom error handler that never throws on
+ * 4xx/5xx reproduces the one behavior actually needed from it.
  *
  * <p>Not @Transactional: requests run on the embedded server's own thread/connection, not the
  * test method's, so the usual transactional-rollback trick doesn't apply here -- each test

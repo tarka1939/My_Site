@@ -83,7 +83,8 @@ public class ResendEmailClient {
         Duration readTimeout
     ) {
         // Built directly via RestClient.builder() rather than an injected RestClient.Builder
-        // bean: RestClientAutoConfiguration didn't register one in this Boot 4.1.0 setup
+        // bean: none is registered in this Boot 4 setup, where RestClientAutoConfiguration is
+        // no longer in spring-boot-autoconfigure and no REST client starter is declared
         // (another instance of the test-artifact/autoconfig fragmentation AGENT_LOG.md
         // documents elsewhere) -- the static factory sidesteps that entirely and needs
         // nothing but spring-web, which spring-boot-starter-web already provides.
