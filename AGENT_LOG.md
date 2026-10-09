@@ -314,16 +314,16 @@ It also filed #273 (nothing alerts on vulnerable dependencies) and #276 (Angular
 - **The release has a recorded "before".** Ahead of #277, production's API was read: no HSTS header, `http://` in the 401's `WWW-Authenticate` and in the resource metadata, and `tls_client_certificate_bound_access_tokens: true`. Each is a value the release should change, so checking the deploy is a comparison rather than a judgement.
 
 **What went wrong (be specific):**
-1. **The backend had never had a dependency audit.** The frontend's `npm audit` has been tracked since #235, and every "audit is at zero" in the docs is the frontend's. Nothing said the backend was clean, but nothing had checked it either. The 16 advisories were published between 2026-07-11 and 2026-10-01, five of them critical. Production runs all of them until #277 merges.
+1. **The backend had never had a dependency audit.** The frontend's `npm audit` has been tracked since #90 (2026-08-08), and every "audit is at zero" in the docs is the frontend's. Nothing said the backend was clean, but nothing had checked it either. The 16 advisories were published between 2026-07-11 and 2026-10-01, five of them critical. Production ran all of them until #277 released the fix on 2026-10-09.
 2. **A pin sat on `dev` for two months on a false premise.** The 2026-08-01 entry says the explicit `testcontainers-bom` import was needed because Spring Boot 4.1.0's BOM "didn't manage a version for these". It did: the BOM sets `testcontainers.version` to 2.0.5 and imports `testcontainers-bom` itself. The import restated the same version, so nothing broke. Once Boot moved on, it would have held Testcontainers back.
-3. **The guard's first version could not see the shape of pin it was written beside.** It compared only `pom.xml`'s properties with the BOM's. The `testcontainers-bom` import it helped remove was a literal `<version>`, out of its sight. Its version comparison also read `3.1.7-rc1` as `3.1.7`, though Maven orders a qualifier before its release.
+3. **The guard's first version saw a pin only through a property.** It compared only `pom.xml`'s properties with the BOM's. The `testcontainers-bom` import took its version from `testcontainers.version`, so that pin was in sight. The same import with a literal `2.0.5` would not have been. Its version comparison also read `3.1.7-rc1` as `3.1.7`, though Maven orders a qualifier before its release.
 4. **A version bump updated one README and missed another.** Root `README.md` said 4.1.1, while `backend/README.md` still said "Spring Boot 4.1.0 app". So did the `docs/DECISIONS.md` table row.
 5. **Three claims about rendered Javadoc were made from the source:**
    - In chat, before PR #275 was opened, the Senior Dev said Javadoc copies a record's `@param` text to its accessors. It does not: each accessor gets the generic "Returns the value of the ... record component".
    - The class doc said the reasons were "with each component, below". The rendered page puts Record Components *above* the class description.
    - PR #275's body said a `{@link #published()}` would land on a dead end. The generic accessor line links to the `@param` text.
 6. **Two security notes were worded wider than what was checked:**
-   - The CHANGELOG listed binding `Duration` from JSON as an exposure. The advisory means `javax.xml.datatype.Duration`, and the app uses `java.time.Duration` in five classes.
+   - The CHANGELOG's list of what each advisory needs said `Duration`, unqualified. The advisory means `javax.xml.datatype.Duration`, and the app uses `java.time.Duration` in five classes.
    - PROJECT_TODO's one-line exposure list read as exhaustive. It left out pgJDBC's `channelBinding`, log4j's `MapMessage`, `DataInput` and more.
 7. **Two references were wrong in drafts:**
    - #273's draft cited #248, a PR, where it meant the issue, #244.
@@ -331,7 +331,7 @@ It also filed #273 (nothing alerts on vulnerable dependencies) and #276 (Angular
 
 **How it was caught:**
 1. The tech-debt pass's advisory script, the first time anyone ran one against the backend.
-2. `DependencyOverridesTest`'s first run. `testcontainers.version` is also a property of Boot's BOM, so the "exactly the ones listed" case flagged it. #274's reviewer confirmed from `~/.m2` that the 4.1.0 BOM already managed Testcontainers.
+2. Designing `DependencyOverridesTest`'s "exactly the ones listed" case, which needed to know whether any property already in `pom.xml` was one Boot manages. Reading Boot's 4.1.0 and 4.1.1 BOMs showed `testcontainers.version` was, and that the BOM imports `testcontainers-bom` itself. Both were removed before the test was written, so it never flagged them. #274's reviewer confirmed from `~/.m2` that the 4.1.0 BOM already managed Testcontainers.
 3. #274's cold review.
 4. #274's cold review.
 5. The first by generating the HTML with `javadoc`. The other two by #275's cold review, which also generated it.
@@ -339,7 +339,7 @@ It also filed #273 (nothing alerts on vulnerable dependencies) and #276 (Angular
 7. Rereading each draft against the sources before it was published. Neither reached GitHub.
 
 **Fix applied:**
-1. PR #274 moves the backend to Boot 4.1.1, with Tomcat 11.0.26 and Jackson 3.1.7 as overrides. After it, 0 advisories apply, runtime or test. Until #273 is settled, the pass's script, recorded on #68, is the backend's only audit.
+1. PR #274 moves the backend to Boot 4.1.1, with Tomcat 11.0.26 and Jackson 3.1.7 as overrides. After it, 0 advisories apply, runtime or test. Until #273 is settled, the method recorded on #68 is the backend's only audit.
 2. PR #274 removed the property and the import, with the resolved artifacts unchanged. The 2026-08-01 entry now carries a correction.
 3. The guard now holds every `<version>` in `pom.xml` to a list of three: the project's, the parent's and the Spring Modulith BOM's. It also refuses any version that is not a plain `x.y.z`, apart from Tomcat's trailing `.0`. Three new mutations each failed the case aimed at them: the import restored, a literal version on a dependency, and the comparison loosened.
 4. Both now name 4.1.1. The DECISIONS row is amended rather than rewritten, and the ADR below it still records the original choice.
@@ -348,10 +348,10 @@ It also filed #273 (nothing alerts on vulnerable dependencies) and #276 (Angular
 7. Corrected before filing.
 
 **Takeaway for next time:**
-- **An audit covers the ecosystem it was run on.** "Audit is at zero" needs its ecosystem as well as its date. The backend's check is the script in #68's record until #273 gives it an owner.
+- **An audit covers the ecosystem it was run on.** "Audit is at zero" needs its ecosystem as well as its date. The backend's check is the method in #68's record until #273 gives it an owner.
 - **A premise recorded in the log is not a fact.** "Boot doesn't manage this" was one read of one error, and stood for two months. Before adding an override, read the parent BOM for the property, as #274 did.
-- **Test a guard against the bug that prompted it.** This one was written beside the Testcontainers pin, and its first version would have caught only the property half of it. The second half was the mutation that mattered.
-- **After a version bump, grep for the old version.** `git grep -n "4\.1\.0"` finds every place that still names it. Here, that was two docs the bump never touched.
+- **Test a guard against the bug that prompted it.** This one was written beside the Testcontainers pin, which went through a property, and the first version saw that. Written as a literal `<version>`, the same pin would have passed it, and that mutation was the one that mattered.
+- **After a version bump, grep for the old version.** `git grep -n "4\.1\.0"` lists every place that still names it, to sort into history that should keep it and statements that should not. Here, two docs the bump never touched were in the second group. Four code comments that say "this Boot 4.1.0 setup" turned out to need a check of their own: three say `TestRestTemplate` is not on the test classpath, and it has been since 2026-08-01 (#279).
 - **Check claims about rendered output in the rendered output.** Source order, link targets and what a tool copies are not visible in the source. The same applies to Javadoc, a Markdown renderer, or a generated client's JSDoc.
 - **In a security note, name a type in full when its simple name matches one the app uses.** Otherwise the reader either worries for nothing or relaxes about the wrong one.
 
@@ -3854,7 +3854,7 @@ User turned on Docker Desktop after the above session ended. Picked up the one r
 1. **Spring Boot 4 fragmented `spring-boot-test-autoconfigure` into per-feature `-test` artifacts and relocated their packages.** `@DataJpaTest`, `AutoConfigureTestDatabase`, and `TestEntityManager` no longer live where Boot 3 had them (`org.springframework.boot.test.autoconfigure.orm.jpa` / `.jdbc`). They're now spread across separate Maven modules (`spring-boot-data-jpa-test`, `spring-boot-jpa-test`, `spring-boot-jdbc-test`) under new packages (`org.springframework.boot.data.jpa.test.autoconfigure`, `org.springframework.boot.jpa.test.autoconfigure`, `org.springframework.boot.jdbc.test.autoconfigure`). None of this is discoverable from compiler errors alone beyond "class not found" — had to `unzip -l` the actual jars in `~/.m2` to find the new locations. Ended up sidestepping the whole `@DataJpaTest` slice-test complexity by using plain `@SpringBootTest` + injected `jakarta.persistence.EntityManager` instead, which is simpler and also verifies full app boot (Flyway included) as a side effect.
 2. **Flyway needs `spring-boot-starter-flyway` in Boot 4, not just `flyway-core`.** Adding `org.flywaydb:flyway-core` directly (the old Boot 3 pattern) compiles fine but Flyway silently never runs — no error, no log line, just an empty schema and a confusing "relation does not exist" from the first query. `FlywayAutoConfiguration` moved into its own `spring-boot-flyway` module, and the `spring-boot-starter-flyway` starter is the one that pulls it in correctly alongside `spring-boot-starter-jdbc`.
 3. **Testcontainers 2.x renamed its artifacts** — `org.testcontainers:junit-jupiter` → `testcontainers-junit-jupiter`, `org.testcontainers:postgresql` → `testcontainers-postgresql` (all module artifacts gained a `testcontainers-` prefix). Also needed to import `testcontainers-bom` explicitly in `dependencyManagement`, since Spring Boot 4.1.0's own BOM didn't manage a version for these.
-   **Correction 2026-10-09:** it did. Boot 4.1.0's BOM sets `testcontainers.version` to 2.0.5 and imports `testcontainers-bom` itself, which manages the renamed artifacts. The explicit import restated the same version, so it was harmless until Boot moved on, and then it would have held Testcontainers back. #272 removed it with the resolved artifacts unchanged, and `DependencyOverridesTest` now fails on a literal `<version>` like it.
+   **Correction 2026-10-09:** it did. Boot 4.1.0's BOM sets `testcontainers.version` to 2.0.5 and imports `testcontainers-bom` itself, which manages the renamed artifacts. The explicit import restated the same version, so it was harmless until Boot moved on, and then it would have held Testcontainers back. #272 removed it with the resolved artifacts unchanged. `DependencyOverridesTest` now fails on a property like `testcontainers.version`, and on a literal `<version>` outside the three it allows.
 4. **`search.maven.org`'s search index cannot be trusted for "does version X exist" questions** — confirmed twice this session (Spring Modulith 2.x, and again implicitly here). `repo1.maven.org/.../maven-metadata.xml` is the authoritative source; use it, not the search UI's backing index, when a version decision matters.
 
 ## 2026-08-01 — GitHub Copilot review of PR #76 (first external review of agent output)
