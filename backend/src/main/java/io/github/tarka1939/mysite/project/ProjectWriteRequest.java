@@ -21,7 +21,7 @@ import jakarta.validation.constraints.Size;
  *
  * <p>{@code published} and {@code repoFullName} are the two exceptions to that rule, and both
  * are boxed so that "the client said nothing" is distinguishable from "the client said false /
- * null". The reasons are with each component, below.
+ * null". The reasons are documented with each component.
  *
  * @param published whether the project appears on the public site, or null for "leave it as it
  *     is".
