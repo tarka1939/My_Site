@@ -61,7 +61,13 @@
 
 INPUT=$(cat)
 
-for PY in python python3; do
+# `py` is the Windows launcher, tried last. On 2026-10-09 the Store's
+# app-execution aliases came back for both `python` and `python3`, ahead of the
+# real interpreter on PATH, and this hook denied every Bash call until it
+# learned a third name (#282). Rule 2 above is what makes adding a name safe:
+# one that does not run still falls through to the deny. Where there is no
+# `py`, as on Linux, `command -v` skips it.
+for PY in python python3 py; do
   command -v "$PY" >/dev/null 2>&1 || continue
 
   # Capture separately from printing, so a non-zero exit means "this
@@ -132,4 +138,4 @@ sys.exit(0)
 done
 
 # Either no interpreter exists, or every one of them failed to run. Deny.
-printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"block-protected-branch-ops.sh could not run an interpreter to inspect this command, so it cannot tell whether it is a force-push, a hard reset, or a checkout of a shared branch. Denying rather than guessing. Check that python is on PATH and actually runs."}}'
+printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"block-protected-branch-ops.sh could not run an interpreter to inspect this command, so it cannot tell whether it is a force-push, a hard reset, or a checkout of a shared branch. Denying rather than guessing. Check that python, python3 or py is on PATH and actually runs. On Windows, the App Installer aliases for python.exe and python3.exe (Settings > Apps > Advanced app settings > App execution aliases) can shadow a real install, see #282."}}'

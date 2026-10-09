@@ -15,10 +15,23 @@ SCOPE=.claude/hooks/check-worktree-scope.sh
 PASS=0
 FAIL=0
 
+# The helpers below need a Python of their own: the first name that actually
+# runs, in the hooks' own order. They called `python` directly until 2026-10-09,
+# when that name and `python3` were both the Store's stub, and every case read
+# "no-python" (#282).
+PY=
+for p in python python3 py; do
+  if "$p" -c '' >/dev/null 2>&1; then PY=$p; break; fi
+done
+if [ -z "$PY" ]; then
+  echo "None of python, python3 or py runs here, so no hook verdict can be read."
+  exit 2
+fi
+
 # Reads a hook's stdout and prints "deny" or "allow". Empty output is allow,
 # which is what Claude Code itself does with it.
 verdict() {
-  python -c '
+  "$PY" -c '
 import json, sys
 raw = sys.stdin.read().strip()
 if not raw:
@@ -31,9 +44,9 @@ else:
 ' 2>/dev/null || echo "no-python"
 }
 
-check() { # check <expected> <label> <hook> [env assignment]
+check() { # check <expected> <label> <hook> [env assignment...]
   local expected="$1" label="$2" hook="$3" got
-  got=$(printf '%s' "$STDIN" | env $4 bash "$hook" 2>/dev/null | verdict)
+  got=$(printf '%s' "$STDIN" | env "${@:4}" bash "$hook" 2>/dev/null | verdict)
   if [ "$got" = "$expected" ]; then
     PASS=$((PASS + 1))
   else
@@ -43,7 +56,7 @@ check() { # check <expected> <label> <hook> [env assignment]
 }
 
 cmd() { # build a Bash-tool payload with the given command string
-  STDIN=$(python -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$1")
+  STDIN=$("$PY" -c 'import json,sys; print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "$1")
 }
 
 raw() { STDIN="$1"; }
@@ -99,7 +112,7 @@ check allow "multi-line push followed by rm -f" "$GUARD"
 echo "check-worktree-scope.sh"
 R="$(pwd)"
 
-scope() { STDIN=$(python -c 'import json,sys; print(json.dumps({"tool_input":{"file_path":sys.argv[1]}}))' "$1"); }
+scope() { STDIN=$("$PY" -c 'import json,sys; print(json.dumps({"tool_input":{"file_path":sys.argv[1]}}))' "$1"); }
 
 scope "$R/CLAUDE.md";                       check allow "inside the worktree"            "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R"
 scope "$R/docs/../CLAUDE.md";               check allow "inside, via .."                 "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R"
@@ -114,21 +127,38 @@ scope "$R/../My_Site/CLAUDE.md";            check allow "not opted in: a no-op" 
 
 # --- the fail-open regression, tested directly -----------------------------
 # An interpreter that exists but cannot run must not become an allow. This is
-# the exact shape of the Windows Store python.exe app-execution alias, which is
-# what `python` resolves to on the machine this repo is developed on.
+# the exact shape of the Windows Store app-execution aliases, which on
+# 2026-10-09 shadowed both `python` and `python3` on the machine this repo is
+# developed on (#282).
 echo "interpreter failure"
 STUB=$(mktemp -d) || exit 2
-printf '#!/bin/bash\nexit 9009\n' > "$STUB/python"
-printf '#!/bin/bash\nexit 9009\n' > "$STUB/python3"
-chmod +x "$STUB/python" "$STUB/python3"
+REAL=$(command -v "$PY")
+for p in python python3 py; do printf '#!/bin/bash\nexit 9009\n' > "$STUB/$p"; done
+chmod +x "$STUB/python" "$STUB/python3" "$STUB/py"
 # Prepended, not replaced: replacing PATH removes `cat` and `bash` too, which
 # breaks the hook for a reason that has nothing to do with the interpreter and
 # makes the case prove nothing. A broken python *earlier on the path* than the
 # real one is the situation being modelled.
+#
+# `git status` and a file inside the worktree are allowed by a working hook, so
+# a deny here can only come from the hard-coded line each hook ends with. This
+# case used `git checkout main` until #282, which any interpreter slipping past
+# the stubs would also have denied.
+cmd "git status"
+check deny "no interpreter runs"                  "$GUARD" "PATH=$STUB:$PATH"
+scope "$R/CLAUDE.md"
+check deny "no interpreter runs, opted in"        "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
+
+# Now `py` alone works, and the hooks must reach it rather than stop at the two
+# broken names before it. REAL is an absolute path, so the shim cannot find
+# itself on PATH and loop.
+printf '#!/bin/bash\nexec %q "$@"\n' "$REAL" > "$STUB/py"
+cmd "git status"
+check allow "python and python3 broken, py runs"  "$GUARD" "PATH=$STUB:$PATH"
 cmd "git checkout main"
-got=$(printf '%s' "$STDIN" | PATH="$STUB:$PATH" bash "$GUARD" 2>/dev/null | verdict)
-if [ "$got" = "deny" ]; then PASS=$((PASS + 1)); else
-  FAIL=$((FAIL + 1)); printf '  FAIL  expected deny got %-9s  broken interpreter on PATH\n' "$got"; fi
+check deny  "python and python3 broken, py runs, and denies" "$GUARD" "PATH=$STUB:$PATH"
+scope "$R/CLAUDE.md"
+check allow "python and python3 broken, py runs, opted in" "$SCOPE" "CLAUDE_WORKTREE_ROOT=$R" "PATH=$STUB:$PATH"
 rm -rf "$STUB"
 
 echo
