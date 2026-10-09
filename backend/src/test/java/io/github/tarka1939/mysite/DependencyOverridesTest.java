@@ -1,9 +1,11 @@
 package io.github.tarka1939.mysite;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -21,6 +23,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 /**
  * pom.xml overrides some of the versions Spring Boot's parent manages, to take a library past an
@@ -34,6 +37,10 @@ import org.w3c.dom.Node;
  * <p>"What the parent would manage" is read from the {@code spring-boot-dependencies} pom in the
  * local Maven repository, whose path surefire passes in. The overrides replace the parent's
  * values in the effective model, so nothing on the test classpath remembers them.
+ *
+ * <p>A literal {@code <version>} on a dependency, a plugin or a BOM import pins just as a property
+ * does, out of this list's sight -- the explicit {@code testcontainers-bom} import #272 removed was
+ * one. So pom.xml is held to the versions this class knows about, too.
  */
 class DependencyOverridesTest {
 
@@ -76,6 +83,39 @@ class DependencyOverridesTest {
         assertThat(declared)
             .as("pom.xml properties that override a version the Spring Boot parent manages")
             .containsExactlyElementsOf(OVERRIDES.stream().map(VersionOverride::property).sorted().toList());
+    }
+
+    /**
+     * Each {@code <version>} element, named by what it versions. Besides the project's own and the
+     * parent's, the one expected is the Spring Modulith BOM's, which Spring Boot does not manage.
+     */
+    @Test
+    void pomPinsNoVersionOutsideItsProperties_soNoOverrideHidesFromThisList() {
+        NodeList versions = document(pom("project.pom")).getElementsByTagName("version");
+        List<String> pinned = new ArrayList<>();
+        for (int i = 0; i < versions.getLength(); i++) {
+            Element owner = (Element) versions.item(i).getParentNode();
+            pinned.add(owner.getTagName() + " " + childText(owner, "artifactId"));
+        }
+
+        assertThat(pinned)
+            .as("what pom.xml gives a <version>. Anything new here pins a version as an override "
+                + "does: manage it through a property the parent defines, or list it here with "
+                + "its reason")
+            .containsExactlyInAnyOrder(
+                "project mysite-backend",
+                "parent spring-boot-starter-parent",
+                "dependency spring-modulith-bom");
+    }
+
+    @Test
+    void atLeast_acceptsTomcatsFourthPart_andRefusesAQualifier() {
+        assertThat(atLeast("11.0.26.0", "11.0.25")).isTrue();
+        assertThat(atLeast("3.1.7", "3.1.7")).isTrue();
+        assertThat(atLeast("3.1.6", "3.1.7")).isFalse();
+        assertThat(atLeast("3.10.0", "3.9.9")).isTrue();
+        assertThatIllegalArgumentException().isThrownBy(() -> atLeast("3.1.7-rc1", "3.1.7"));
+        assertThatIllegalArgumentException().isThrownBy(() -> atLeast("11.0.25-M1", "11.0.25"));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -127,33 +167,48 @@ class DependencyOverridesTest {
      * profile's {@code <properties>} applies only when the profile does.
      */
     private static Map<String, String> properties(Path pom) {
+        Map<String, String> properties = new TreeMap<>();
+        for (Node section = document(pom).getFirstChild(); section != null; section = section.getNextSibling()) {
+            if (section instanceof Element element && element.getTagName().equals("properties")) {
+                for (Node p = element.getFirstChild(); p != null; p = p.getNextSibling()) {
+                    if (p instanceof Element property) {
+                        properties.put(property.getTagName(), property.getTextContent().trim());
+                    }
+                }
+            }
+        }
+        return properties;
+    }
+
+    /** The pom's {@code <project>} element. */
+    private static Element document(Path pom) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            Element project = factory.newDocumentBuilder().parse(pom.toFile()).getDocumentElement();
-
-            Map<String, String> properties = new TreeMap<>();
-            for (Node section = project.getFirstChild(); section != null; section = section.getNextSibling()) {
-                if (section instanceof Element element && element.getTagName().equals("properties")) {
-                    for (Node p = element.getFirstChild(); p != null; p = p.getNextSibling()) {
-                        if (p instanceof Element property) {
-                            properties.put(property.getTagName(), property.getTextContent().trim());
-                        }
-                    }
-                }
-            }
-            return properties;
+            return factory.newDocumentBuilder().parse(pom.toFile()).getDocumentElement();
         } catch (Exception e) {
-            throw new IllegalStateException("could not read the properties of " + pom, e);
+            throw new IllegalStateException("could not read " + pom, e);
         }
     }
 
-    private static final Pattern VERSION = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)");
+    /** The text of {@code parent}'s direct child {@code name}, or "" when it has none. */
+    private static String childText(Element parent, String name) {
+        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child instanceof Element element && element.getTagName().equals(name)) {
+                return element.getTextContent().trim();
+            }
+        }
+        return "";
+    }
+
+    private static final Pattern VERSION = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)(?:\\.0)?");
 
     /**
-     * Compares the first three numeric parts, ignoring anything after them: Tomcat reports
-     * itself as {@code 11.0.26.0}. Throws on anything else rather than guessing.
+     * Compares {@code x.y.z} versions, allowing the {@code .0} fourth part Tomcat reports itself
+     * with ({@code 11.0.26.0}). Throws on anything else rather than guessing: a qualifier such as
+     * {@code -M1} or {@code -rc1} sorts <em>before</em> the release it names, so reading only the
+     * numbers would count a milestone as the fix.
      */
     static boolean atLeast(String version, String floor) {
         int[] a = parse(version);
@@ -168,8 +223,8 @@ class DependencyOverridesTest {
 
     private static int[] parse(String version) {
         Matcher m = VERSION.matcher(version);
-        if (!m.lookingAt()) {
-            throw new IllegalArgumentException("not an x.y.z version: " + version);
+        if (!m.matches()) {
+            throw new IllegalArgumentException("not a plain x.y.z version: " + version);
         }
         return new int[] {Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3))};
     }
