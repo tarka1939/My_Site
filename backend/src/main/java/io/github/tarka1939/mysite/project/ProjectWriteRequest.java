@@ -21,7 +21,30 @@ import jakarta.validation.constraints.Size;
  *
  * <p>{@code published} and {@code repoFullName} are the two exceptions to that rule, and both
  * are boxed so that "the client said nothing" is distinguishable from "the client said false /
- * null". See {@link #published()}.
+ * null". The reasons are with each component, below.
+ *
+ * @param published whether the project appears on the public site, or null for "leave it as it
+ *     is".
+ *     <p>Null-means-unchanged is a deliberate departure from this body's full-replacement
+ *     semantics, and the reason is that the field is newer than its clients. A PUT from
+ *     anything written before Phase 7a carries no statement about publication at all, and
+ *     reading that silence as {@code false} would un-publish a live project the first time
+ *     someone edited it -- the same "the site goes blank" failure V7's back-fill guards
+ *     against, arriving through the API instead of through a deploy.
+ *     <p>On create the same silence means {@code true}: a project typed into the CMS by hand is
+ *     meant to be live, which is what POST has always done, and changing that would make every
+ *     existing client silently create invisible projects. Un-publishing therefore needs an
+ *     explicit {@code false}. Both branches live in {@link ProjectService}.
+ * @param repoFullName {@code owner/name} of the GitHub repository this project tracks, or null
+ *     for "leave it as it is" -- same reasoning as {@code published}: an older client's PUT is
+ *     not a request to unlink.
+ *     <p>The consequence, stated rather than discovered: a link cannot be <em>cleared</em>
+ *     through this endpoint in Phase 7a, only replaced. That is the lesser of the two evils
+ *     available while the field is younger than its clients.
+ *     <p>The pattern matches the contract's and rejects anything that is not exactly two
+ *     non-empty slash-free segments -- {@code owner/name} is GitHub's whole format, and a value
+ *     that does not fit it can never match a delivery, so accepting it would only produce a
+ *     project that silently never syncs.
  */
 @ValidProjectDatePeriod
 public record ProjectWriteRequest(
@@ -32,38 +55,7 @@ public record ProjectWriteRequest(
     @NotNull List<@NotBlank @Size(max = 50) String> tags,
     LocalDate startedOn,
     LocalDate completedOn,
-
-    /**
-     * Whether the project appears on the public site, or null for "leave it as it is".
-     *
-     * <p>Null-means-unchanged is a deliberate departure from this body's full-replacement
-     * semantics, and the reason is that the field is newer than its clients. A PUT from
-     * anything written before Phase 7a carries no statement about publication at all, and
-     * reading that silence as {@code false} would un-publish a live project the first time
-     * someone edited it -- the same "the site goes blank" failure V7's back-fill guards
-     * against, arriving through the API instead of through a deploy.
-     *
-     * <p>On create the same silence means {@code true}: a project typed into the CMS by hand is
-     * meant to be live, which is what POST has always done, and changing that would make every
-     * existing client silently create invisible projects. Un-publishing therefore needs an
-     * explicit {@code false}. Both branches live in {@link ProjectService}.
-     */
     Boolean published,
-
-    /**
-     * {@code owner/name} of the GitHub repository this project tracks, or null for "leave it as
-     * it is" -- same reasoning as {@link #published()}: an older client's PUT is not a request
-     * to unlink.
-     *
-     * <p>The consequence, stated rather than discovered: a link cannot be <em>cleared</em>
-     * through this endpoint in Phase 7a, only replaced. That is the lesser of the two evils
-     * available while the field is younger than its clients.
-     *
-     * <p>The pattern matches the contract's and rejects anything that is not exactly two
-     * non-empty slash-free segments -- {@code owner/name} is GitHub's whole format, and a value
-     * that does not fit it can never match a delivery, so accepting it would only produce a
-     * project that silently never syncs.
-     */
     @Size(max = 255)
     @Pattern(regexp = "^[^\\s/]+/[^\\s/]+$", message = "must be a GitHub repository as owner/name")
     String repoFullName
