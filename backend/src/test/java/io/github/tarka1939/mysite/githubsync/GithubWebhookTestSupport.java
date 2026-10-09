@@ -68,8 +68,8 @@ final class GithubWebhookTestSupport {
 
     /**
      * Never throws on 4xx/5xx, so a test can assert on the status it got. Same approach and
-     * reasoning as {@code SecurityIntegrationTest} -- see the note there about
-     * {@code TestRestTemplate} not being resolvable in this Boot 4.1.0 setup.
+     * reasoning as {@code SecurityIntegrationTest} -- see the note there on why this is a plain
+     * {@code RestTemplate} rather than {@code TestRestTemplate}.
      */
     static RestTemplate nonThrowingRestTemplate() {
         RestTemplate template = new RestTemplate(new SimpleClientHttpRequestFactory());
