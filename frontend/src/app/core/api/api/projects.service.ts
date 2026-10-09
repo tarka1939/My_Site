@@ -314,10 +314,10 @@ export class ProjectsService extends BaseService implements ProjectsServiceInter
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<ProjectPageResponse>;
-    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ProjectPageResponse>>;
-    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ProjectPageResponse>>;
-    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json' | 'application/problem+json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<ProjectPageResponse>;
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<ProjectPageResponse>>;
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<ProjectPageResponse>>;
+    public listAllProjects(requestParameters?: ListAllProjectsRequestParams, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         const page = requestParameters?.page;
         const size = requestParameters?.size;
         const tag = requestParameters?.tag;
@@ -357,8 +357,7 @@ export class ProjectsService extends BaseService implements ProjectsServiceInter
         localVarHeaders = this.configuration.addCredentialToHeaders('bearerAuth', 'Authorization', localVarHeaders, 'Bearer ');
 
         const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
-            'application/json',
-            'application/problem+json'
+            'application/json'
         ]);
         if (localVarHttpHeaderAcceptSelected !== undefined) {
             localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);

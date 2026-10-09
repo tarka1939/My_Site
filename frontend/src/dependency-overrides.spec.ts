@@ -13,7 +13,8 @@ import { dirname, join } from 'node:path';
  * what CI and Netlify install, and needs no install to run.
  */
 const OVERRIDES = [
-  { parent: '@angular/build', child: 'piscina', fixedIn: '5.3.2', advisory: 'GHSA-67c8-pqhq-4rmx' },
+  // The piscina override under @angular/build (GHSA-67c8-pqhq-4rmx) was removed in #267:
+  // @angular/build 21.2.25 pins 5.3.2 itself, and the 'still needed' case below failed and said so.
   { parent: 'get-uri', child: 'basic-ftp', fixedIn: '6.2.1', advisory: 'GHSA-c475-qrg2-pj4r' },
 ];
 
@@ -79,7 +80,7 @@ function atLeast(version: string, floor: string): boolean {
 
 /**
  * The lowest version a dependency range admits, for the forms where that is the version written:
- * an exact pin (`5.2.0`, as `@angular/build` pins piscina), `=`, `^` (as `get-uri` asks for
+ * an exact pin (`5.2.0`, as `@angular/build` 21.2.24 pinned piscina), `=`, `^` (as `get-uri` asks for
  * basic-ftp), `~` and `>=`. Anything else throws rather than guessing: `>5.3.1` admits nothing
  * at 5.3.1, so reading its digits would keep an override its parent no longer needs, and `5.x`,
  * a hyphen range or a `||` union has no single version to read.

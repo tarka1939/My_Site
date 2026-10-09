@@ -21,8 +21,6 @@ import { AboutPage } from '../model/aboutPage';
 // @ts-ignore
 import { AboutPageWriteRequest } from '../model/aboutPageWriteRequest';
 // @ts-ignore
-import { ProblemDetail } from '../model/problemDetail';
-// @ts-ignore
 import { ValidationProblemDetail } from '../model/validationProblemDetail';
 
 // @ts-ignore

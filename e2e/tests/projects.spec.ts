@@ -211,9 +211,13 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
 
   // The whole description, every paragraph of it -- the other half of the excerpt claim. The card
   // is allowed to cut only because this page does not: both markers the card had to suppress have
-  // to be here. Class locator for the same reason as on the card: the article holds two <p>
-  // elements and a paragraph has no role or name.
-  const detailDescription = page.locator('p.description');
+  // to be here. A class locator: the description's paragraphs share the `paragraph` role with the
+  // period line, and none of them has a name. No tag in it either -- this was `p.description`
+  // until descriptions became Markdown (2026-09-10) and the element a <div> holding one <p> per
+  // paragraph, and the tag is what went stale. markdown-it puts a newline between those
+  // paragraphs and string `toHaveText` collapses whitespace on both sides, so the `\n\n`-joined
+  // fixture compares equal.
+  const detailDescription = page.getByRole('article').locator('.description');
   await expect(detailDescription).toHaveText(FIXTURE_ALPHA.description);
   for (const marker of FIXTURE_ALPHA_CARD_TEXT.hiddenOnCard) {
     await expect(detailDescription).toContainText(marker);

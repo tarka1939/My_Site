@@ -19,7 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import jakarta.validation.ConstraintViolationException;
 
 /**
- * One consistent error shape for the whole API, matching docs/openapi.yaml's RFC 7807
+ * One consistent error shape for the whole API, matching docs/openapi.yaml's RFC 9457
  * ProblemDetail / ValidationProblemDetail conventions.
  *
  * <p>Extends {@link ResponseEntityExceptionHandler} rather than reimplementing every case --
@@ -165,8 +165,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * fell to the catch-all below as a 500 with an ERROR stack trace. It is a client error, so it
      * gets that handler's 400 and its fixed detail: the exception's message can quote the value,
      * an Authorization header's included, so it is never echoed. Logged at DEBUG for the reasons
-     * that handler gives. The body has no {@code type}, as Spring omits the default
-     * {@code about:blank}; the firewall's handler writes the same value out in full.
+     * that handler gives. The body has no {@code type}: {@code ProblemDetail} has no default,
+     * nothing here sets one, and Boot's Jackson mixin leaves unset fields out. RFC 9457 reads that
+     * as {@code about:blank}, which the firewall's handler writes out in full.
      */
     @ExceptionHandler(RequestRejectedException.class)
     public ProblemDetail handleRequestRejected(RequestRejectedException ex) {
@@ -179,7 +180,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * Fallback for anything not handled above or by the base class (NPE, DataAccessException,
      * etc.) — without this, a truly unexpected exception falls through to Spring Boot's default
-     * error response instead of the RFC 7807 shape every other error on this API uses.
+     * error response instead of the RFC 9457 shape every other error on this API uses.
      * Deliberately doesn't echo {@code ex.getMessage()} to the client, since an unanticipated
      * exception's message could contain internal details (SQL, file paths); logs the full
      * exception server-side instead.

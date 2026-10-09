@@ -147,6 +147,36 @@ class SecurityIntegrationTest {
     }
 
     /**
+     * #255. A missing or refused bearer token gets a 401 with no body: Spring Security's entry
+     * point writes the status and an RFC 6750 {@code WWW-Authenticate} challenge, and nothing else.
+     * docs/openapi.yaml says so, and this is what keeps it true. A token is checked wherever it is
+     * sent, so a bad one is refused on a public read as well.
+     *
+     * <p>GETs only: this client has been seen to return no body for a POST's 401 even when one was
+     * sent, so a POST case here would pass either way.
+     */
+    @Test
+    void aMissingOrRefusedTokenGetsAChallengeAndNoBody() {
+        HttpHeaders badToken = new HttpHeaders();
+        badToken.setBearerAuth("x.y.z");
+
+        ResponseEntity<String> missing = restTemplate.getForEntity(url("/api/v1/contact-messages"), String.class);
+        ResponseEntity<String> refused = restTemplate.exchange(
+            url("/api/v1/projects"), HttpMethod.GET, new HttpEntity<>(badToken), String.class);
+
+        for (ResponseEntity<String> response : java.util.List.of(missing, refused)) {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getBody()).isNull();
+            assertThat(response.getHeaders().getContentType()).isNull();
+            // Not "Bearer " with a space: before Spring Security 7 the missing-token challenge
+            // was a bare "Bearer", and it would be again if resource_metadata were ever dropped.
+            assertThat(response.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).matches("Bearer( .*)?");
+        }
+        assertThat(missing.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).doesNotContain("error=");
+        assertThat(refused.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).contains("error=\"invalid_token\"");
+    }
+
+    /**
      * #122. Checked on a refusal as well as a success: the 401 is written by the resource
      * server's entry point rather than a controller, so this shows the headers are not confined to
      * controller responses. A request the firewall rejects outright is covered by the next test.
@@ -171,7 +201,32 @@ class SecurityIntegrationTest {
             // silently replaces them.
             assertThat(headers.getFirst("X-Frame-Options")).isEqualTo("DENY");
             assertThat(headers.getFirst("X-Content-Type-Options")).isEqualTo("nosniff");
+            // Plain HTTP, with app.tls-terminated-upstream off as in dev: no HSTS (#260).
+            // UpstreamTlsIntegrationTest boots with the production setting and gets it.
+            assertThat(headers.getFirst("Strict-Transport-Security")).isNull();
         }
+    }
+
+    /**
+     * #256. Spring Security 7 publishes this whether or not anything asks for it, and answers it
+     * before the rules in SecurityConfig, so it is public. Pinned so that a change to what it
+     * claims, or to whether it answers at all, fails here rather than surfacing in production.
+     */
+    @Test
+    void theResourceMetadataSpringPublishesClaimsNothingFalse() {
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+            url("/.well-known/oauth-protected-resource"), HttpMethod.GET, HttpEntity.EMPTY,
+            new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {});
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsOnlyKeys(
+            "resource", "bearer_methods_supported", "tls_client_certificate_bound_access_tokens");
+        // HS256 JWTs, bound to no client certificate. Spring's default says they are.
+        assertThat(response.getBody()).containsEntry("tls_client_certificate_bound_access_tokens", false);
+        // The default BearerTokenResolver reads the Authorization header and nothing else.
+        assertThat(response.getBody()).containsEntry("bearer_methods_supported", java.util.List.of("header"));
+        // Plain HTTP here; UpstreamTlsIntegrationTest has the production scheme.
+        assertThat(response.getBody()).containsEntry("resource", "http://localhost:" + port);
     }
 
     /**
