@@ -301,7 +301,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 
 
 **Filed 2026-10-08 by the tech-debt pass (#68).**
-- [x] #272 — 16 published advisories applied to the backend's runtime classpath under Spring Boot 4.1.0, five rated critical (Tomcat, Spring MVC). None is reachable from this app: each needs Tomcat's own login or security constraints, rendered views, polymorphic JSON, or a numeric request field. PR #NNN, not yet released. Boot 4.1.1 fixes four of the six libraries, and `pom.xml` overrides Tomcat to 11.0.26 and Jackson to 3.1.7 for the other two. `DependencyOverridesTest` fails in the build that makes either override unnecessary, as `dependency-overrides.spec.ts` does for npm.
+- [x] #272 — 16 published advisories applied to the backend's runtime classpath under Spring Boot 4.1.0, five rated critical (Tomcat, Spring MVC). None is reachable from this app: each needs Tomcat's own login or security constraints, rendered views, polymorphic JSON, or a numeric request field. PR #274, not yet released. Boot 4.1.1 fixes four of the six libraries, and `pom.xml` overrides Tomcat to 11.0.26 and Jackson to 3.1.7 for the other two. `DependencyOverridesTest` fails in the build that makes either override unnecessary, as `dependency-overrides.spec.ts` does for npm.
 
 **Open design questions, the owner's to answer.**
 - [ ] #273 — nothing alerts on a vulnerable dependency. Dependabot alerts are off, CI runs no audit, and every finding so far (#244, #265, #267, #272) was found by hand. Turning alerts on is a repository setting, so it is the owner's; the other options are a scheduled audit or a release-checklist step

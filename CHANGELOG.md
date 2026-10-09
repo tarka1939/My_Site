@@ -129,7 +129,7 @@ That ordering was deliberate — the runbook argues a first deploy should introd
 
 ### Fixed
 
-- **The backend moves past 16 published advisories, and its version overrides retire themselves** (2026-10-09, #272, PR #NNN, backend).
+- **The backend moves past 16 published advisories, and its version overrides retire themselves** (2026-10-09, #272, PR #274, backend).
   - **What was affected:** production's Spring Boot 4.1.0 resolves Tomcat 11.0.22, Spring Framework 7.0.8, Jackson 3.1.4, pgJDBC 42.7.11 and log4j-api 2.25.4. Between 2026-07-11 and 2026-10-01, 16 advisories were published against those versions, five rated critical (three in Tomcat, two in Spring MVC). Nothing reported them: the backend has never had a dependency audit, and Dependabot alerts are off (#273).
   - **Exposure here:** none found. Each advisory needs something this app does not do:
     - Tomcat's own FORM or DIGEST login, or `web.xml` security constraints. Spring Security authenticates in a filter instead.
