@@ -83,9 +83,9 @@ jobs:
       #
       # Ryuk is off here (#285). It is Testcontainers' cleanup container, and its image was the
       # job's only other Docker Hub pull. A refusal there fails every Testcontainers class within
-      # about two minutes, which reads as broken tests again. Ryuk removes containers a dead JVM
+      # a few minutes, which reads as broken tests again. Ryuk removes containers a dead JVM
       # leaves behind, and a GitHub-hosted runner is discarded after the job anyway. Local runs
-      # keep it.
+      # keep it. The "Ryuk has been disabled" warning banner in the log is expected.
       - name: Run backend tests
         working-directory: backend
         env:
