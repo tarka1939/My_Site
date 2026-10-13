@@ -21,10 +21,19 @@ has already happened here:
   --porcelain` (false positive on Windows line endings) and not `git diff --numstat` (blind to newly
   generated files, which is exactly the shape of a stale client after a schema is added).
 
-There is also an explicit `docker info` step before the backend tests. Thirteen test files use
-Testcontainers, and `@Testcontainers` is deliberately *not* set to `disabledWithoutDocker` — so a
-runner without Docker fails rather than skips, and the step names that cause instead of leaving a
-confusing container error to be interpreted.
+There is also an explicit `docker info` step before the backend tests. The integration tests start
+Postgres through Testcontainers, on the image named in `TestPostgres.java`, and `@Testcontainers` is
+deliberately *not* set to `disabledWithoutDocker` — so a runner without Docker fails rather than
+skips, and the step names that cause instead of leaving a confusing container error to be
+interpreted.
+
+The image gets the same treatment (#285). A step pulls it before Maven runs, reading the name from
+`TestPostgres.java`, so a Docker Hub refusal fails within minutes at a step named for the pull. On
+2026-10-09 the same refusal cost 45 minutes of retries, and then showed up as 9 errored test classes.
+Ryuk, Testcontainers' cleanup container, is switched off for the Maven step
+(`TESTCONTAINERS_RYUK_DISABLED`). Its image was the job's only other Docker Hub pull, and a runner
+is discarded after the job anyway. After those two changes, the image pull is the job's only
+contact with Docker Hub.
 
 ## `deploy-backend.yml` and `deploy-frontend.yml` — live on `main`
 
