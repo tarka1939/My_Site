@@ -133,6 +133,17 @@ of the input space. These bugs share one shape — they live everywhere outside 
   **Fixed** by switching to the RFC 2606 reserved `admin@mysite.invalid`, with a comment flagging the
   out-of-band update needed before password reset can reach a real inbox.
   *(2026-08-01, "GitHub Copilot review of PR #77".)*
+- **The branch guard failed open twice, while the docs called it unconditional.** From 2026-08-07
+  to 2026-08-27 it parsed its input with `jq`, which is not installed here, so it read an empty
+  command and an explicit `exit 0` allowed everything. The first rewrite allowed again whenever
+  the interpreter crashed. And it was wired to the `Bash` tool alone, so PowerShell, the desktop
+  app's primary shell, never reached it; that fix merged to `dev` on 2026-10-13, and reaches a
+  session only once the checkout it starts in has it. **Fixed** by four rules written into the
+  file's header: deny by default, check the interpreter's exit status, deny on every exception, and
+  end on a deny that needs nothing installed. Also a `Bash|PowerShell` matcher, and a harness
+  section that reads the wiring in `settings.json`, since cases that call the hook directly cannot
+  see it. *(2026-08-27: the header of `.claude/hooks/block-protected-branch-ops.sh`, never logged
+  here. 2026-10-13, "a guard that saw one shell" — PR #284.)*
 
 **Lesson:** this class is why `PROJECT_TODO.md`'s Definition of Done now requires that placeholder
 security config fail *closed*, and that absence-of-configuration be its own test case.
