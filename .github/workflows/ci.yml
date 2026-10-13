@@ -69,7 +69,7 @@ jobs:
             echo "Pull $attempt of 3 failed." >&2
             [ "$attempt" -lt 3 ] && sleep 20
           done
-          echo "::error::Docker Hub refused $image three times, and the backend suite cannot start a database without it. See #285."
+          echo "::error::Could not pull $image in three attempts; docker's own error is above. The backend suite cannot start a database without it. See #285."
           exit 1
 
       # -B for non-interactive batch output. NOT -q: that suppresses the "Tests run:" summary
