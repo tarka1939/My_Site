@@ -308,6 +308,68 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-13 — Senior Dev: a guard that saw one shell, an "available" checked against a jar listing, and a CI run that read as nine broken tests
+
+**Task given:** Continue autonomously after the 2026-10-09 release, keeping the owner-decisions list current. Besides the day's log and the release docs (PRs #278, #281), that became three PRs to `dev`:
+- PR #280 (#279): three test comments about `TestRestTemplate`, merged 2026-10-09;
+- PR #284 (#282, #283): the branch guard, merged 2026-10-13;
+- PR #286 (#285): CI's Postgres image pull, merged 2026-10-13.
+
+**Agent(s) used:** Senior Dev (Opus) implemented each PR. A fresh Opus session gave each a cold review.
+
+**What went right:**
+- **Failing closed worked, loudly.** At 22:19 on 2026-10-09 the Store's `python` and `python3` aliases came back ahead of the real interpreter. The guard could run neither, and denied every Bash call. That is rule 1 of the 2026-08-27 rewrite doing its job: the first version of this hook, which used `jq`, had allowed everything in the same situation for twenty days.
+- **Each new harness case was shown to fail when its target breaks.** Six mutations: the guard without `py`, the harness stubbing only `python` and `python3`, the matcher back to `Bash`, `;` dropped from the separator class, the backslash dropped from the branch boundary, and any exit-0 output taken as an answer. Each failed the cases aimed at it. The first, re-run after the review, now fails every guard case with `deny-fallback`, where before its deny cases had passed regardless.
+- **The CI failure was read before it was re-run.** 215 tests, 0 failures, 9 errors, every error a container that never started. The re-run passed all 297.
+- **#286's own CI log was read against its claims.** The step pulled Postgres, and Testcontainers made no pull of its own for it. The same log showed the step ran under `bash -e {0}`, not the `bash -eo pipefail` the PR body had claimed.
+- **A claim from a review was checked before it was relayed.** #284's review named a newer hook option, `"onFailure": "block"`. The owner's list cites Claude Code's hooks documentation for it and the version it needs, 2.1.295, not the review.
+
+**What went wrong (be specific):**
+1. **"Available" was checked against a jar listing.** Fixing three stale test comments (#279, PR #280), the Senior Dev replaced "`TestRestTemplate` is not on the classpath" with "it is available now". It had checked that the class file is in `spring-boot-resttestclient`'s jar, not that it loads. It links against `spring-boot-restclient` and `spring-boot-http-client`, neither on the test classpath, so it fails with `NoClassDefFoundError`. The old comments were wrong about the classpath and right in practice; the first fix was the reverse. #279's own text made the same overstatement.
+2. **The guard had never seen PowerShell.** `.claude/settings.json` wired `block-protected-branch-ops.sh` to `Bash` alone from its first commit on 2026-08-07. In the desktop app, PowerShell is the primary shell, and `git checkout dev`, `git push --force` and `git reset --hard` typed there always ran unguarded. The README called the guard unconditional, the second time it overclaimed for this file. The first was the `jq` version.
+3. **Every deny case could pass with no interpreter at all.** The harness reported the guard's fallback deny and a pattern deny as the same `deny`. So "py runs, and denies", and every other deny case, also passed when nothing ran. The old interpreter-failure case had the same flaw from the other side: once `py` worked, its `git checkout main` would have been denied by the real pattern, a pass for the wrong reason.
+4. **A commit message claimed coverage that no test gave.** 674fccf says the `Remove-Item -Recurse -Force` case covers a match crossing `;`. It cannot: `-Force` never matches `-f\b`, so that case passes with or without the separator. With `;` removed from the pattern, every case still passed.
+5. **A false deny this repo would hit daily.** A backslash was not a token boundary, so restoring `backend\src\main\...\X.java` from PowerShell read as a checkout of `main`. The Maven layout puts `main` in most backend paths.
+6. **Exit 0 was taken as an answer whatever it printed.** Claude Code reads stdout that does not start with `{` as plain text, and plain text on exit 0 is an allow. An interpreter that printed a notice ahead of a deny would have allowed the call. Not live.
+7. **A registry outage read as nine broken tests.** On 2026-10-09 Docker Hub refused #284's Postgres image pull. #284 changed no backend code. Testcontainers retried for about 45 minutes. Maven then reported 9 errors, and 91 tests never ran. CI's one external dependency had no step of its own, so its failure surfaced as test errors.
+8. **#286's first version miscounted, and played down its own gap.**
+   - **The count.** It said 82 tests never ran. The Senior Dev had subtracted Maven's 215 from 297, but Maven counts each errored class as one test, so 215 was 206 that ran plus 9 errors. The 9 classes hold 91 tests.
+   - **The gap.** It said Ryuk's image, still pulled by Testcontainers, was a gap that only a refusal starting between the two pulls would hit, and then slowly. That was wrong on both counts:
+     - Testcontainers 2.0.5 caches a Ryuk failure, so every Testcontainers class errors within a few minutes, which reads as broken tests again.
+     - Attempt 1's own log had Ryuk pulled one second before the refusal began. With Postgres now pulled first, that same edge refuses Ryuk.
+   - **Also missed:** a second copy of the stale comment in `.github/workflows/README.md`, and a `sed` pattern that a javadoc line could also match.
+9. **A number from the review went in unchecked.** The review put a Ryuk refusal at about two minutes. The fix commits copied that into `ci.yml`, the CHANGELOG and the PR body. Nobody checked it, on the same day this entry credits checking a review's claim before relaying it. It was low: Testcontainers doubles its pull backoff, so one refused resolve takes about 209 s.
+
+**How it was caught:**
+1. #280's cold review compiled a probe test and ran it.
+2. By the session itself. With Bash refused, it worked through the PowerShell tool, and its git commands ran normally. They should have met the guard.
+3. to 6. #284's cold review. It re-ran the harness at every commit, ran mutations of its own (the `;` removal is its), and read Claude Code's hooks documentation for the plain-text rule.
+7. One CI look at #284 before merging.
+8. #286's cold review. It summed the 9 classes in the passing re-run, read the cached failure in the 2.0.5 bytecode with `javap`, and tested the pattern against a quoted line.
+9. #286's re-review, of the fix commits.
+
+**Fix applied:**
+1. f35df4f, with the reviewer's text, and a correction comment on #279.
+2. PR #284: the matcher is `Bash|PowerShell`, the spelling the hooks documentation gives. A wiring check reads `settings.json` by the documented matcher rules. Both hooks also try `py`, and the README records the gap as a correction.
+3. `verdict` reports the fallback as `deny-fallback`, and only the cases that expect it say so. The interpreter-failure case sends `git status`, which a working hook allows.
+4. Four allow cases fail if a match crosses `;`, `&&` or `|`. 674fccf's message keeps the wrong claim, as history; PR #284's description states the correction.
+5. The branch pattern treats a backslash as part of a path, with two allow cases.
+6. Both hooks accept only empty output or their own JSON, and move on otherwise. Two cases cover it.
+7. PR #286 pulls the image in its own step before Maven, reading the name from `TestPostgres.java`. A refusal now fails within minutes, at a step that names it. #285 records a mirror and a Docker Hub login for the owner, in case it recurs. The release workflow has the same exposure, filed as #287.
+8. 91 in the CHANGELOG and the PR body. Ryuk is off in CI (`TESTCONTAINERS_RYUK_DISABLED`), which leaves the image pull as the job's only Docker Hub contact. The README paragraph was rewritten, and the pattern is anchored to the declaration, with a case for the quoted line.
+9. "A few minutes" in all three places, in 519fd12.
+
+**Takeaway for next time:**
+- **A guard wired to one tool name guards that tool, not the action.** When a tool that can do the same thing appears, the matcher is part of the change. Cases that call the hook directly cannot see the wiring, so test the wiring on its own.
+- **A case expecting "deny" passes for every reason a deny can happen.** Where a guard has a fallback deny, the test has to tell the two apart. Otherwise every deny case also passes when nothing runs at all.
+- **"Covers X" is a claim until X has been removed.** Write it in a commit message after the mutation has failed the case, not before.
+- **"On the classpath" is about a jar. "Available" is about a class loading.** Check the second with a probe, or `javap -v` for what it references.
+- **Give an external dependency its own step.** A registry that refuses a pull should fail a step named for the pull, not surface as test errors in a suite that never ran. Then list every pull the job makes, from its log, not just the one that failed.
+- **Count what didn't run from the units that errored.** Maven counts an errored class as one test. Subtracting totals gives a number with the right shape and the wrong value.
+- **Describe a gap's failure from the library's behaviour, not by analogy.** "Ryuk would fail the same way, only less often" was a guess on both counts, and `javap` showed otherwise.
+- **A reviewer's number is a claim too.** Checking a review's claims cannot stop at the ones that disagree with you. The figure that went in unchecked was the one that made the fix look more necessary.
+- **Also worth knowing:** `/api/v1/projects` answers HEAD with 401 and GET with 200, because only GET is permitted. The release's after-merge check used `curl -sI`, so it proved the HSTS header, not that the API answers. An uptime monitor should use GET.
+
 ## 2026-10-09 — Senior Dev: an audit that covered half the stack, a pin on a premise nobody checked, and Javadoc described from its source
 
 **Task given:** Continue autonomously from 2026-10-08. That meant a tech-debt pass (#68), which became two PRs to `dev`, both merged on 2026-10-09:
