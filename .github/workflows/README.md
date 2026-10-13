@@ -27,13 +27,14 @@ deliberately *not* set to `disabledWithoutDocker` — so a runner without Docker
 skips, and the step names that cause instead of leaving a confusing container error to be
 interpreted.
 
-The image gets the same treatment (#285). A step pulls it before Maven runs, reading the name from
-`TestPostgres.java`, so a Docker Hub refusal fails within minutes at a step named for the pull. On
-2026-10-09 the same refusal cost 45 minutes of retries, and then showed up as 9 errored test classes.
-Ryuk, Testcontainers' cleanup container, is switched off for the Maven step
-(`TESTCONTAINERS_RYUK_DISABLED`). Its image was the job's only other Docker Hub pull, and a runner
-is discarded after the job anyway. After those two changes, the image pull is the job's only
-contact with Docker Hub.
+The image gets the same treatment (#285). `.github/scripts/pull-test-image.sh` pulls it before Maven
+runs, reading the name from `TestPostgres.java`, so a Docker Hub refusal fails within minutes at a
+step named for the pull. On 2026-10-09 the same refusal cost 45 minutes of retries, and then showed
+up as 9 errored test classes. Ryuk, Testcontainers' cleanup container, is switched off for the Maven
+step (`TESTCONTAINERS_RYUK_DISABLED`). Its image was the job's only other Docker Hub pull, and a
+runner is discarded after the job anyway. After those two changes, the image pull is the job's only
+contact with Docker Hub. `deploy-backend.yml` does both as well (#287), with the same script, so the
+release path runs what every pull request has already run.
 
 ## `deploy-backend.yml` and `deploy-frontend.yml` — live on `main`
 
@@ -42,7 +43,8 @@ a time and never cancelled midway. Issue #196.
 
 - **Backend** (#45): builds the jar and ships it over **stdin** to `deploy/deploy.sh`, using an SSH
   key pinned with `command=` so it can run that one script and nothing else. Restarts, verifies, and
-  rolls back on failure.
+  rolls back on failure. The build runs the full backend suite, so it pulls the test image first,
+  as CI does (#287).
 - **Frontend** (#38): builds, asserts the SPA fallback survived into the artifact, publishes to
   Netlify. It **replaces** Netlify's own git build — switch that off first, or two builds race for
   one site.

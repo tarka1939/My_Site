@@ -40,10 +40,26 @@ jobs:
           java-version: '25'
           cache: maven
 
+      # The build below runs the backend suite, so it has the Docker Hub exposure ci.yml had in
+      # #285 (#287). Without this step, a refused pull would fail the release only after about 45
+      # minutes, as 9 errored test classes, with the next deploy queued behind it. It fails safe
+      # either way: no jar is shipped. This is the script ci.yml runs on every pull request.
+      - name: Pull the Postgres test image
+        timeout-minutes: 5
+        run: bash .github/scripts/pull-test-image.sh
+
       # Tests run on every PR (#193) and again here. Deploying an artifact whose tests were only
       # checked on the pull request means deploying something the merge commit never verified.
+      #
+      # Ryuk is off, as in ci.yml (#285, #287). It is Testcontainers' cleanup container, and its
+      # image would be this build's only other Docker Hub pull. A refusal there fails every
+      # Testcontainers class within a few minutes. Ryuk removes containers a dead JVM leaves
+      # behind, and this runner is discarded after the job anyway. The "Ryuk has been disabled"
+      # warning banner in the log is expected.
       - name: Build the jar
         working-directory: backend
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
         run: mvn -B clean package
 
       - name: Find the jar
