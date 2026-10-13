@@ -53,13 +53,18 @@ jobs:
       # minutes, at a step that names it.
       #
       # This is not a second pull: Testcontainers pulls only an image that is not already local,
-      # and nothing in backend/ changes that policy. The name is read from TestPostgres.java rather
-      # than written again here, because that class is the one place it is kept and its javadoc
-      # explains why a second copy is the defect.
+      # and nothing in backend/ changes that policy. If Testcontainers is ever pointed at a mirror
+      # (TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX, an option on #285), pull through the same mirror
+      # here, or this step fails on the refusal the mirror exists to avoid.
+      #
+      # The name is read from TestPostgres.java rather than written again here, because that
+      # class is the one place it is kept and its javadoc explains why a second copy is the
+      # defect. The pattern is anchored to the declaration, so a javadoc line quoting it cannot
+      # match as well.
       - name: Pull the Postgres test image
         timeout-minutes: 5
         run: |
-          image=$(sed -n 's/.*String IMAGE = "\([^"]*\)";.*/\1/p' backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java)
+          image=$(sed -n 's/^[[:space:]]*public static final String IMAGE = "\([^"]*\)";.*/\1/p' backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java)
           if [ -z "$image" ]; then
             echo "::error::Could not read IMAGE from TestPostgres.java. If the constant moved, update this step."
             exit 1
@@ -75,8 +80,16 @@ jobs:
       # -B for non-interactive batch output. NOT -q: that suppresses the "Tests run:" summary
       # line, which is the record. A count derived from target/surefire-reports instead of read
       # from Maven has already been wrong in this project once, by 22 tests.
+      #
+      # Ryuk is off here (#285). It is Testcontainers' cleanup container, and its image was the
+      # job's only other Docker Hub pull. A refusal there fails every Testcontainers class within
+      # about two minutes, which reads as broken tests again. Ryuk removes containers a dead JVM
+      # leaves behind, and a GitHub-hosted runner is discarded after the job anyway. Local runs
+      # keep it.
       - name: Run backend tests
         working-directory: backend
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
         run: mvn -B test
 
   frontend:
