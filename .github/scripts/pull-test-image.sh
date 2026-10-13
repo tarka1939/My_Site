@@ -7,7 +7,8 @@
 #
 # Why a step of its own: on 2026-10-09 Docker Hub refused this pull. Testcontainers retried for
 # about 45 minutes, and Maven then reported 9 errors on a PR that changed no backend code, which
-# read as 9 broken tests. Here a refusal fails in under a minute, at a step named for the pull.
+# read as 9 broken tests. Here a refusal fails within minutes, at a step named for the pull. Each
+# caller caps the step with `timeout-minutes: 5`, for a pull that hangs rather than being refused.
 #
 # This is not a second pull: Testcontainers pulls only an image that is not already local, and
 # nothing in backend/ changes that policy. If Testcontainers is ever pointed at a mirror
@@ -21,8 +22,12 @@
 set -e
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
-image=$(sed -n 's/^[[:space:]]*public static final String IMAGE = "\([^"]*\)";.*/\1/p' \
-  "$root/backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java")
+java_file="$root/backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java"
+if [ ! -f "$java_file" ]; then
+  echo "::error::$java_file not found. If TestPostgres.java moved, update .github/scripts/pull-test-image.sh."
+  exit 1
+fi
+image=$(sed -n 's/^[[:space:]]*public static final String IMAGE = "\([^"]*\)";.*/\1/p' "$java_file")
 if [ -z "$image" ]; then
   echo "::error::Could not read IMAGE from TestPostgres.java. If the constant moved, update .github/scripts/pull-test-image.sh."
   exit 1

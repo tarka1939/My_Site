@@ -41,9 +41,10 @@ jobs:
           cache: maven
 
       # The build below runs the backend suite, so it has the Docker Hub exposure ci.yml had in
-      # #285 (#287). Without this step, a refused pull would fail the release only after about 45
-      # minutes, as 9 errored test classes, with the next deploy queued behind it. It fails safe
-      # either way: no jar is shipped. This is the script ci.yml runs on every pull request.
+      # #285 (#287). Without this step, a refused pull would fail the release only after a long run
+      # of Testcontainers retries (in #285, about 45 minutes and 9 errored classes), with the next
+      # deploy queued behind it. It fails safe either way: no jar is shipped. This is the script
+      # ci.yml runs on every pull request.
       - name: Pull the Postgres test image
         timeout-minutes: 5
         run: bash .github/scripts/pull-test-image.sh
