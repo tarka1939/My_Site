@@ -76,7 +76,9 @@ The worktree rule above is easy to state and easy to violate by accident (a sess
 Two starter hooks are wired up via `.claude/settings.json`:
 
 - **`.claude/hooks/check-worktree-scope.sh`** — denies any `Edit`/`Write` call targeting a file outside the session's assigned worktree. Opt a session into this check by exporting `CLAUDE_WORKTREE_ROOT` (its worktree's absolute path) before launching it; if unset, the hook is a no-op, so it doesn't restrict ordinary single-session work on the main checkout.
-- **`.claude/hooks/block-protected-branch-ops.sh`** — always active. Denies force-pushes, a direct checkout of `main`/`master`/`dev`, and `git reset --hard` from any `Bash` tool call, regardless of worktree. Defense in depth: a task session should never need to touch a shared branch directly, worktree or not. `dev` was added 2026-08-27 when it became the integration branch — it is now the one a session is most likely to reach for by reflex.
+- **`.claude/hooks/block-protected-branch-ops.sh`** — always active. Denies force-pushes, a direct checkout of `main`/`master`/`dev`, and `git reset --hard` from any `Bash` or `PowerShell` tool call, regardless of worktree. Defense in depth: a task session should never need to touch a shared branch directly, worktree or not. `dev` was added 2026-08-27 when it became the integration branch — it is now the one a session is most likely to reach for by reflex. `PowerShell` was added 2026-10-09 (#283): it is the primary shell in the Windows desktop app, and until then its calls never reached the hook.
+  - **It needs a working interpreter**, the first of `python`, `python3` or `py` that runs. If none does, it denies every Bash and PowerShell call. A session started from that checkout then has no shell at all, until an interpreter works again (#282). That is the next section's fail-closed rule applied as written. The fix is outside Claude Code, and the deny message names the Windows setting that caused it on 2026-10-09.
+  - **Every shell call pays for it**: about half a second with a working `python`, and 1 to 1.3 s while two Store stubs sit ahead of `py` (two measurements, 2026-10-09).
 
 Both hooks return a structured `permissionDecision: "deny"` with a human-readable reason on the offending call, rather than silently failing — see the scripts themselves for the exact contract. Extend this pattern (rather than replacing it) if more automatic guardrails come up; it's cheaper to add a new `PreToolUse` matcher than to keep re-explaining a rule in every session's prompt.
 
@@ -96,7 +98,7 @@ What changed:
 
 **The general lesson, which is not about `jq`:** a guard that fails open is worse than no guard, because the documentation describing it becomes the thing people trust. Neither hook had a test, and nothing ever tried a command they were supposed to block — so "we have hooks" was load-bearing for eight phases without once being true. If you add a hook, first make it deny something and watch it happen.
 
-**Known false positive, accepted:** `block-protected-branch-ops.sh` matches the whole command string, so a shell heredoc writing documentation that quotes a blocked command is itself blocked. Write files with the `Write`/`Edit` tools rather than heredocs, which is the better habit anyway.
+**Known false positive, accepted:** `block-protected-branch-ops.sh` matches the whole command string, so a shell heredoc writing documentation that quotes a blocked command is itself blocked. Since #283 that covers PowerShell too, including a commit message or PR body passed inline or as a here-string. Write files with the `Write`/`Edit` tools rather than heredocs, and pass messages and bodies as files (`git commit -F`, `gh pr create --body-file`), which is the better habit anyway.
 
 ## Task distribution (added 2026-08-05)
 
