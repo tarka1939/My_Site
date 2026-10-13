@@ -48,8 +48,8 @@ jobs:
         run: docker info > /dev/null
 
       # The same idea for the image (#285). A refused Docker Hub pull fails here, at a step named
-      # for it, rather than as Testcontainers errors after about 45 minutes of retries. The script
-      # says why and how. deploy-backend.yml runs the same script before it builds a release (#287),
+      # for it, rather than as Testcontainers errors after a long run of retries (about 45 minutes in
+      # #285). The script says why and how. deploy-backend.yml runs the same script before it builds a release (#287),
       # so a change to it is checked here, on the pull request, before any release runs it.
       - name: Pull the Postgres test image
         timeout-minutes: 5
