@@ -18,7 +18,7 @@ So:
 
 - **`projects.json` is the source of truth for what the site says.** Edit it, then re-run. The
   script never writes copy of its own and never edits the file.
-- The file carries `"_signedOff": true`, set in 4e961f0. While it is false, every run prints an
+- The file carries `"_signedOff": true`, set in 4e961f0. If it is ever false, every run prints an
   `UNSIGNED-OFF COPY` banner, and nothing else changes. Setting it is the owner's call.
 - Two entries carry **no dates at all, by decision** (both coursework entries). That is not an
   oversight to be helpfully filled in; see the `_dates` note on each record and §5.4/§5.5 of the
