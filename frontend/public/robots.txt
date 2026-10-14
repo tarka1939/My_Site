@@ -6,10 +6,11 @@
 # 2606 to never resolve, and got nothing. The runtime canonical in SeoService was fine the
 # whole time -- it uses document.location.origin -- but a sitemap has no runtime.
 #
-# No custom domain is planned (docs/DECISIONS.md, 2026-07-25). If one is ever added, the
-# origin changes here, in sitemap.xml, in index.html's og:url, and in the two test fixtures
-# that pin it -- and that is a site move, not an edit: 301 from the old host and a change of
-# address in Search Console, or the accumulated indexing starts over.
+# A custom domain is planned (docs/DECISIONS.md, 2026-10-14). When it arrives, the origin
+# changes here and in sitemap.xml, and a git grep for the old origin finds the rest. index.html
+# no longer carries it: its static og:url was dropped for #251. That is a site move, not an
+# edit: 301 from the old host and a change of address in Search Console, or the accumulated
+# indexing starts over.
 
 User-agent: *
 

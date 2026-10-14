@@ -7,8 +7,9 @@
   which reads document.location.origin and was always correct — this advertised URLs that
   could not resolve to anything that read it.
 
-  No custom domain is planned. If one arrives, changing the origin here is part of a site
-  move rather than an edit: 301 from the old host and a change of address in Search Console.
+  A custom domain is planned (docs/DECISIONS.md, 2026-10-14). When it arrives, changing the
+  origin here is part of a site move rather than an edit: 301 from the old host and a change of
+  address in Search Console.
 
   Scope: static public routes only. Project detail pages (/projects/:id) are deliberately
   absent — their URLs are UUIDs known only at runtime, and this is a build-time artifact in
