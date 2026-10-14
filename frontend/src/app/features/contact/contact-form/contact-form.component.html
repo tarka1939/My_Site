@@ -1,5 +1,15 @@
 <h1>Contact</h1>
 
+<!-- The one route to me that does not depend on this site's backend (#118). Shown always rather
+     than only when a send fails: some failures raise errorInterceptor's toast (a 429, a 5xx) and
+     never reach this template, and a way out offered only after something breaks is offered late.
+     Outside the @if, so a visitor who has sent a message still has it. An email address belongs
+     here too, by the owner's choice, and waits for a domain of their own (docs/DECISIONS.md,
+     2026-10-14). -->
+<p class="contact-alternative">
+  You can also find me on <a href="https://github.com/tarka1939" rel="me">GitHub</a>.
+</p>
+
 @if (submitted()) {
   <p role="status">Thanks for reaching out &mdash; I'll get back to you soon.</p>
 } @else {
@@ -69,14 +79,17 @@
          "something in it was not accepted", which puts the fault on what the visitor typed when a
          honeypot rejection is about a field they never saw. It also does not suggest retrying: an
          unclaimed key means a server-side disagreement about field names, which will reject the
-         next attempt identically, and there is no other way to reach me from this page. -->
+         next attempt identically. What it offers instead is the one route that does not go
+         through this backend: the GitHub link at the top of the page, repeated here so the way
+         out sits beside the dead end (#118). -->
     @if (hasUnclaimedRejection()) {
       <div id="contact-form-error" class="form-error" role="alert">
         <p class="form-error-heading">Your message was not sent.</p>
         <p>
           The site refused it for a reason it cannot show you here, and nothing you change above
           will get past it &mdash; this is a fault on my side, not in what you wrote. Sending it
-          again will most likely fail the same way.
+          again will most likely fail the same way. You can still find me on
+          <a href="https://github.com/tarka1939" rel="me">GitHub</a>.
         </p>
       </div>
     }

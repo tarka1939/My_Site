@@ -62,14 +62,22 @@ function bannerText(host: HTMLElement): string | null {
  * were each accurate about the mechanism and wrong about the reader: one printed the backend's
  * field key, one said the site could not tell which part when the server had said exactly which
  * part, and one told the visitor to try again when a renamed field rejects every attempt alike.
- * None of that is reachable through a structural assertion -- only through the sentence.
+ * None of that is reachable through a structural assertion -- only through the sentence. The last
+ * sentence is #118's: the banner used to end at the dead end, with nowhere to send the reader.
  */
 const CATCH_ALL_COPY =
   'Your message was not sent. The site refused it for a reason it cannot show you here, and ' +
   'nothing you change above will get past it — this is a fault on my side, not in what you ' +
-  'wrote. Sending it again will most likely fail the same way.';
+  'wrote. Sending it again will most likely fail the same way. You can still find me on GitHub.';
 
 const FIELD_IDS = ['contact-name', 'contact-email', 'contact-message'];
+
+const GITHUB_PROFILE = 'https://github.com/tarka1939';
+
+/** The always-shown link to the one route that does not go through this backend (#118). */
+function alternativeLink(host: HTMLElement): HTMLAnchorElement | null {
+  return host.querySelector<HTMLAnchorElement>('.contact-alternative a');
+}
 
 describe('ContactFormComponent', () => {
   let submitContactMessage: ReturnType<typeof vi.fn>;
@@ -112,6 +120,61 @@ describe('ContactFormComponent', () => {
     const host = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('[role="status"]')?.textContent).toContain('Thanks for reaching out');
     expect(host.querySelector('form')).toBeNull();
+  });
+
+  describe('the route that does not depend on this backend (#118)', () => {
+    it('links to the GitHub profile before anything is sent', async () => {
+      const fixture = await render();
+      const link = alternativeLink(fixture.nativeElement as HTMLElement);
+
+      expect(link?.getAttribute('href')).toBe(GITHUB_PROFILE);
+      expect(link?.textContent?.trim()).toBe('GitHub');
+    });
+
+    it('keeps the link after a message is sent', async () => {
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('form')).toBeNull();
+      expect(alternativeLink(host)?.getAttribute('href')).toBe(GITHUB_PROFILE);
+    });
+
+    it('keeps the link when a send fails without field errors', async () => {
+      // A 429 or a 5xx: errorInterceptor raises the toast and nothing in this template changes, so
+      // the always-shown link is the only way out the page offers in that case.
+      submitContactMessage.mockReturnValue(
+        throwError(() => ({
+          status: 503,
+          title: 'Service Unavailable',
+          fieldErrors: [],
+          rateLimited: false,
+        })),
+      );
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.form-error')).toBeNull();
+      expect(alternativeLink(host)?.getAttribute('href')).toBe(GITHUB_PROFILE);
+    });
+
+    it('offers the same link inside the banner that says nothing else will work', async () => {
+      submitContactMessage.mockReturnValue(
+        throwError(() => validationProblem('body', 'must not be blank')),
+      );
+      const fixture = await render();
+      await fillValidMessage(fixture);
+
+      await send(fixture);
+
+      const banner = (fixture.nativeElement as HTMLElement).querySelector('.form-error');
+      expect(banner?.querySelector('a')?.getAttribute('href')).toBe(GITHUB_PROFILE);
+    });
   });
 
   describe('this form’s own validation messages', () => {
