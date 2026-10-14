@@ -47,35 +47,13 @@ jobs:
       - name: Confirm Docker is available for Testcontainers
         run: docker info > /dev/null
 
-      # The same idea for the image (#285). On 2026-10-09 Docker Hub refused the pull, Testcontainers
-      # retried for about 45 minutes, and Maven then reported 9 errors on a PR that changed no
-      # backend code, which read as 9 broken tests. Here a refusal fails within a couple of
-      # minutes, at a step that names it.
-      #
-      # This is not a second pull: Testcontainers pulls only an image that is not already local,
-      # and nothing in backend/ changes that policy. If Testcontainers is ever pointed at a mirror
-      # (TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX, an option on #285), pull through the same mirror
-      # here, or this step fails on the refusal the mirror exists to avoid.
-      #
-      # The name is read from TestPostgres.java rather than written again here, because that
-      # class is the one place it is kept and its javadoc explains why a second copy is the
-      # defect. The pattern is anchored to the declaration, so a javadoc line quoting it cannot
-      # match as well.
+      # The same idea for the image (#285). A refused Docker Hub pull fails here, at a step named
+      # for it, rather than as Testcontainers errors after a long run of retries (about 45 minutes in
+      # #285). The script says why and how. deploy-backend.yml runs the same script before it builds a release (#287),
+      # so a change to it is checked here, on the pull request, before any release runs it.
       - name: Pull the Postgres test image
         timeout-minutes: 5
-        run: |
-          image=$(sed -n 's/^[[:space:]]*public static final String IMAGE = "\([^"]*\)";.*/\1/p' backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java)
-          if [ -z "$image" ]; then
-            echo "::error::Could not read IMAGE from TestPostgres.java. If the constant moved, update this step."
-            exit 1
-          fi
-          for attempt in 1 2 3; do
-            docker pull "$image" && exit 0
-            echo "Pull $attempt of 3 failed." >&2
-            [ "$attempt" -lt 3 ] && sleep 20
-          done
-          echo "::error::Could not pull $image in three attempts; docker's own error is above. The backend suite cannot start a database without it. See #285."
-          exit 1
+        run: bash .github/scripts/pull-test-image.sh
 
       # -B for non-interactive batch output. NOT -q: that suppresses the "Tests run:" summary
       # line, which is the record. A count derived from target/surefire-reports instead of read
