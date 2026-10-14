@@ -880,7 +880,7 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 
 **Context:** The admin JWT is kept in `sessionStorage`, so any script that runs on the page can read it, and an XSS is a full admin session takeover (#123). The CSP (#122) narrows that without closing it: `img-src https:` still lets an injected script send the token out. On 2026-10-14 the owner chose an `HttpOnly` cookie, which no script can read. But the site is served from `krzysztof-tarka.netlify.app` and the API from `tarka1939.bieda.it`, which are different sites. A cookie the API sets would be a third-party cookie on every admin page.
 
-**Decision:** The cookie waits until the site and the API share a domain, for example the site on `<domain>` and the API on `api.<domain>`. Then it can be a first-party cookie with `SameSite`, and it works in every browser. Until then the token stays in `sessionStorage`, with the exposure above, and #123 stays open. The owner has no domain yet.
+**Decision:** The cookie waits until the site and the API share a domain, for example the site on `<domain>` and the API on `api.<domain>`. Then the two are the same site, and the cookie is first-party, so browsers that block third-party cookies still send it, with `SameSite=Lax` or `Strict`. They are still different origins, so the site's requests still need credentialed CORS. Until then the token stays in `sessionStorage`, with the exposure above, and #123 stays open. The owner has no domain yet.
 
 **Alternatives considered:**
 - *A cross-site cookie now:* `SameSite=None; Secure`, with credentialed CORS and a CSRF token. Safari and Brave block third-party cookies by default, so admin login would fail in them.
@@ -889,8 +889,8 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - *`sessionStorage` for good, with this trade-off recorded.* This was the recommendation the owner was offered. They chose the cookie.
 
 **Consequences:**
-- A domain is now a prerequisite for #123. The owner buys it. Then three checks: that the VPS host can serve a custom domain for the API, that Netlify serves the site on it, and that everything naming the site's origin moves in one change. That means the CORS origin, `FRONTEND_URL`, and the canonical origin in `index.html`, `robots.txt` and `sitemap.xml` (#182).
-- The same domain is where #118's contact email waits, so it can be an address the owner can retire.
+- A domain is now a prerequisite for #123. The owner buys it. Then three checks: that the VPS host can serve a custom domain for the API, that Netlify serves the site on it, and that everything naming the site's origin moves in one change. That means the CORS origin, `FRONTEND_URL`, the canonical origin in `index.html`, `robots.txt` and `sitemap.xml` and the two tests that pin it (#182), and the frontend deploy's post-deploy checks. A `git grep` for the old origin finds the rest. Moving the API to `api.<domain>` is a separate host change, listed in the "Prod API base URL" row of `docs/DEPLOYMENT.md`.
+- #118's contact email waits for the same domain.
 - The 2026-10-04 ADR says nothing depends on a plain-HTTP request being reported as secure, because "there are no cookies". When the cookie is built, that consequence needs re-checking.
 
 ### [YYYY-MM-DD] — [Decision title]
