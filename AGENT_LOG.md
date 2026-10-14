@@ -133,6 +133,18 @@ of the input space. These bugs share one shape — they live everywhere outside 
   **Fixed** by switching to the RFC 2606 reserved `admin@mysite.invalid`, with a comment flagging the
   out-of-band update needed before password reset can reach a real inbox.
   *(2026-08-01, "GitHub Copilot review of PR #77".)*
+- **The branch guard failed open twice, while the docs called it unconditional.** From 2026-08-07
+  to 2026-08-27 it parsed its input with `jq`, which is not installed here, so it read an empty
+  command and an explicit `exit 0` allowed everything. The first rewrite, caught by review before
+  it merged, would have allowed whenever the interpreter crashed. And it was wired to the `Bash`
+  tool alone from the start, so PowerShell, the desktop
+  app's primary shell, never reached it; that fix merged to `dev` on 2026-10-13, and reaches a
+  session only once the checkout it starts in has it. **Fixed** by four rules written into the
+  file's header: deny by default, check the interpreter's exit status, deny on every exception, and
+  end on a deny that needs nothing installed. Also a `Bash|PowerShell` matcher, and a harness
+  section that reads the wiring in `settings.json`, since cases that call the hook directly cannot
+  see it. *(2026-08-27: the header of `.claude/hooks/block-protected-branch-ops.sh`, never logged
+  here. 2026-10-13, "a guard that saw one shell" — PR #284.)*
 
 **Lesson:** this class is why `PROJECT_TODO.md`'s Definition of Done now requires that placeholder
 security config fail *closed*, and that absence-of-configuration be its own test case.
@@ -296,6 +308,71 @@ Copy this block per entry:
 ## Entries
 
 <!-- Add entries below, most recent first -->
+
+## 2026-10-13 — Senior Dev: a guard that saw one shell, an "available" checked against a jar listing, and a CI run that read as nine broken tests
+
+**Task given:** Continue autonomously after the 2026-10-09 release, keeping the owner-decisions list current. Besides the day's log and the release docs (PRs #278, #281), that became three PRs to `dev`:
+- PR #280 (#279): three test comments about `TestRestTemplate`, merged 2026-10-09;
+- PR #284 (#282, #283): the branch guard, merged 2026-10-13;
+- PR #286 (#285): CI's Postgres image pull, merged 2026-10-13.
+
+**Agent(s) used:** Senior Dev (Opus) implemented each PR. A fresh Opus session gave each a cold review.
+
+**What went right:**
+- **Failing closed worked, loudly.** At 22:19 on 2026-10-09 the Store's `python` and `python3` aliases came back ahead of the real interpreter. The guard could run neither, and denied every Bash call. That is rule 1 of the 2026-08-27 rewrite doing its job: the first version of this hook, which used `jq`, had allowed everything in the same situation for twenty days.
+- **The new harness cases were mutation-tested.** Six mutations: the guard without `py`, the harness stubbing only `python` and `python3`, the matcher back to `Bash`, `;` dropped from the separator class, the backslash dropped from the branch pattern's lookarounds, and any exit-0 output taken as an answer. Each failed the cases aimed at it. The first, re-run after the review, now fails all 48 guard cases that need an interpreter, each reading `deny-fallback`, where before its deny cases had passed regardless. The `&&` and `|` separator cases were not mutated.
+- **The CI failure was read before it was re-run.** 215 tests, 0 failures, 9 errors, every error a container that never started. The re-run passed all 297.
+- **#286's own CI log was read against its claims.** The step pulled Postgres, and Testcontainers made no pull of its own for it. The same log showed the step ran under `bash -e {0}`, not the `bash -eo pipefail` the PR body had claimed.
+- **A claim from a review was checked before it was relayed.** #284's review named a newer hook option, `"onFailure": "block"`. The owner's list cites Claude Code's hooks documentation for it and the version it needs, 2.1.295, not the review.
+
+**What went wrong (be specific):**
+1. **"Available" was checked against a jar listing.** Fixing three stale test comments (#279, PR #280), the Senior Dev replaced "`TestRestTemplate` is not on the classpath" with "it is available now". It had checked that the class file is in `spring-boot-resttestclient`'s jar, not that it loads. It links against `spring-boot-restclient` and `spring-boot-http-client`, neither on the test classpath, so it fails with `NoClassDefFoundError`. The old comments were wrong about the classpath and right in practice; the first fix was the reverse. #279's own text made the same overstatement.
+2. **The guard had never seen PowerShell.** `.claude/settings.json` wired `block-protected-branch-ops.sh` to `Bash` alone from its first commit on 2026-08-07. In the desktop app, PowerShell is the primary shell, and `git checkout dev`, `git push --force` and `git reset --hard` typed there always ran unguarded. The README called the guard unconditional, the second time it overclaimed for this file. The first was the `jq` version.
+3. **Every deny case could pass with no interpreter at all.** The harness reported the guard's fallback deny and a pattern deny as the same `deny`. So "py runs, and denies", and every other deny case, also passed when nothing ran. The old interpreter-failure case had the same flaw from the other side: once `py` worked, its `git checkout main` would have been denied by the real pattern, a pass for the wrong reason.
+4. **A claim of coverage that no test gave, then misattributed.** PR #284's first description listed the `Remove-Item -Recurse -Force` case as covering `-Force` after a `;`, and 674fccf's test comment said the same. It cannot: `-Force` never matches `-f\b`, so that case passes with or without the separator. With `;` removed from the pattern, every case still passed. The correction then went wrong too. 4e59cd1's message and #284's final description said 674fccf's *message* made the claim. It did not, and this entry repeated the misattribution until its own review.
+5. **A false deny on ordinary paths.** The branch pattern treated a backslash as a token boundary, not part of a path, so restoring `backend\src\main\...\X.java` from PowerShell read as a checkout of `main`. The Maven layout puts `main` in most backend paths.
+6. **Exit 0 was taken as an answer whatever it printed.** Claude Code reads stdout that does not start with `{` as plain text, and plain text on exit 0 is an allow. An interpreter that printed a notice ahead of a deny would have allowed the call. Not live.
+7. **A refused registry pull read as nine broken tests.** On 2026-10-09 Docker Hub refused #284's Postgres image pull: first with `toomanyrequests`, its unauthenticated rate limit, then with timeouts fetching a token from `auth.docker.io` (77 and 80 of 158 errors). #284 changed no backend code. Testcontainers retried for about 45 minutes. Maven then reported 9 errors, and 91 tests never ran. The pull had no step of its own, so its failure surfaced as test errors.
+8. **#286's first version miscounted, and played down its own gap.**
+   - **The count.** It said 82 tests never ran. The Senior Dev had subtracted Maven's 215 from 297, but Maven counts each errored class as one test, so 215 was 206 that ran plus 9 errors. The 9 classes hold 91 tests.
+   - **The gap.** It said Ryuk's image, still pulled by Testcontainers, was a gap that only a refusal starting between the two pulls would hit, and then slowly. That was wrong on both counts:
+     - Testcontainers 2.0.5 caches a Ryuk failure, so every Testcontainers class errors within a few minutes, which reads as broken tests again.
+     - Attempt 1's own log had Ryuk pulled one second before the refusal began. With Postgres now pulled first, that same edge would likely refuse Ryuk.
+   - **Also missed:** a second copy of the stale comment in `.github/workflows/README.md`, and a `sed` pattern that a javadoc line could also match.
+9. **A number from the review went in unchecked.** The review put a Ryuk refusal at about two minutes. The fix commits copied that into `ci.yml`, the CHANGELOG and the PR body. Nobody checked it, on the same day this entry credits checking a review's claim before relaying it. It was low. Testcontainers doubles its pull backoff, which overshoots the 120 s budget its log reports: in attempt 1, the first refused resolve ran from 21:02:43.8 to 21:06:13.0, about 209 s, and later ones between about 130 and 225 s.
+
+**How it was caught:**
+1. #280's cold review compiled a probe test and ran it.
+2. By the session itself. With Bash refused, it worked through the PowerShell tool, and its git commands ran normally. They should have met the guard.
+3. #284's cold review, for the deny cases. The interpreter-failure case was the Senior Dev's own find, in 7b7bd56, before the review.
+4. #284's cold review, which removed `;` from the pattern and saw every case still pass. The misattribution was caught by this entry's review, PR #288.
+5. #284's cold review.
+6. #284's cold review, from Claude Code's hooks documentation on plain-text output. Throughout, it re-ran the harness at every commit and ran mutations of its own.
+7. One CI look at #284 before merging.
+8. #286's cold review. It summed the 9 classes in the passing re-run, read the cached failure in the 2.0.5 bytecode with `javap`, and tried the pattern against a quoted line.
+9. #286's re-review, of the fix commits.
+
+**Fix applied:**
+1. f35df4f, with the reviewer's text, and a correction comment on #279.
+2. PR #284: the matcher is `Bash|PowerShell`, the spelling the hooks documentation gives. A wiring check reads `settings.json` by the documented matcher rules. Both hooks also try `py`, and the README records the gap as a correction.
+3. `verdict` reports the fallback as `deny-fallback`, and only the cases that expect it say so. The interpreter-failure case sends `git status`, which a working hook allows.
+4. Four allow cases fail if a match crosses `;`, `&&` or `|`; only `;` was mutated. 4e59cd1's message and #284's description keep the misattribution, as history, and this entry corrects it.
+5. The branch pattern treats a backslash as part of a path, with two allow cases.
+6. Both hooks accept only empty output or their own JSON, and move on otherwise. Two cases cover it.
+7. PR #286 pulls the image in its own step before Maven, reading the name from `TestPostgres.java`. A refusal now fails within minutes, at a step that names it. #285 records a mirror and a Docker Hub login for the owner, in case it recurs. The release workflow has the same exposure, filed as #287.
+8. 91 in the CHANGELOG and the PR body. Ryuk is off in CI (`TESTCONTAINERS_RYUK_DISABLED`), which leaves the image pull as the job's only Docker Hub contact. The README paragraph was rewritten, and the pattern is anchored to the declaration, checked by hand against a quoted line. Nothing committed tests the pattern.
+9. "A few minutes" in all three places, in 519fd12.
+
+**Takeaway for next time:**
+- **A guard wired to one tool name guards that tool, not the action.** When a tool that can do the same thing appears, the matcher is part of the change. Cases that call the hook directly cannot see the wiring, so test the wiring on its own.
+- **A case expecting "deny" passes for every reason a deny can happen.** Where a guard has a fallback deny, the test has to tell the two apart. Otherwise every deny case also passes when nothing runs at all.
+- **"Covers X" is a claim until X has been removed.** Write it in a commit message or a PR description after the mutation has failed the case, not before. And when correcting a claim, quote where it was made, from the source, rather than from the correction before yours.
+- **"On the classpath" is about a jar. "Available" is about a class loading.** Check the second with a probe, or `javap -v` for what it references.
+- **Give an external dependency its own step.** A registry that refuses a pull should fail a step named for the pull, not surface as test errors in a suite that never ran. Then list every pull the job makes, from its log, not just the one that failed.
+- **Count what didn't run from the units that errored.** Maven counts an errored class as one test. Subtracting totals gives a number with the right shape and the wrong value.
+- **Describe a gap's failure from the library's behaviour, not by analogy.** "Only a refusal that starts between the two pulls would take the slow path" was a guess on both counts, and `javap` and the log showed otherwise.
+- **A reviewer's number is a claim too.** Checking a review's claims cannot stop at the ones that disagree with you.
+- **Also worth knowing:** `/api/v1/projects` answers HEAD with 401 and GET with 200, because only GET is permitted. The release's after-merge check used `curl -sI`, so it proved the HSTS header, not that the API answers. An uptime monitor should use GET.
 
 ## 2026-10-09 — Senior Dev: an audit that covered half the stack, a pin on a premise nobody checked, and Javadoc described from its source
 
