@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   canonicalHref,
   clearSeoTags,
@@ -172,11 +174,46 @@ describe('SeoService', () => {
     expect(content('meta[property="og:url"]')).toBe(`${location.origin}/projects/abc`);
   });
 
-  it('leaves the static og:url placeholder alone when the page has no url', () => {
+  it('creates og:url on the first navigation, since index.html ships none, then rewrites that one', () => {
+    // #251 dropped the static og:url, so the first updateTag has nothing to rewrite and must append.
+    // Every navigation after it must find that tag rather than append another.
+    seedStaticTags();
+    expect(seoTagCount('meta[property="og:url"]')).toBe(0);
+    const seo = createService();
+
+    seo.applyPage({ url: '/' });
+    seo.applyPage({ url: '/projects/abc' });
+
+    expect(seoTagCount('meta[property="og:url"]')).toBe(1);
+    expect(content('meta[property="og:url"]')).toBe(`${location.origin}/projects/abc`);
+  });
+
+  it('writes no og:url for a page with no url', () => {
     seedStaticTags();
     createService().applyPage({ description: 'No url supplied.' });
 
-    expect(content('meta[property="og:url"]')).toBe('https://krzysztof-tarka.netlify.app/');
+    expect(seoTagCount('meta[property="og:url"]')).toBe(0);
+  });
+
+  it('removes the previous page’s og:url and canonical when the next page has no url', () => {
+    // With no static og:url to fall back to, leaving the tag alone would mean keeping the last
+    // page's: this page would share as that one, and canonicalise to it too. Absent removes both,
+    // the same rule robots follows -- and the page after that gets them back.
+    seedStaticTags();
+    const seo = createService();
+
+    seo.applyPage({ url: '/projects/abc' });
+    expect(content('meta[property="og:url"]')).toBe(`${location.origin}/projects/abc`);
+    expect(canonicalHref()).toBe(`${location.origin}/projects/abc`);
+
+    seo.applyPage({ title: 'Krzysztof Tarka - Contact' });
+    expect(seoTagCount('meta[property="og:url"]')).toBe(0);
+    expect(seoTagCount('link[rel="canonical"]')).toBe(0);
+
+    seo.applyPage({ url: '/contact' });
+    expect(seoTagCount('meta[property="og:url"]')).toBe(1);
+    expect(seoTagCount('link[rel="canonical"]')).toBe(1);
+    expect(canonicalHref()).toBe(content('meta[property="og:url"]'));
   });
 
   it('writes a self-referencing canonical link for the page being viewed', () => {
@@ -203,9 +240,9 @@ describe('SeoService', () => {
   });
 
   it('writes no canonical at all for a page with no url', () => {
-    // index.html carries no canonical on purpose -- the only origin it could name is the
-    // unresolvable placeholder, and a canonical pointing at a host that does not exist is a worse
-    // instruction than none. So "no url" must leave the document without one, not invent one.
+    // index.html carries no canonical on purpose -- a static one could only name one URL for every
+    // route, telling Google each page is a copy of it, which is a worse instruction than none. So
+    // "no url" must leave the document without one, not invent one.
     seedStaticTags();
     createService().applyPage({ description: 'No url supplied.' });
 
@@ -237,5 +274,28 @@ describe('SeoService', () => {
     expect(document.title).toBe(SITE_TITLE);
     expect(content('meta[property="og:title"]')).toBe(SITE_TITLE);
     expect(SITE_TITLE.startsWith(SITE_NAME)).toBe(true);
+  });
+});
+
+describe('index.html’s static sharing tags', () => {
+  // Read off disk: the harness page above is not index.html, so nothing else here sees the real one.
+  // readFileSync throws if cwd ever stops being frontend/, so this cannot pass by reading nothing.
+  const head = new DOMParser().parseFromString(
+    readFileSync(join(process.cwd(), 'src', 'index.html'), 'utf8'),
+    'text/html',
+  ).head;
+
+  it('names no page URL, so a non-JS scraper falls back to the URL it fetched', () => {
+    // #251. A static og:url is one value for every route, and Facebook and LinkedIn take it as the
+    // shared object's identity: every project link previewed as, and linked to, the root. A static
+    // canonical would be the same mistake told to Google. SeoService writes both per route.
+    expect(head.querySelectorAll('meta[property="og:url"]').length).toBe(0);
+    expect(head.querySelectorAll('link[rel="canonical"]').length).toBe(0);
+  });
+
+  it('still describes the site for the preview card', () => {
+    for (const property of ['og:type', 'og:site_name', 'og:title', 'og:description']) {
+      expect(head.querySelectorAll(`meta[property="${property}"]`).length, property).toBe(1);
+    }
   });
 });
