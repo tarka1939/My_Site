@@ -309,6 +309,52 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-14 — Senior Dev: corrections that needed correcting, and a release-path step written from one outage
+
+**Task given:** Continue autonomously. That became two PRs to `dev`:
+- PR #288: the 2026-10-13 log entry, merged 2026-10-14;
+- PR #289 (#287): the release workflow pulls the test image the way CI does, merged 2026-10-14.
+
+**Agent(s) used:** Senior Dev (Opus) wrote both. Fresh Opus sessions gave each PR a cold review and then re-reviewed both PRs' fix commits. #288's first review hit the session limit partway through and was resumed, not restarted.
+
+**What went right:**
+- **Every review finding was checked against its source before it was applied.** That meant 674fccf's message, the `BRANCH` pattern before and after 4e59cd1, 7b7bd56's message, the 209 s span in attempt 1's log, and the tally of refusals. All of them held, and so did the re-review's tally.
+- **#289 moved the pull into one script, so the release path runs code CI has already run.** `deploy-backend.yml` can only run by deploying, so nothing can test it directly. `ci.yml` calls the same file on every pull request. That leaves the step's place in the deploy file as the only new thing, and a one-off PyYAML parse checked that. The script passed 7 hand-run cases against stub `docker` and `sleep`, and 6 mutations each failed the cases aimed at them. None of these checks is committed.
+
+**What went wrong (be specific):**
+1. **The 2026-10-13 entry repeated a misattribution and reversed a fact.**
+   - The entry said 674fccf's *message* claimed the `-Force` case covers `;`. It did not. The claim was in #284's first description and 674fccf's test comment, and 4e59cd1's message is where the misattribution started. When the entry was written, 4e59cd1's message and #284's final description both carried it. The entry took it from one of those earlier corrections and never checked it against 674fccf.
+   - The entry also said a backslash "was not a token boundary". The old pattern treated it as one.
+2. **A list rendered misnumbered, and its fix explained why wrongly.** "3. to 6." made one item, numbered 3, whose text began "to 6.". The items after it were numbered on from there, so items 7–9 of "How it was caught" displayed as 4–6. 4ea6c77's message and #288's description said instead that the line was not a list marker and that the items displayed as 3–5, and the draft of this entry copied that. The first draft of this entry also misnumbered a list again, with "1. and 2.", and a render check caught it before it was committed.
+3. **The fix for #288's overclaims overclaimed again.** Softening "a registry outage", the Senior Dev wrote that the refusals were "mostly" Docker Hub's rate limit. The same fix said the job had "one Docker Hub dependency", while item 8 of the same entry counts two pulls. The log has 77 `toomanyrequests` and 80 token timeouts among 158 errors. #285 had already said the log cannot tell a limit from an outage.
+   - The replacement wrote a cleaner order than the log has: "first with `toomanyrequests`… then with timeouts". For the first 16 minutes every error but one was `toomanyrequests`. After that, 24 more of them came among the 80 timeouts.
+4. **#288's description kept the error its entry had dropped.** After the fix, its summary still said the `;` claim was "in a commit message".
+5. **#289 generalised from one outage.** It said a refused pull would fail a release "after about 45 minutes, as 9 errored test classes". Those figures came from #285's refusal and depend on how long it lasted. Of the 15 Testcontainers classes, 9 errored, and the 6 after them passed once a pull went through.
+   - The fix changed the deploy comment and the CHANGELOG, and missed a third copy of the claim in `ci.yml`.
+   - The same PR said a refusal fails "in under a minute", which holds only for a fast refusal.
+   - Its description claimed a named `::error::` for every failure. A missing `TestPostgres.java` gave only `sed`'s message, as it had inline since #286.
+
+**How it was caught:**
+1. #288's cold review, with `git show` on each commit.
+2. #288's cold review, with `gh api markdown`. #290's cold review rendered the old list and found the explanation wrong.
+3. The re-review of #288's fix commit, which tallied the errors in attempt 1's log. #290's cold review timed each error, which showed the order.
+4. The Senior Dev, reading the description back after updating it.
+5. #289's cold review, which read attempt 1's per-class timings. The re-review found the `ci.yml` copy.
+
+**Fix applied:**
+1. 4ea6c77. Item 4 records the misattribution as part of the mistake, and item 5 is corrected.
+2. 4ea6c77: one item per line, checked with `gh api markdown`. The explanation is corrected here; 4ea6c77's message and #288's description keep the wrong one, as history.
+3. 8482f64: "(77 and 80 of 158 errors)", and "The pull had no step of its own". #290 corrects the order in the 2026-10-13 entry's item 7.
+4. The description was edited.
+5. 16d060c and 9e3604d. Each copy gives #285's figures as that outage's length. The header says "within minutes", under each caller's 5-minute cap. A missing file gets a named error, checked by a hand-run case and mutation.
+
+**Takeaway for next time:**
+- **A correction is a new claim.** Check it against the original source, not against the correction before it. 4e59cd1 corrected a claim and introduced a misattribution, and the next correction copied it.
+- **Softening is also writing.** "Mostly" is a count, so count before writing it.
+- **When a fix changes a figure, find every copy before committing.** Search for the phrase across the PR's diff, not just the files the finding named.
+- **A figure from one incident describes that incident.** Write it as "in #285, about 45 minutes", not as what the failure costs.
+- **Check a numbered list in its rendered form.** Markdown takes the first item's number and counts on from it, ignoring the numbers on later items, so "3. to 6." and "1. and 2." both read right in the source and wrong on the page. `gh api markdown` shows the rendered form.
+
 ## 2026-10-13 — Senior Dev: a guard that saw one shell, an "available" checked against a jar listing, and a CI run that read as nine broken tests
 
 **Task given:** Continue autonomously after the 2026-10-09 release, keeping the owner-decisions list current. Besides the day's log and the release docs (PRs #278, #281), that became three PRs to `dev`:
@@ -332,7 +378,7 @@ Copy this block per entry:
 4. **A claim of coverage that no test gave, then misattributed.** PR #284's first description listed the `Remove-Item -Recurse -Force` case as covering `-Force` after a `;`, and 674fccf's test comment said the same. It cannot: `-Force` never matches `-f\b`, so that case passes with or without the separator. With `;` removed from the pattern, every case still passed. The correction then went wrong too. 4e59cd1's message and #284's final description said 674fccf's *message* made the claim. It did not, and this entry repeated the misattribution until its own review.
 5. **A false deny on ordinary paths.** The branch pattern treated a backslash as a token boundary, not part of a path, so restoring `backend\src\main\...\X.java` from PowerShell read as a checkout of `main`. The Maven layout puts `main` in most backend paths.
 6. **Exit 0 was taken as an answer whatever it printed.** Claude Code reads stdout that does not start with `{` as plain text, and plain text on exit 0 is an allow. An interpreter that printed a notice ahead of a deny would have allowed the call. Not live.
-7. **A refused registry pull read as nine broken tests.** On 2026-10-09 Docker Hub refused #284's Postgres image pull: first with `toomanyrequests`, its unauthenticated rate limit, then with timeouts fetching a token from `auth.docker.io` (77 and 80 of 158 errors). #284 changed no backend code. Testcontainers retried for about 45 minutes. Maven then reported 9 errors, and 91 tests never ran. The pull had no step of its own, so its failure surfaced as test errors.
+7. **A refused registry pull read as nine broken tests.** On 2026-10-09 Docker Hub refused #284's Postgres image pull. For the first 16 minutes every error but one was `toomanyrequests`, its unauthenticated rate limit. After that most were timeouts fetching a token from `auth.docker.io`, with rate-limit errors still among them. Of 158 errors, 77 were `toomanyrequests` and 80 were token timeouts. #284 changed no backend code. Testcontainers retried for about 45 minutes. Maven then reported 9 errors, and 91 tests never ran. The pull had no step of its own, so its failure surfaced as test errors.
 8. **#286's first version miscounted, and played down its own gap.**
    - **The count.** It said 82 tests never ran. The Senior Dev had subtracted Maven's 215 from 297, but Maven counts each errored class as one test, so 215 was 206 that ran plus 9 errors. The 9 classes hold 91 tests.
    - **The gap.** It said Ryuk's image, still pulled by Testcontainers, was a gap that only a refusal starting between the two pulls would hit, and then slowly. That was wrong on both counts:
