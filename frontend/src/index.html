@@ -97,8 +97,8 @@
       for the root, which is small while the root is shared without query strings. SeoService still
       writes og:url per route at runtime, for crawlers that run JS. Do not add a static one back;
       the per-route static value is prerendering, the third option in the 2026-08-10 SEO ADR's
-      "One further consequence", still deferred. No <link rel="canonical"> here either, for the
-      same reason: one URL for every route would tell Google every page is a copy of that one.
+      "One further consequence", still deferred. No canonical link here either, for the same
+      reason: one URL for every route would tell Google every page is a copy of that one.
 
       No og:image yet: there is no share image asset in public/, and pointing at a 404 makes a worse
       preview than none. twitter:card is "summary" rather than "summary_large_image" for the same
