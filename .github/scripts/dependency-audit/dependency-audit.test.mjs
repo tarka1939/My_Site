@@ -27,7 +27,11 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   analyseBackend,
   analyseNpmAudit,
@@ -50,6 +54,7 @@ import {
   satisfiesRange,
 } from './lib.mjs';
 import { queryOsv } from './osv-query.mjs';
+import { applyPlan, assertWriteAllowed, createGh, preflight } from './issue.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 const FRONTEND_LOCK = fixture('npm-findings.lockfile.json');
@@ -656,5 +661,201 @@ describe('the tracking issue', () => {
     assert.ok(plan.body.length <= 60000, `body is ${plan.body.length} characters`);
     assert.match(plan.body, /Truncated to fit an issue/);
     assert.equal(parseState(plan.body).fingerprint, big.fingerprint);
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
+describe('report.mjs, run as the workflow runs it', () => {
+  const script = fileURLToPath(new URL('./report.mjs', import.meta.url));
+
+  /** A directory laid out as the workflow's collect steps leave it, plus a repo root with lockfiles. */
+  function layout({ frontend = ['npm-findings.json', '1'], e2e = ['npm-clean.json', '0'], mvnExit = '0', osv = 'osv-findings.json' } = {}) {
+    const base = mkdtempSync(path.join(tmpdir(), 'dependency-audit-test-'));
+    const dir = path.join(base, 'out');
+    const root = path.join(base, 'repo');
+    for (const d of [dir, path.join(root, 'frontend'), path.join(root, 'e2e')]) mkdirSync(d, { recursive: true });
+    const put = (name, [stdoutFixture, exit]) => {
+      if (stdoutFixture) copyFileSync(new URL(`./fixtures/${stdoutFixture}`, import.meta.url), path.join(dir, `${name}.npm-audit.json`));
+      if (exit !== null) writeFileSync(path.join(dir, `${name}.npm-audit.exit`), `${exit}\n`);
+    };
+    if (frontend) put('frontend', frontend);
+    if (e2e) put('e2e', e2e);
+    if (mvnExit !== null) writeFileSync(path.join(dir, 'backend.mvn.exit'), `${mvnExit}\n`);
+    if (osv) copyFileSync(new URL(`./fixtures/${osv}`, import.meta.url), path.join(dir, 'backend.osv.json'));
+    writeFileSync(path.join(root, 'frontend', 'package-lock.json'), FRONTEND_LOCK);
+    writeFileSync(path.join(root, 'e2e', 'package-lock.json'), '{"lockfileVersion":3,"packages":{}}');
+    return { base, dir, root };
+  }
+
+  function run(paths) {
+    const summary = path.join(paths.base, 'summary.md');
+    const results = path.join(paths.base, 'results.json');
+    const out = spawnSync(process.execPath, [script, '--dir', paths.dir, '--root', paths.root, '--summary', summary, '--results', results, '--ref', 'dev', '--sha', 'abcdef0123'], {
+      encoding: 'utf8',
+      env: { ...process.env, GITHUB_SERVER_URL: '', GITHUB_RUN_ID: '' },
+    });
+    const read = (f) => {
+      try {
+        return readFileSync(f, 'utf8');
+      } catch {
+        return null;
+      }
+    };
+    return { status: out.status, stdout: out.stdout, summary: read(summary), results: JSON.parse(read(results) ?? 'null') };
+  }
+
+  test('findings: exit 0, the summary is written, the results say what was found', () => {
+    const paths = layout();
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 0, r.stdout);
+      assert.match(r.summary, /^## Dependency audit/);
+      assert.equal(r.results.errored, false);
+      assert.equal(r.results.actionableKeys.length, 27);
+      assert.doesNotMatch(r.stdout, /::error/);
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+
+  test('an npm audit that errored with the same exit code 1: exit 1, an annotation, and the summary is still written', () => {
+    const paths = layout({ e2e: ['npm-error.json', '1'] });
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 1);
+      assert.match(r.stdout, /::error title=E2E audit could not complete::npm audit could not complete \(exit 1\)/);
+      assert.match(r.summary, /\*\*E2E: the audit could not complete\.\*\*/);
+      assert.equal(r.results.errored, true);
+      assert.equal(r.results.areas.find((a) => a.area === 'frontend').findingCount, 15);
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+
+  test('a Maven failure: exit 1', () => {
+    const paths = layout({ mvnExit: '1', osv: 'osv-error.json' });
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 1);
+      assert.match(r.stdout, /::error title=Backend audit could not complete::Maven could not resolve/);
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+
+  test('nothing written at all: exit 1, never a clean report', () => {
+    const paths = layout({ frontend: null, e2e: null, mvnExit: null, osv: null });
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 1);
+      assert.equal(r.results.areas.filter((a) => a.status === 'errored').length, 3);
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+
+  test('all clean: exit 0, and nothing at or above the floor', () => {
+    const paths = layout({ frontend: ['npm-clean.json', '0'], osv: 'osv-clean.json' });
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 0);
+      assert.deepEqual(r.results.actionableKeys, []);
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('issue.mjs', () => {
+  test('writes only on schedule and workflow_dispatch', () => {
+    assert.doesNotThrow(() => assertWriteAllowed('schedule'));
+    assert.doesNotThrow(() => assertWriteAllowed('workflow_dispatch'));
+    assert.throws(() => assertWriteAllowed('pull_request'), /Refusing to write: .* a pull_request run/);
+    assert.throws(() => assertWriteAllowed('pull_request_target'), /Refusing to write/);
+    assert.throws(() => assertWriteAllowed(undefined), /not a workflow run/);
+  });
+
+  test('--write from a pull_request run refuses before calling GitHub', () => {
+    const script = fileURLToPath(new URL('./issue.mjs', import.meta.url));
+    const out = spawnSync(process.execPath, [script, '--results', 'unused.json', '--repo', 'o/r', '--write'], {
+      encoding: 'utf8',
+      env: { ...process.env, GITHUB_EVENT_NAME: 'pull_request', PATH: '' },
+    });
+    assert.equal(out.status, 1);
+    assert.match(out.stderr, /::error title=Dependency audit issue::Refusing to write/);
+  });
+
+  /** A fake `gh`: answers from a table of handlers, and records every call. */
+  function fakeGh({ milestones = [{ number: 10, title: 'Phase 8', state: 'open' }], labels = ['backend', 'frontend', 'infra'], issues = [] } = {}) {
+    const calls = [];
+    const run = async (args) => {
+      const bodyIndex = args.indexOf('--body-file');
+      calls.push({ args, body: bodyIndex === -1 ? null : readFileSync(args[bodyIndex + 1], 'utf8') });
+      const target = args.find((a) => a.startsWith('repos/')) ?? '';
+      if (target.includes('/milestones')) return milestones.map((m) => JSON.stringify(m)).join('\n');
+      if (target.includes('/labels/')) {
+        const name = decodeURIComponent(target.split('/').pop());
+        if (labels.includes(name)) return `${name}\n`;
+        throw new Error('gh api repos/o/r/labels failed: gh: Not Found (HTTP 404)');
+      }
+      if (target.endsWith('/issues')) return issues.map((i) => JSON.stringify(i)).join('\n');
+      if (args[0] === 'issue' && args[1] === 'create') return 'https://github.com/o/r/issues/400\n';
+      return '';
+    };
+    return { gh: createGh('o/r', run), calls };
+  }
+
+  test('preflight passes with an open Phase 8 milestone and the three labels', async () => {
+    await preflight(fakeGh().gh);
+  });
+
+  test('preflight fails with a clear message when the milestone is gone or closed', async () => {
+    await assert.rejects(preflight(fakeGh({ milestones: [{ number: 9, title: 'Meta', state: 'open' }] }).gh), /"Phase 8" does not exist.*Set ISSUE\.milestone/);
+    await assert.rejects(preflight(fakeGh({ milestones: [{ number: 10, title: 'Phase 8', state: 'closed' }] }).gh), /"Phase 8" is closed/);
+  });
+
+  test('preflight fails when an area label is missing', async () => {
+    await assert.rejects(preflight(fakeGh({ labels: ['backend', 'frontend'] }).gh), /label\(s\) infra do not exist/);
+  });
+
+  test("only the bot's own issues with the marker are candidates", async () => {
+    const marked = `x\n${encodeState({ v: 1, fingerprint: 'f', keys: [] })}`;
+    const { gh, calls } = fakeGh({
+      issues: [
+        { number: 1, state: 'open', body: marked, author: ISSUE.bot },
+        { number: 2, state: 'open', body: marked, author: 'someone' },
+        { number: 3, state: 'open', body: 'no marker', author: ISSUE.bot },
+        { number: 4, state: 'closed', body: null, author: ISSUE.bot },
+      ],
+    });
+    assert.deepEqual((await gh.auditIssues()).map((i) => i.number), [1]);
+    assert.ok(calls[0].args.includes(`creator=${ISSUE.bot}`));
+  });
+
+  test('create passes the title, body, each label and the milestone by title', async () => {
+    const { gh, calls } = fakeGh();
+    const plan = planIssue({ results: resultsWithFindings(), issues: [] });
+    assert.equal(await applyPlan(gh, plan), 'https://github.com/o/r/issues/400');
+    const { args, body } = calls[0];
+    assert.deepEqual(args.slice(0, 6), ['issue', 'create', '--repo', 'o/r', '--title', issueTitle()]);
+    assert.ok(args.join(' ').includes('--label backend --label frontend --milestone Phase 8'));
+    assert.equal(body, plan.body);
+  });
+
+  test('update comments first, then rewrites the body and adds labels', async () => {
+    const { gh, calls } = fakeGh();
+    const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body: 'edited by hand' }] });
+    assert.equal(await applyPlan(gh, plan), '#300');
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 3).join(' ')), ['issue comment 300', 'issue edit 300']);
+    assert.equal(calls[0].body, plan.comment);
+    assert.equal(calls[1].body, plan.body);
+    assert.ok(calls[1].args.join(' ').includes('--add-label backend --add-label frontend'));
+  });
+
+  test('nothing to do calls nothing', async () => {
+    const { gh, calls } = fakeGh();
+    assert.equal(await applyPlan(gh, { action: 'none', reason: '', notes: [] }), null);
+    assert.equal(calls.length, 0);
   });
 });
