@@ -1,0 +1,5 @@
+The following files have been resolved:
+   com.fasterxml.jackson.core:jackson-databind:jar:2.13.0:test -- module com.fasterxml.jackson.databind
+   org.postgresql:postgresql:jar:42.2.0:runtime -- module org.postgresql.jdbc
+   org.springframework:spring-core:jar:6.1.0:compile -- module spring.core
+   org.springframework:spring-core:jar:tests:6.1.0:test -- module spring.core [auto]
