@@ -68,8 +68,8 @@ describe('renderMarkdown', () => {
   });
 
   it('treats a single newline as a space rather than a line break', () => {
-    // `breaks: false`. The seeded content wraps its source at column 100, so hard-breaking on
-    // every newline would render each paragraph as a ragged column.
+    // `breaks: false`. Markdown hard-wrapped in an editor would otherwise render each paragraph as
+    // a ragged column.
     const html = renderMarkdown('one\ntwo');
 
     expect(html).not.toContain('<br');
@@ -183,8 +183,8 @@ describe('markdownToSummaryText, hard breaks', () => {
     // markdown-it emits `<br>\n` for a trailing-double-space break, so mapping the tag alone left
     // a blank line behind and every paragraph-splitting caller read it as a paragraph boundary.
     // The visible damage was a card excerpt and a meta description truncated at the first line of
-    // the opening sentence -- on content whose source is wrapped at column 100, where a stray
-    // double space is entirely ordinary.
+    // the opening sentence -- on Markdown hard-wrapped in an editor and pasted into the admin
+    // form, where a stray double space at a line end is entirely ordinary.
     const source = 'A cross-platform equalizer,  \nbuilt on C++17.\n\nSecond paragraph.';
 
     const summary = markdownToSummaryText(source);

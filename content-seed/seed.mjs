@@ -5,8 +5,8 @@
  * Deliberately not a Flyway migration and deliberately not a direct Postgres write:
  *
  *  - Portfolio copy is content, not schema. A migration is append-only and permanent — copy gets
- *    corrected, and every correction would leave the old wording sitting in git history and
- *    replayed into every database that ever runs the migration, including throwaway CI ones.
+ *    corrected, and a correction would be a new migration on top of the old one, which stays in
+ *    the tree and is replayed into every database that ever runs it, including throwaway CI ones.
  *  - Going through `POST`/`PUT /projects` means the seed exercises the same validation, tag
  *    upsert, and event publication as the admin UI. A direct INSERT would skip all of it and could
  *    write a row the API itself would have rejected.
@@ -89,9 +89,10 @@ async function request(path, init = {}) {
       //
       // `fetch` defaults to `redirect: 'follow'`, and the guard only ever sees SEED_BACKEND_URL.
       // So a 3xx from an approved host would send the *next* request to an origin the guard never
-      // evaluated. Node strips the Authorization header cross-origin, but it forwards the request
-      // BODY verbatim — which on /auth/login is the plaintext admin password. Reproduced on Node
-      // 24.14.0 before this line existed.
+      // evaluated. Node strips the Authorization header cross-origin, but on a 307 or 308 it
+      // forwards the request BODY verbatim — which on /auth/login is the plaintext admin password.
+      // Reproduced on Node 24.14.0 before this line existed. (A 301, 302 or 303 turns that POST
+      // into a GET without a body; a PUT's body, the project copy, also survives a 301 or 302.)
       //
       // The precondition is not exotic: it only needs something other than the intended backend
       // answering on the expected port — the exact scenario this seed's own Troubleshooting

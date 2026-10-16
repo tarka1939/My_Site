@@ -37,8 +37,9 @@
  */
 
 /**
- * A blank line -- the paragraph break this content uses (see the `white-space: pre-wrap` note in
- * the detail component's SCSS). Tolerates CRLF and a "blank" line that carries spaces or tabs.
+ * A blank line -- the paragraph break in the flattened text this is given: a project description
+ * goes through `markdownToSummaryText` first, and its `stripToText` closes every block with one.
+ * Tolerates CRLF and a "blank" line that carries spaces or tabs.
  */
 const PARAGRAPH_BREAK = /\r?\n[ \t]*\r?\n/;
 
