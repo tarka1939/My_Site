@@ -117,23 +117,29 @@ jobs:
       # installing it, so no dependency's install script runs here. On 2026-10-14 it reported the
       # same 803 frontend packages as an audit of an installed tree. stderr is left in the log.
       #
-      # Two flags undo settings that would otherwise shrink the audit without failing it, both
-      # measured on 2026-10-16 against fixtures/npm-findings.lockfile.json:
-      #   --offline=false  npm_config_offline=true made npm audit exit 0 with no vulnerabilities.
-      #   --include=dev    npm_config_omit=dev, or NODE_ENV=production, dropped the 4 dev-only
-      #                    packages of its 6. Dev tooling is audited here on purpose.
+      # Four flags undo settings that would otherwise shrink the audit without failing it, all
+      # measured on 2026-10-16 (npm 11.9.0) against fixtures/npm-findings.lockfile.json, whose
+      # audit lists 6 vulnerable packages:
+      #   --offline=false     npm_config_offline=true made npm audit exit 0 with no vulnerabilities.
+      #   --include=dev       npm_config_omit=dev, or NODE_ENV=production, dropped the 4 dev-only
+      #                       packages of its 6. Dev tooling is audited here on purpose.
+      #   --include=optional  npm_config_omit=optional dropped lodash, made an optional dependency
+      #                       in a copy of the lockfile: 5 of 6.
+      #   --include=peer      npm_config_omit=peer dropped minimist, made a peer dependency in a
+      #                       copy: 5 of 6.
+      # With all four flags, each of those settings left all 6.
       - name: Audit the frontend (npm audit)
         working-directory: frontend
         run: |
           set +e
-          npm audit --json --package-lock-only --offline=false --include=dev > "$AUDIT_OUT/frontend.npm-audit.json"
+          npm audit --json --package-lock-only --offline=false --include=dev --include=optional --include=peer > "$AUDIT_OUT/frontend.npm-audit.json"
           echo $? > "$AUDIT_OUT/frontend.npm-audit.exit"
 
       - name: Audit the E2E suite (npm audit)
         working-directory: e2e
         run: |
           set +e
-          npm audit --json --package-lock-only --offline=false --include=dev > "$AUDIT_OUT/e2e.npm-audit.json"
+          npm audit --json --package-lock-only --offline=false --include=dev --include=optional --include=peer > "$AUDIT_OUT/e2e.npm-audit.json"
           echo $? > "$AUDIT_OUT/e2e.npm-audit.exit"
 
       # Every scope, test included: test dependencies run in CI next to Docker, so they are listed,

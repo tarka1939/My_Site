@@ -42,12 +42,16 @@ Audits all three dependency trees every Monday and keeps one issue up to date wi
 Issue #273. Before it existed, every advisory found here (#244, #265, #267, and 16 against the
 backend in #272) was found because someone went looking.
 
-- **Frontend and E2E:** `npm audit --json --package-lock-only --offline=false --include=dev` on
-  each lockfile. It audits what `npm ci` would install without installing it, so no install script
-  runs. The last two flags override settings that would shrink the audit without failing it. They
-  were measured on 2026-10-16:
+- **Frontend and E2E:** `npm audit --json --package-lock-only --offline=false --include=dev
+  --include=optional --include=peer` on each lockfile. It audits what `npm ci` would install
+  without installing it, so no install script runs. The last four flags override settings that
+  would shrink the audit without failing it. They were measured on 2026-10-16:
   - `npm_config_offline=true` made `npm audit` exit 0 with no vulnerabilities at all.
   - `npm_config_omit=dev` or `NODE_ENV=production` dropped every dev-only package.
+  - `npm_config_omit=optional` dropped an optional dependency, and `npm_config_omit=peer` a peer
+    one.
+
+  With all four flags, none of those settings dropped anything.
 - **Backend:** `mvn dependency:list` resolves the real graph, including every version Spring
   Boot's BOM manages, and `osv-query.mjs` (Node standard library only) looks each one up in
   [OSV](https://osv.dev). It needs no account and no secret. OWASP dependency-check needs an NVD
@@ -161,8 +165,8 @@ do. Windows PowerShell's `>` writes UTF-16LE, which the scripts reject as unread
 
 ```bash
 out=$(mktemp -d)
-(cd frontend && npm audit --json --package-lock-only --offline=false --include=dev > "$out/frontend.npm-audit.json"; echo $? > "$out/frontend.npm-audit.exit")
-(cd e2e && npm audit --json --package-lock-only --offline=false --include=dev > "$out/e2e.npm-audit.json"; echo $? > "$out/e2e.npm-audit.exit")
+(cd frontend && npm audit --json --package-lock-only --offline=false --include=dev --include=optional --include=peer > "$out/frontend.npm-audit.json"; echo $? > "$out/frontend.npm-audit.exit")
+(cd e2e && npm audit --json --package-lock-only --offline=false --include=dev --include=optional --include=peer > "$out/e2e.npm-audit.json"; echo $? > "$out/e2e.npm-audit.exit")
 (cd backend && mvn -B -ntp dependency:list -Dsort=true -DoutputFile="$out/backend.deps.txt"; echo $? > "$out/backend.mvn.exit")
 node .github/scripts/dependency-audit/osv-query.mjs "$out/backend.deps.txt" "$out/backend.osv.json"
 node .github/scripts/dependency-audit/report.mjs --dir "$out" --root . --results "$out/results.json"
