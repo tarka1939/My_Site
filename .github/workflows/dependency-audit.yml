@@ -1,0 +1,176 @@
+# Audits every dependency tree once a week and keeps one issue up to date with what it finds.
+# Issue #273.
+#
+# Until this existed, nothing told this project that a dependency had a published advisory. Every
+# finding so far was found because someone went looking: #244, #265 and #267 on the frontend, and
+# 16 advisories against the backend's Spring Boot-managed versions in #272. On 2026-10-14 the owner
+# chose Dependabot alerts (a repository setting) and this workflow.
+#
+#   - frontend/ and e2e/: `npm audit` of each lockfile.
+#   - backend/: Maven resolves the real graph, including every version Spring Boot's BOM manages,
+#     and a Node standard-library script looks each one up in OSV (https://osv.dev). No account and
+#     no secret: OWASP dependency-check needs an NVD key to be usable, and Sonatype OSS Index needs
+#     credentials. Nothing third-party runs either, beyond Maven's own dependency plugin at the
+#     version Spring Boot's parent manages.
+#
+# Not part of ci.yml, on purpose: an audit there fails unrelated pull requests whenever an advisory
+# is published, with no change in this repository (#273, option 2). Here a FINDING never fails the
+# run; the issue is the signal. What does fail the run is an audit that could not COMPLETE -- a
+# registry or network error, output the script cannot read, a Maven failure -- because an audit
+# that silently did not happen reads exactly like a clean one.
+#
+# The logic, and its tests on recorded real output, are in .github/scripts/dependency-audit/.
+
+name: Dependency audit
+
+on:
+  # Mondays, 05:23 UTC (off the hour, when scheduled runs queue longest). A schedule always runs the
+  # workflow file from the DEFAULT branch, which is dev, and checks dev out: this audits dev, not
+  # main. main is what is deployed, and lags dev by whatever has not been promoted yet.
+  schedule:
+    - cron: '23 5 * * 1'
+  # By hand from the Actions tab. Does everything a scheduled run does, including the issue.
+  workflow_dispatch:
+  # A pull request that changes the audit runs it, so the change is proven on the PR itself. It
+  # writes the report to the run summary and never touches issues (see file-issue's `if`).
+  pull_request:
+    paths:
+      - .github/workflows/dependency-audit.yml
+      - .github/scripts/dependency-audit/**
+
+# Nothing by default. Each job asks for what it needs.
+permissions: {}
+
+concurrency:
+  group: dependency-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  audit:
+    name: Audit dependencies
+    runs-on: ubuntu-latest
+    # Reads the code and calls public APIs. This is the job that runs Maven, so it is kept apart from
+    # the one job that can write to issues.
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    env:
+      AUDIT_OUT: ${{ github.workspace }}/audit-out
+    steps:
+      - uses: actions/checkout@v4
+
+      # No npm cache: nothing is installed. `npm audit --package-lock-only` reads the lockfile.
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Prepare the output directory
+        run: mkdir -p "$AUDIT_OUT"
+
+      # The three collect steps below record what each tool printed and how it exited, and always
+      # succeed. They do not judge: `npm audit` exits 1 both when it finds something and when it
+      # fails, so its exit code cannot say which. The report step reads the JSON and decides.
+      #
+      # --package-lock-only audits exactly what `npm ci` would install, without installing it: no
+      # dependency's install script runs here, and every platform's optional packages are covered,
+      # not only the runner's. On 2026-10-14 it reported the same 803 frontend packages as an audit
+      # of an installed tree. stderr is left in the log.
+      - name: Audit the frontend (npm audit)
+        working-directory: frontend
+        run: |
+          set +e
+          npm audit --json --package-lock-only > "$AUDIT_OUT/frontend.npm-audit.json"
+          echo $? > "$AUDIT_OUT/frontend.npm-audit.exit"
+
+      - name: Audit the E2E suite (npm audit)
+        working-directory: e2e
+        run: |
+          set +e
+          npm audit --json --package-lock-only > "$AUDIT_OUT/e2e.npm-audit.json"
+          echo $? > "$AUDIT_OUT/e2e.npm-audit.exit"
+
+      # Every scope, test included: test dependencies run in CI next to Docker, so they are listed,
+      # marked as not shipping. -ntp keeps download progress out of the log.
+      - name: Resolve the backend dependency graph (Maven)
+        working-directory: backend
+        run: |
+          set +e
+          mvn -B -ntp dependency:list -Dsort=true -DoutputFile="$AUDIT_OUT/backend.deps.txt"
+          echo $? > "$AUDIT_OUT/backend.mvn.exit"
+
+      # Writes backend.osv.json either way, with the error in it on failure; the report step reads
+      # that and fails the run, after writing the summary.
+      - name: Look the backend graph up in OSV
+        run: node .github/scripts/dependency-audit/osv-query.mjs "$AUDIT_OUT/backend.deps.txt" "$AUDIT_OUT/backend.osv.json" || true
+
+      # The one step that judges. Exits 0 whatever was found, and 1 when any audit could not
+      # complete, with an annotation naming it. The summary is written first either way.
+      - name: Write the report
+        if: ${{ !cancelled() }}
+        env:
+          # Through env, never ${{ }} inside the script: a pull request's branch name is
+          # attacker-controlled text.
+          AUDIT_REF: ${{ github.head_ref || github.ref_name }}
+        run: >-
+          node .github/scripts/dependency-audit/report.mjs
+          --dir "$AUDIT_OUT" --root . --summary "$GITHUB_STEP_SUMMARY" --results "$AUDIT_OUT/results.json"
+
+      # results.json is what the issue job reads; the raw outputs are kept for when a run needs
+      # explaining.
+      - name: Keep the outputs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit
+          path: ${{ env.AUDIT_OUT }}
+          if-no-files-found: error
+          retention-days: 30
+
+  file-issue:
+    name: Open or update the tracking issue
+    needs: audit
+    # Gated on the event, not on what the token can do: a pull_request run never reaches this job,
+    # so a PR that edits the audit cannot file an issue from its branch. issue.mjs checks the event
+    # again before it writes.
+    #
+    # The implicit success() matters as much. When an audit could not complete, the audit job fails
+    # and this job is skipped, so a partial result never rewrites the issue as though the findings it
+    # is missing had been fixed.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    timeout-minutes: 5
+    # Two runs at once (a dispatch during the scheduled one) could each find no issue and open one.
+    concurrency:
+      group: dependency-audit-issue
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dependency-audit
+          path: audit-out
+
+      # gh is preinstalled on the runner. Opens an issue when there is something at or above the
+      # floor and none is open; otherwise updates the open one only when its findings changed. Fails
+      # with a message saying what to change if the Phase 8 milestone or an area label is gone.
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/dependency-audit/issue.mjs --results audit-out/results.json --repo "$GITHUB_REPOSITORY" --write
