@@ -604,11 +604,6 @@ describe('AdminProjectFormComponent', () => {
     it('saves a tagless draft as it is', async () => {
       // The failure #148 was filed for, as it was observed: open an auto-created draft, write its
       // description, press Save -- blocked by "At least one tag is required".
-      //
-      // of() answers synchronously, inside the constructor, which is what makes this also pin the
-      // order of the constructor's subscriptions: the load patches `tags` before `published`, so a
-      // re-check of the tags subscribed after the load would leave them judged against the
-      // create-route default of `true`, and this save blocked exactly as before.
       getAnyProject.mockReturnValue(of(TAGLESS_DRAFT));
       editExistingProject();
       const fixture = await renderComponent(AdminProjectFormComponent);

@@ -332,10 +332,14 @@ export class AdminProjectFormComponent {
     // length complaint is lost with it, and the next save says it again, which is the trade
     // forgetErrorsFor() already makes for positional row verdicts.
     //
-    // First in the constructor, and that is load-bearing: the load pipeline below runs
-    // synchronously when the response is already there, and its patchValue() sets `tags` before
-    // `published`. Subscribed after it, a tagless draft would keep the verdict its tags got while
-    // the box still held the default `true` -- and could not be saved, which is #148 itself.
+    // What this is for is the admin ticking and unticking the box. A load does not depend on it,
+    // though it looks as if it should: startLoad()'s patchValue() sets `tags` before `published`,
+    // so the tags are first judged against the previous box. That is put right twice over -- by
+    // this subscription when `published` is patched, and again when the form renders, because the
+    // template only shows the form once loading ends and FormGroupDirective re-validates every
+    // control it binds as it does (silently, with emitEvent false). Measured, not assumed: moving
+    // this below the load pipeline, or deleting it, leaves a loaded tagless draft saveable. Deleting
+    // it is caught by the toggle tests instead.
     this.publishedControl.valueChanges
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.form.controls.tags.updateValueAndValidity());
