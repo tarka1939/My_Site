@@ -769,14 +769,17 @@ const BODY_LIMIT = 60000;
  */
 const STATE_LIMIT = 20000;
 
-/** How a person accepts what an issue lists; planIssue reads `state_reason` to match. */
+/**
+ * How a person accepts what an issue records; planIssue reads `state_reason` to match. "Records",
+ * not "lists": a body cut for length shows fewer rows than the saved keys a close accepts.
+ */
 export const ACCEPT_RULE =
-  'To accept the listed advisories, close the issue as not planned. Closing it as completed, including from a PR, accepts nothing.';
+  'To accept the advisories this issue records, close it as not planned. Closing it as completed, including from a PR, accepts nothing.';
 
 /**
  * The state to save: the fingerprint always, and as many keys as fit under STATE_LIMIT. When they
  * do not all fit, `complete: false` and `total` say so, the next change comment says it cannot list
- * what changed, and a closed issue accepts only the keys it recorded (see planIssue).
+ * what changed, and an issue closed as not planned accepts only the keys it recorded (see planIssue).
  *
  * `accepted` holds the acceptance keys already accepted by an issue closed as not planned. When the
  * keys do not all fit, the ones not yet accepted are kept first. Otherwise each new issue would
@@ -883,7 +886,7 @@ export function renderCleanComment(results) {
   ].join('\n');
 }
 
-/** A finding's key without its version: what closing an issue accepts. */
+/** A finding's key without its version: what closing an issue as not planned accepts. */
 const acceptanceKey = (key) => {
   const [area, pkg, , id] = key.split('|');
   return `${area}|${pkg}|${id}`;

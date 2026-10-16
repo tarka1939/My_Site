@@ -116,15 +116,16 @@ Dev tooling is held to high for two reasons:
     cut, and the run summary has all of it. Past about 250 findings at or above the floor, the
     saved state keeps only some of their keys. In that case the next change comment says it cannot
     list what changed, and closing that issue as not planned accepts only the keys it kept. Keys
-    not yet accepted are kept first, so the next issue lists the rest, and closing it as not
-    planned too accepts them all.
+    not yet accepted are kept first, so each close as not planned accepts the next batch, until
+    none is left.
   - When the findings are all gone, there is a comment, and the issue is left open for a person to
     close as completed.
-- **To accept the listed advisories, close the issue as not planned. Closing it as completed,
-  including from a PR, accepts nothing.** The script reads the close's `state_reason`, and only
-  `not_planned` accepts. A closing keyword in a merged PR closes as completed, so a PR that fixes
-  one finding and says so cannot accept the rest of the issue with it. A missing `state_reason`
-  accepts nothing either.
+- **To accept the advisories this issue records, close it as not planned. Closing it as
+  completed, including from a PR, accepts nothing.** "Records" rather than "lists": a body cut
+  for length lists fewer than the issue saved, and closing accepts every saved key. The script
+  reads the close's `state_reason`, and only `not_planned` accepts. A closing keyword in a merged
+  PR closes as completed, so a PR that fixes one finding and says so cannot accept the rest of the
+  issue with it. A missing `state_reason` accepts nothing either.
 - With no issue open, a new one opens only when some finding at or above the floor is in none of
   the audit issues closed as not planned. Findings are compared by area, package and advisory,
   without the version, and against every such issue together, not only the newest. Neither the

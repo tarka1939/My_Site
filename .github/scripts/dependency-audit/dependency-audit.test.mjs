@@ -760,7 +760,7 @@ describe('the tracking issue', () => {
   test('the issue tells a person how to accept, and that closing as completed does not', () => {
     const body = planIssue({ results: resultsWithFindings(), issues: [] }).body;
     assert.ok(body.includes(ACCEPT_RULE));
-    assert.match(ACCEPT_RULE, /^To accept the listed advisories, close the issue as not planned\. Closing it as completed, including from a PR, accepts nothing\.$/);
+    assert.match(ACCEPT_RULE, /^To accept the advisories this issue records, close it as not planned\. Closing it as completed, including from a PR, accepts nothing\.$/);
   });
 
   test('a closed issue with different findings: open a new one that points back', () => {
