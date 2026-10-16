@@ -143,8 +143,9 @@ describe('ContactFormComponent', () => {
     });
 
     it('keeps the link when a send fails without field errors', async () => {
-      // A 429 or a 5xx: errorInterceptor raises the toast and nothing in this template changes, so
-      // the always-shown link is the only way out the page offers in that case.
+      // The mock stands in for what errorInterceptor hands on for a 429 or a 5xx: a problem with no
+      // field errors, after it has raised its own toast. Nothing in this template changes, so the
+      // always-shown link is the only way out the page offers in that case.
       submitContactMessage.mockReturnValue(
         throwError(() => ({
           status: 503,
@@ -172,8 +173,12 @@ describe('ContactFormComponent', () => {
 
       await send(fixture);
 
-      const banner = (fixture.nativeElement as HTMLElement).querySelector('.form-error');
+      const host = fixture.nativeElement as HTMLElement;
+      const banner = host.querySelector('.form-error');
       expect(banner?.querySelector('a')?.getAttribute('href')).toBe(GITHUB_PROFILE);
+      // In addition to the line at the top, not instead of it: the owner chose "always shown", so
+      // hiding the top one while the banner repeats it would break that.
+      expect(alternativeLink(host)?.getAttribute('href')).toBe(GITHUB_PROFILE);
     });
   });
 
