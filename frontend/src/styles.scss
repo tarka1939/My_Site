@@ -458,7 +458,8 @@ main:focus {
   border: 0;
 }
 
-// Rendered Markdown (#206) -- project descriptions on the detail page and in the admin preview.
+// Rendered Markdown (#206) -- project descriptions and the About body, on the public pages and in
+// the admin previews of each.
 //
 // **Global rather than component-scoped, and that is forced, not stylistic.** Angular's emulated
 // encapsulation scopes a component's styles by stamping an attribute onto its elements when the
@@ -471,7 +472,20 @@ main:focus {
 // The reset-ish `:first-child`/`:last-child` margin rules exist because the renderer's output
 // always begins and ends with a block element that carries its own margin, which would otherwise
 // add a gap above and below the whole description that no other block on the page has.
+//
+// **The measure (#297, the owner's call: 70ch on 2026-10-14, revised to 55ch once 70ch was
+// measured).** `main` is 960px wide, which ran Markdown prose at about 120 characters a line
+// against a comfortable 60-75. The cap is here, on the text, so the project description, the About
+// body and both admin previews share it. Nothing around them narrows: a project's gallery keeps the
+// full width (#211). `ch` is the width of the "0" glyph, and most letters are narrower, so the
+// number is not characters a line. 70ch measured in a browser on 2026-10-16 (1280px viewport, 16px
+// IBM Plex Sans, the live System Equalizer description) at 672px and 83-95 characters a line, 89
+// on average; 55ch, on the same page and text, is 528px and 57-75 characters, 69 on average. A
+// wide code block scrolls inside the box (`pre` below). In a container narrower than 55ch the cap
+// does nothing.
 .markdown-body {
+  max-width: 55ch;
+
   > :first-child {
     margin-top: 0;
   }
