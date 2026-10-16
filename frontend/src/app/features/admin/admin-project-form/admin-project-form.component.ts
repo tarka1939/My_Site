@@ -7,6 +7,7 @@ import {
   FormControl,
   FormGroup,
   ReactiveFormsModule,
+  ValidatorFn,
   Validators,
 } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -53,9 +54,44 @@ const DESCRIPTION_MESSAGES: Record<string, string> = {
   required: 'Description is required',
   maxlength: 'Description cannot exceed 5000 characters',
 };
+/**
+ * Word for word what the API says when it refuses the same thing (ProjectWriteRequest in
+ * docs/openapi.yaml, #148), so the admin reads one sentence for one rule whichever side caught it.
+ */
 const TAGS_MESSAGES: Record<string, string> = {
-  required: 'At least one tag is required',
+  requiredToPublish: 'At least one tag is required to publish',
 };
+
+/**
+ * The tag names in the box, as they will be sent. One rule for submit() and for the validator
+ * below, so the check judges exactly the list the request carries: "dsp, , " is one tag, and " , "
+ * is none -- which `Validators.required` used to accept and the server would then refuse.
+ */
+function parseTags(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * A tag is required to publish, not to save (#148). The contract allows an empty `tags` while the
+ * project stays a draft -- which is how every webhook-created draft arrives -- and refuses it with a
+ * 400 on `tags` when the write would leave the project published.
+ *
+ * "Would leave it published" is just the checkbox here, because submit() always sends `published`
+ * explicitly. The contract's other two cases are both about an *omitted* `published` (a create
+ * defaulting to true, a PUT keeping a published project published), and this form never omits it.
+ *
+ * Takes the checkbox's control rather than finding it through `tags.parent`: a FormControl runs
+ * its validators once in its own constructor, before any group has adopted it, so a parent lookup
+ * would answer "no parent, no rule" on the first run and leave a new form's empty tags valid.
+ * The control's value changing does not re-run this on its own -- see the constructor.
+ */
+function tagRequiredToPublish(published: AbstractControl<boolean>): ValidatorFn {
+  return (tags: AbstractControl<string>) =>
+    published.value && parseTags(tags.value).length === 0 ? { requiredToPublish: true } : null;
+}
 
 /**
  * What a destination says when the server named a field but gave nothing to say about it.
@@ -138,25 +174,30 @@ export class AdminProjectFormComponent {
    */
   protected readonly loadError = signal<string | null>(null);
 
+  /**
+   * Whether this project is on the public site.
+   *
+   * Default true, which is the create route's answer and matches what POST does with the field
+   * omitted (see ProjectWriteRequest in docs/openapi.yaml) -- a project typed into the CMS by
+   * hand is meant to be live. An edit overwrites it from the loaded project before the form is
+   * ever shown, and form.reset() puts this default back between loads because the control is
+   * nonNullable.
+   *
+   * Built ahead of the group rather than inside it only so the tags validator can be handed it
+   * directly; it is the group's `published` control all the same.
+   */
+  private readonly publishedControl = this.formBuilder.nonNullable.control(true);
+
   protected readonly form = this.formBuilder.nonNullable.group({
     title: ['', [Validators.required, Validators.maxLength(200)]],
     description: ['', [Validators.required, Validators.maxLength(5000)]],
-    tags: ['', Validators.required],
+    tags: ['', tagRequiredToPublish(this.publishedControl)],
     // Empty string is this form's "no date". It maps to an explicit null on the wire; see submit().
     startedOn: [''],
     completedOn: [''],
     links: new FormArray<LinkGroup>([]),
     images: new FormArray<FormControl<string>>([]),
-    /**
-     * Whether this project is on the public site.
-     *
-     * Default true, which is the create route's answer and matches what POST does with the field
-     * omitted (see ProjectWriteRequest in docs/openapi.yaml) -- a project typed into the CMS by
-     * hand is meant to be live. An edit overwrites it from the loaded project before the form is
-     * ever shown, and form.reset() puts this default back between loads because the group is
-     * nonNullable.
-     */
-    published: [true],
+    published: this.publishedControl,
   });
 
   /**
@@ -279,6 +320,26 @@ export class AdminProjectFormComponent {
   private readonly reload$ = new Subject<string | null>();
 
   constructor() {
+    // Whether the tags may be empty depends on the Published box (#148), and a validator only runs
+    // when its own control is updated -- so ticking the box would otherwise leave "no tags" judged
+    // against the old answer until the tags were next edited. Re-validating emits the tags
+    // control's events, which is what repaints its message slot (see clientErrorSignal()).
+    //
+    // That also emits its valueChanges, so the purge below drops every server verdict about tags
+    // when the box changes. Deliberate: the server's "At least one tag is required to publish"
+    // judges the pair, so it is stale the moment the box is unticked, and the slot cannot tell that
+    // message from a `tags[1]` length complaint -- they are both free text under a tags key. The
+    // length complaint is lost with it, and the next save says it again, which is the trade
+    // forgetErrorsFor() already makes for positional row verdicts.
+    //
+    // First in the constructor, and that is load-bearing: the load pipeline below runs
+    // synchronously when the response is already there, and its patchValue() sets `tags` before
+    // `published`. Subscribed after it, a tagless draft would keep the verdict its tags got while
+    // the box still held the default `true` -- and could not be saved, which is #148 itself.
+    this.publishedControl.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.form.controls.tags.updateValueAndValidity());
+
     // A server verdict describes the value that produced it, so it stops being about this form the
     // moment that value changes: type a different title and "A project with this title already
     // exists" is no longer a statement about anything on screen. Scalars had no way to say that --
@@ -543,14 +604,12 @@ export class AdminProjectFormComponent {
       return;
     }
 
-    const tags = raw.tags
-      .split(',')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
     const writeRequest: ProjectWriteRequest = {
       title: raw.title,
       description: raw.description,
-      tags,
+      // Possibly empty, for a draft (#148). The validator has already refused an empty list with
+      // the box ticked, by the same parseTags() rule, so this never sends one the API would refuse.
+      tags: parseTags(raw.tags),
       links: raw.links,
       images: raw.images,
       // Explicit null rather than an omitted key. The contract treats them identically, but PUT is
