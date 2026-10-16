@@ -64,7 +64,7 @@ Three files need updating together whenever a phase's state changes, not just `A
 - **`PROJECT_TODO.md`:** keep each phase's status blurb current for the *whole* time that phase is being worked, not just once at the initial completion checkpoint. Any follow-up after a phase's checklist is first checked off — review-round fixes, hardening, a process/infra discovery like a misconfigured default branch — needs the status note updated too, in the same session, before moving on.
 - **Root `README.md`:** its Status section, Stack table, repo structure tree, and "Local development" commands need to reflect what's actually scaffolded/built, not what's planned. Update it whenever a phase completes or a repo structure/commands change lands (a new backend package, a new frontend command, a new phase's PR merging) — it went three phases (through PR #76, #77, #79) without a single update before this was caught.
 
-> Status (2026-09-24): Phases 0-4 complete; Phase 5 (deploy): both halves live, and the deploy pipelines have shipped real releases (#218, #220) — **any push or merge to `main` deploys to production**; Phase 6 (content & polish) and Phase 8 (polishing) in progress; Phase 7a (`githubsync`) complete behind a feature flag. `PROJECT_TODO.md` is authoritative — this line is a pointer, not a substitute.
+> Status (2026-10-16): Phases 0-5 complete, Phase 5 apart from #41, which is deferred on purpose. **Any push or merge to `main` deploys to production**, as every release since #218 has. Phase 6 (content & polish) and Phase 8 (polishing) in progress. Phase 7a (`githubsync`) complete behind a feature flag; 7c (analytics) is next. `PROJECT_TODO.md` is authoritative — this line is a pointer, not a substitute.
 
 ## Never quote a working tree without naming its branch
 
@@ -120,68 +120,12 @@ My Site — portfolio site (Angular + Spring Boot). Full scope lives in `SPEC.md
 
 ## Commands
 
-### Backend (`/backend`)
-
-Requires JDK 25 and Maven on `PATH` (or `JAVA_HOME`/`MAVEN_HOME` set). Requires a running
-PostgreSQL instance for anything beyond `compile`/`test`. **`docker compose up -d` provides one**
-(#42) with the values the dev profile already defaults to, so no `DB_*` variables are needed —
-see "Local database (Docker Compose)" below.
-
-```bash
-# Build (compile only, no DB needed):
-cd backend && mvn compile
-
-# Run locally (dev profile, needs Postgres reachable — see above):
-cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=dev
-
-# Run all tests (unit tests + Spring Modulith ApplicationModules.verify() — no DB needed;
-# Testcontainers integration tests additionally need a running Docker daemon):
-cd backend && mvn test
-
-# Run a single test:
-cd backend && mvn test -Dtest=ProjectServiceTest
-
-# Lint: none for the backend, by decision (docs/DECISIONS.md, 2026-10-01) — nothing to run.
-
-# Package an executable jar:
-cd backend && mvn clean package
-```
-
-### Frontend (`/frontend`)
-
-Requires Node 24+. `ng serve`'s dev-server proxy (`frontend/proxy.conf.json`) forwards `/api/*`
-to `http://localhost:8080` so the browser sees same-origin requests — the backend's CORS allowlist
-(`app.cors.allowed-origins`) holds only the deployed Netlify origin, never `localhost:4200`, so
-without the proxy every API call from `ng serve` fails with a CORS error. Regenerating the API
-client (`npm run generate:api`) needs Java (JDK 11+) on `PATH`, since `openapi-generator-cli`
-shells out to a Java-based generator.
-
-```bash
-# Install:
-cd frontend && npm install
-
-# Dev server (proxies /api to localhost:8080 — see above; start the backend first for real data):
-cd frontend && npm start
-
-# Build (production, default --base-href /):
-cd frontend && npm run build
-
-# Run all tests (Vitest):
-cd frontend && npm test
-
-# Run a single test file:
-cd frontend && npx ng test --include='**/projects-list.component.spec.ts'
-
-# Regenerate the typed API client from docs/openapi.yaml:
-cd frontend && npm run generate:api
-
-# Lint (ESLint via angular-eslint, #210; CI runs it). Its essential rules ban the
-# bypassSecurityTrust* calls and raw innerHTML-style DOM writes, either of which would make the
-# Markdown renderer an XSS sink:
-cd frontend && npm run lint
-# No formatter: `frontend/.prettierrc` exists from the Angular scaffold but nothing runs it —
-# don't reformat files wholesale with it.
-```
+Each half's commands live beside it: `backend/CLAUDE.md`, which also has the local database, and
+`frontend/CLAUDE.md` (#188). An agent working on one half no longer carries the other's toolchain.
+A nested file is not part of a session's or a dispatch's opening context. It arrives with the first
+file read under its directory: checked on 2026-10-16, for the main session and a dispatched
+subagent alike. So before running a command in a half you have not read a file from yet, read its
+`CLAUDE.md`. In a worktree, the copy that arrives is that worktree's own.
 
 ### Other suites (none of these run in CI — `.github/workflows/ci.yml` runs only `mvn -B test`,
 `npm test`, `npm run lint`, and the API-client staleness check)
@@ -201,25 +145,6 @@ bash .claude/hooks/hooks.test.sh
 # read content-seed/README.md before running it against anything:
 node content-seed/seed.mjs --dry-run
 node --test content-seed/validate.test.mjs
-```
-
-### Local database (Docker Compose)
-
-Postgres only, not the backend. Production runs a plain jar under systemd on purpose
-(`docs/DECISIONS.md`, 2026-09-04) and the Dockerfile is deferred, so there is no image to run the
-app from — and building one solely for local use would be the one place nobody deploys from.
-
-The image is **`postgres:16-alpine`, matching production**, not the `17-alpine` the Testcontainers
-suite uses. Local development should reproduce what ships. That does mean tests run against a
-different major version than production, which is a real if narrow risk: a migration valid on 17
-and not on 16 would pass CI and fail the deploy.
-
-```bash
-docker compose up -d --wait      # --wait returns when Postgres can answer, not when it starts
-cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=dev
-
-docker compose down              # stop, keeping the data
-docker compose down -v           # and discard it, which is how you re-run Flyway from empty
 ```
 
 ## Architecture
@@ -260,7 +185,7 @@ Before considering a write endpoint, auth flow, or migration done, check every i
 - `docs/DECISIONS.md` — locked-in technical decisions and why
 - `docs/DATA_MODEL.md` — entities and relationships
 - `PROJECT_TODO.md` — phase-by-phase build plan
-- `docs/DEPLOYMENT.md` — the Phase 5 runbook: what only the owner can do, and the env vars the prod profile actually reads (they are not the ones the local-dev section above lists)
+- `docs/DEPLOYMENT.md` — the Phase 5 runbook: what only the owner can do, and the env vars the prod profile actually reads (they are not the ones `backend/CLAUDE.md`'s local-dev commands use)
 - `AGENT_LOG.md` — record agent mistakes/fixes here for the whole project, not just Phase 4
 - `docs/AGENT_WORKFLOW.md` — how to run agent sessions (sequential single-agent vs. dispatcher vs. isolated worktrees) and when each applies; see also `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md`
 - `docs/AUTONOMOUS_WORKFLOW.md` — the operative workflow from Phase 4's tail to the end of the project: one persistent "Senior Dev" session, independent fresh-session PR review, ambiguity/escalation handling, and the Phase 5 pre-flight checklist
