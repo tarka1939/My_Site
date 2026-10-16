@@ -24,9 +24,12 @@
 name: Dependency audit
 
 on:
-  # Mondays, 05:23 UTC (off the hour, when scheduled runs queue longest). A schedule always runs the
-  # workflow file from the DEFAULT branch, which is dev, and checks dev out: this audits dev, not
-  # main. main is what is deployed, and lags dev by whatever has not been promoted yet.
+  # Mondays at 05:23 UTC. The minute is deliberately not 00: GitHub's docs say scheduled runs can be
+  # delayed, or dropped, under high load, and that the start of every hour is such a time.
+  #
+  # A schedule always runs the workflow file from the DEFAULT branch, which is dev, and checks dev
+  # out: this audits dev, not main. main is what is deployed, and lags dev by whatever has not been
+  # promoted yet.
   schedule:
     - cron: '23 5 * * 1'
   # By hand from the Actions tab. From the default branch it does everything a scheduled run does,
@@ -48,6 +51,32 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # On a pull request only, which is the one event that changes this code: nothing else in CI runs
+  # these tests, so without this job a PR's own run would prove the pipeline end to end and still
+  # never run its unit tests. Kept off the schedule, where a test failure would cost a week's audit
+  # over code that has not changed since it last passed. A job of its own, which the audit does not
+  # wait for: a failing test is a red check on the PR, not an audit the report says could not
+  # complete. The file, not the directory: Node 24 treats a directory argument as a module and fails.
+  unit-tests:
+    name: Unit tests of the audit
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run the audit's unit tests
+        run: node --test .github/scripts/dependency-audit/dependency-audit.test.mjs
+
   audit:
     name: Audit dependencies
     runs-on: ubuntu-latest
@@ -59,22 +88,16 @@ jobs:
     env:
       AUDIT_OUT: ${{ github.workspace }}/audit-out
     steps:
+      # No job here pushes, so none keeps the token in .git/config for later steps to find.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # No npm cache: nothing is installed. `npm audit --package-lock-only` reads the lockfile.
       - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-
-      # On a pull request only, which is the one event that changes this code: nothing else in CI
-      # runs these tests, so without this step a PR's own run would prove the pipeline end to end
-      # and still never run its unit tests. Kept off the schedule, where a test failure would cost a
-      # week's audit over code that has not changed since it last passed. The file, not the
-      # directory: Node 24 treats a directory argument as a module and fails.
-      - name: Run the audit's unit tests
-        if: github.event_name == 'pull_request'
-        run: node --test .github/scripts/dependency-audit/dependency-audit.test.mjs
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4
@@ -90,22 +113,27 @@ jobs:
       # succeed. They do not judge: `npm audit` exits 1 both when it finds something and when it
       # fails, so its exit code cannot say which. The report step reads the JSON and decides.
       #
-      # --package-lock-only audits exactly what `npm ci` would install, without installing it: no
-      # dependency's install script runs here, and every platform's optional packages are covered,
-      # not only the runner's. On 2026-10-14 it reported the same 803 frontend packages as an audit
-      # of an installed tree. stderr is left in the log.
+      # --package-lock-only audits the lockfile, which is what `npm ci` would install, without
+      # installing it, so no dependency's install script runs here. On 2026-10-14 it reported the
+      # same 803 frontend packages as an audit of an installed tree. stderr is left in the log.
+      #
+      # Two flags undo settings that would otherwise shrink the audit without failing it, both
+      # measured on 2026-10-16 against fixtures/npm-findings.lockfile.json:
+      #   --offline=false  npm_config_offline=true made npm audit exit 0 with no vulnerabilities.
+      #   --include=dev    npm_config_omit=dev, or NODE_ENV=production, dropped the 4 dev-only
+      #                    packages of its 6. Dev tooling is audited here on purpose.
       - name: Audit the frontend (npm audit)
         working-directory: frontend
         run: |
           set +e
-          npm audit --json --package-lock-only > "$AUDIT_OUT/frontend.npm-audit.json"
+          npm audit --json --package-lock-only --offline=false --include=dev > "$AUDIT_OUT/frontend.npm-audit.json"
           echo $? > "$AUDIT_OUT/frontend.npm-audit.exit"
 
       - name: Audit the E2E suite (npm audit)
         working-directory: e2e
         run: |
           set +e
-          npm audit --json --package-lock-only > "$AUDIT_OUT/e2e.npm-audit.json"
+          npm audit --json --package-lock-only --offline=false --include=dev > "$AUDIT_OUT/e2e.npm-audit.json"
           echo $? > "$AUDIT_OUT/e2e.npm-audit.exit"
 
       # Every scope, test included: test dependencies run in CI next to Docker, so they are listed,
@@ -173,7 +201,10 @@ jobs:
       group: dependency-audit-issue
       cancel-in-progress: false
     steps:
+      # gh reads GH_TOKEN from the step below; the checkout does not need to keep one.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node 24
         uses: actions/setup-node@v4

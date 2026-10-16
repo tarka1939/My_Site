@@ -42,9 +42,12 @@ Audits all three dependency trees every Monday and keeps one issue up to date wi
 Issue #273. Before it existed, every advisory found here (#244, #265, #267, and 16 against the
 backend in #272) was found because someone went looking.
 
-- **Frontend and E2E:** `npm audit --json --package-lock-only` on each lockfile. It audits what
-  `npm ci` would install without installing it, so no install script runs, and every platform's
-  optional packages count, not only the runner's.
+- **Frontend and E2E:** `npm audit --json --package-lock-only --offline=false --include=dev` on
+  each lockfile. It audits what `npm ci` would install without installing it, so no install script
+  runs. The last two flags override settings that would shrink the audit without failing it. They
+  were measured on 2026-10-16:
+  - `npm_config_offline=true` made `npm audit` exit 0 with no vulnerabilities at all.
+  - `npm_config_omit=dev` or `NODE_ENV=production` dropped every dev-only package.
 - **Backend:** `mvn dependency:list` resolves the real graph, including every version Spring
   Boot's BOM manages, and `osv-query.mjs` (Node standard library only) looks each one up in
   [OSV](https://osv.dev). It needs no account and no secret. OWASP dependency-check needs an NVD
@@ -128,8 +131,9 @@ workflow. A PR that changes the workflow or its scripts does, and that run repor
 Tests, with recorded real output as fixtures:
 `node --test .github/scripts/dependency-audit/dependency-audit.test.mjs`. Pass the file, not the
 directory: Node 24 treats a directory argument as a module and fails. A pull request that triggers
-this workflow runs them as a step of its own; nothing in `ci.yml` does, and the scheduled run skips
-them.
+this workflow runs them as a job of its own, `unit-tests`. The audit does not wait for it, so a
+failing test is a red check rather than an audit reported as unable to complete. Nothing in
+`ci.yml` runs them, and the scheduled run skips them.
 
 **GitHub disables a public repository's scheduled workflows after 60 days with no activity.** A
 quiet stretch on this repository would stop the audit without a failure to notice. The Actions tab
