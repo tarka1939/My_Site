@@ -110,6 +110,9 @@ describe('npm audit: a finding and a failure both exit 1, and are told apart by 
     ['a garbled exit code', { exitCodeText: 'oops' }, /exit code was not recorded/],
     ['empty stdout', { stdout: '' }, /wrote nothing to stdout/],
     ['only a byte-order mark', { stdout: '﻿\n' }, /wrote nothing to stdout/],
+    // What stock Windows PowerShell 5.1's `>` writes, read back as the scripts read files.
+    ['stdout in UTF-16LE', { stdout: Buffer.from(`﻿${fixture('npm-clean.json')}`, 'utf16le').toString('utf8'), exitCodeText: '0' }, /not JSON/],
+    ['an exit code in UTF-16LE', { exitCodeText: Buffer.from('﻿1\r\n', 'utf16le').toString('utf8') }, /exit code was not recorded/],
     ['text that is not JSON', { stdout: 'npm ERR! something' }, /not JSON/],
     ['a JSON array', { stdout: '[]' }, /not a JSON object/],
     ['an unknown report version', { stdout: '{"auditReportVersion":3,"vulnerabilities":{}}', exitCodeText: '0' }, /not a version 2 audit report/],

@@ -53,12 +53,20 @@ backend in #272) was found because someone went looking.
   [OSV](https://osv.dev). It needs no account and no secret. OWASP dependency-check needs an NVD
   key to be usable, and Sonatype OSS Index needs credentials.
 
+**Not audited:**
+
+- Maven's build plugins and their own dependencies. `dependency:list` covers what the backend
+  depends on, not what builds it.
+- The `openapi-generator-cli` jar that `npm run generate:api` downloads when it runs. `npm audit`
+  sees the npm wrapper package in the frontend lockfile, not the Java jar the wrapper fetches.
+
 **A finding never fails the run. An audit that could not complete always does.** `npm audit` exits
 1 in both cases, so the exit code cannot tell them apart. `report.mjs` decides from the JSON
 instead. A registry or network error, unreadable output, a Maven failure or an OSV failure fails
 the run with an annotation naming the area. That matters because an audit that silently did not
-happen reads exactly like a clean one. The Markdown report goes to the run summary every time,
-including on a failed run.
+happen reads exactly like a clean one. The Markdown report goes to the run summary on every run
+that reaches the report step, including one where an audit failed. A run that is cancelled, or
+stopped by the job's 20-minute timeout, writes no report.
 
 **What "ships" means.** Every scope is audited, dev and test included, and each finding says whether
 it ships:
@@ -137,8 +145,22 @@ failing test is a red check rather than an audit reported as unable to complete.
 
 **GitHub disables a public repository's scheduled workflows after 60 days with no activity.** A
 quiet stretch on this repository would stop the audit without a failure to notice. The Actions tab
-shows the workflow as disabled, and enabling it there resumes the schedule. To run the whole pipeline
-locally without writing anything, run `issue.mjs` without `--write`; it prints what it would do.
+shows the workflow as disabled, and enabling it there resumes the schedule.
+
+To run the whole pipeline locally without writing anything, run the workflow's steps from the
+repository root, in bash (Git Bash on Windows). The report step writes `results.json`. `issue.mjs`
+without `--write` then reads the repository through an authenticated `gh` and prints what it would
+do. Windows PowerShell's `>` writes UTF-16LE, which the scripts reject as unreadable output.
+
+```bash
+out=$(mktemp -d)
+(cd frontend && npm audit --json --package-lock-only --offline=false --include=dev > "$out/frontend.npm-audit.json"; echo $? > "$out/frontend.npm-audit.exit")
+(cd e2e && npm audit --json --package-lock-only --offline=false --include=dev > "$out/e2e.npm-audit.json"; echo $? > "$out/e2e.npm-audit.exit")
+(cd backend && mvn -B -ntp dependency:list -Dsort=true -DoutputFile="$out/backend.deps.txt"; echo $? > "$out/backend.mvn.exit")
+node .github/scripts/dependency-audit/osv-query.mjs "$out/backend.deps.txt" "$out/backend.osv.json"
+node .github/scripts/dependency-audit/report.mjs --dir "$out" --root . --results "$out/results.json"
+node .github/scripts/dependency-audit/issue.mjs --results "$out/results.json" --repo tarka1939/My_Site
+```
 
 ## `deploy-backend.yml` and `deploy-frontend.yml` — live on `main`
 

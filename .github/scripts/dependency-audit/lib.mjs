@@ -104,7 +104,12 @@ export function meetsFloor(finding) {
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
-/** A UTF-8 byte-order mark is not JSON. Windows PowerShell's `>` writes one; bash's does not. */
+/**
+ * A UTF-8 byte-order mark is not JSON, and some Windows shells write one: PowerShell's `>` does when
+ * its output encoding has been set to UTF-8. Bash's `>`, which the workflow uses, never does. Stock
+ * Windows PowerShell 5.1 writes UTF-16LE instead, which nothing here decodes: that output reads as
+ * unreadable and the audit fails closed, never as a clean result (tested).
+ */
 const stripBom = (text) => text.replace(/^\uFEFF/, '');
 
 export function parseJson(text) {
