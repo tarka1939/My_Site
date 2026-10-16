@@ -109,16 +109,21 @@ Dev tooling is held to high for two reasons:
   - The body always fits an issue, and always carries the fingerprint. A report too long for it is
     cut, and the run summary has all of it. Past about 250 findings at or above the floor, the
     saved state keeps only some of their keys. In that case the next change comment says it cannot
-    list what changed, and closing that issue accepts only the keys it kept.
+    list what changed, and closing that issue as not planned accepts only the keys it kept.
   - When the findings are all gone, there is a comment, and the issue is left open for a person to
-    close.
-- **Closing the issue accepts its advisories.** With no issue open, a new one opens only when some
-  finding at or above the floor is in none of the closed audit issues. Findings are compared by
-  area, package and advisory, without the version, and against every closed issue together, not
-  only the newest. Neither the same set, nor a subset of it, nor a version bump that is still
-  affected brings an issue back: none of those is new information. A new advisory does, and the
-  new issue lists every finding and links the last closed one. This was the owner's decision on the
-  review of #295.
+    close as completed.
+- **To accept the listed advisories, close the issue as not planned. Closing it as completed,
+  including from a PR, accepts nothing.** The script reads the close's `state_reason`, and only
+  `not_planned` accepts. A closing keyword in a merged PR closes as completed, so a PR that fixes
+  one finding and says so cannot accept the rest of the issue with it. A missing `state_reason`
+  accepts nothing either.
+- With no issue open, a new one opens only when some finding at or above the floor is in none of
+  the audit issues closed as not planned. Findings are compared by area, package and advisory,
+  without the version, and against every such issue together, not only the newest. Neither the
+  same set, nor a subset of it, nor a version bump that is still affected brings an issue back:
+  none of those is new information. A new advisory does, and the new issue lists every finding and
+  links the last closed one. This was the owner's decision on the review of #295; the not-planned
+  rule came from the review after.
 - Labels are `backend`, `frontend` and `infra` (for E2E), by the areas affected. The milestone is
   **Phase 8**, looked up by title.
 - If that milestone is closed or gone, or a label is missing, the run fails with a message. When

@@ -769,6 +769,10 @@ const BODY_LIMIT = 60000;
  */
 const STATE_LIMIT = 20000;
 
+/** How a person accepts what an issue lists; planIssue reads `state_reason` to match. */
+export const ACCEPT_RULE =
+  'To accept the listed advisories, close the issue as not planned. Closing it as completed, including from a PR, accepts nothing.';
+
 /**
  * The state to save: the fingerprint always, and as many keys as fit under STATE_LIMIT. When they
  * do not all fit, `complete: false` and `total` say so, the next change comment says it cannot list
@@ -794,9 +798,9 @@ export function renderIssueBody(results, { previous = null } = {}) {
     'This issue is kept up to date by the weekly dependency audit, `.github/workflows/dependency-audit.yml` (#273). ' +
       'It is edited only when the set of findings at or above the floor changes, with a comment saying what changed.',
     '',
-    'It never closes itself. Close it once the findings are fixed or accepted. Closing accepts each advisory listed here ' +
-      'for its package, at any version: none of them opens an issue again. A new issue opens only for an advisory that ' +
-      'is in no closed audit issue.',
+    'It never closes itself. Once the findings are fixed, close it as completed. ' +
+      `${ACCEPT_RULE} Accepting covers each advisory listed here for its package, at any version: none of them opens ` +
+      'an issue again. A new issue opens only for an advisory that is in no audit issue closed as not planned.',
   ];
   if (previous) intro.push('', `The previous set of findings was in #${previous}.`);
   const state = encodeState(boundedState(results));
@@ -878,23 +882,29 @@ const acceptanceKey = (key) => {
 
 /**
  * Decides what to do with the tracking issue. `issues` are the issues the bot opened that carry
- * the marker, open and closed, as `{ number, state, body }`.
+ * the marker, open and closed, as `{ number, state, state_reason, body }`.
  *
  *   - An open issue with the same fingerprint: nothing. This is what keeps it from being weekly.
  *   - An open issue, and now clean: comment that it is clean, and record the clean state so the
  *     next clean week stays quiet. It stays open; a person closes it.
  *   - An open issue, findings changed: comment with what changed, and rewrite the body.
- *   - No open issue, and every finding at or above the floor already in a closed one: nothing.
+ *   - No open issue, and every finding at or above the floor already accepted: nothing.
  *   - Otherwise, findings at or above the floor open a new issue.
  *
- * What a closed issue suppresses, decided by the owner on the review of #295: an advisory in a
- * package, by `area|package|advisory`, without the version. A new issue opens only when some
- * finding's key is in no closed audit issue's saved state, taking all of them together, not only
- * the newest. Closing the issue is the owner accepting those advisories for those packages, so the
- * same set does not come back, a subset of it does not come back, and nor does a patch bump that
- * is still inside the affected range: none of those is new information. A closed issue whose state
- * cannot be read accepts nothing, and one that recorded only some of its keys (boundedState)
- * accepts only those, so the error is towards filing.
+ * What is accepted, decided by the owner on the review of #295: an advisory in a package, by
+ * `area|package|advisory`, without the version, listed in an audit issue a person closed as not
+ * planned. A new issue opens only when some finding's key is in no such issue's saved state,
+ * taking all of them together, not only the newest. Closing as not planned is the owner accepting
+ * those advisories for those packages, so the same set does not come back, a subset of it does not
+ * come back, and nor does a patch bump that is still inside the affected range: none of those is
+ * new information.
+ *
+ * Only `not_planned` accepts (ACCEPT_RULE). A close as completed, which is also what a closing
+ * keyword in a merged PR does, says the findings were fixed, and accepts nothing: a PR that fixed
+ * one finding and said so would otherwise accept every other finding in the issue with it. A
+ * missing or unknown `state_reason` accepts nothing too. So does a closed issue whose state cannot
+ * be read, and one that recorded only some of its keys (boundedState) accepts only those, so the
+ * error is always towards filing.
  */
 export function planIssue({ results, issues }) {
   if (results.errored) {
@@ -939,7 +949,7 @@ export function planIssue({ results, issues }) {
   }
   const lastClosed = closed[0];
   const acceptedBy = new Map();
-  for (const issue of closed) {
+  for (const issue of closed.filter((i) => i.state_reason === 'not_planned')) {
     for (const key of issue.saved?.keys ?? []) {
       const k = acceptanceKey(key);
       if (!acceptedBy.has(k)) acceptedBy.set(k, issue.number);
@@ -951,7 +961,7 @@ export function planIssue({ results, issues }) {
     return {
       action: 'none',
       reason:
-        `All ${actionable.length} finding(s) at or above the floor were in audit issue(s) a person closed ` +
+        `All ${actionable.length} finding(s) at or above the floor were in audit issue(s) a person closed as not planned ` +
         `(${by.map((n) => `#${n}`).join(', ')}), which accepts them; not refiling.`,
       notes,
     };

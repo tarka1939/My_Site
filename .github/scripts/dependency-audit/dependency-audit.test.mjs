@@ -39,6 +39,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  ACCEPT_RULE,
   analyseBackend,
   analyseNpmAudit,
   buildResults,
@@ -660,9 +661,11 @@ describe('the report', () => {
 });
 
 describe('the tracking issue', () => {
-  const issueFrom = (number, state, results) => ({
+  /** `state_reason` as the REST API reports it: `completed`, `not_planned`, `reopened` or null. */
+  const issueFrom = (number, state, results, state_reason = null) => ({
     number,
     state,
+    state_reason,
     body: `x\n${encodeState({ v: 1, fingerprint: results.fingerprint, keys: results.actionableKeys })}`,
   });
 
@@ -719,16 +722,50 @@ describe('the tracking issue', () => {
     assert.equal(nextWeek.action, 'none');
   });
 
-  test('a closed issue with the same findings is not refiled', () => {
+  test('an issue closed as not planned with the same findings is not refiled', () => {
     const r = resultsWithFindings();
-    const plan = planIssue({ results: r, issues: [issueFrom(300, 'closed', r)] });
+    const plan = planIssue({ results: r, issues: [issueFrom(300, 'closed', r, 'not_planned')] });
     assert.equal(plan.action, 'none');
-    assert.match(plan.reason, /All 27 finding\(s\) at or above the floor were in audit issue\(s\) a person closed \(#300\)/);
+    assert.match(plan.reason, /All 27 finding\(s\) at or above the floor were in audit issue\(s\) a person closed as not planned \(#300\)/);
+  });
+
+  test('an issue closed as completed accepts nothing: a fix, or a PR closing it, is not acceptance', () => {
+    const r = resultsWithFindings();
+    const plan = planIssue({ results: r, issues: [issueFrom(300, 'closed', r, 'completed')] });
+    assert.equal(plan.action, 'create');
+    assert.match(plan.body, /The previous set of findings was in #300\./);
+    assert.equal(parseState(plan.body).keys.length, 27);
+  });
+
+  test('a closed issue with no state_reason, or one this script does not know, accepts nothing', () => {
+    const r = resultsWithFindings();
+    const { state_reason: _, ...withoutReason } = issueFrom(300, 'closed', r);
+    for (const issue of [issueFrom(300, 'closed', r, null), withoutReason, issueFrom(300, 'closed', r, 'duplicate'), issueFrom(300, 'closed', r, 'NOT_PLANNED')]) {
+      assert.equal(planIssue({ results: r, issues: [issue] }).action, 'create', JSON.stringify(issue.state_reason));
+    }
+  });
+
+  test('a completed close beside a not-planned one accepts only what the not-planned one lists', () => {
+    const r = resultsWithFindings();
+    const half = Math.floor(r.actionableKeys.length / 2);
+    const notPlanned = closedWith(300, r.actionableKeys.slice(0, half), 'not_planned');
+    const completed = closedWith(310, r.actionableKeys, 'completed');
+    assert.equal(planIssue({ results: r, issues: [notPlanned, completed] }).action, 'create');
+    const onlyAccepted = withFindings(r, r.findings.filter((f) => !f.atFloor || r.actionableKeys.slice(0, half).includes(findingKey(f))));
+    const plan = planIssue({ results: onlyAccepted, issues: [notPlanned, completed] });
+    assert.equal(plan.action, 'none');
+    assert.match(plan.reason, /\(#300\)/);
+  });
+
+  test('the issue tells a person how to accept, and that closing as completed does not', () => {
+    const body = planIssue({ results: resultsWithFindings(), issues: [] }).body;
+    assert.ok(body.includes(ACCEPT_RULE));
+    assert.match(ACCEPT_RULE, /^To accept the listed advisories, close the issue as not planned\. Closing it as completed, including from a PR, accepts nothing\.$/);
   });
 
   test('a closed issue with different findings: open a new one that points back', () => {
     const r = resultsWithFindings();
-    const plan = planIssue({ results: r, issues: [issueFrom(300, 'closed', cleanResults())] });
+    const plan = planIssue({ results: r, issues: [issueFrom(300, 'closed', cleanResults(), 'not_planned')] });
     assert.equal(plan.action, 'create');
     assert.match(plan.body, /The previous set of findings was in #300\./);
   });
@@ -738,22 +775,27 @@ describe('the tracking issue', () => {
     const actionableKeys = findings.filter((f) => f.atFloor).map(findingKey).sort();
     return { ...r, findings, actionableKeys, fingerprint: fingerprint(actionableKeys) };
   };
-  const closedWith = (number, keys) => ({ number, state: 'closed', body: `x\n${encodeState({ v: 1, fingerprint: fingerprint(keys), keys })}` });
+  const closedWith = (number, keys, state_reason) => ({
+    number,
+    state: 'closed',
+    state_reason,
+    body: `x\n${encodeState({ v: 1, fingerprint: fingerprint(keys), keys })}`,
+  });
 
-  test('review probe 1: a shrunk set, with the original closed, is not refiled', () => {
+  test('review probe 1: a shrunk set, with the original closed as not planned, is not refiled', () => {
     const r = resultsWithFindings();
     const dropped = r.findings.find((f) => f.atFloor);
     const shrunk = withFindings(r, r.findings.filter((f) => f !== dropped));
     assert.notEqual(shrunk.fingerprint, r.fingerprint);
-    const plan = planIssue({ results: shrunk, issues: [issueFrom(300, 'closed', r)] });
+    const plan = planIssue({ results: shrunk, issues: [issueFrom(300, 'closed', r, 'not_planned')] });
     assert.equal(plan.action, 'none');
     assert.match(plan.reason, /All 26 finding\(s\)/);
   });
 
-  test('review probe 2: two different closed sets that cover the findings between them are not refiled', () => {
+  test('review probe 2: two different not-planned sets that cover the findings between them are not refiled', () => {
     const r = resultsWithFindings();
     const half = Math.floor(r.actionableKeys.length / 2);
-    const issues = [closedWith(300, r.actionableKeys.slice(0, half)), closedWith(310, r.actionableKeys.slice(half))];
+    const issues = [closedWith(300, r.actionableKeys.slice(0, half), 'not_planned'), closedWith(310, r.actionableKeys.slice(half), 'not_planned')];
     const plan = planIssue({ results: r, issues });
     assert.equal(plan.action, 'none');
     assert.match(plan.reason, /\(#310, #300\)/);
@@ -766,7 +808,21 @@ describe('the tracking issue', () => {
       r.findings.map((f) => (f.package === 'org.postgresql:postgresql' ? { ...f, version: '42.2.1' } : f)),
     );
     assert.notEqual(bumped.fingerprint, r.fingerprint);
-    assert.equal(planIssue({ results: bumped, issues: [issueFrom(300, 'closed', r)] }).action, 'none');
+    assert.equal(planIssue({ results: bumped, issues: [issueFrom(300, 'closed', r, 'not_planned')] }).action, 'none');
+  });
+
+  test('accepting an advisory in one area does not accept the same package and advisory in another', () => {
+    const r = resultsWithFindings();
+    const lodash = r.findings.find((f) => f.area === 'frontend' && f.package === 'lodash' && f.id === 'GHSA-35jh-r3h4-6jhm');
+    assert.ok(lodash?.atFloor, 'the fixture must have this frontend finding at the floor');
+    const inE2e = { ...lodash, area: 'e2e', ships: false };
+    const both = withFindings(r, [lodash, inE2e]);
+    assert.equal(both.actionableKeys.length, 2);
+    const e2eKey = findingKey(inE2e);
+    // e2e's is accepted; frontend's, the same package at the same version with the same advisory, is not.
+    const plan = planIssue({ results: both, issues: [closedWith(300, [e2eKey], 'not_planned')] });
+    assert.equal(plan.action, 'create');
+    assert.equal(planIssue({ results: withFindings(r, [inE2e]), issues: [closedWith(300, [e2eKey], 'not_planned')] }).action, 'none');
   });
 
   test('one advisory in no closed issue opens a new issue, listing everything, pointing to the newest closed one', () => {
@@ -774,7 +830,7 @@ describe('the tracking issue', () => {
     const fresh = { ...r.findings.find((f) => f.atFloor), id: 'GHSA-new0-new0-new0', url: 'https://github.com/advisories/GHSA-new0-new0-new0' };
     const grown = withFindings(r, [...r.findings, fresh]);
     const half = Math.floor(r.actionableKeys.length / 2);
-    const issues = [closedWith(300, r.actionableKeys.slice(0, half)), closedWith(310, r.actionableKeys.slice(half))];
+    const issues = [closedWith(300, r.actionableKeys.slice(0, half), 'not_planned'), closedWith(310, r.actionableKeys.slice(half), 'not_planned')];
     const plan = planIssue({ results: grown, issues });
     assert.equal(plan.action, 'create');
     assert.match(plan.body, /The previous set of findings was in #310\./);
@@ -784,7 +840,7 @@ describe('the tracking issue', () => {
 
   test('a closed issue whose state cannot be read accepts nothing', () => {
     const r = resultsWithFindings();
-    const plan = planIssue({ results: r, issues: [{ number: 300, state: 'closed', body: 'edited by hand' }] });
+    const plan = planIssue({ results: r, issues: [{ number: 300, state: 'closed', state_reason: 'not_planned', body: 'edited by hand' }] });
     assert.equal(plan.action, 'create');
   });
 
@@ -870,7 +926,7 @@ describe('the tracking issue', () => {
   test('a closed issue that recorded only some keys accepts only those', () => {
     const big = manyFindings(3000);
     const body = planIssue({ results: big, issues: [] }).body;
-    const plan = planIssue({ results: big, issues: [{ number: 300, state: 'closed', body }] });
+    const plan = planIssue({ results: big, issues: [{ number: 300, state: 'closed', state_reason: 'not_planned', body }] });
     assert.equal(plan.action, 'create');
   });
 });
@@ -1080,6 +1136,8 @@ describe('issue.mjs', () => {
     });
     assert.deepEqual((await gh.auditIssues()).map((i) => i.number), [1]);
     assert.ok(calls[0].args.includes(`creator=${ISSUE.bot}`));
+    // Without state_reason no close could accept anything (planIssue): the jq must keep it.
+    assert.match(calls[0].args.at(-1), /\{number, state, state_reason, body, author: \.user\.login\}/);
   });
 
   test('create passes the title, body, each label and the milestone by title, then reads them back', async () => {

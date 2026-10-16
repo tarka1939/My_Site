@@ -16,7 +16,8 @@
  * object that only exists inside the action, and there is nothing to dry-run it with.
  *
  * Which issue: the newest open one that GITHUB_TOKEN's account opened and that carries the state
- * marker in its body; failing that, the newest closed one. lib.mjs's planIssue() says what then.
+ * marker in its body; failing that, a new one, unless every finding is in one a person closed as
+ * not planned. lib.mjs's planIssue() says exactly what.
  */
 
 import { execFile } from 'node:child_process';
@@ -117,7 +118,8 @@ export function createGh(repo, run = runGh) {
           '-f',
           'per_page=100',
           '--jq',
-          '.[] | select(.pull_request == null) | {number, state, body, author: .user.login}',
+          // state_reason is `completed`, `not_planned`, `reopened` or null; only `not_planned` accepts.
+          '.[] | select(.pull_request == null) | {number, state, state_reason, body, author: .user.login}',
         ]),
       ).filter((issue) => issue.author === ISSUE.bot && hasMarker(issue.body)),
 
