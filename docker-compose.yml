@@ -23,9 +23,10 @@ services:
     # reason all three agree is that a migration valid on 17 and not on 16 would otherwise pass CI
     # and fail at deploy — after the pipeline has already swapped the jar in.
     #
-    # backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java is the only other file in
-    # the repository naming a Postgres version. The third copy is the VPS, which no constant can
-    # reach; `psql --version` there is the check.
+    # Two other files in the repository name a Postgres version:
+    # backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java, and the service in
+    # .github/workflows/e2e.yml, which checks itself against TestPostgres.java on every run. The
+    # last copy is the VPS, which no constant can reach; `psql --version` there is the check.
     image: postgres:16-alpine
     container_name: mysite-postgres
     environment:

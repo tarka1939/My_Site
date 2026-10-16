@@ -1,0 +1,179 @@
+# Runs the Playwright end-to-end suite (/e2e) against a real backend, a real frontend and a real
+# Postgres. Issue #250.
+#
+# The suite is the only test that drives both halves of the app together. Until this existed it ran
+# only when someone remembered to run it, and two stale locators were found on dev that way, by
+# accident, one of them six weeks old. Like ci.yml, this needs no secrets and deploys nothing.
+#
+# A separate workflow from ci.yml because its trigger is narrower. Path filters apply to a whole
+# workflow, and ci.yml runs on every pull request and on every push to dev and main.
+
+name: E2E
+
+on:
+  # The owner's decision (2026-10-14): pull requests whose changes can affect the suite, meaning
+  # either half of the app, the suite itself, or the contract between them. This file is listed
+  # too, so that a change to the job runs the job. No push or schedule trigger, by the same
+  # decision.
+  #
+  # Nothing requires this check to pass. dev has no branch protection and no ruleset (checked
+  # 2026-10-16), so a pull request the filter skips merges as usual. If this is ever made a
+  # required check, that changes: GitHub leaves a required check that a path filter skipped
+  # pending, which blocks every pull request touching none of these paths. The filter would then
+  # have to move inside the job.
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'e2e/**'
+      - 'docs/openapi.yaml'
+      - '.github/workflows/e2e.yml'
+  # By hand, on dev, to learn whether dev is already red before blaming a pull request's diff.
+  workflow_dispatch:
+
+# Least privilege: this workflow reads the code and writes nothing.
+permissions:
+  contents: read
+
+# As in ci.yml: a second push to the same PR makes the first run irrelevant. A run started by
+# hand is not cancelled.
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e:
+    name: E2E suite (Playwright)
+    runs-on: ubuntu-latest
+    # A backstop for a hang outside the test step, which has its own, shorter limit. Above that
+    # limit by the installs and the browser download before it.
+    timeout-minutes: 30
+
+    # The database the backend and the suite both use, fresh for every job. postgres:16-alpine to
+    # match production and docker-compose.yml. The credentials are the defaults that
+    # application-dev.yml and e2e/support/db.ts already share, so neither DB_* nor E2E_DB_* is set
+    # here. Changing one would mean setting both namespaces; db.ts says why. The port is fixed at
+    # 5432 because application-dev.yml hardcodes it.
+    #
+    # A refused Docker Hub pull (#285) needs no pull step of its own here, unlike ci.yml. The runner
+    # pulls a service itself, in its "Initialize containers" step, before any step below runs: three
+    # attempts a few seconds apart, then "Docker pull failed with exit code N" under docker's own
+    # error. That failure is already fast and already named. The #285 one was neither, because
+    # Testcontainers retried inside the test run for 45 minutes and the result read as broken tests.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mysite_dev
+          POSTGRES_USER: mysite
+          POSTGRES_PASSWORD: mysite
+        ports:
+          - 5432:5432
+        # The runner waits for this before the first step, so a database that never comes up fails
+        # in "Initialize containers" rather than as a backend that cannot start. Same check as
+        # docker-compose.yml.
+        options: >-
+          --health-cmd "pg_isready -U mysite -d mysite_dev"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The service's image above is a copy of TestPostgres.IMAGE that cannot be read from it, because
+      # a service starts before any step can run. TestPostgres.java's javadoc names copies that drift
+      # silently as a defect this project has had twice, so this one is checked: against the
+      # container that actually ran, before the slow steps.
+      - name: Confirm the Postgres service runs TestPostgres.IMAGE
+        env:
+          SERVICE_ID: ${{ job.services.postgres.id }}
+        run: |
+          image=$(docker inspect --format '{{.Config.Image}}' "$SERVICE_ID")
+          java_file=backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java
+          if ! grep -qF "public static final String IMAGE = \"$image\";" "$java_file"; then
+            echo "::error::The postgres service runs $image, but $java_file does not declare IMAGE = \"$image\". Make services.postgres.image in .github/workflows/e2e.yml match it."
+            exit 1
+          fi
+          echo "The postgres service runs $image, which is TestPostgres.IMAGE."
+
+      # Playwright starts the backend itself (`mvn spring-boot:run`), so the JDK is set up here and
+      # nothing is built.
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # One npm cache keyed on both lockfiles: Playwright runs `ng serve` from frontend/, and the
+      # suite's own dependencies live in e2e/.
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+
+      # Playwright starts `ng serve` but installs nothing for it. `npm ci` for the reason ci.yml
+      # gives.
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install E2E dependencies
+        working-directory: e2e
+        run: npm ci
+
+      # Chromium only, the one browser playwright.config.ts defines, at the version e2e's lockfile
+      # pins. --with-deps installs the system libraries it needs, which a fresh runner lacks. Not
+      # cached: Playwright's CI documentation advises against it, since restoring the browser takes
+      # about as long as downloading it, and the system libraries would still go through apt.
+      - name: Install Chromium for Playwright
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      # CI=true is already set on every runner, and playwright.config.ts keys off it: it starts the
+      # backend (dev profile) and `ng serve` itself instead of reusing running ones, retries a
+      # failed test once, and fails on a stray test.only. The dev profile starts with no environment
+      # at all: its JWT secret has a dev-only default, and an absent RESEND_API_KEY or
+      # CONTACT_NOTIFICATION_EMAIL is a designed no-op. That is why the job needs no secrets.
+      #
+      # Both rate limits the suite spends start empty: the login limiter lives in the memory of a
+      # backend started for this run, and the contact form's limit counts rows in a database
+      # created for it.
+      #
+      # The step's limit: the config's webServer timeouts (300 s for the backend, which allows for
+      # a cold Maven cache, then 180 s for `ng serve`) bound server start at 8 minutes. Eight
+      # tests at 30 s each, the rate-limit one at 90 s, and each retried once, come to 10 minutes
+      # if every one of them times out. Unlike the job's limit, a step's ends in a failure, so the
+      # upload below still runs.
+      #
+      # LOGGING_FILE_NAME: Playwright discards the backend's stdout, which is where Spring logs, so
+      # a server-side stack trace would otherwise be lost with the runner. This keeps a copy for
+      # the upload.
+      - name: Run the E2E suite
+        working-directory: e2e
+        timeout-minutes: 20
+        env:
+          LOGGING_FILE_NAME: ${{ github.workspace }}/e2e/backend.log
+        run: npm test
+
+      # The HTML report, the traces and screenshots the config keeps for failed tests, and the
+      # backend log. Nothing in them is secret: the job holds no secrets, and the credentials the
+      # traces show are the suite's published test account, on a backend gone with the runner.
+      # Named per attempt so that re-running a failed job cannot collide with the first attempt's
+      # artifact.
+      - name: Upload the report, traces and backend log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-attempt-${{ github.run_attempt }}
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            e2e/backend.log
+          retention-days: 7
+          if-no-files-found: ignore
