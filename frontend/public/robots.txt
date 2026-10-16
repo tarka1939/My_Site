@@ -8,7 +8,8 @@
 #
 # A custom domain is planned (docs/DECISIONS.md, 2026-10-14). When it arrives, the origin
 # changes here and in sitemap.xml, and a git grep for the old origin finds the rest. index.html
-# no longer carries it: its static og:url was dropped for #251. That is a site move, not an
+# names it in no tag since its static og:url was dropped for #251; only its Search Console
+# comment mentions it, and a new domain is a new property there. That is a site move, not an
 # edit: 301 from the old host and a change of address in Search Console, or the accumulated
 # indexing starts over.
 

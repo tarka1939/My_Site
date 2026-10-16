@@ -118,9 +118,9 @@ export class SeoService {
    *
    * `og:url` exists only at runtime: `index.html` deliberately ships none (#251). A static value is
    * one URL for every route, and Facebook and LinkedIn treat `og:url` as the shared object's
-   * identity, so every shared project link previewed as the root. A non-JS scraper now sees no
-   * `og:url` and falls back to the URL it fetched; a JS-executing crawler is told the same thing
-   * here, from the origin that actually served the app.
+   * identity, so every shared project link would be cached as the root. A non-JS scraper now sees
+   * no `og:url` and should fall back to the URL it fetched; a JS-executing crawler is told the
+   * same thing here, from the origin that actually served the app.
    *
    * A page with no `url` gets neither tag, and whatever the previous page wrote is removed rather
    * than inherited: a stale canonical is a wrong indexing instruction, and a stale `og:url` would

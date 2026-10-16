@@ -91,9 +91,9 @@
       than the site, so a static one names the same page on every route, /projects/<id> included.
       Facebook and LinkedIn treat og:url as the shared object's identity -- they cache and count
       engagement against it, and the card links to it -- so while this file carried the real origin,
-      every shared project link previewed as the root and linked to the root. With no og:url a
-      scraper falls back to the URL it fetched: each link is its own object and its card links back
-      to it. The preview *text* stays site-level either way. The cost is losing one stable identity
+      a shared project link would be cached as the root, with a card linking to the root. With no
+      og:url a scraper should fall back to the URL it fetched: each link its own object, with a card
+      linking back to it. The preview *text* stays site-level either way. The cost is losing one stable identity
       for the root, which is small while the root is shared without query strings. SeoService still
       writes og:url per route at runtime, for crawlers that run JS. Do not add a static one back;
       the per-route static value is prerendering, the third option in the 2026-08-10 SEO ADR's
