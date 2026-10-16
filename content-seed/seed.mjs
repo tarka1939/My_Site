@@ -4,7 +4,7 @@
  *
  * Deliberately not a Flyway migration and deliberately not a direct Postgres write:
  *
- *  - Portfolio copy is content, not schema. A migration is append-only and permanent — copy gets
+ *  - Portfolio copy is content, not schema. A migration is append-only and permanent - copy gets
  *    corrected, and a correction would be a new migration on top of the old one, which stays in
  *    the tree and is replayed into every database that ever runs it, including throwaway CI ones.
  *  - Going through `POST`/`PUT /projects` means the seed exercises the same validation, tag
@@ -18,10 +18,10 @@
  *   node content-seed/seed.mjs [--dry-run|--remove] [--file <path>]
  *
  * Environment:
- *   SEED_BACKEND_URL       default http://127.0.0.1:8080 — checked by ./locality.mjs at import
+ *   SEED_BACKEND_URL       default http://127.0.0.1:8080 - checked by ./locality.mjs at import
  *   SEED_ADMIN_USERNAME    default "admin"
  *   SEED_ADMIN_PASSWORD    required; never defaulted and never committed
- *   SEED_ALLOW_REMOTE_HOST see ./locality.mjs — half of the deployment door, useless on its own
+ *   SEED_ALLOW_REMOTE_HOST see ./locality.mjs - half of the deployment door, useless on its own
  */
 
 // Must come first: it installs the handler that renders the locality guard's refusal below as a
@@ -85,17 +85,17 @@ async function request(path, init = {}) {
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...rest,
-      // Do not follow redirects — this is what keeps the locality guard's promise true.
+      // Do not follow redirects - this is what keeps the locality guard's promise true.
       //
       // `fetch` defaults to `redirect: 'follow'`, and the guard only ever sees SEED_BACKEND_URL.
       // So a 3xx from an approved host would send the *next* request to an origin the guard never
       // evaluated. Node strips the Authorization header cross-origin, but on a 307 or 308 it
-      // forwards the request BODY verbatim — which on /auth/login is the plaintext admin password.
+      // forwards the request BODY verbatim - which on /auth/login is the plaintext admin password.
       // Reproduced on Node 24.14.0 before this line existed. (A 301, 302 or 303 turns that POST
       // into a GET without a body; a PUT's body, the project copy, also survives a 301 or 302.)
       //
       // The precondition is not exotic: it only needs something other than the intended backend
-      // answering on the expected port — the exact scenario this seed's own Troubleshooting
+      // answering on the expected port - the exact scenario this seed's own Troubleshooting
       // section documents. Nothing this API does legitimately redirects, so refusing is free.
       redirect: 'error',
       headers: {
@@ -111,7 +111,7 @@ async function request(path, init = {}) {
       throw new Error(
         `Refusing to follow a redirect.\n` +
           `  ${rest.method ?? 'GET'} ${API_BASE}${path} answered with a redirect.\n` +
-          `  Following it would send this request — including the admin password on /auth/login — ` +
+          `  Following it would send this request - including the admin password on /auth/login - ` +
           `to an origin the locality guard never checked.\n` +
           `  Nothing in this API legitimately redirects. Check what is actually listening on that ` +
           `port (see "Troubleshooting" in content-seed/README.md).`,
@@ -166,7 +166,7 @@ async function listAllProjects() {
  *
  * **Title is the seed's identity.** The API has no external-id or slug field and no
  * filter-by-title, so an exact match over the full list is the only join available without
- * inventing a local state file — and a state file would make idempotency depend on a machine's
+ * inventing a local state file - and a state file would make idempotency depend on a machine's
  * disk rather than on the data, which fails the moment the seed runs from anywhere else.
  *
  * The consequences are worth stating plainly, because they are the real failure modes:
@@ -234,7 +234,7 @@ async function apply(doc, { dryRun }) {
     for (const step of plan) {
       console.log(`  would ${step.action.padEnd(6)} ${step.record.title}${step.existing ? `  (id ${step.existing.id})` : ''}`);
     }
-    console.log(`\n  dry run — nothing was written.`);
+    console.log(`\n  dry run - nothing was written.`);
     return;
   }
 
@@ -259,13 +259,13 @@ async function apply(doc, { dryRun }) {
     }
   } catch (error) {
     // Say what was written before re-throwing. Without this the run ends on a raw HTTP error and a
-    // partial apply is indistinguishable from one that failed on the first record — at exactly the
+    // partial apply is indistinguishable from one that failed on the first record - at exactly the
     // moment that difference matters most.
     const done = created + updated;
     console.error(
-      `\n  PARTIAL APPLY — ${done} of ${plan.length} record(s) written ` +
+      `\n  PARTIAL APPLY - ${done} of ${plan.length} record(s) written ` +
         `(${created} created, ${updated} updated) before the failure below.\n` +
-        `  Nothing was deleted. This seed is idempotent: fix the cause and re-run to finish — ` +
+        `  Nothing was deleted. This seed is idempotent: fix the cause and re-run to finish - ` +
         `the ${done} already written will be updated in place, not duplicated.`,
     );
     throw error;
@@ -281,7 +281,7 @@ async function remove(doc, { dryRun }) {
 
   // Same ambiguity refusal `apply` gets, for the same reason and more urgently: this is the mode
   // that destroys data. Two rows sharing a seeded title means one of them is probably not the
-  // seed's — deleting both without asking is precisely the "never deletes what it didn't create"
+  // seed's - deleting both without asking is precisely the "never deletes what it didn't create"
   // promise being broken, silently.
   const duplicates = [...Map.groupBy(doomed, (p) => p.title)].filter(([, rows]) => rows.length > 1);
   if (duplicates.length) {
@@ -290,7 +290,7 @@ async function remove(doc, { dryRun }) {
         duplicates
           .map(([title, rows]) => `  - "${title}" matches ${rows.length} stored projects: ${rows.map((r) => r.id).join(', ')}`)
           .join('\n') +
-        `\nOne of these is probably not this seed's. Delete the right one by hand — this script ` +
+        `\nOne of these is probably not this seed's. Delete the right one by hand - this script ` +
         `will not guess which row it owns.`,
     );
   }
@@ -305,7 +305,7 @@ async function remove(doc, { dryRun }) {
     for (const project of doomed) {
       console.log(`  would delete  ${project.id}  ${project.title}`);
     }
-    console.log(`\n  dry run — nothing was deleted.`);
+    console.log(`\n  dry run - nothing was deleted.`);
     return;
   }
 
@@ -321,7 +321,7 @@ async function remove(doc, { dryRun }) {
     }
   } catch (error) {
     console.error(
-      `\n  PARTIAL REMOVE — ${deleted} of ${doomed.length} project(s) deleted before the failure ` +
+      `\n  PARTIAL REMOVE - ${deleted} of ${doomed.length} project(s) deleted before the failure ` +
         `below. The remaining ${doomed.length - deleted} are still stored; re-run to finish.`,
     );
     throw error;
@@ -347,7 +347,7 @@ const KNOWN_FLAGS = new Set(['--dry-run', '--remove', '--file', '--help', '-h'])
   const unknown = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--file') {
-      // Its value is arbitrary, so skip it — but a trailing `--file` with nothing after it used to
+      // Its value is arbitrary, so skip it - but a trailing `--file` with nothing after it used to
       // fall back to the bundled data file, which silently applies content the caller didn't ask
       // for.
       if (i + 1 >= args.length) {
@@ -362,7 +362,7 @@ const KNOWN_FLAGS = new Set(['--dry-run', '--remove', '--file', '--help', '-h'])
     throw new Error(
       `Unknown argument(s): ${unknown.join(', ')}\n` +
         `  Known: ${[...KNOWN_FLAGS].join(', ')}\n` +
-        `  Refusing rather than ignoring them — "--dryrun" instead of "--dry-run" would otherwise ` +
+        `  Refusing rather than ignoring them - "--dryrun" instead of "--dry-run" would otherwise ` +
         `perform a real write.`,
     );
   }
@@ -392,7 +392,7 @@ doc._file = dataFile;
 
 validate(doc.projects);
 
-console.log(`\ncontent-seed — ${wants('--remove') ? 'remove' : 'apply'}${wants('--dry-run') ? ' (dry run)' : ''}`);
+console.log(`\ncontent-seed - ${wants('--remove') ? 'remove' : 'apply'}${wants('--dry-run') ? ' (dry run)' : ''}`);
 summarise(doc);
 banner(doc);
 

@@ -15,7 +15,7 @@ a browser binary, for no benefit. `frontend/package.json` is left untouched.
 ## Prerequisites
 
 1. **Node 24+** (matches the rest of the repo).
-2. **Docker**, for Postgres. From the repo root (#42 — same values the dev profile and this suite
+2. **Docker**, for Postgres. From the repo root (#42 - same values the dev profile and this suite
    default to):
 
    ```bash
@@ -24,9 +24,9 @@ a browser binary, for no benefit. `frontend/package.json` is left untouched.
 
    The suite uses `mysite_dev`, the same database `mvn spring-boot:run` uses.
 
-3. **JDK 25 and Maven on `PATH`** (or `JAVA_HOME`/`MAVEN_HOME` set) — Playwright starts the
+3. **JDK 25 and Maven on `PATH`** (or `JAVA_HOME`/`MAVEN_HOME` set) - Playwright starts the
    backend itself via `mvn spring-boot:run`, so it needs to be able to find them.
-4. **`frontend` dependencies installed** (`cd frontend && npm install`) — Playwright starts
+4. **`frontend` dependencies installed** (`cd frontend && npm install`) - Playwright starts
    `npm start` but does not install for you.
 5. **This directory's dependencies and a browser:**
 
@@ -54,7 +54,7 @@ already running. Postgres is deliberately *not* managed by the test runner: wiri
 container's lifecycle into a test suite is how a suite ends up dropping a developer's database
 on exit.
 
-The browser always drives `http://localhost:4200`, never `:8080` — `frontend/proxy.conf.json`
+The browser always drives `http://localhost:4200`, never `:8080` - `frontend/proxy.conf.json`
 forwards `/api/*` to the backend so the page sees same-origin requests. The backend's CORS
 allowlist holds only the deployed Netlify origin, so hitting `:8080` from the page would fail.
 
@@ -100,8 +100,8 @@ What CI does not cover, so it still rests on someone running the suite locally:
 
 ## The test admin account, and why it touches the database directly
 
-Everything this suite does goes through the real HTTP API — logging in, seeding fixture
-projects, reading back what was persisted, cleaning up — with exactly one exception:
+Everything this suite does goes through the real HTTP API - logging in, seeding fixture
+projects, reading back what was persisted, cleaning up - with exactly one exception:
 **provisioning the admin account it logs in as.**
 
 That exception is forced by two deliberate product decisions:
@@ -129,13 +129,13 @@ check. That covers **both** paths that can do damage, not just the database one:
 - `E2E_BACKEND_URL`, which `setup` and `teardown` aim `DELETE /projects/{id}` and
   `DELETE /contact-messages/{id}` at. `E2E_FRONTEND_URL` is checked the same way.
 
-Both URLs are validated as they are read, so a bad value fails at import time — before Playwright
+Both URLs are validated as they are read, so a bad value fails at import time - before Playwright
 loads its config, and long before anything could be deleted. There is intentionally no override
 flag; if you find yourself wanting one, the answer is a different account, not a bypass.
 
 The account uses a distinct username so it can never collide with or overwrite the real seeded
 `admin` row. Teardown deletes the row **and** the JWT cached in `.auth/api-token.json`, and does
-both **unconditionally** — even when the run failed before it ever acquired a token, and even
+both **unconditionally** - even when the run failed before it ever acquired a token, and even
 when cleanup itself fails. Deleting the row alone would not be enough: the backend is a stateless
 resource server that never re-checks a token's subject, so a token minted before the delete keeps
 working for the rest of its hour.
@@ -144,7 +144,7 @@ working for the rest of its hour.
 
 `E2E_DB_NAME`, `E2E_DB_USERNAME` and `E2E_DB_PASSWORD` default to the `docker compose` database above. Change
 any of them and you must **also** set the backend's own `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD`
-to match — different names, same values. Otherwise the suite provisions `e2e-admin` into a
+to match - different names, same values. Otherwise the suite provisions `e2e-admin` into a
 database the application never opens, and the admin journey fails with an unexplained `401`.
 
 There is deliberately **no** host or port override. `backend/src/main/resources/application-dev.yml`
@@ -165,11 +165,11 @@ application under test.
 
 Reruns must not depend on how the previous run ended, so:
 
-- Everything the suite creates is namespaced — projects by an `[E2E]` title prefix, contact
+- Everything the suite creates is namespaced - projects by an `[E2E]` title prefix, contact
   messages by the reserved `@e2e.invalid` email domain. Cleanup only ever matches those, never a
   developer's own local data.
 - `setup` **purges before it seeds**, so a run that was interrupted before teardown cannot poison
-  the next one. Teardown purges again, and removes the `e2e-admin` row and its cached token —
+  the next one. Teardown purges again, and removes the `e2e-admin` row and its cached token -
   those two unconditionally, so a run that died before it ever logged in still cleans up the
   credential it had already created.
 - The admin journey purges its own tag before **each attempt**, not after, so CI's single retry
@@ -181,7 +181,7 @@ Reruns must not depend on how the previous run ended, so:
 - The contact journeys purge their own messages between tests, which reclaims the rate-limit
   slots the suite spent: `ContactService` derives its limit from a `count(*)` over
   `contact_message` rather than from in-memory state, so deleting rows really does move the
-  counter. It does **not** free the whole window, though — the count is keyed on requester IP
+  counter. It does **not** free the whole window, though - the count is keyed on requester IP
   hash, not on email, so a message you submitted by hand from this machine within the last hour
   still costs a slot, and cleanup here will never touch it (it only ever matches `@e2e.invalid`;
   deleting your real messages is not this suite's call). The rate-limit journey needs all five
@@ -194,17 +194,17 @@ Reruns must not depend on how the previous run ended, so:
   **three** per run: `setup` logs in for its API token, and both tests in `admin.spec.ts` log in
   through the UI for real (the second, added for #246, proves a stale token cannot block one). The
   token `setup` caches in `.auth/api-token.json` (gitignored) is reused for the rest of
-  that run, but deliberately *not* across runs — teardown deletes it, because a token that
+  that run, but deliberately *not* across runs - teardown deletes it, because a token that
   outlives the account it was minted for is a live admin credential sitting on disk, and the
   backend never re-checks a token's subject. One extra login per run is the price of that.
 
   Whether the budget ever bites depends on who owns the backend. That limiter is in-memory
   (`InMemoryRateLimiter`), unlike the contact form's, so it dies with the process:
 
-  - **Playwright started the backend** (nothing was on :8080, or `CI` is set) — it also stops it
+  - **Playwright started the backend** (nothing was on :8080, or `CI` is set) - it also stops it
     at the end, so every run gets a fresh limiter and the budget effectively resets. You will not
     hit this, and neither will CI.
-  - **You started the backend** and Playwright is reusing it — the count accumulates across runs,
+  - **You started the backend** and Playwright is reusing it - the count accumulates across runs,
     so a **second** run inside a 15-minute window can already fail on a `429`.
 
   Either way the escape hatch is the same: **restart the backend**. `acquireToken` says so in the
@@ -214,13 +214,13 @@ Reruns must not depend on how the previous run ended, so:
   both.
 - **No local retries.** A journey that only passes on the second attempt is a defect in the test
   or the app. CI gets one retry for infrastructure noise, nothing more. That retry does mean any
-  journey which *writes* must be idempotent across attempts — nothing runs between a failed
+  journey which *writes* must be idempotent across attempts - nothing runs between a failed
   attempt and its retry, so reset the rows it owns in a `beforeEach`, the way `admin.spec.ts`
   and `contact.spec.ts` do. A retry that cannot win is worse than no retry: its failure message
   describes the leftover state, not the original defect.
 - **No `waitForTimeout`.** Use web-first assertions and `waitForResponse`; the suite asserts on
   real HTTP status codes, not just on rendered text.
-- **Prefer role- and label-based locators.** Phase 3 did real accessibility work — semantic
+- **Prefer role- and label-based locators.** Phase 3 did real accessibility work - semantic
   headings, `aria-label`s, `aria-pressed` on the tag filters, labelled form controls. Use it
   instead of CSS chains; a locator that breaks when a class is renamed is worse than no test.
 - **Fixture images are served by the test, not fetched.** They used to be absent entirely, on the
@@ -230,7 +230,7 @@ Reruns must not depend on how the previous run ended, so:
   thumbnail's `alt=""`. Both are kept: `FIXTURE_ALPHA_IMAGES` are absolute `https:` URLs on
   `images.e2e.invalid`, a hostname RFC 2606 guarantees can never resolve, and `stubFixtureImages`
   (`support/images.ts`) fulfils them from bytes the test owns. **Call it before the first
-  `page.goto` of any spec that reaches the public project list** — `projects.spec.ts` and
+  `page.goto` of any spec that reaches the public project list** - `projects.spec.ts` and
   `admin.spec.ts` both do. **Omitting it fails `projects.spec.ts` outright**, which it did not
   before #156: a card image that errors is now replaced by generated artwork, so a card whose URL
   fails DNS renders no `<img>` for the thumbnail assertions to find. The detail gallery still keeps
@@ -252,7 +252,7 @@ Reruns must not depend on how the previous run ended, so:
   was no `font-display: swap` reflow to race. Since the 2026-08-22 visual direction the site
   self-hosts Archivo and IBM Plex, and a measurement taken mid-swap compares a fallback's line
   count against a webfont's. The faces carry metric overrides that make the swap nearly free, which
-  is not the same as free — and a layout test that is right almost every time teaches people to
+  is not the same as free - and a layout test that is right almost every time teaches people to
   press re-run rather than to look.
 - **Project tag order is not deterministic.** The backend holds tags in a `HashSet` and returns
   `Set.copyOf(...)`, whose iteration order is randomized per JVM run. Assert tag *membership*,

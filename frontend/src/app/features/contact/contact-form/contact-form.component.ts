@@ -38,7 +38,7 @@ const MESSAGE_MESSAGES: Record<string, string> = {
  * Same register as the validator messages above: what happened, then what to do about it.
  */
 const UNEXPLAINED_FIELD_REJECTION =
-  'This was not accepted, but the site did not say why — try changing it.';
+  'This was not accepted, but the site did not say why - try changing it.';
 
 @Component({
   selector: 'app-contact-form',

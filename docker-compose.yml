@@ -1,12 +1,12 @@
 # Local development database. Issue #42.
 #
 # Postgres only, not "backend + Postgres" as the issue title says. Running the backend in compose
-# needs a Dockerfile, and #41 is deferred on purpose (docs/DECISIONS.md, 2026-09-04) — production is
+# needs a Dockerfile, and #41 is deferred on purpose (docs/DECISIONS.md, 2026-09-04) - production is
 # a plain jar under systemd. Adding a container image here just to run it locally would build the
 # thing the ADR decided not to build yet, in the one place nobody deploys from.
 #
-# So this replaces the step that was actually painful — "point DB_NAME/DB_USERNAME/DB_PASSWORD at
-# whatever Postgres you have locally, or run one yourself" — and leaves running the app as it always
+# So this replaces the step that was actually painful - "point DB_NAME/DB_USERNAME/DB_PASSWORD at
+# whatever Postgres you have locally, or run one yourself" - and leaves running the app as it always
 # was:
 #
 #   docker compose up -d
@@ -21,7 +21,7 @@ services:
     # suite ran 17 and that the gap was filed separately; that was true when this file was written
     # and stopped being true when #200 merged an hour later, moving Testcontainers onto 16 too. The
     # reason all three agree is that a migration valid on 17 and not on 16 would otherwise pass CI
-    # and fail at deploy — after the pipeline has already swapped the jar in.
+    # and fail at deploy - after the pipeline has already swapped the jar in.
     #
     # Two other files in the repository select a Postgres image:
     # backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java, and the service in
@@ -31,7 +31,7 @@ services:
     container_name: mysite-postgres
     environment:
       # These are the dev profile's defaults, not secrets. A local throwaway database reachable
-      # only from this machine is the one place a weak password costs nothing — and inventing a
+      # only from this machine is the one place a weak password costs nothing - and inventing a
       # stronger one would mean every developer needs an env file, which is the friction this
       # exists to remove.
       POSTGRES_DB: mysite_dev
@@ -39,7 +39,7 @@ services:
       POSTGRES_PASSWORD: mysite
     ports:
       # Published on localhost only. Without the 127.0.0.1 prefix Docker binds 0.0.0.0 and, on many
-      # setups, punches through the host firewall — putting a trust-authenticated database on the
+      # setups, punches through the host firewall - putting a trust-authenticated database on the
       # local network.
       - '127.0.0.1:5432:5432'
     volumes:
@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  # Named, so data survives `docker compose down`. Use `down -v` to discard it — which is also how
+  # Named, so data survives `docker compose down`. Use `down -v` to discard it - which is also how
   # you re-run Flyway's migrations from an empty schema, the thing most worth doing after changing
   # one.
   mysite-pgdata:

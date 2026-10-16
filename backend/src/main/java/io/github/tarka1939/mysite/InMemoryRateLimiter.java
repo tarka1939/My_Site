@@ -19,19 +19,19 @@ import org.springframework.stereotype.Component;
  * <p>Deliberately in-memory rather than DB-backed: unlike {@code ContactMessage} (which has a
  * natural table to query per docs/DATA_MODEL.md), password-reset-request has no per-attempt
  * table, and this project's non-goals rule out multi-instance/horizontal scaling (a single
- * VPS process — see docs/DECISIONS.md), so losing rate-limit state on restart is an acceptable
+ * VPS process - see docs/DECISIONS.md), so losing rate-limit state on restart is an acceptable
  * trade-off for not adding a table solely to count requests.
  *
  * <h2>Key contract: one window per key</h2>
  * A given key must always be passed the same {@code window}. This is not a new constraint
- * introduced by eviction — it has always held: calling one key with a short window prunes away
+ * introduced by eviction - it has always held: calling one key with a short window prunes away
  * hits that a longer-window call on the same key was still counting. All three current callers
  * hold to it by namespacing their keys ({@code "login:"}, {@code "password-reset:"},
  * {@code "password-reset-validate:"}), and since every key is a prefix plus a fixed-length
  * SHA-256 hex hash, keys built from different prefixes differ in length and cannot collide.
  *
  * <h2>Eviction (issue #78)</h2>
- * A key that is never queried again — a one-time visitor — used to sit in the map for the
+ * A key that is never queried again - a one-time visitor - used to sit in the map for the
  * lifetime of the process, because stale timestamps are only pruned by a later call <em>for
  * that same key</em>. Two things bound the map now:
  * <ul>
@@ -40,19 +40,19 @@ import org.springframework.stereotype.Component;
  *       every key whose newest hit predates the longest window any caller has asked for.</li>
  * </ul>
  * Sweep-on-write rather than a scheduled task: no {@code @EnableScheduling}, no wiring into
- * {@code AsyncConfig}, and nothing runs on an idle process — which, for a site whose spec rules
+ * {@code AsyncConfig}, and nothing runs on an idle process - which, for a site whose spec rules
  * out real scale, is most of the process lifetime. The threshold is re-armed to twice the
  * surviving size after each sweep, so a run of sweeps that reclaim nothing (every key genuinely
  * live) cannot turn every subsequent call into an O(n) pass.
  *
  * <p>The sweep bound is <em>observed</em>, not assumed: {@link #longestWindow} tracks the
- * largest window any caller has actually passed. Hardcoding "an hour" here — today's longest,
- * from password-reset — would silently under-retain the day a caller with a longer one shows
+ * largest window any caller has actually passed. Hardcoding "an hour" here - today's longest,
+ * from password-reset - would silently under-retain the day a caller with a longer one shows
  * up, and this class is not told what its callers intend.
  *
  * <h2>Why the whole read-modify-write sits inside {@code compute}</h2>
  * Before eviction existed, fetching the bucket with {@code computeIfAbsent} and then
- * synchronizing on it was safe, because nothing ever removed a bucket from the map — the bucket
+ * synchronizing on it was safe, because nothing ever removed a bucket from the map - the bucket
  * a thread held was guaranteed to still be the map's. The moment anything evicts, that shape
  * becomes the check-then-act race CLAUDE.md lists as a standing risk here: a removal landing
  * between the fetch and the append leaves the appending thread writing into an orphaned deque,
@@ -60,7 +60,7 @@ import org.springframework.stereotype.Component;
  * {@code ConcurrentHashMap.compute} holds the bin lock across the mapping function, so
  * prune-decide-append is atomic against the {@code computeIfPresent} the sweep removes with.
  * Every read and write of a bucket therefore happens under that lock and nowhere else, which is
- * also why a plain {@link ArrayDeque} is enough. Both mapping functions are kept short — that is
+ * also why a plain {@link ArrayDeque} is enough. Both mapping functions are kept short - that is
  * the documented constraint on {@code compute}, and it is why the sweep is triggered after
  * {@code compute} returns rather than from inside it.
  */
@@ -133,7 +133,7 @@ public class InMemoryRateLimiter {
     }
 
     /**
-     * Removes every key whose newest hit is older than the longest window seen — such a key
+     * Removes every key whose newest hit is older than the longest window seen - such a key
      * cannot influence any future decision, since the next call for it would prune the bucket
      * to empty anyway.
      *

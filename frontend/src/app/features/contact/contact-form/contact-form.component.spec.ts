@@ -67,7 +67,7 @@ function bannerText(host: HTMLElement): string | null {
  */
 const CATCH_ALL_COPY =
   'Your message was not sent. The site refused it for a reason it cannot show you here, and ' +
-  'nothing you change above will get past it — this is a fault on my side, not in what you ' +
+  'nothing you change above will get past it - this is a fault on my side, not in what you ' +
   'wrote. Sending it again will most likely fail the same way. You can still find me on GitHub.';
 
 const FIELD_IDS = ['contact-name', 'contact-email', 'contact-message'];
@@ -469,7 +469,7 @@ describe('ContactFormComponent', () => {
 
       const host = fixture.nativeElement as HTMLElement;
       expect(errorTextFor(host, 'contact-email')).toBe(
-        'This was not accepted, but the site did not say why — try changing it.',
+        'This was not accepted, but the site did not say why - try changing it.',
       );
       expect(host.querySelector('#contact-email')?.getAttribute('aria-invalid')).toBe('true');
       expect(host.querySelector('.form-error')).toBeNull();

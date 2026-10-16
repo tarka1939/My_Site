@@ -13,7 +13,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  *
  * <p>The direction of that gap was the bad one. Testing on the <em>newer</em> server makes CI more
  * permissive than production: a migration using 17 syntax passes every check and then fails at
- * startup on 16 — after the deploy pipeline (#45) has already swapped the jar in, which is the worst
+ * startup on 16 - after the deploy pipeline (#45) has already swapped the jar in, which is the worst
  * moment available. Had it been reversed, anything that passed would have been safe.
  *
  * <p>So the tests follow production rather than the other way round. When production is upgraded,
@@ -22,8 +22,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * <h2>Why a constant rather than thirteen literals</h2>
  *
  * Thirteen test classes each spelled the image out. That is the shape of defect this project has
- * already had twice — a hostname hand-copied across files (#178), a canonical origin across five
- * (#182) — where the copies drift silently because nothing asserts they agree.
+ * already had twice - a hostname hand-copied across files (#178), a canonical origin across five
+ * (#182) - where the copies drift silently because nothing asserts they agree.
  *
  * <p>One place left to change now. Two other files in the repository select a Postgres image:
  * {@code docker-compose.yml}, and the service container in {@code .github/workflows/e2e.yml}, which

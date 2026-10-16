@@ -3,8 +3,8 @@
   Canonical origin set 2026-09-05: https://krzysztof-tarka.netlify.app
 
   Every <loc> used a REPLACE-WITH-CANONICAL-ORIGIN.invalid placeholder until then, because the
-  Netlify site did not exist. An XML file has no runtime, so unlike SeoService's canonical —
-  which reads document.location.origin and was always correct — this advertised URLs that
+  Netlify site did not exist. An XML file has no runtime, so unlike SeoService's canonical -
+  which reads document.location.origin and was always correct - this advertised URLs that
   could not resolve to anything that read it.
 
   A custom domain is planned (docs/DECISIONS.md, 2026-10-14). When it arrives, changing the
@@ -12,7 +12,7 @@
   address in Search Console.
 
   Scope: static public routes only. Project detail pages (/projects/:id) are deliberately
-  absent — their URLs are UUIDs known only at runtime, and this is a build-time artifact in
+  absent - their URLs are UUIDs known only at runtime, and this is a build-time artifact in
   `frontend/public/`, which Netlify copies verbatim. Listing them needs either a build-time
   API call or a generation step, and the 2026-08-10 SEO ADR in docs/DECISIONS.md defers that
   alongside prerendering, for the same reason: it would make the Netlify build depend on the
