@@ -109,19 +109,17 @@ jobs:
       # Playwright starts the backend itself (`mvn spring-boot:run`, which compiles the sources
       # first), so the JDK is set up here and no jar is packaged.
       #
-      # The Maven cache key is setup-java's hash of the listed files. With pom.xml alone it would be
-      # the key ci.yml's backend job uses, and a cache is saved only on a miss, so whichever job ran
-      # first would leave the other its dependency set: Surefire's for this job, or spring-boot:run's
-      # for that one, re-downloaded on every run. Listing this file as well gives the job its own key.
+      # The Maven cache shares ci.yml's key (a hash of pom.xml). A pull request's run can read a
+      # cache saved on `dev`, and only ci.yml runs there, so this job restores ci.yml's dependency
+      # set and downloads spring-boot:run's few extra plugins each run, a matter of seconds. A key
+      # of its own was tried and measured worse: it is never saved on `dev`, so every pull request's
+      # first run started cold, about 11s slower to bring the servers up.
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '25'
           cache: maven
-          cache-dependency-path: |
-            backend/pom.xml
-            .github/workflows/e2e.yml
 
       # One npm cache keyed on both lockfiles: Playwright runs `ng serve` from frontend/, and the
       # suite's own dependencies live in e2e/.

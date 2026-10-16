@@ -74,10 +74,14 @@ npm test
 
 `.github/workflows/e2e.yml` (#250) runs the whole suite on every pull request whose changes touch
 `frontend/`, `backend/`, `e2e/`, `docs/openapi.yaml` or the workflow itself, and by hand from the
-Actions tab (`workflow_dispatch`), for instance against `dev`. It starts a fresh Postgres service, on
-production's version, with the dev profile's credentials, and Playwright starts the backend and `ng serve` itself,
-because `CI` is set there: no running server is reused, a failed test gets one retry, and a stray
-`test.only` fails the run. The details are in `.github/workflows/README.md`.
+Actions tab (`workflow_dispatch`), for instance against `dev`. It starts a fresh Postgres service,
+on production's version, with the dev profile's credentials, and Playwright starts the backend and
+`ng serve` itself, because `CI` is set there: no running server is reused, a failed test gets one
+retry, and a stray `test.only` fails the run. The details are in `.github/workflows/README.md`.
+
+**A green run can still carry a flaky test.** A test that fails and then passes on its retry leaves
+the job green. Playwright's `github` reporter marks each failed attempt as an error annotation on the
+run, and the summary annotation counts it as flaky, so open the run, not only the check's colour.
 
 When the job fails, the run carries an artifact for 7 days: the HTML report, the traces and
 screenshots of the failed tests, and a copy of the backend's log, which is the only place a
