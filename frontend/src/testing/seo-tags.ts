@@ -14,8 +14,8 @@ import { SITE_NAME, SITE_TITLE } from '../app/core/seo/site-meta';
 
 /**
  * Every selector the runtime writes -- the meta tags in the `name=`/`property=` form `index.html`
- * declares them, plus the canonical link, which `SeoService` creates at runtime and `index.html`
- * deliberately does not carry.
+ * declares them, plus `og:url` and the canonical link, which `SeoService` creates at runtime and
+ * `index.html` deliberately does not carry (#251).
  */
 export const SEO_SELECTORS = [
   'link[rel="canonical"]',
@@ -90,7 +90,7 @@ export function seedStaticSeoTags(description = 'STATIC SITE DESCRIPTION'): void
     ['property', 'og:site_name', SITE_NAME],
     ['property', 'og:title', SITE_TITLE],
     ['property', 'og:description', description],
-    ['property', 'og:url', 'https://krzysztof-tarka.netlify.app/'],
+    // No og:url: index.html ships none (#251), so the runtime creates it rather than rewriting it.
     ['name', 'twitter:card', 'summary'],
     ['name', 'twitter:title', SITE_TITLE],
     ['name', 'twitter:description', description],

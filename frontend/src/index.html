@@ -87,19 +87,18 @@
       Renaming an attribute here without changing the service turns a runtime update into a second,
       duplicate tag. There is a test for that (seo.service.spec.ts).
 
-      PLACEHOLDER: the origin below is deliberately unresolvable (.invalid, RFC 2606) because the
-      canonical domain does not exist yet -- Phase 5 is paused and PROJECT_TODO.md says not to guess
-      it. Replace it here, in public/robots.txt and in public/sitemap.xml when the Netlify origin is
-      real. Until then og:url is a placeholder for scrapers; SeoService overwrites it at runtime
-      with the actual location.
-
-      READ BEFORE REPLACING IT: og:url is one site-level value, and a non-JS scraper sees it on
-      every route, /projects/<id> included. Facebook and LinkedIn treat og:url as the shared
-      object's identity -- they cache and count engagement against it, and the card links to it --
-      so with a *real* origin here, two different project links collapse into one cached object for
-      the root and the card's link target is the root, not the project. Harmless while the origin
-      cannot resolve; a live decision the moment it can. Options are recorded in the 2026-08-10 SEO
-      ADR in docs/DECISIONS.md, under "One further consequence".
+      No og:url, deliberately (#251, decided 2026-10-14). It is the one tag that names a page rather
+      than the site, so a static one names the same page on every route, /projects/<id> included.
+      Facebook and LinkedIn treat og:url as the shared object's identity -- they cache and count
+      engagement against it, and the card links to it -- so while this file carried the real origin,
+      a shared project link would be cached as the root, with a card linking to the root. With no
+      og:url a scraper should fall back to the URL it fetched: each link would be its own object,
+      with a card linking back to it. The preview *text* stays site-level either way. The cost is
+      losing one stable identity for the root, which is small while the root is shared without query
+      strings. SeoService still writes og:url per route at runtime, for crawlers that run JS. Do not
+      add a static one back; the per-route static value is prerendering, the third option in the
+      2026-08-10 SEO ADR's "One further consequence", still deferred. No canonical link here either,
+      for the same reason: one URL for every route would tell Google every page is a copy of that one.
 
       No og:image yet: there is no share image asset in public/, and pointing at a 404 makes a worse
       preview than none. twitter:card is "summary" rather than "summary_large_image" for the same
@@ -117,7 +116,6 @@
       property="og:description"
       content="A portfolio of software and audio/DSP projects — what each one does, how it was built, and where to find the code."
     />
-    <meta property="og:url" content="https://krzysztof-tarka.netlify.app/" />
 
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Krzysztof Tarka — project portfolio" />
