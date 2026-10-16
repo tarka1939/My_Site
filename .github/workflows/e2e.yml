@@ -60,6 +60,8 @@ jobs:
     # attempts a few seconds apart, then "Docker pull failed with exit code N" under docker's own
     # error. That failure is already fast and already named. The #285 one was neither, because
     # Testcontainers retried inside the test run for 45 minutes and the result read as broken tests.
+    # A pull that hangs rather than being refused is another matter: the runner puts no limit on
+    # the pull itself, so it is bounded only by this job's 30 minutes, and ends cancelled.
     services:
       postgres:
         image: postgres:16-alpine
@@ -84,27 +86,42 @@ jobs:
       # The service's image above is a copy of TestPostgres.IMAGE that cannot be read from it, because
       # a service starts before any step can run. TestPostgres.java's javadoc names copies that drift
       # silently as a defect this project has had twice, so this one is checked: against the
-      # container that actually ran, before the slow steps.
+      # container that actually ran, before the slow steps. The constant is read with the same
+      # anchored sed as .github/scripts/pull-test-image.sh, so a javadoc line quoting an older
+      # declaration cannot satisfy the check.
       - name: Confirm the Postgres service runs TestPostgres.IMAGE
         env:
           SERVICE_ID: ${{ job.services.postgres.id }}
         run: |
           image=$(docker inspect --format '{{.Config.Image}}' "$SERVICE_ID")
           java_file=backend/src/test/java/io/github/tarka1939/mysite/TestPostgres.java
-          if ! grep -qF "public static final String IMAGE = \"$image\";" "$java_file"; then
-            echo "::error::The postgres service runs $image, but $java_file does not declare IMAGE = \"$image\". Make services.postgres.image in .github/workflows/e2e.yml match it."
+          declared=$(sed -n 's/^[[:space:]]*public static final String IMAGE = "\([^"]*\)";.*/\1/p' "$java_file")
+          if [ -z "$declared" ]; then
+            echo "::error::Could not read IMAGE from $java_file. If the constant moved, update this step in .github/workflows/e2e.yml."
+            exit 1
+          fi
+          if [ "$image" != "$declared" ]; then
+            echo "::error::The postgres service runs $image, but TestPostgres.IMAGE is $declared. Make services.postgres.image in .github/workflows/e2e.yml match it."
             exit 1
           fi
           echo "The postgres service runs $image, which is TestPostgres.IMAGE."
 
-      # Playwright starts the backend itself (`mvn spring-boot:run`), so the JDK is set up here and
-      # nothing is built.
+      # Playwright starts the backend itself (`mvn spring-boot:run`, which compiles the sources
+      # first), so the JDK is set up here and no jar is packaged.
+      #
+      # The Maven cache key is setup-java's hash of the listed files. With pom.xml alone it would be
+      # the key ci.yml's backend job uses, and a cache is saved only on a miss, so whichever job ran
+      # first would leave the other its dependency set: Surefire's for this job, or spring-boot:run's
+      # for that one, re-downloaded on every run. Listing this file as well gives the job its own key.
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: |
+            backend/pom.xml
+            .github/workflows/e2e.yml
 
       # One npm cache keyed on both lockfiles: Playwright runs `ng serve` from frontend/, and the
       # suite's own dependencies live in e2e/.

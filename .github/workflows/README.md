@@ -54,14 +54,15 @@ filter skipped pending, which would block every pull request touching none of th
 
 What the job does, and why:
 
-- **A `postgres:16-alpine` service**, fresh per job, with the dev profile's own credentials. They
-  are also `e2e/support/db.ts`'s defaults, so no `DB_*` or `E2E_DB_*` variable is set. The service
-  image cannot read `TestPostgres.IMAGE`, so the first step after checkout compares the running
-  container's image with it and fails if they differ.
+- **A Postgres service on `TestPostgres.IMAGE`**, fresh per job, with the dev profile's own
+  credentials. They are also `e2e/support/db.ts`'s defaults, so no `DB_*` or `E2E_DB_*` variable is
+  set. The service cannot read the constant, because it starts before any step runs, so the first
+  step after checkout compares the running container's image with it and fails if they differ.
 - **No pull step for the image**, unlike `ci.yml`. The runner pulls a service itself, before any
   step runs, in its "Initialize containers" step: three attempts, then `Docker pull failed with
   exit code N` under Docker's own error. That failure is already fast and already named. The #285
-  failure the pull step exists for came from Testcontainers retrying inside the test run.
+  failure the pull step exists for came from Testcontainers retrying inside the test run. A pull
+  that hangs instead has no limit of its own: the job's 30 minutes bound it, and it ends cancelled.
 - **Playwright starts both servers.** `CI=true` is set on every runner, and `playwright.config.ts`
   keys off it: no reuse of running servers, one retry per failed test, and `forbidOnly`. The dev
   profile starts with no environment at all, which is why the job needs no secrets.

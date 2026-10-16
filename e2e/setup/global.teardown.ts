@@ -13,8 +13,9 @@ import { removeE2eAdmin } from '../support/db';
  * likely to leave them behind is precisely the run that failed:
  *
  * - `global.setup.ts` inserts `e2e-admin` in its *first* test and acquires a token in its
- *   *second*. A failure in between -- `AuthService` allows 5 logins per 15 minutes per IP, so
- *   roughly the 5th run in a window gets a 429 -- leaves the row inserted and no token cached.
+ *   *second*. A failure in between -- `AuthService` allows 5 logins per 15 minutes per IP and a
+ *   run spends 3, so a second run inside the window can get a 429 -- leaves the row inserted and
+ *   no token cached.
  * - Playwright still runs teardown after a failed setup. When `requireCachedToken()` was the
  *   first statement here, it threw, and every line below it was skipped: the published-password
  *   admin survived in `mysite_dev`, the same database `mvn spring-boot:run` uses.
