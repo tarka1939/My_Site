@@ -720,7 +720,7 @@ describe('the tracking issue', () => {
     const r = resultsWithFindings();
     const plan = planIssue({ results: r, issues: [issueFrom(300, 'closed', r)] });
     assert.equal(plan.action, 'none');
-    assert.match(plan.reason, /#300 has exactly these findings and was closed/);
+    assert.match(plan.reason, /All 27 finding\(s\) at or above the floor were in audit issue\(s\) a person closed \(#300\)/);
   });
 
   test('a closed issue with different findings: open a new one that points back', () => {
@@ -728,6 +728,61 @@ describe('the tracking issue', () => {
     const plan = planIssue({ results: r, issues: [issueFrom(300, 'closed', cleanResults())] });
     assert.equal(plan.action, 'create');
     assert.match(plan.body, /The previous set of findings was in #300\./);
+  });
+
+  /** `r` with only `findings`, and the keys and fingerprint recomputed as buildResults would. */
+  const withFindings = (r, findings) => {
+    const actionableKeys = findings.filter((f) => f.atFloor).map(findingKey).sort();
+    return { ...r, findings, actionableKeys, fingerprint: fingerprint(actionableKeys) };
+  };
+  const closedWith = (number, keys) => ({ number, state: 'closed', body: `x\n${encodeState({ v: 1, fingerprint: fingerprint(keys), keys })}` });
+
+  test('review probe 1: a shrunk set, with the original closed, is not refiled', () => {
+    const r = resultsWithFindings();
+    const dropped = r.findings.find((f) => f.atFloor);
+    const shrunk = withFindings(r, r.findings.filter((f) => f !== dropped));
+    assert.notEqual(shrunk.fingerprint, r.fingerprint);
+    const plan = planIssue({ results: shrunk, issues: [issueFrom(300, 'closed', r)] });
+    assert.equal(plan.action, 'none');
+    assert.match(plan.reason, /All 26 finding\(s\)/);
+  });
+
+  test('review probe 2: two different closed sets that cover the findings between them are not refiled', () => {
+    const r = resultsWithFindings();
+    const half = Math.floor(r.actionableKeys.length / 2);
+    const issues = [closedWith(300, r.actionableKeys.slice(0, half)), closedWith(310, r.actionableKeys.slice(half))];
+    const plan = planIssue({ results: r, issues });
+    assert.equal(plan.action, 'none');
+    assert.match(plan.reason, /\(#310, #300\)/);
+  });
+
+  test('a new version of an accepted advisory is not new information', () => {
+    const r = resultsWithFindings();
+    const bumped = withFindings(
+      r,
+      r.findings.map((f) => (f.package === 'org.postgresql:postgresql' ? { ...f, version: '42.2.1' } : f)),
+    );
+    assert.notEqual(bumped.fingerprint, r.fingerprint);
+    assert.equal(planIssue({ results: bumped, issues: [issueFrom(300, 'closed', r)] }).action, 'none');
+  });
+
+  test('one advisory in no closed issue opens a new issue, listing everything, pointing to the newest closed one', () => {
+    const r = resultsWithFindings();
+    const fresh = { ...r.findings.find((f) => f.atFloor), id: 'GHSA-new0-new0-new0', url: 'https://github.com/advisories/GHSA-new0-new0-new0' };
+    const grown = withFindings(r, [...r.findings, fresh]);
+    const half = Math.floor(r.actionableKeys.length / 2);
+    const issues = [closedWith(300, r.actionableKeys.slice(0, half)), closedWith(310, r.actionableKeys.slice(half))];
+    const plan = planIssue({ results: grown, issues });
+    assert.equal(plan.action, 'create');
+    assert.match(plan.body, /The previous set of findings was in #310\./);
+    assert.match(plan.body, /GHSA-new0-new0-new0/);
+    assert.match(plan.body, /GHSA-24rp-q3w6-vc56/);
+  });
+
+  test('a closed issue whose state cannot be read accepts nothing', () => {
+    const r = resultsWithFindings();
+    const plan = planIssue({ results: r, issues: [{ number: 300, state: 'closed', body: 'edited by hand' }] });
+    assert.equal(plan.action, 'create');
   });
 
   test('an unreadable state is treated as changed, and says so', () => {

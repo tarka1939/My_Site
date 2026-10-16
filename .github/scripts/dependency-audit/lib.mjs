@@ -762,8 +762,9 @@ export function renderIssueBody(results, { previous = null } = {}) {
     'This issue is kept up to date by the weekly dependency audit, `.github/workflows/dependency-audit.yml` (#273). ' +
       'It is edited only when the set of findings at or above the floor changes, with a comment saying what changed.',
     '',
-    'It never closes itself. Close it once the findings are fixed or accepted. A closed issue is not refiled for the same ' +
-      'findings; a different set opens a new issue.',
+    'It never closes itself. Close it once the findings are fixed or accepted. Closing accepts each advisory listed here ' +
+      'for its package, at any version: none of them opens an issue again. A new issue opens only for an advisory that ' +
+      'is in no closed audit issue.',
   ];
   if (previous) intro.push('', `The previous set of findings was in #${previous}.`);
   const state = encodeState({ v: 1, fingerprint: results.fingerprint, keys: results.actionableKeys });
@@ -824,6 +825,12 @@ export function renderCleanComment(results) {
   ].join('\n');
 }
 
+/** A finding's key without its version: what closing an issue accepts. */
+const acceptanceKey = (key) => {
+  const [area, pkg, , id] = key.split('|');
+  return `${area}|${pkg}|${id}`;
+};
+
 /**
  * Decides what to do with the tracking issue. `issues` are the issues the bot opened that carry
  * the marker, open and closed, as `{ number, state, body }`.
@@ -831,9 +838,17 @@ export function renderCleanComment(results) {
  *   - An open issue with the same fingerprint: nothing. This is what keeps it from being weekly.
  *   - An open issue, and now clean: comment that it is clean, and record the clean state so the
  *     next clean week stays quiet. It stays open; a person closes it.
- *   - An open issue, findings changed: comment with what changed, then rewrite the body.
- *   - No open issue, a closed one with the same fingerprint: nothing. Someone closed exactly this.
+ *   - An open issue, findings changed: comment with what changed, and rewrite the body.
+ *   - No open issue, and every finding at or above the floor already in a closed one: nothing.
  *   - Otherwise, findings at or above the floor open a new issue.
+ *
+ * What a closed issue suppresses, decided by the owner on the review of #295: an advisory in a
+ * package, by `area|package|advisory`, without the version. A new issue opens only when some
+ * finding's key is in no closed audit issue's saved state, taking all of them together, not only
+ * the newest. Closing the issue is the owner accepting those advisories for those packages, so the
+ * same set does not come back, a subset of it does not come back, and nor does a patch bump that
+ * is still inside the affected range: none of those is new information. A closed issue whose state
+ * cannot be read accepts nothing, so the error is towards filing.
  */
 export function planIssue({ results, issues }) {
   if (results.errored) {
@@ -877,10 +892,21 @@ export function planIssue({ results, issues }) {
     return { action: 'none', reason: 'No finding at or above the floor, and no open issue.', notes };
   }
   const lastClosed = closed[0];
-  if (lastClosed && lastClosed.saved?.fingerprint === results.fingerprint) {
+  const acceptedBy = new Map();
+  for (const issue of closed) {
+    for (const key of issue.saved?.keys ?? []) {
+      const k = acceptanceKey(key);
+      if (!acceptedBy.has(k)) acceptedBy.set(k, issue.number);
+    }
+  }
+  const actionableKeys = actionable.map((f) => acceptanceKey(findingKey(f)));
+  if (actionableKeys.every((k) => acceptedBy.has(k))) {
+    const by = [...new Set(actionableKeys.map((k) => acceptedBy.get(k)))].sort((a, b) => b - a);
     return {
       action: 'none',
-      reason: `#${lastClosed.number} has exactly these findings and was closed by a person; not refiling them.`,
+      reason:
+        `All ${actionable.length} finding(s) at or above the floor were in audit issue(s) a person closed ` +
+        `(${by.map((n) => `#${n}`).join(', ')}), which accepts them; not refiling.`,
       notes,
     };
   }

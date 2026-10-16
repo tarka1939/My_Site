@@ -91,8 +91,13 @@ Dev tooling is held to high for two reasons:
   - With changed findings, there is a comment saying what changed, then the body is rewritten.
   - When the findings are all gone, there is a comment, and the issue is left open for a person to
     close.
-- If the most recently closed issue has exactly the same findings, it is not refiled: someone
-  closed exactly this. A different set opens a new issue that links the old one.
+- **Closing the issue accepts its advisories.** With no issue open, a new one opens only when some
+  finding at or above the floor is in none of the closed audit issues. Findings are compared by
+  area, package and advisory, without the version, and against every closed issue together, not
+  only the newest. Neither the same set, nor a subset of it, nor a version bump that is still
+  affected brings an issue back: none of those is new information. A new advisory does, and the
+  new issue lists every finding and links the last closed one. This was the owner's decision on the
+  review of #295.
 - Labels are `backend`, `frontend` and `infra` (for E2E), by the areas affected. The milestone is
   **Phase 8**, looked up by title.
 - If that milestone is closed or gone, or a label is missing, the run fails with a message. When
