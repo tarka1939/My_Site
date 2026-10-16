@@ -46,8 +46,9 @@
 // letterbox above and below it and nothing else -- measured at +3% linear, against +24% for the
 // squarer SVG diagrams. Only more width moves a wide image.
 //
-// `main` is capped at `max-width: 960px`, which is a deliberate reading measure for prose and not
-// something to widen for a grid's benefit. Within 928px of usable width the column count is
+// `main` is capped at `max-width: 960px`, which is not something to widen for a grid's benefit.
+// (It is not a prose measure: at 960px a line runs about 120 characters, so the detail page caps
+// its description narrower, #297.) Within 928px of usable width the column count is
 // effectively binary: a 16rem minimum yields three 293px columns, and anything from ~294px up
 // yields two 452px ones. So this is 2-up on a desktop, and the thumbnails go from 237x144 to
 // 402x244 (2.88x the area) and from 180x144 to 371x298 (4.28x) -- measured in the browser, not

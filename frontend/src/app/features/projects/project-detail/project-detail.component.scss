@@ -111,6 +111,15 @@ h1 {
 //
 // The block's own styling is .markdown-body in src/styles.scss, global because component styles do
 // not reach [innerHTML] content. This class stays for the layout slot around it.
+//
+// The measure is capped here (#297, the owner's call on 2026-10-14). `main` is 960px wide, which
+// ran a description at roughly 120 characters a line against a comfortable 60-75. The cap is on
+// this block alone, not on `main` or the article, so the title, the gallery and the links keep
+// the full width: the gallery was widened on purpose (#211), and its images are the page's main
+// content. `ch` is the width of the "0" glyph in this element's font, and most letters are
+// narrower, so 70ch comes out at more than 70 characters a line. Measured on 2026-10-16 at a
+// 1280px viewport, 16px IBM Plex Sans: 672px wide, 83-95 characters a line, 89 on average.
 .description {
+  max-width: 70ch;
   margin: 1rem 0;
 }
