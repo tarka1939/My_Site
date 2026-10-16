@@ -126,6 +126,8 @@ export function createGh(repo, run = runGh) {
         run(['issue', 'create', '--repo', repo, '--title', title, '--body-file', file, ...labels.flatMap((l) => ['--label', l]), '--milestone', milestone]),
       ),
 
+    view: async (number) => JSON.parse(await run(['issue', 'view', String(number), '--repo', repo, '--json', 'labels,milestone'])),
+
     comment: (number, body) => withBodyFile(body, (file) => run(['issue', 'comment', String(number), '--repo', repo, '--body-file', file])),
 
     edit: (number, body, addLabels) =>
@@ -159,6 +161,26 @@ export async function preflight(gh) {
 }
 
 /**
+ * Opens the issue, then reads it back. GitHub drops labels and a milestone it will not set, such
+ * as for a token without triage rights, without failing the create, and this repository requires
+ * both on every issue. The issue stays open either way; the next run finds it and leaves it be, so
+ * this is the one run that can say so.
+ */
+async function createAndCheck(gh, plan) {
+  const url = String(await gh.create(plan)).trim();
+  const number = /\/issues\/(\d+)$/.exec(url)?.[1];
+  if (!number) throw new Error(`gh issue create printed ${JSON.stringify(url)}, not an issue URL, so its labels and milestone could not be checked.`);
+  const view = await gh.view(number);
+  const labels = new Set((view?.labels ?? []).map((l) => l?.name));
+  const missing = plan.labels.filter((l) => !labels.has(l)).map((l) => `the label ${l}`);
+  if (view?.milestone?.title !== plan.milestone) missing.push(`the milestone "${plan.milestone}"`);
+  if (missing.length) {
+    throw new Error(`${url} was opened without ${missing.join(' and ')}. Set them on it by hand: later runs do not check.`);
+  }
+  return url;
+}
+
+/**
  * Rewrite the body first, then comment. An edit that fails writes nothing, so the next run retries
  * it cleanly. The other order posted the comment and then failed the edit, and an edit that fails
  * every week (a body GitHub rejects) would have posted the same comment every week.
@@ -168,7 +190,7 @@ export async function preflight(gh) {
  * comment, which main() prints for posting by hand. The body itself shows the current findings.
  */
 export async function applyPlan(gh, plan) {
-  if (plan.action === 'create') return String(await gh.create(plan)).trim();
+  if (plan.action === 'create') return createAndCheck(gh, plan);
   if (plan.action === 'update') {
     await gh.edit(plan.number, plan.body, plan.addLabels);
     try {

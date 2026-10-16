@@ -1021,8 +1021,13 @@ describe('issue.mjs', () => {
   });
 
   /** A fake `gh`: answers from a table of handlers, and records every call. */
-  function fakeGh({ milestones = [{ number: 10, title: 'Phase 8', state: 'open' }], labels = ['backend', 'frontend', 'infra'], issues = [], fail = [] } = {}) {
+  /**
+   * `issue view` answers with what the last `issue create` asked for, as GitHub would, unless
+   * `viewAs` replaces that answer.
+   */
+  function fakeGh({ milestones = [{ number: 10, title: 'Phase 8', state: 'open' }], labels = ['backend', 'frontend', 'infra'], issues = [], fail = [], viewAs, createPrints } = {}) {
     const calls = [];
+    let created = null;
     const run = async (args) => {
       const bodyIndex = args.indexOf('--body-file');
       calls.push({ args, body: bodyIndex === -1 ? null : readFileSync(args[bodyIndex + 1], 'utf8') });
@@ -1036,7 +1041,12 @@ describe('issue.mjs', () => {
         throw new Error('gh api repos/o/r/labels failed: gh: Not Found (HTTP 404)');
       }
       if (target.endsWith('/issues')) return issues.map((i) => JSON.stringify(i)).join('\n');
-      if (args[0] === 'issue' && args[1] === 'create') return 'https://github.com/o/r/issues/400\n';
+      if (args[0] === 'issue' && args[1] === 'create') {
+        const values = (flag) => args.flatMap((a, i) => (a === flag ? [args[i + 1]] : []));
+        created = { labels: values('--label').map((name) => ({ name })), milestone: { title: values('--milestone')[0] } };
+        return createPrints ?? 'https://github.com/o/r/issues/400\n';
+      }
+      if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify(viewAs ?? created);
       return '';
     };
     return { gh: createGh('o/r', run), calls };
@@ -1069,7 +1079,7 @@ describe('issue.mjs', () => {
     assert.ok(calls[0].args.includes(`creator=${ISSUE.bot}`));
   });
 
-  test('create passes the title, body, each label and the milestone by title', async () => {
+  test('create passes the title, body, each label and the milestone by title, then reads them back', async () => {
     const { gh, calls } = fakeGh();
     const plan = planIssue({ results: resultsWithFindings(), issues: [] });
     assert.equal(await applyPlan(gh, plan), 'https://github.com/o/r/issues/400');
@@ -1077,6 +1087,32 @@ describe('issue.mjs', () => {
     assert.deepEqual(args.slice(0, 6), ['issue', 'create', '--repo', 'o/r', '--title', issueTitle()]);
     assert.ok(args.join(' ').includes('--label backend --label frontend --milestone Phase 8'));
     assert.equal(body, plan.body);
+    assert.deepEqual(calls[1].args, ['issue', 'view', '400', '--repo', 'o/r', '--json', 'labels,milestone']);
+    assert.equal(calls.length, 2);
+  });
+
+  test('an issue opened without its milestone fails the run, saying so', async () => {
+    const { gh } = fakeGh({ viewAs: { labels: [{ name: 'backend' }, { name: 'frontend' }], milestone: null } });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [] });
+    await assert.rejects(applyPlan(gh, plan), /issues\/400 was opened without the milestone "Phase 8"\. Set them on it by hand/);
+  });
+
+  test('an issue opened without a label fails the run, naming the label', async () => {
+    const { gh } = fakeGh({ viewAs: { labels: [{ name: 'backend' }], milestone: { title: 'Phase 8' } } });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [] });
+    await assert.rejects(applyPlan(gh, plan), /was opened without the label frontend\./);
+  });
+
+  test('an issue opened with neither names both', async () => {
+    const { gh } = fakeGh({ viewAs: { labels: [], milestone: null } });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [] });
+    await assert.rejects(applyPlan(gh, plan), /without the label backend and the label frontend and the milestone "Phase 8"/);
+  });
+
+  test('a create that does not print an issue URL fails rather than skip the check', async () => {
+    const { gh } = fakeGh({ createPrints: 'something else\n' });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [] });
+    await assert.rejects(applyPlan(gh, plan), /not an issue URL/);
   });
 
   test('update rewrites the body and adds labels first, then comments', async () => {
