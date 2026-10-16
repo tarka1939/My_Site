@@ -5,10 +5,9 @@
      and never reach this template, and a way out offered only after something breaks is offered
      late. Outside the @if, so a visitor who has sent a message still has it.
 
-     It says where I am, not how to message me: GitHub has no direct messages, and the profile
-     lists no contact method. That is why the copy says "find me". An email address belongs here
-     too, by the owner's choice, and waits for a domain of their own (docs/DECISIONS.md,
-     2026-10-14). -->
+     It says where I am, not how to message me: GitHub has no direct messages. That is why the
+     copy says "find me". An email address belongs here too, by the owner's choice, and waits for
+     a domain of their own (docs/DECISIONS.md, 2026-10-14). -->
 <p class="contact-alternative">
   You can also find me on <a href="https://github.com/tarka1939" rel="me">GitHub</a>.
 </p>
@@ -82,9 +81,9 @@
          "something in it was not accepted", which puts the fault on what the visitor typed when a
          honeypot rejection is about a field they never saw. It also does not suggest retrying: an
          unclaimed key means a server-side disagreement about field names, which will reject the
-         next attempt identically. What it offers instead is the one route that does not go
-         through this backend: the GitHub link at the top of the page, repeated here so the way
-         out sits beside the dead end (#118). -->
+         next attempt identically. What it offers instead is the one place to find me that does
+         not go through this backend: the GitHub link at the top of the page, repeated here so the
+         way out sits beside the dead end (#118). -->
     @if (hasUnclaimedRejection()) {
       <div id="contact-form-error" class="form-error" role="alert">
         <p class="form-error-heading">Your message was not sent.</p>
