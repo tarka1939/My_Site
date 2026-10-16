@@ -65,6 +65,15 @@ jobs:
         with:
           node-version: '24'
 
+      # On a pull request only, which is the one event that changes this code: nothing else in CI
+      # runs these tests, so without this step a PR's own run would prove the pipeline end to end
+      # and still never run its unit tests. Kept off the schedule, where a test failure would cost a
+      # week's audit over code that has not changed since it last passed. The file, not the
+      # directory: Node 24 treats a directory argument as a module and fails.
+      - name: Run the audit's unit tests
+        if: github.event_name == 'pull_request'
+        run: node --test .github/scripts/dependency-audit/dependency-audit.test.mjs
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:

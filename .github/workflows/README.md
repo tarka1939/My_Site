@@ -112,7 +112,13 @@ workflow. A PR that changes the workflow or its scripts does, and that run repor
 
 Tests, with recorded real output as fixtures:
 `node --test .github/scripts/dependency-audit/dependency-audit.test.mjs`. Pass the file, not the
-directory: Node 24 treats a directory argument as a module and fails. To run the whole pipeline
+directory: Node 24 treats a directory argument as a module and fails. A pull request that triggers
+this workflow runs them as a step of its own; nothing in `ci.yml` does, and the scheduled run skips
+them.
+
+**GitHub disables a public repository's scheduled workflows after 60 days with no activity.** A
+quiet stretch on this repository would stop the audit without a failure to notice. The Actions tab
+shows the workflow as disabled, and enabling it there resumes the schedule. To run the whole pipeline
 locally without writing anything, run `issue.mjs` without `--write`; it prints what it would do.
 
 ## `deploy-backend.yml` and `deploy-frontend.yml` — live on `main`
