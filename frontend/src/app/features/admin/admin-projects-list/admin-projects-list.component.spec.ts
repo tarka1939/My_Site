@@ -50,6 +50,24 @@ const LIVE: Project = {
   updatedAt: '2026-02-01T00:00:00Z',
 };
 
+/**
+ * What a GitHub push actually creates (#148): a draft with no tags at all. The API refuses to
+ * publish it until it has one.
+ */
+const TAGLESS_DRAFT: Project = {
+  ...DRAFT,
+  id: 'p-tagless',
+  title: 'Compressor',
+  tags: [],
+  repoFullName: 'tarka1939/Compressor',
+};
+
+/**
+ * A live project with no tags. The rule is checked on write, not applied to existing rows, so one
+ * published from this list before #148 can still be live without a tag.
+ */
+const LIVE_TAGLESS: Project = { ...LIVE, id: 'p-live-tagless', title: 'Delay', tags: [] };
+
 function pageOf(content: Project[]) {
   return of({ content, page: 0, size: 20, totalElements: content.length, totalPages: 1 });
 }
@@ -280,8 +298,12 @@ describe('AdminProjectsListComponent', () => {
     // errorInterceptor stays quiet for a 400 that carries field errors, on the assumption that a
     // form renders them inline. This page has no form, so without a destination here the button
     // would go back to saying "Publish" and nothing anywhere would say why.
+    //
+    // Equalizer has a tag on this page, so the list offers Publish -- and the server refuses it all
+    // the same, which is what a row gone stale looks like: the tag removed in another tab since
+    // this list loaded. The row is not the authority on the rule; the server is.
     updateProject.mockReturnValue(
-      throwError(() => validationProblem('tags', 'At least one tag is required')),
+      throwError(() => validationProblem('tags', 'At least one tag is required to publish')),
     );
     const fixture = await renderComponent(AdminProjectsListComponent);
 
@@ -291,8 +313,94 @@ describe('AdminProjectsListComponent', () => {
     const message = alert?.textContent ?? '';
     expect(message).toContain('Equalizer');
     expect(message).toContain('tags');
-    expect(message).toContain('At least one tag is required');
+    expect(message).toContain('At least one tag is required to publish');
     // And the row still reports the truth: the publish did not happen.
     expect(statusOf(fixture, 'Equalizer')).toBe('Draft');
+  });
+
+  it('links a rejected publish to the form where it can be fixed', async () => {
+    // The message sits above the table, which can be a page of rows away from this project's own
+    // Edit link. A tag can only be added in the form, so the message goes there.
+    updateProject.mockReturnValue(
+      throwError(() => validationProblem('tags', 'At least one tag is required to publish')),
+    );
+    const fixture = await renderComponent(AdminProjectsListComponent);
+
+    await clickPublish(fixture, 'Equalizer');
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector('[role="alert"] a');
+    expect(link?.getAttribute('href')).toBe('/admin/projects/p-draft/edit');
+    expect(link?.textContent).toContain('Equalizer');
+  });
+
+  describe('a draft with no tags (#148)', () => {
+    beforeEach(() => {
+      listAllProjects.mockReturnValue(pageOf([TAGLESS_DRAFT, DRAFT, LIVE_TAGLESS]));
+    });
+
+    /** The control standing where Publish would, on a row that cannot be published as it is. */
+    function addTagLink(
+      fixture: ComponentFixture<AdminProjectsListComponent>,
+      title: string,
+    ): HTMLAnchorElement | null {
+      return rowFor(fixture, title).querySelector<HTMLAnchorElement>('.publish-blocked');
+    }
+
+    it('offers the way to a tag in place of a Publish the server would refuse', async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      // The positive half first: the link is there, says the reason in visible text, and goes to
+      // the one place a tag can be added. Without it, the absent button below would pass against a
+      // row that rendered no actions at all.
+      const link = addTagLink(fixture, 'Compressor');
+      expect(link?.textContent?.trim()).toBe('Add a tag to publish');
+      expect(link?.getAttribute('href')).toBe('/admin/projects/p-tagless/edit');
+
+      // No Publish control in that row -- a button, disabled or not, that is known to fail.
+      expect(rowFor(fixture, 'Compressor').querySelector('.publish-toggle')).toBeNull();
+
+      // A draft with a tag is untouched by any of this.
+      expect(publishButton(fixture, 'Equalizer').textContent?.trim()).toBe('Publish');
+      expect(addTagLink(fixture, 'Equalizer')).toBeNull();
+    });
+
+    it('gives the reason to a screen reader as a focusable control, named for its row', async () => {
+      // The failure a disabled button plus a tooltip would have: unfocusable, so tabbing never
+      // reaches it, and a reason that only a hovering mouse can see. A link with an href is in the
+      // tab order, and its name carries the reason itself.
+      const fixture = await renderComponent(AdminProjectsListComponent);
+      const link = addTagLink(fixture, 'Compressor')!;
+
+      expect(link.hasAttribute('href')).toBe(true);
+      expect(link.getAttribute('aria-label')).toBe('Add a tag to publish Compressor');
+      // WCAG 2.5.3: the name has to contain the visible label, or speech control cannot act on it.
+      expect(link.getAttribute('aria-label')).toContain(link.textContent!.trim());
+    });
+
+    it('says "No tags" rather than leaving the cell blank', async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      const tagsOf = (title: string) =>
+        ((rowFor(fixture, title) as HTMLTableRowElement).cells[2].textContent ?? '').trim();
+      expect(tagsOf('Compressor')).toBe('No tags');
+      expect(tagsOf('Equalizer')).toBe('dsp');
+    });
+
+    it('still lets a live project with no tags be taken down, and then shows why it cannot go back up', async () => {
+      // A draft may be tagless, so unpublishing one is allowed. The server's answer then makes it a
+      // tagless draft, and the row follows what the server stored rather than what was asked.
+      updateProject.mockReturnValue(of({ ...LIVE_TAGLESS, published: false }));
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      expect(publishButton(fixture, 'Delay').textContent?.trim()).toBe('Unpublish');
+
+      await clickPublish(fixture, 'Delay');
+
+      expect(sentBody().tags).toEqual([]);
+      expect(sentBody().published).toBe(false);
+      expect(statusOf(fixture, 'Delay')).toBe('Draft');
+      expect(rowFor(fixture, 'Delay').querySelector('.publish-toggle')).toBeNull();
+      expect(addTagLink(fixture, 'Delay')?.textContent?.trim()).toBe('Add a tag to publish');
+    });
   });
 });

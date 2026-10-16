@@ -9,6 +9,20 @@ import { ApiProblem } from '../../../core/http/api-problem';
 const PAGE_SIZE = 20;
 
 /**
+ * What a tagless draft's row offers in place of Publish (#148). One constant for the visible text
+ * and the start of the accessible name, so the two cannot drift apart (WCAG 2.5.3).
+ */
+const ADD_TAG_TO_PUBLISH = 'Add a tag to publish';
+
+/** A publish or unpublish the server refused, and the project it was for. */
+interface PublishFailure {
+  /** Which project, so the message can link straight to its edit form. */
+  projectId: string;
+  title: string;
+  message: string;
+}
+
+/**
  * The body that flips one project's publication and changes nothing else.
  *
  * There is no PATCH in the contract: PUT /projects/{id} takes a ProjectWriteRequest and is a
@@ -64,10 +78,18 @@ export class AdminProjectsListComponent {
    * assumption that a form renders them inline -- and this page has no form. Without this the
    * button would go back to its old label and nothing anywhere would say why.
    *
-   * Reachable rather than defensive: an auto-created draft is written by the webhook rather than by
-   * this UI, so nothing guarantees its stored fields satisfy the write request's constraints.
+   * Reachable rather than defensive. The commonest case, a draft with no tags (#148), is no longer
+   * offered a Publish button at all -- see needsTagToPublish() -- but two others remain. An
+   * auto-created draft is written by the webhook rather than by this UI, so nothing guarantees its
+   * other stored fields satisfy the write request's constraints. And the body is rebuilt from the
+   * row as the last load saw it, so a project edited in another tab is judged on a stale copy.
+   *
+   * Carries the project as well as the sentence, so the message can link to the one place the
+   * admin can fix it: a full list away from the row it is about, "edit the project" is a search.
    */
-  protected readonly publishError = signal<string | null>(null);
+  protected readonly publishError = signal<PublishFailure | null>(null);
+
+  protected readonly addTagToPublish = ADD_TAG_TO_PUBLISH;
 
   constructor() {
     this.loadProjects();
@@ -120,9 +142,11 @@ export class AdminProjectsListComponent {
             const reasons = fieldErrors
               .map(({ field, message }) => `${field}: ${message}`)
               .join('; ');
-            this.publishError.set(
-              `Could not ${verb} "${project.title}". The server rejected it -- ${reasons}. Edit the project to fix it.`,
-            );
+            this.publishError.set({
+              projectId: project.id,
+              title: project.title,
+              message: `Could not ${verb} "${project.title}". The server rejected it -- ${reasons}.`,
+            });
           }
           // Everything else has already been toasted by errorInterceptor.
         },
@@ -142,6 +166,25 @@ export class AdminProjectsListComponent {
       return project.published ? 'Unpublishing…' : 'Publishing…';
     }
     return project.published ? 'Unpublish' : 'Publish';
+  }
+
+  /**
+   * A draft with no tags, which the API refuses to publish (#148) -- so its row offers the way to a
+   * tag instead of a Publish button that is known to fail.
+   *
+   * Not offered and explained, rather than disabled and explained: a disabled button cannot take
+   * focus, so a keyboard or screen reader user moving control to control never reaches it or its
+   * reason, and a tooltip reaches only a mouse. The link stands where the button would and says
+   * the reason in its own words, so the reason is the control. It goes to the edit form because
+   * that is where a tag can be added; the row cannot.
+   *
+   * A live project with no tags still gets Unpublish -- a draft may be tagless, so taking it down is
+   * allowed -- and the server's answer then puts this state on its row. setPublished() does not
+   * refuse a tagless publish itself: the server is the authority on the rule, and a request that
+   * reaches it anyway is refused with a 400 that publishError renders.
+   */
+  protected needsTagToPublish(project: Project): boolean {
+    return !project.published && project.tags.length === 0;
   }
 
   protected deleteProject(project: Project): void {
