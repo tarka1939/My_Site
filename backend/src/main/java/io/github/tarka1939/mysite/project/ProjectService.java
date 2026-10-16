@@ -162,8 +162,9 @@ public class ProjectService {
         // value: a PUT that omits published against a live project leaves it live, so it is held
         // to the rule exactly as an explicit true is.
         //
-        // Reading the stored value and then writing is a check-then-act in CLAUDE.md's sense.
-        // ACCEPTED, not missed -- the reasoning is on requireTagsToPublish.
+        // Reading the stored value and then writing is a check-then-act in CLAUDE.md's sense,
+        // considered rather than missed: requireTagsToPublish says why it cannot leave a published
+        // project untagged.
         boolean published = request.published() != null ? request.published() : project.isPublished();
         requireTagsToPublish(published, request.tags());
 
@@ -171,6 +172,9 @@ public class ProjectService {
         project.setDescription(request.description());
         project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
         project.setImages(request.images().toArray(new String[0]));
+        // Always a new set: replacing it is what makes the flush write the project row, published
+        // included, alongside the tags. Read requireTagsToPublish before changing how tags are
+        // written here.
         project.setTags(resolveTags(request.tags()));
         // Unconditional assignment, including null: PUT is a full replacement, so omitting
         // startedOn/completedOn clears them rather than preserving what's stored. Skipping
@@ -288,33 +292,36 @@ public class ProjectService {
      * stored value the PUT case turns on. Split between such a constraint and this method, the rule
      * would live in two places with neither of them complete, so all of it lives here.
      *
-     * <p><b>Concurrency: on PUT, a check-then-act on the stored {@code published}. ACCEPTED.</b>
-     * The value judged was read at the start of the request, and could change before the flush.
+     * <p><b>Concurrency.</b> On PUT the {@code published} judged here was read at the start of the
+     * request and can change before the flush: a check-then-act in CLAUDE.md's sense. A published
+     * project with no tags is <b>not reachable</b> through it. That one of two concurrent edits is
+     * lost is <b>accepted</b>, as it always was here.
      *
      * <ul>
-     *   <li>Not through GitHub sync. {@link ProjectRepository#upsertFromGithub}'s
+     *   <li>GitHub sync cannot be the other writer. {@link ProjectRepository#upsertFromGithub}'s
      *       {@code DO UPDATE SET} names neither {@code published} nor the tags, and its insert half
      *       writes {@code published = false} with no tags, so sync can neither publish a project
      *       nor strip one.</li>
-     *   <li>Only through a second admin PUT to the same project, committing inside this one's
-     *       read-to-flush window. {@code Project} has no {@code @Version} and nothing takes a row
-     *       lock, so that is last-write-wins, as concurrent edits here always were. The outcome
-     *       mostly keeps the rule anyway: when any column of the row changes, Hibernate's UPDATE
-     *       writes every column back, stale {@code published} included, since there is no
-     *       {@code @DynamicUpdate} and nothing enables it globally. But the tags are rows in
-     *       {@code project_tags}, rewritten in the same flush and not by that UPDATE, and a PUT
-     *       that changes no column of the project row issues no UPDATE at all. So a tagless save
-     *       of a draft that changes nothing else, racing a publish-with-a-tag of the same draft,
-     *       can end published with no tags.</li>
+     *   <li>A second admin PUT to the same project can be, but every PUT writes its
+     *       {@code published} and its tags together, in one flush that starts by updating the
+     *       project row. {@link #updateProject} always replaces the tags set; replacing it makes
+     *       the row dirty even when no column changed; and with no {@code @DynamicUpdate} (none
+     *       here, and nothing enables it globally) that UPDATE writes every column, the
+     *       {@code published} this request judged included, before {@code project_tags} is
+     *       rewritten. Two such flushes queue on the row lock, so whichever commits last lands its
+     *       whole pair, and each pair passed this check against what it read. The other edit is
+     *       lost -- last-write-wins, since {@code Project} has no {@code @Version} -- which is the
+     *       standing behaviour, and the racing pair needs two admin submissions within one
+     *       request's span from a single admin account: the call
+     *       {@link #requireRepoFullNameUnclaimed} makes.</li>
      * </ul>
      *
-     * Accepted for the reason {@link #requireRepoFullNameUnclaimed} gives: one admin account and
-     * hand-driven form submissions, so the racing pair does not occur in this system's traffic.
-     * What it would leave behind is not corrupt either -- a published project without tags is a
-     * state any row could be in before #148, and the site renders it. Nor is it this check's to
-     * close: an explicit {@code published: false} with no tags, which reads nothing stored, races
-     * the same way. Closing it would take a row lock on the read or a {@code @Version} column, not
-     * a different check.
+     * "Replacing the set makes the row dirty" is the step everything rests on, and it is
+     * Hibernate's behaviour rather than this code's. Without it, a PUT that changed no column would
+     * only rewrite {@code project_tags}, and a tagless save of a draft racing a publish of it could
+     * end published with no tags. Observed on Hibernate 7.4, and pinned by
+     * {@code ProjectUpdateStaleReadIntegrationTest}, which is what notices if a change to how the
+     * tags are written, or a Hibernate upgrade, takes it away.
      */
     private static void requireTagsToPublish(boolean published, List<String> tagNames) {
         if (published && tagNames.isEmpty()) {
