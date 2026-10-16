@@ -48,6 +48,14 @@ textarea {
     margin-bottom: 0.5rem;
     font-weight: var(--weight-emphasis);
   }
+
+  // The same rule as reset-password-confirm's .link-dead, for the same reason: the accent beside
+  // this red text is 1.12:1 in light mode and 1.35:1 in dark, so colour would mark the link barely
+  // at all. --color-text plus the underline does (#118).
+  a {
+    color: var(--color-text);
+    text-decoration: underline;
+  }
 }
 
 button {
