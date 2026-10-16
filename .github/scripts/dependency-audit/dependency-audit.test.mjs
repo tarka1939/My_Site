@@ -7,8 +7,8 @@
  *
  * Standard library only, like the scripts. No network: the OSV client is driven by a fake fetch.
  *
- * Every fixture in fixtures/ is the real output of a real run on 2026-10-14, not a hand-written
- * imitation of one:
+ * Every fixture in fixtures/ but one is the real output of a real run on 2026-10-14 or later, not a
+ * hand-written imitation of one. The exception is maven-dependency-list-old.txt, below.
  *
  *   npm-clean.json             `npm audit --json --package-lock-only` in frontend/, exit 0
  *   npm-findings.json          the same against a throwaway lockfile pinning known-vulnerable
@@ -18,9 +18,13 @@
  *   maven-dependency-list.txt  `mvn dependency:list -DoutputFile=...` in backend/, 167 dependencies
  *   maven-dependency-list-optional.txt  the same on 2026-10-16, with <optional>true</optional>
  *                              added to postgresql in backend/pom.xml for the run and reverted
- *   maven-dependency-list-old.txt  three deliberately old versions, in the same format
+ *   maven-dependency-list-old.txt  HAND-WRITTEN in the real format: three deliberately old
+ *                              versions, plus a `tests`-classifier line for spring-core that only
+ *                              exercises the classifier and two-scope paths. No such jar exists on
+ *                              Central; nothing resolves it, and OSV is queried by name and version
+ *                              only, so it does not affect osv-findings.json.
  *   osv-clean.json             osv-query.mjs on maven-dependency-list.txt
- *   osv-findings.json          osv-query.mjs on maven-dependency-list-old.txt
+ *   osv-findings.json          osv-query.mjs on maven-dependency-list-old.txt (real OSV answers)
  *   osv-error.json             osv-query.mjs with OSV_API_BASE at a closed port
  *
  * The lockfile is deliberately not named package-lock.json: GitHub's dependency graph and
@@ -381,6 +385,16 @@ describe('backend: OSV results to findings', () => {
     ['an OSV file that is not JSON', { osvText: '<html>' }, /not JSON/],
     ['an OSV file with no packages', { osvText: '{"packages":[],"vulns":{}}' }, /no packages/],
     [
+      'an OSV file whose advisory details are not a map',
+      { osvText: JSON.stringify({ packages: [{ name: 'a:b', version: '1', scopes: ['compile'], ids: [] }], vulns: [] }) },
+      /no advisory details/,
+    ],
+    [
+      'an OSV file with no advisory details at all',
+      { osvText: JSON.stringify({ packages: [{ name: 'a:b', version: '1', scopes: ['compile'], ids: [] }] }) },
+      /no advisory details/,
+    ],
+    [
       'an advisory id with no details',
       { osvText: JSON.stringify({ packages: [{ name: 'a:b', version: '1', scopes: ['compile'], ids: ['GHSA-x'] }], vulns: {} }) },
       /GHSA-x .* details are missing/,
@@ -451,6 +465,47 @@ describe('the OSV client', () => {
     const fetchImpl = async () => (n++, json({ message: 'bad' }, 400));
     await assert.rejects(queryOsv(pkgs, { fetchImpl, sleep: async () => {} }), /HTTP 400/);
     assert.equal(n, 1);
+  });
+
+  test('a failure fetching one advisory fails the lookup, not only that advisory', async () => {
+    const fetchImpl = async (url) => {
+      if (url.endsWith('/v1/querybatch')) return json({ results: [{ vulns: [{ id: 'GHSA-1' }, { id: 'GHSA-2' }] }, {}] });
+      if (url.endsWith('/GHSA-2')) return json({ message: 'not found' }, 404);
+      return json(record('GHSA-1'));
+    };
+    await assert.rejects(queryOsv(pkgs, { fetchImpl, sleep: async () => {} }), /GET [^ ]+\/v1\/vulns\/GHSA-2 returned HTTP 404/);
+  });
+
+  test('an advisory that keeps failing with a 5xx is retried, then fails the lookup', async () => {
+    let n = 0;
+    const fetchImpl = async (url) => {
+      if (url.endsWith('/v1/querybatch')) return json({ results: [{ vulns: [{ id: 'GHSA-1' }] }, {}] });
+      n++;
+      return json({ message: 'busy' }, 502);
+    };
+    await assert.rejects(queryOsv(pkgs, { fetchImpl, sleep: async () => {} }), /\/v1\/vulns\/GHSA-1 returned HTTP 502/);
+    assert.equal(n, 3);
+  });
+
+  test('more packages than one batch holds: split into batches, each answer kept with its own package', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ name: `g:p${i}`, version: '1', scopes: ['compile'] }));
+    const sizes = [];
+    const fetchImpl = async (url, init) => {
+      if (url.endsWith('/v1/querybatch')) {
+        const { queries } = JSON.parse(init.body);
+        sizes.push(queries.length);
+        // Each package gets an advisory named after it, so a mix-up between batches would show.
+        return json({ results: queries.map((q) => ({ vulns: [{ id: `GHSA-${q.package.name.slice(2)}` }] })) });
+      }
+      return json(record(decodeURIComponent(url.split('/').pop())));
+    };
+    const out = await queryOsv(many, { fetchImpl, sleep: async () => {}, batchSize: 2 });
+    assert.deepEqual(sizes, [2, 2, 1]);
+    assert.deepEqual(
+      out.packages.map((p) => [p.name, p.ids]),
+      many.map((p, i) => [p.name, [`GHSA-p${i}`]]),
+    );
+    assert.equal(Object.keys(out.vulns).length, 5);
   });
 
   test('a network failure names its cause after the last attempt', async () => {
@@ -576,6 +631,22 @@ describe('the report', () => {
     assert.match(md, /### Backend\n\nNot checked/);
   });
 
+  test("belowFloor: 'omit' lists only findings at or above the floor, and counts the rest", () => {
+    const r = resultsWithFindings();
+    const full = renderReport(r);
+    const omitted = renderReport(r, { belowFloor: 'omit' });
+    const jackson = /\| moderate \| `com\.fasterxml\.jackson\.core:jackson-databind` \|/;
+    assert.match(full, jackson);
+    assert.doesNotMatch(full, /below the floor are not listed/);
+    assert.doesNotMatch(omitted, jackson);
+    const backendPart = omitted.slice(omitted.indexOf('### Backend'), omitted.indexOf('### Frontend'));
+    const frontendPart = omitted.slice(omitted.indexOf('### Frontend'), omitted.indexOf('### E2E'));
+    assert.match(backendPart, /\n7 finding\(s\) below the floor are not listed here; the workflow run's summary has them\./);
+    assert.match(frontendPart, /\n4 finding\(s\) below the floor are not listed here/);
+    assert.equal(backendPart.split('\n').filter((l) => l.startsWith('| **')).length, 16);
+    assert.equal(frontendPart.split('\n').filter((l) => l.startsWith('| **')).length, 11);
+  });
+
   test('third-party text cannot break the table, mention anyone, or link an issue', () => {
     const r = resultsWithFindings();
     r.findings[0] = { ...r.findings[0], title: 'pipes | and <b>tags</b>, @types/node and #12' };
@@ -675,6 +746,25 @@ describe('the tracking issue', () => {
   test('never plans from a run in which an audit could not complete', () => {
     const r = buildResults([backend({ mvnExitText: '1' }), npm(), npm({ area: 'e2e', ships: 'never' })], META);
     assert.throws(() => planIssue({ results: r, issues: [] }), /an audit could not complete/);
+  });
+
+  test('too long only because of findings below the floor: those are counted, not listed, and nothing is cut', () => {
+    const r = resultsWithFindings();
+    const low = Array.from({ length: 500 }, (_, i) => ({
+      ...r.findings.find((f) => f.area === 'frontend'),
+      id: `GHSA-low${String(i).padStart(3, '0')}-xxxx-xxxx`,
+      severity: 'low',
+      atFloor: false,
+      title: 'y'.repeat(150),
+    }));
+    const big = { ...r, findings: [...r.findings, ...low] };
+    assert.ok(renderReport(big).length > 60000, 'the full report must not fit, or this tests nothing');
+    const plan = planIssue({ results: big, issues: [] });
+    assert.ok(plan.body.length <= 60000, `body is ${plan.body.length} characters`);
+    assert.doesNotMatch(plan.body, /Truncated to fit an issue/);
+    assert.match(plan.body, /finding\(s\) below the floor are not listed here/);
+    assert.doesNotMatch(plan.body, /GHSA-low000/);
+    assert.equal(parseState(plan.body).fingerprint, r.fingerprint);
   });
 
   test('a report too long for an issue still fits, and the state survives', () => {
