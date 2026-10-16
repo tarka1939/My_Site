@@ -7,6 +7,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **A GitHub link on the contact page** (2026-10-16, #118, PR #294, frontend + content). A visitor whose message could not be sent had nowhere else to go. A 429 or a 5xx raises the error toast and leaves the page as it was, and the banner for a refusal the form cannot show said only that nothing would get past it. A line under the heading now links the owner's GitHub profile, before and after a send, and the banner ends with the same link. Inside the red banner it is ink-coloured and underlined, as on the reset-password page, because the accent beside that red is 1.12:1 in light mode. It says where the owner is, not how to message them: GitHub has no direct messages. The email address the owner also chose waits for a domain, so #118 stays open.
+
 - **A frontend linter, with a ban on bypassing the sanitizer** (2026-10-02, #210, PR #245, frontend + infra). `npm run lint` runs ESLint with angular-eslint's recommended, stylistic and template-accessibility sets, and CI runs it as its own job. Its essential rules reject the five `bypassSecurityTrust*` calls, in code and in templates. Admin-authored Markdown is bound through `[innerHTML]` and kept safe partly by Angular's sanitizer, and one such call would remove that layer while every test still passed. Writing HTML straight into the DOM, which skips the sanitizer altogether, is rejected too. The generated API client is not linted. Nine findings in hand-written code were fixed or allowed with a stated reason; see the ADR in `docs/DECISIONS.md`, 2026-10-01.
 
 - **Security headers on the site and the API** (2026-10-01, #122, PR #240, frontend + backend + infra).
