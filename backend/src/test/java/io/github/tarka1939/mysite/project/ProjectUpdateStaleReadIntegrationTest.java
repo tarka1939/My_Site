@@ -23,10 +23,13 @@ import io.github.tarka1939.mysite.TestPostgres;
  * PUT whose read of {@code published} has gone stale still writes that stale value back together
  * with its tags, so it cannot leave a published project with no tags (#148).
  *
- * <p>That holds only because replacing the tags set makes Hibernate update the project row, which
- * is Hibernate's behaviour and not this code's. Without it, the save below changes no column, so
- * it would rewrite {@code project_tags} and nothing else -- deleting the tag the concurrent publish
- * added while the row stayed published. This test fails if that ever becomes true.
+ * <p>That holds only because replacing the tags set makes Hibernate update the project row, and
+ * because that UPDATE writes every column. Both are Hibernate's behaviour, not this code's. Lose
+ * either one -- the first to a change in how the tags are written or in Hibernate's dirty checking,
+ * the second to {@code @DynamicUpdate} -- and the save below rewrites {@code project_tags} without
+ * writing back the {@code published} it judged, deleting the tag the concurrent publish added
+ * while the row stays published. This test fails if that ever becomes true; adding
+ * {@code @DynamicUpdate} to {@link Project} was checked to fail it.
  *
  * <p>The interleaving is made deterministic rather than raced: the save's read happens in an outer
  * transaction, the publish runs to commit on another thread, and then the save itself runs through
@@ -74,7 +77,8 @@ class ProjectUpdateStaleReadIntegrationTest {
 
         ProjectResponse after = projectService.getProject(id);
         assertThat(after.published() && after.tags().isEmpty())
-            .as("published with no tags: the save rewrote project_tags without the project row")
+            .as("published with no tags: the save rewrote project_tags without writing back the"
+                + " published value it judged")
             .isFalse();
         // What does happen: the save landed whole, stale published and all, and the publish was
         // lost. Last-write-wins, the standing behaviour for two concurrent edits.
