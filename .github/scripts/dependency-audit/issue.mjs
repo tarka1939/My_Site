@@ -5,9 +5,10 @@
  *
  * Without --write it is a dry run: it reads the repository (the milestone, the labels, the issues
  * this workflow opened before) and prints what it would do, writing nothing. With --write it does
- * it, and only when GITHUB_EVENT_NAME is `schedule` or `workflow_dispatch`. The workflow gates the
- * job on the event already; this is a second gate, so neither a pull_request run nor a person
- * running the script by hand can write, whatever their token allows.
+ * it, and only when GITHUB_EVENT_NAME is `schedule` or `workflow_dispatch` and GITHUB_REF is the
+ * default branch (assertWriteAllowed). The workflow gates the job on both already; this is a
+ * second gate, so neither a pull_request run, a dispatch from another branch, nor a person running
+ * the script by hand can write, whatever their token allows.
  *
  * Why `gh` rather than actions/github-script: gh is preinstalled on the runner, and the same script
  * runs unchanged on a laptop, so the dry run below reads the real repository through the same
@@ -27,11 +28,32 @@ import { AREAS, hasMarker, ISSUE, isMain, planIssue } from './lib.mjs';
 
 const WRITE_EVENTS = ['schedule', 'workflow_dispatch'];
 
-export function assertWriteAllowed(event) {
+/**
+ * Writes only from a schedule or workflow_dispatch run of the default branch. A dispatch can be
+ * started from any branch, and that run audits that branch: left to write, it would rewrite the
+ * issue with a branch's findings, and the next scheduled run would rewrite it back.
+ *
+ * `defaultBranch` comes from the event payload, through env. A schedule's event carries no
+ * repository, so it is empty there; GitHub runs a schedule only from the default branch, so a
+ * schedule with no default branch to compare against is allowed, and anything else without one
+ * is refused.
+ *
+ * @param {{ event?: string, ref?: string, defaultBranch?: string }} run
+ */
+export function assertWriteAllowed({ event, ref, defaultBranch } = {}) {
   if (!WRITE_EVENTS.includes(event)) {
     throw new Error(
       `Refusing to write: the issue is filed only by schedule and workflow_dispatch runs, and this is ${event ? `a ${event} run` : 'not a workflow run'}.`,
     );
+  }
+  if (defaultBranch) {
+    if (ref !== `refs/heads/${defaultBranch}`) {
+      throw new Error(
+        `Refusing to write: the issue is filed only from the default branch, refs/heads/${defaultBranch}, and this ${event} run is on ${ref || 'no ref'}.`,
+      );
+    }
+  } else if (event !== 'schedule') {
+    throw new Error(`Refusing to write: the default branch is unknown (DEFAULT_BRANCH is empty), so this ${event} run cannot show it is on it.`);
   }
 }
 
@@ -171,7 +193,9 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  if (values.write) assertWriteAllowed(process.env.GITHUB_EVENT_NAME);
+  if (values.write) {
+    assertWriteAllowed({ event: process.env.GITHUB_EVENT_NAME, ref: process.env.GITHUB_REF, defaultBranch: process.env.DEFAULT_BRANCH });
+  }
 
   const results = JSON.parse(readFileSync(values.results, 'utf8'));
   if (results.version !== 1) throw new Error(`${values.results} is results version ${results.version}; this script reads version 1.`);

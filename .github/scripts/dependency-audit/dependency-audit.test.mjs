@@ -976,22 +976,48 @@ describe('report.mjs, run as the workflow runs it', () => {
 });
 
 describe('issue.mjs', () => {
+  const onDev = { ref: 'refs/heads/dev', defaultBranch: 'dev' };
+
   test('writes only on schedule and workflow_dispatch', () => {
-    assert.doesNotThrow(() => assertWriteAllowed('schedule'));
-    assert.doesNotThrow(() => assertWriteAllowed('workflow_dispatch'));
-    assert.throws(() => assertWriteAllowed('pull_request'), /Refusing to write: .* a pull_request run/);
-    assert.throws(() => assertWriteAllowed('pull_request_target'), /Refusing to write/);
-    assert.throws(() => assertWriteAllowed(undefined), /not a workflow run/);
+    assert.doesNotThrow(() => assertWriteAllowed({ event: 'schedule', ...onDev }));
+    assert.doesNotThrow(() => assertWriteAllowed({ event: 'workflow_dispatch', ...onDev }));
+    assert.throws(() => assertWriteAllowed({ event: 'pull_request', ...onDev }), /Refusing to write: .* a pull_request run/);
+    assert.throws(() => assertWriteAllowed({ event: 'pull_request_target', ...onDev }), /Refusing to write/);
+    assert.throws(() => assertWriteAllowed({ ...onDev }), /not a workflow run/);
   });
 
-  test('--write from a pull_request run refuses before calling GitHub', () => {
-    const script = fileURLToPath(new URL('./issue.mjs', import.meta.url));
-    const out = spawnSync(process.execPath, [script, '--results', 'unused.json', '--repo', 'o/r', '--write'], {
+  test('writes only from the default branch', () => {
+    const feature = { ref: 'refs/heads/feat/x', defaultBranch: 'dev' };
+    assert.throws(() => assertWriteAllowed({ event: 'workflow_dispatch', ...feature }), /only from the default branch, refs\/heads\/dev, and this workflow_dispatch run is on refs\/heads\/feat\/x/);
+    assert.throws(() => assertWriteAllowed({ event: 'schedule', ...feature }), /only from the default branch/);
+    assert.throws(() => assertWriteAllowed({ event: 'workflow_dispatch', ref: 'refs/tags/v1', defaultBranch: 'dev' }), /only from the default branch/);
+    // A branch named like the default one, under it, is not it.
+    assert.throws(() => assertWriteAllowed({ event: 'workflow_dispatch', ref: 'refs/heads/dev/x', defaultBranch: 'dev' }), /only from the default branch/);
+  });
+
+  test("a schedule's event has no repository to name the default branch: allowed there, refused elsewhere", () => {
+    assert.doesNotThrow(() => assertWriteAllowed({ event: 'schedule', ref: 'refs/heads/dev', defaultBranch: '' }));
+    assert.throws(() => assertWriteAllowed({ event: 'workflow_dispatch', ref: 'refs/heads/dev', defaultBranch: '' }), /default branch is unknown/);
+  });
+
+  const issueScript = fileURLToPath(new URL('./issue.mjs', import.meta.url));
+  const runIssue = (env) =>
+    spawnSync(process.execPath, [issueScript, '--results', 'unused.json', '--repo', 'o/r', '--write'], {
       encoding: 'utf8',
-      env: { ...process.env, GITHUB_EVENT_NAME: 'pull_request', PATH: '' },
+      // PATH is emptied so that if the gate did not hold, gh could not be found either.
+      env: { ...process.env, GITHUB_EVENT_NAME: '', GITHUB_REF: '', DEFAULT_BRANCH: '', ...env, PATH: '' },
     });
+
+  test('--write from a pull_request run refuses before calling GitHub', () => {
+    const out = runIssue({ GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/1/merge', DEFAULT_BRANCH: 'dev' });
     assert.equal(out.status, 1);
     assert.match(out.stderr, /::error title=Dependency audit issue::Refusing to write/);
+  });
+
+  test('--write from a dispatch on a branch that is not the default refuses before calling GitHub', () => {
+    const out = runIssue({ GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/feat/x', DEFAULT_BRANCH: 'dev' });
+    assert.equal(out.status, 1);
+    assert.match(out.stderr, /::error title=Dependency audit issue::Refusing to write: the issue is filed only from the default branch/);
   });
 
   /** A fake `gh`: answers from a table of handlers, and records every call. */

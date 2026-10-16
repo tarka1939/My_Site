@@ -29,7 +29,9 @@ on:
   # main. main is what is deployed, and lags dev by whatever has not been promoted yet.
   schedule:
     - cron: '23 5 * * 1'
-  # By hand from the Actions tab. Does everything a scheduled run does, including the issue.
+  # By hand from the Actions tab. From the default branch it does everything a scheduled run does,
+  # including the issue. From any other branch it audits that branch and only reports: the issue
+  # tracks the default branch, and a branch's findings would be rewritten back a week later.
   workflow_dispatch:
   # A pull request that changes the audit runs it, so the change is proven on the PR itself. It
   # writes the report to the run summary and never touches issues (see file-issue's `if`).
@@ -146,20 +148,27 @@ jobs:
   file-issue:
     name: Open or update the tracking issue
     needs: audit
-    # Gated on the event, not on what the token can do: a pull_request run never reaches this job,
-    # so a PR that edits the audit cannot file an issue from its branch. issue.mjs checks the event
-    # again before it writes.
+    # Gated on the event and the branch, not on what the token can do: a pull_request run never
+    # reaches this job, and nor does a dispatch from any branch but the default one. A schedule
+    # needs no branch check, and cannot have one here: GitHub runs it only from the default branch,
+    # and its event carries no repository to read the default branch's name from.
+    # issue.mjs checks both again before it writes.
     #
     # The implicit success() matters as much. When an audit could not complete, the audit job fails
     # and this job is skipped, so a partial result never rewrites the issue as though the findings it
     # is missing had been fixed.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
     timeout-minutes: 5
-    # Two runs at once (a dispatch during the scheduled one) could each find no issue and open one.
+    # Every run that reaches this job is on the default branch, so the workflow-level group already
+    # runs them one at a time. This repeats it for the one job that writes, so that two runs can
+    # never both find no issue and both open one, even if the workflow-level group is changed.
     concurrency:
       group: dependency-audit-issue
       cancel-in-progress: false
@@ -182,4 +191,6 @@ jobs:
       - name: Open or update the issue
         env:
           GH_TOKEN: ${{ github.token }}
+          # For issue.mjs's own branch check. Empty on a schedule, whose event has no repository.
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: node .github/scripts/dependency-audit/issue.mjs --results audit-out/results.json --repo "$GITHUB_REPOSITORY" --write

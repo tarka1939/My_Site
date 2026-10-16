@@ -81,8 +81,12 @@ Dev tooling is held to high for two reasons:
 
 **The issue:**
 
-- Only `schedule` and `workflow_dispatch` runs touch it. That is gated twice: by the `file-issue`
-  job's `if`, and by `issue.mjs --write`, which refuses on any other event.
+- Only `schedule` runs, and `workflow_dispatch` runs **from the default branch**, touch it. A
+  dispatch from any other branch audits that branch and only writes the report. That is gated
+  twice: by the `file-issue` job's `if`, and by `issue.mjs --write`, which checks the event and
+  `GITHUB_REF` against the default branch. A schedule's event carries no repository, so neither
+  check can compare its branch, and neither needs to: GitHub runs a schedule only from the default
+  branch.
 - That job alone has `issues: write`. The audit job, which runs Maven, has `contents: read` only.
 - The job is skipped when an audit errored, so a partial result never rewrites the issue as though
   the findings it is missing had been fixed.
