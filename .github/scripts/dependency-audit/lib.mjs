@@ -757,6 +757,33 @@ export function parseState(body) {
 /** An issue body or comment must stay under GitHub's 65,536 characters. */
 const BODY_LIMIT = 60000;
 
+/**
+ * The state marker's share of the body: about 250 keys. Each key costs roughly 80 characters once
+ * encoded, so without a cap the marker alone outgrew the body at several hundred findings (about
+ * 650 on the review of #295), and GitHub would have rejected the edit every week after.
+ */
+const STATE_LIMIT = 20000;
+
+/**
+ * The state to save: the fingerprint always, and as many keys as fit under STATE_LIMIT. When they
+ * do not all fit, `complete: false` and `total` say so, the next change comment says it cannot list
+ * what changed, and a closed issue accepts only the keys it recorded (see planIssue).
+ */
+export function boundedState(results) {
+  const state = { v: 1, fingerprint: results.fingerprint, keys: results.actionableKeys };
+  if (encodeState(state).length <= STATE_LIMIT) return state;
+  const total = results.actionableKeys.length;
+  const partial = (n) => ({ ...state, keys: results.actionableKeys.slice(0, n), complete: false, total });
+  let lo = 0;
+  let hi = total - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (encodeState(partial(mid)).length <= STATE_LIMIT) lo = mid;
+    else hi = mid - 1;
+  }
+  return partial(lo);
+}
+
 export function renderIssueBody(results, { previous = null } = {}) {
   const intro = [
     'This issue is kept up to date by the weekly dependency audit, `.github/workflows/dependency-audit.yml` (#273). ' +
@@ -767,17 +794,22 @@ export function renderIssueBody(results, { previous = null } = {}) {
       'is in no closed audit issue.',
   ];
   if (previous) intro.push('', `The previous set of findings was in #${previous}.`);
-  const state = encodeState({ v: 1, fingerprint: results.fingerprint, keys: results.actionableKeys });
+  const state = encodeState(boundedState(results));
 
   const compose = (report) => [...intro, '', report, '', state].join('\n');
   let body = compose(renderReport(results, { headingLevel: 2 }));
   if (body.length > BODY_LIMIT) body = compose(renderReport(results, { headingLevel: 2, belowFloor: 'omit' }));
   if (body.length > BODY_LIMIT) {
     const report = renderReport(results, { headingLevel: 2, belowFloor: 'omit' });
-    const room = BODY_LIMIT - compose('').length - 200;
+    const note = "\n\n**Truncated to fit an issue.** The workflow run's summary has the full report.";
+    // Never negative: slice() with a negative end counts back from the end, and keeps nearly all.
+    const room = Math.max(0, BODY_LIMIT - compose('').length - note.length);
     const cut = report.slice(0, room).replace(/\n[^\n]*$/, '');
-    body = compose(`${cut}\n\n**Truncated to fit an issue.** The workflow run's summary has the full report.`);
+    body = compose(`${cut}${note}`);
   }
+  // Unreachable while STATE_LIMIT and the intro leave room; kept so a change that breaks that fails
+  // here, before anything is written, rather than as GitHub rejecting the edit.
+  if (body.length > BODY_LIMIT) throw new Error(`The issue body is ${body.length} characters even truncated; the limit is ${BODY_LIMIT}.`);
   return body;
 }
 
@@ -804,8 +836,16 @@ export function renderChangeComment(previousState, results) {
   const gone = [...before].filter((k) => !nowKeys.has(k)).sort();
 
   const lines = [
-    `**The findings changed** in the run of ${date}${results.runUrl ? ` ([workflow run](${results.runUrl}))` : ''}. The body now shows the full report.`,
+    `**The findings changed** in the run of ${date}${results.runUrl ? ` ([workflow run](${results.runUrl}))` : ''}. The body now shows the current report.`,
   ];
+  if (previousState?.complete === false) {
+    lines.push(
+      '',
+      `This issue's previous state recorded only ${previousState.keys.length} of its ${previousState.total ?? 'many'} findings, ` +
+        'so what changed could not be listed.',
+    );
+    return lines.join('\n');
+  }
   if (!previousState) {
     lines.push('', "This issue's previous state could not be read, so every current finding is listed as new.");
   }
@@ -848,7 +888,8 @@ const acceptanceKey = (key) => {
  * the newest. Closing the issue is the owner accepting those advisories for those packages, so the
  * same set does not come back, a subset of it does not come back, and nor does a patch bump that
  * is still inside the affected range: none of those is new information. A closed issue whose state
- * cannot be read accepts nothing, so the error is towards filing.
+ * cannot be read accepts nothing, and one that recorded only some of its keys (boundedState)
+ * accepts only those, so the error is towards filing.
  */
 export function planIssue({ results, issues }) {
   if (results.errored) {

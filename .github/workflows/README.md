@@ -88,7 +88,13 @@ Dev tooling is held to high for two reasons:
   the findings it is missing had been fixed.
 - The body carries a fingerprint of the findings in an HTML comment.
   - With the same findings as last week, nothing is written.
-  - With changed findings, there is a comment saying what changed, then the body is rewritten.
+  - With changed findings, the body is rewritten, then a comment says what changed. That order
+    means an edit GitHub rejects posts nothing, instead of the same comment every week. If the
+    comment fails after the edit, the run fails and prints the comment for posting by hand.
+  - The body always fits an issue, and always carries the fingerprint. A report too long for it is
+    cut, and the run summary has all of it. Past about 250 findings at or above the floor, the
+    saved state keeps only some of their keys. In that case the next change comment says it cannot
+    list what changed, and closing that issue accepts only the keys it kept.
   - When the findings are all gone, there is a comment, and the issue is left open for a person to
     close.
 - **Closing the issue accepts its advisories.** With no issue open, a new one opens only when some

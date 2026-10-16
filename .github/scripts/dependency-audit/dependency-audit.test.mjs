@@ -822,15 +822,53 @@ describe('the tracking issue', () => {
     assert.equal(parseState(plan.body).fingerprint, r.fingerprint);
   });
 
-  test('a report too long for an issue still fits, and the state survives', () => {
+  /** `count` findings at or above the floor, each with a long title. */
+  const manyFindings = (count) => {
     const r = resultsWithFindings();
-    const many = Array.from({ length: 600 }, (_, i) => ({ ...r.findings[0], id: `GHSA-${String(i).padStart(4, '0')}-xxxx-xxxx`, title: 'x'.repeat(150) }));
-    const big = { ...r, findings: many, actionableKeys: many.map(findingKey).sort() };
-    big.fingerprint = fingerprint(big.actionableKeys);
-    const plan = planIssue({ results: big, issues: [] });
-    assert.ok(plan.body.length <= 60000, `body is ${plan.body.length} characters`);
-    assert.match(plan.body, /Truncated to fit an issue/);
-    assert.equal(parseState(plan.body).fingerprint, big.fingerprint);
+    const many = Array.from({ length: count }, (_, i) => ({ ...r.findings[0], id: `GHSA-${String(i).padStart(4, '0')}-xxxx-xxxx`, title: 'x'.repeat(150) }));
+    return withFindings(r, many);
+  };
+
+  // 200 keeps every key; 800 and 3000 are past the cliff before the marker was capped, which for
+  // these keys was between 700 findings (a 59,858-character body) and 760 (271,648).
+  for (const count of [200, 800, 3000]) {
+    test(`a report of ${count} findings still fits an issue, and the fingerprint survives`, () => {
+      const big = manyFindings(count);
+      const plan = planIssue({ results: big, issues: [] });
+      assert.ok(plan.body.length <= 60000, `body is ${plan.body.length} characters`);
+      assert.match(plan.body, /Truncated to fit an issue/);
+      assert.match(plan.body, /\| \*\*critical\*\* \|/, 'some findings are still listed');
+      const state = parseState(plan.body);
+      assert.equal(state.fingerprint, big.fingerprint);
+      if (count === 200) {
+        assert.equal(state.complete, undefined);
+        assert.equal(state.keys.length, 200);
+      } else {
+        // The keys no longer all fit under the marker's cap; the state says so instead of overflowing.
+        assert.equal(state.complete, false);
+        assert.equal(state.total, count);
+        assert.ok(state.keys.length > 100 && state.keys.length < count, `${state.keys.length} keys kept`);
+        assert.deepEqual(state.keys, big.actionableKeys.slice(0, state.keys.length));
+      }
+      // Next week, the same findings are recognised from the fingerprint alone: nothing to write.
+      assert.equal(planIssue({ results: big, issues: [{ number: 300, state: 'open', body: plan.body }] }).action, 'none');
+    });
+  }
+
+  test('after a state that recorded only some keys, the change comment says it cannot list the change', () => {
+    const big = manyFindings(3000);
+    const body = planIssue({ results: big, issues: [] }).body;
+    const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body }] });
+    assert.equal(plan.action, 'update');
+    assert.match(plan.comment, /previous state recorded only \d+ of its 3000 findings, so what changed could not be listed/);
+    assert.doesNotMatch(plan.comment, /No longer reported/);
+  });
+
+  test('a closed issue that recorded only some keys accepts only those', () => {
+    const big = manyFindings(3000);
+    const body = planIssue({ results: big, issues: [] }).body;
+    const plan = planIssue({ results: big, issues: [{ number: 300, state: 'closed', body }] });
+    assert.equal(plan.action, 'create');
   });
 });
 
@@ -957,11 +995,13 @@ describe('issue.mjs', () => {
   });
 
   /** A fake `gh`: answers from a table of handlers, and records every call. */
-  function fakeGh({ milestones = [{ number: 10, title: 'Phase 8', state: 'open' }], labels = ['backend', 'frontend', 'infra'], issues = [] } = {}) {
+  function fakeGh({ milestones = [{ number: 10, title: 'Phase 8', state: 'open' }], labels = ['backend', 'frontend', 'infra'], issues = [], fail = [] } = {}) {
     const calls = [];
     const run = async (args) => {
       const bodyIndex = args.indexOf('--body-file');
       calls.push({ args, body: bodyIndex === -1 ? null : readFileSync(args[bodyIndex + 1], 'utf8') });
+      const command = args.slice(0, 2).join(' ');
+      if (fail.includes(command)) throw new Error(`gh ${command} failed: HTTP 422`);
       const target = args.find((a) => a.startsWith('repos/')) ?? '';
       if (target.includes('/milestones')) return milestones.map((m) => JSON.stringify(m)).join('\n');
       if (target.includes('/labels/')) {
@@ -1013,14 +1053,31 @@ describe('issue.mjs', () => {
     assert.equal(body, plan.body);
   });
 
-  test('update comments first, then rewrites the body and adds labels', async () => {
+  test('update rewrites the body and adds labels first, then comments', async () => {
     const { gh, calls } = fakeGh();
     const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body: 'edited by hand' }] });
     assert.equal(await applyPlan(gh, plan), '#300');
-    assert.deepEqual(calls.map((c) => c.args.slice(0, 3).join(' ')), ['issue comment 300', 'issue edit 300']);
-    assert.equal(calls[0].body, plan.comment);
-    assert.equal(calls[1].body, plan.body);
-    assert.ok(calls[1].args.join(' ').includes('--add-label backend --add-label frontend'));
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 3).join(' ')), ['issue edit 300', 'issue comment 300']);
+    assert.equal(calls[0].body, plan.body);
+    assert.ok(calls[0].args.join(' ').includes('--add-label backend --add-label frontend'));
+    assert.equal(calls[1].body, plan.comment);
+  });
+
+  test('an edit that fails posts no comment, so a failure every week cannot repeat one every week', async () => {
+    const { gh, calls } = fakeGh({ fail: ['issue edit'] });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body: 'edited by hand' }] });
+    await assert.rejects(applyPlan(gh, plan), /gh issue edit failed/);
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(' ')), ['issue edit']);
+  });
+
+  test('a comment that fails after the edit says it is lost, and carries it for posting by hand', async () => {
+    const { gh } = fakeGh({ fail: ['issue comment'] });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body: 'edited by hand' }] });
+    await assert.rejects(applyPlan(gh, plan), (error) => {
+      assert.match(error.message, /#300's body was updated, but the comment saying what changed was not posted/);
+      assert.equal(error.unpostedComment, plan.comment);
+      return true;
+    });
   });
 
   test('nothing to do calls nothing', async () => {

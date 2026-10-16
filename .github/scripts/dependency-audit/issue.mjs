@@ -137,15 +137,26 @@ export async function preflight(gh) {
 }
 
 /**
- * Comment first, then rewrite the body. If the edit fails after the comment, the next run still
- * sees the old fingerprint and comments again: a duplicate, which is visible. The other order would
- * fail silently, leaving the new fingerprint in place with no comment saying what changed.
+ * Rewrite the body first, then comment. An edit that fails writes nothing, so the next run retries
+ * it cleanly. The other order posted the comment and then failed the edit, and an edit that fails
+ * every week (a body GitHub rejects) would have posted the same comment every week.
+ *
+ * The cost: a comment that fails after the edit is lost, because the new fingerprint is already in
+ * the body and the next run sees nothing to do. So that failure says exactly that, and carries the
+ * comment, which main() prints for posting by hand. The body itself shows the current findings.
  */
 export async function applyPlan(gh, plan) {
   if (plan.action === 'create') return String(await gh.create(plan)).trim();
   if (plan.action === 'update') {
-    await gh.comment(plan.number, plan.comment);
     await gh.edit(plan.number, plan.body, plan.addLabels);
+    try {
+      await gh.comment(plan.number, plan.comment);
+    } catch (error) {
+      throw Object.assign(
+        new Error(`#${plan.number}'s body was updated, but the comment saying what changed was not posted, and no later run will post it: ${error.message}`),
+        { unpostedComment: plan.comment },
+      );
+    }
     return `#${plan.number}`;
   }
   return null;
@@ -184,6 +195,7 @@ async function main() {
 
 if (isMain(import.meta.url)) {
   main().catch((error) => {
+    if (error.unpostedComment) console.log(`The comment that was not posted:\n\n${error.unpostedComment}`);
     const message = String(error.message).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
     console.error(`::error title=Dependency audit issue::${message}`);
     process.exitCode = 1;
