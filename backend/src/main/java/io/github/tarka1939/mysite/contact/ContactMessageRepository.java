@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ContactMessageRepository extends JpaRepository<ContactMessage, UUID> {
 
-    /** Backs the rate-limit check described in docs/DATA_MODEL.md — no separate table. */
+    /** Backs the rate-limit check described in docs/DATA_MODEL.md - no separate table. */
     long countByRequesterIpHashAndCreatedAtAfter(String requesterIpHash, Instant cutoff);
 }

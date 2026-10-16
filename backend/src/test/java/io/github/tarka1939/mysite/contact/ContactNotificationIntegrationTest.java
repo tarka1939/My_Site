@@ -51,7 +51,7 @@ import io.github.tarka1939.mysite.ResendEmailClient;
  * <p><strong>Deliberately not {@code @Transactional}.</strong> The listener is bound to
  * {@code AFTER_COMMIT}, so a test that rolls back would never fire it and would pass while
  * asserting nothing. Rows therefore survive each test, which is also why {@link #reset()} empties
- * the table — the contact rate limiter counts rows, so leftovers from one test would 429 the next.
+ * the table - the contact rate limiter counts rows, so leftovers from one test would 429 the next.
  *
  * <p>{@link MockitoSpyBean} rather than a mock: the spy calls THROUGH to the real client, so the
  * genuine warn-and-skip path runs and the unconfigured-key degrade is a real assertion here rather
@@ -59,8 +59,8 @@ import io.github.tarka1939.mysite.ResendEmailClient;
  *
  * <p>That calling-through is only safe because {@code application-test.yml} now pins
  * {@code app.resend.api-key} blank. It previously did not: the base config reads
- * {@code ${RESEND_API_KEY:}}, so with that variable exported — which this branch's own
- * {@code docs/DEPLOYMENT.md} tells the owner to do — two of these tests would have POSTed to
+ * {@code ${RESEND_API_KEY:}}, so with that variable exported - which this branch's own
+ * {@code docs/DEPLOYMENT.md} tells the owner to do - two of these tests would have POSTed to
  * api.resend.com against the real account and a third would have failed looking like a
  * regression. {@link #testProfilePinsTheResendKeyBlank_soTheSuiteCannotSendRealEmail()} guards it.
  */

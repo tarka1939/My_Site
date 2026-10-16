@@ -1,6 +1,6 @@
 /**
  * The one "this target must be local" rule for the content seed, deliberately modelled on
- * `e2e/support/locality.ts` rather than invented fresh — same allowlist, same fail-closed shape,
+ * `e2e/support/locality.ts` rather than invented fresh - same allowlist, same fail-closed shape,
  * same refusal to grow a `--force` flag.
  *
  * It exists because `seed.mjs` authenticates as an admin and issues writes: `POST`/`PUT
@@ -22,12 +22,12 @@
 /**
  * Loopback names only, matched exactly. Everything else fails closed, which is what keeps near
  * misses like `127.0.0.2`, `0.0.0.0`, a trailing-dot `localhost.`, or a hostname that merely
- * resolves to loopback out — an allowlist gets that for free, a denylist would not.
+ * resolves to loopback out - an allowlist gets that for free, a denylist would not.
  *
  * Adapted from `e2e/support/locality.ts` rather than copied verbatim. That version also carries
  * `'::1'` and `'0:0:0:0:0:0:0:1'`, which are right *there* because it checks a bare `E2E_DB_HOST`
  * string as well as URLs. **Here every check goes through `new URL().hostname`, which can never
- * return either spelling** — Node normalises `http://[::1]` and `http://[0:0:0:0:0:0:0:1]` both to
+ * return either spelling** - Node normalises `http://[::1]` and `http://[0:0:0:0:0:0:0:1]` both to
  * `[::1]` (verified on 24.14.0). Carrying them would be harmless dead weight except that the
  * refusal message prints this set as the allowed hosts, so someone copying `::1` out of the error
  * would then be refused by the very list that had just offered it. The set is therefore exactly
@@ -43,15 +43,15 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 /**
  * Deployment hosts this script is permitted to write to.
  *
- * **Was deliberately empty, and was correct as empty** — the original note said so because Phase 5
+ * **Was deliberately empty, and was correct as empty** - the original note said so because Phase 5
  * was paused and `docs/DECISIONS.md` recorded the VPS provider as unchosen, so there was no real
  * host to name. Both of those premises expired on 2026-09-03: the backend is live at
  * `tarka1939.bieda.it`, a Mikrus LXC container reached through the provider's subdomain with TLS
  * terminated upstream (see the exposure ADR of that date).
  *
  * So the list now has exactly one entry, and adding it is the deliberate act the guard was built to
- * require. What that changes: this script *can* now write to the public site — `POST`/`PUT
- * /projects`, and `DELETE /projects/{id}` under `--remove` — where before no combination of
+ * require. What that changes: this script *can* now write to the public site - `POST`/`PUT
+ * /projects`, and `DELETE /projects/{id}` under `--remove` - where before no combination of
  * environment variable and argument could make it reach anything but loopback.
  *
  * What it does **not** change: adding a host here is necessary and not sufficient. The run must
@@ -69,7 +69,7 @@ const APPROVED_DEPLOYMENT_HOSTS = new Set(['tarka1939.bieda.it']);
 const WHY =
   `This script authenticates as an admin and writes portfolio content through the API ` +
   `(POST/PUT /projects, and DELETE /projects/{id} under --remove). It overwrites the copy on the ` +
-  `site it targets, so it must not reach a public site by accident — see "The locality guard" in ` +
+  `site it targets, so it must not reach a public site by accident - see "The locality guard" in ` +
   `content-seed/README.md.`;
 
 function refuse(source, resolved, detail = '', extra = '') {
@@ -80,7 +80,7 @@ function refuse(source, resolved, detail = '', extra = '') {
       `  Approved deployment hosts: ${
         APPROVED_DEPLOYMENT_HOSTS.size
           ? [...APPROVED_DEPLOYMENT_HOSTS].join(', ')
-          : '(none — see content-seed/locality.mjs)'
+          : '(none - see content-seed/locality.mjs)'
       }\n` +
       (extra ? `  ${extra}\n` : '') +
       `  ${WHY}`,
@@ -115,7 +115,7 @@ export function assertSeedTarget(url, source) {
       url,
       ` (host: ${hostname})`,
       `To seed a real deployment, add "${hostname}" to APPROVED_DEPLOYMENT_HOSTS in ` +
-        `content-seed/locality.mjs and commit that change — then set ` +
+        `content-seed/locality.mjs and commit that change - then set ` +
         `SEED_ALLOW_REMOTE_HOST=${hostname} on the run. Both are required.`,
     );
   }
@@ -135,7 +135,7 @@ export function assertSeedTarget(url, source) {
       source,
       url,
       ` (protocol: ${parsed.protocol})`,
-      `Remote targets must be HTTPS — this script sends an admin password over this connection.`,
+      `Remote targets must be HTTPS - this script sends an admin password over this connection.`,
     );
   }
 

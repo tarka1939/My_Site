@@ -13,7 +13,7 @@ export const CONTACT_ROUTES: Routes = [
       // Says nothing about what happens to a message after it is sent: the contact endpoint stores
       // it for the admin view, and nothing emails or forwards it, so "goes straight to my inbox"
       // would be a claim the system does not implement.
-      description: 'Get in touch — questions about a project, work enquiries, or anything else.',
+      description: 'Get in touch - questions about a project, work enquiries, or anything else.',
     },
   },
 ];

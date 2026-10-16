@@ -1,37 +1,37 @@
 # Agent Workflow
 
-This document formalizes `SPEC.md`'s goal #2 ("deliberate practice ground for multi-agent development workflows — spec-first, parallel agents, documented review") as an actual operational process, not just tribal chat history. It's the "how to run a session" counterpart to `AGENT_LOG.md` (which records what happened once a session is done).
+This document formalizes `SPEC.md`'s goal #2 ("deliberate practice ground for multi-agent development workflows - spec-first, parallel agents, documented review") as an actual operational process, not just tribal chat history. It's the "how to run a session" counterpart to `AGENT_LOG.md` (which records what happened once a session is done).
 
 ## Claude Code's agent primitives (2026)
 
 Claude Code has three ways to run multiple agents:
 
-- **Subagents** (`.claude/agents/*.md`, invoked via the Task tool) — run inside the same top-level session, get their own context window and tool scope, but **share the parent session's working directory**. There is no filesystem boundary stopping one subagent from reading what another subagent (or the orchestrator) wrote.
-- **Agent teams** (across separate sessions) — genuinely separate processes; can be paired with separate `git worktree`s for real filesystem isolation.
-- **Background agents** — long-running, monitored separately; not relevant to this project's phase structure.
+- **Subagents** (`.claude/agents/*.md`, invoked via the Task tool) - run inside the same top-level session, get their own context window and tool scope, but **share the parent session's working directory**. There is no filesystem boundary stopping one subagent from reading what another subagent (or the orchestrator) wrote.
+- **Agent teams** (across separate sessions) - genuinely separate processes; can be paired with separate `git worktree`s for real filesystem isolation.
+- **Background agents** - long-running, monitored separately; not relevant to this project's phase structure.
 
 ## When to use which
 
-**Sequential, single-agent — the default for Phases 1, 2, 3, 5, 6.** Most checklist items in these phases have real dependencies (schema before repository before service before controller; scaffolding before the thing that uses it). A dispatcher fanning out parallel subagents here adds orchestration overhead without real parallelism to exploit — just run one Claude Code session per phase, working the checklist in `PROJECT_TODO.md` in order.
+**Sequential, single-agent - the default for Phases 1, 2, 3, 5, 6.** Most checklist items in these phases have real dependencies (schema before repository before service before controller; scaffolding before the thing that uses it). A dispatcher fanning out parallel subagents here adds orchestration overhead without real parallelism to exploit - just run one Claude Code session per phase, working the checklist in `PROJECT_TODO.md` in order.
 
-**Dispatcher/orchestrator via Task-tool subagents** — fine for genuinely independent sub-tasks inside a single phase, if any come up. This is **not** a substitute for the Phase 7 isolation test below: because subagents share the working directory, a "frontend subagent" dispatched this way can still technically read backend source, even if its system prompt tells it not to. Prompt-level discipline isn't the same as a real boundary.
+**Dispatcher/orchestrator via Task-tool subagents** - fine for genuinely independent sub-tasks inside a single phase, if any come up. This is **not** a substitute for the Phase 7 isolation test below: because subagents share the working directory, a "frontend subagent" dispatched this way can still technically read backend source, even if its system prompt tells it not to. Prompt-level discipline isn't the same as a real boundary.
 
-**True isolation — Phase 7 only.** The backend-agent/frontend-agent contract-isolation test (originally scoped for Phase 4, moved to Phase 7 — see `docs/AUTONOMOUS_WORKFLOW.md`'s Phase 4 adaptation note and the corresponding ADR in `docs/DECISIONS.md`) is only meaningful if each side genuinely cannot see the other's implementation, only `docs/openapi.yaml` plus, per the Phase 3 correction, a mock server generated from the relevant contract addition rather than the live backend. That requires separate `git worktree`s and separately launched Claude Code sessions, not Task-tool subagents in one session. See commands below.
+**True isolation - Phase 7 only.** The backend-agent/frontend-agent contract-isolation test (originally scoped for Phase 4, moved to Phase 7 - see `docs/AUTONOMOUS_WORKFLOW.md`'s Phase 4 adaptation note and the corresponding ADR in `docs/DECISIONS.md`) is only meaningful if each side genuinely cannot see the other's implementation, only `docs/openapi.yaml` plus, per the Phase 3 correction, a mock server generated from the relevant contract addition rather than the live backend. That requires separate `git worktree`s and separately launched Claude Code sessions, not Task-tool subagents in one session. See commands below.
 
-**Do not use a dispatcher to parallelize Phase 7.** `PROJECT_TODO.md` already rejected building the four extension features (7a–7d) in parallel — see "Scoping note on extension features" — specifically because shallow implementations you can't defend in depth beat one you understand fully. A dispatcher fanning these four out at once would silently reintroduce a risk the project already decided against. Keep Phase 7's four extensions sequential no matter how tempting parallel fan-out looks once the tooling makes it easy — the isolation *technique* (worktrees) is reused for 7a's contract test, but the four extensions themselves still ship one at a time.
+**Do not use a dispatcher to parallelize Phase 7.** `PROJECT_TODO.md` already rejected building the four extension features (7a-7d) in parallel - see "Scoping note on extension features" - specifically because shallow implementations you can't defend in depth beat one you understand fully. A dispatcher fanning these four out at once would silently reintroduce a risk the project already decided against. Keep Phase 7's four extensions sequential no matter how tempting parallel fan-out looks once the tooling makes it easy - the isolation *technique* (worktrees) is reused for 7a's contract test, but the four extensions themselves still ship one at a time.
 
 ## Subagent role definitions
 
 `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md` define each side's scope and constraints. They double as plain documentation of what each side owns, and as literal subagent definitions if you use the Task tool for smaller in-phase delegation.
 
-## Checkout inventory — a snapshot, expected to go stale (2026-08-09)
+## Checkout inventory - a snapshot, expected to go stale (2026-08-09)
 
-`CLAUDE.md`'s "Never quote a working tree without naming its branch" states the durable rule. These are the specific conditions that prompted it, recorded here rather than there because they expire. **Re-derive before relying on any of it** — `git worktree list`, `git rev-list --left-right --count <branch>...<remote>/<branch>`.
+`CLAUDE.md`'s "Never quote a working tree without naming its branch" states the durable rule. These are the specific conditions that prompted it, recorded here rather than there because they expire. **Re-derive before relying on any of it** - `git worktree list`, `git rev-list --left-right --count <branch>...<remote>/<branch>`.
 
 - **`D:\repos\My_Site` is the main checkout and the most obvious place to run a command.** It sat on `phase1/review-followups`, 58 commits behind the remote `main`, with uncommitted edits to `CLAUDE.md` and `docs/DECISIONS.md` on top. Reading a file there could match neither the branch nor `main`.
-- **Local `main` was 85 commits behind `My_Site/main`** — further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current. *(Two later corrections: the hook did **not** in fact deny anything at the time — see "Both of these were inert from Phase 4 to Phase 8" below — and as of 2026-08-27 the branch most likely to be stale in this way is `dev`, not `main`.)*
-- **Roughly half the checkouts are detached** — every `My_Site-review-NN` worktree created for a PR review, which is exactly where evidence gets quoted into review comments. `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in those, which is why the provenance rule uses the SHA.
-- **`git cherry` and patch-ids can disagree with content.** Two commits on `phase3/frontend-foundation` looked absent from `main` (`git cherry` marked one `+`), but their patch-ids differed only because of surrounding context — the `+`/`-` lines were byte-identical to commits already merged. Confirm with the actual added lines before concluding work is stranded, and beware that a `grep` of lines beginning with `-` will be parsed as options unless you use `grep -e` or `--`.
+- **Local `main` was 85 commits behind `My_Site/main`** - further behind than the "stale" branch above. `git checkout main` would have made the situation worse, and `.claude/hooks/block-protected-branch-ops.sh` denies that command anyway. The correct move is to fast-forward the local ref (`git fetch` then `git switch main && git merge --ff-only My_Site/main`), not to assume the branch name means current. *(Two later corrections: the hook did **not** in fact deny anything at the time - see "Both of these were inert from Phase 4 to Phase 8" below - and as of 2026-08-27 the branch most likely to be stale in this way is `dev`, not `main`.)*
+- **Roughly half the checkouts are detached** - every `My_Site-review-NN` worktree created for a PR review, which is exactly where evidence gets quoted into review comments. `git rev-parse --abbrev-ref HEAD` returns the literal string `HEAD` in those, which is why the provenance rule uses the SHA.
+- **`git cherry` and patch-ids can disagree with content.** Two commits on `phase3/frontend-foundation` looked absent from `main` (`git cherry` marked one `+`), but their patch-ids differed only because of surrounding context - the `+`/`-` lines were byte-identical to commits already merged. Confirm with the actual added lines before concluding work is stranded, and beware that a `grep` of lines beginning with `-` will be parsed as options unless you use `grep -e` or `--`.
 - **Worth considering:** a non-blocking `SessionStart` hook emitting branch, SHA, dirty-file count and behind-count would supply this provenance automatically and keep perishable numbers out of prose entirely. Suggested during the PR #95 review; not built.
 
 ## Branch model (added 2026-08-27)
@@ -50,24 +50,24 @@ Three things follow that are easy to get wrong:
 
 - **Worktrees are cut from `My_Site/dev`.** The `git worktree add` examples elsewhere on this page do not name a base ref at all, so they are unaffected; it is the base you pass that has to change.
 - **`gh pr create` needs no `--base` for feature work**, because `dev` is the default. The promotion PR is the exception and needs `--base main` explicitly.
-- **`dev` is the default branch specifically so `Closes #N` keeps working.** GitHub links and closes issues only for PRs based on the default branch; that is the mechanism that silently voided the keywords on PRs #76, #77 and #79 when the default was a stale `master` — see the closing-keyword section below for what happened to #80. A promotion PR therefore closes nothing and must not carry keywords — its issues closed when each feature PR merged.
+- **`dev` is the default branch specifically so `Closes #N` keeps working.** GitHub links and closes issues only for PRs based on the default branch; that is the mechanism that silently voided the keywords on PRs #76, #77 and #79 when the default was a stale `master` - see the closing-keyword section below for what happened to #80. A promotion PR therefore closes nothing and must not carry keywords - its issues closed when each feature PR merged.
 
 ## Preventing repo-access race conditions (added 2026-08-05)
 
-The rule that actually matters, independent of which of the three primitives above you're using: **one task, one `git worktree`, one branch, one session.** Two sessions must never share a working directory. A worktree gives each concurrent task its own `.git/index` and `HEAD` while all worktrees share one underlying object database — that's what makes simultaneous commits across worktrees safe, since they're never contending for the same index/HEAD lock file. Two sessions committing inside the *same* directory at the same time is what produces stuck `.git/index.lock`/`.git/HEAD.lock` files — this happened for real during this project's own Phase-1-era session work (a sandboxed `git status` call collided with a real git client against the same live-mounted folder; see `AGENT_LOG.md`), and worktrees are the structural fix, not just a convention to remember.
+The rule that actually matters, independent of which of the three primitives above you're using: **one task, one `git worktree`, one branch, one session.** Two sessions must never share a working directory. A worktree gives each concurrent task its own `.git/index` and `HEAD` while all worktrees share one underlying object database - that's what makes simultaneous commits across worktrees safe, since they're never contending for the same index/HEAD lock file. Two sessions committing inside the *same* directory at the same time is what produces stuck `.git/index.lock`/`.git/HEAD.lock` files - this happened for real during this project's own Phase-1-era session work (a sandboxed `git status` call collided with a real git client against the same live-mounted folder; see `AGENT_LOG.md`), and worktrees are the structural fix, not just a convention to remember.
 
 Practical guidance for this project's scale (solo maintainer, occasional parallel work):
 
 - Create one worktree per task you're actively driving in parallel: `git worktree add ../My_Site-<task-slug> <branch-name>`.
-- Point the session's working directory at that worktree, not the main checkout — `--worktree` when starting a top-level CLI session directly, or an explicit working directory pointing at a worktree you created yourself with `git worktree add`. **Don't reach for the dispatch-time `isolation: "worktree"` option when the branch has to outlive the task** (updated 2026-08-07, after trying it): it auto-generates its own branch name and auto-cleans the worktree once the agent finishes, and neither of those survives into a branch you still need to open a PR from, review, and merge. Fine for throwaway exploration; wrong tool for phase work. Phase 4's dispatch used manual `git worktree add` for exactly this reason — see `AGENT_LOG.md`'s 2026-08-07 Senior Dev session entry.
-- Remove the worktree as soon as its branch is merged: `git worktree remove ../My_Site-<task-slug>`. Stale worktrees left lying around are the most common reason this pattern gets abandoned over time — run `git worktree prune` periodically (e.g., at the start of each work session) to catch any that were removed on disk but not unregistered.
-- **Treat `git worktree remove` as something that can half-succeed** (added 2026-08-07, after it did). On Windows especially it can fail with `Permission denied` — a file still locked by a live process — while having *already* deregistered the worktree, leaving a directory on disk whose `.git` link now dangles. The failure mode is quiet and nasty: `git status` inside that directory doesn't error, it silently resolves to the **main checkout** instead, so a session sitting there believes it's isolated while operating on the shared repo — the exact collision worktrees exist to prevent. So: check the command's exit status instead of assuming a clean `git status` beforehand meant removal was safe, and if it fails, confirm the real state with `git worktree list` plus `git -C <dir> rev-parse --show-toplevel` before letting any session run there. A file lock is evidence of a live process, not an obstacle to route around — resolve it rather than force-deleting the directory.
+- Point the session's working directory at that worktree, not the main checkout - `--worktree` when starting a top-level CLI session directly, or an explicit working directory pointing at a worktree you created yourself with `git worktree add`. **Don't reach for the dispatch-time `isolation: "worktree"` option when the branch has to outlive the task** (updated 2026-08-07, after trying it): it auto-generates its own branch name and auto-cleans the worktree once the agent finishes, and neither of those survives into a branch you still need to open a PR from, review, and merge. Fine for throwaway exploration; wrong tool for phase work. Phase 4's dispatch used manual `git worktree add` for exactly this reason - see `AGENT_LOG.md`'s 2026-08-07 Senior Dev session entry.
+- Remove the worktree as soon as its branch is merged: `git worktree remove ../My_Site-<task-slug>`. Stale worktrees left lying around are the most common reason this pattern gets abandoned over time - run `git worktree prune` periodically (e.g., at the start of each work session) to catch any that were removed on disk but not unregistered.
+- **Treat `git worktree remove` as something that can half-succeed** (added 2026-08-07, after it did). On Windows especially it can fail with `Permission denied` - a file still locked by a live process - while having *already* deregistered the worktree, leaving a directory on disk whose `.git` link now dangles. The failure mode is quiet and nasty: `git status` inside that directory doesn't error, it silently resolves to the **main checkout** instead, so a session sitting there believes it's isolated while operating on the shared repo - the exact collision worktrees exist to prevent. So: check the command's exit status instead of assuming a clean `git status` beforehand meant removal was safe, and if it fails, confirm the real state with `git worktree list` plus `git -C <dir> rev-parse --show-toplevel` before letting any session run there. A file lock is evidence of a live process, not an obstacle to route around - resolve it rather than force-deleting the directory.
   - **How it presents to a human, which is worse than the mechanism** (added 2026-08-09, after it cost a real investigation). `git worktree remove` deletes every file *first*, then fails on the now-empty directory, so the leftover is an **empty husk** with no `.git` entry of any kind. What you then see depends entirely on *where the husk sits*, and the difference matters:
-    - **Nested inside the repo** (this project's `.claude/worktrees/<slug>` layout): git finds no `.git` in the directory, walks **up** to the enclosing repo, and reports the *main checkout's* branch and uncommitted files. No error. That reads exactly like stranded work in the removed worktree. It happened here — an apparently-abandoned change was "found" in the deleted Phase 3 worktree and turned out to be the main checkout's own uncommitted files, the same ones already found elsewhere, appearing to exist in two places at once.
+    - **Nested inside the repo** (this project's `.claude/worktrees/<slug>` layout): git finds no `.git` in the directory, walks **up** to the enclosing repo, and reports the *main checkout's* branch and uncommitted files. No error. That reads exactly like stranded work in the removed worktree. It happened here - an apparently-abandoned change was "found" in the deleted Phase 3 worktree and turned out to be the main checkout's own uncommitted files, the same ones already found elsewhere, appearing to exist in two places at once.
     - **A sibling of the repo** (the `../My_Site-<task-slug>` layout this list recommends above): parent-directory discovery finds nothing, and you get a plain `fatal: not a git repository`. Loud, and much easier to diagnose.
-    Note this is ordinary parent-directory discovery, **not** a dangling gitfile — a husk that still contained its `.git` file would error loudly and name the missing admin directory. The silent case requires the `.git` to be gone entirely, which is what `git worktree remove` leaves behind. **Before hunting for work you think is stranded, check whether the directory has any files at all** (`find <dir> -type f | wc -l`) and whether git still knows about it (`git worktree list`).
-  - **Read a foreign-work-tree diff carefully rather than dismissing it.** `git --git-dir=<main>/.git --work-tree=<husk> diff <branch>` reported "193 files changed" for the empty directory above, which looked like noise. It wasn't: the output was `193 files changed, 21298 deletions(-)` — **pure deletions, one per tracked file**, and `git ls-tree -r --name-only <branch> | wc -l` is exactly 193. The command was correctly reporting that every tracked file was missing, which was true and was the answer. Prefer extracting the branch tip somewhere clean (`git archive <branch> | tar -x -C "$TMP"`) and comparing contents — it is unambiguous — but do not assume a large diff here is meaningless. *(Corrected 2026-08-09: an earlier version of this bullet claimed the number was meaningless because the command used the main repo's index. That explanation was invented, not verified, and the review of PR #94 disproved it.)*
-- Don't over-parallelize: realistic capacity for a solo maintainer is roughly 4–8 concurrent worktrees before you're bottlenecked on reviewing the resulting PRs rather than on agent throughput. This project's Phase 7 sequencing (one extension at a time) stays well under that ceiling on purpose — see the scoping note in `PROJECT_TODO.md`.
+    Note this is ordinary parent-directory discovery, **not** a dangling gitfile - a husk that still contained its `.git` file would error loudly and name the missing admin directory. The silent case requires the `.git` to be gone entirely, which is what `git worktree remove` leaves behind. **Before hunting for work you think is stranded, check whether the directory has any files at all** (`find <dir> -type f | wc -l`) and whether git still knows about it (`git worktree list`).
+  - **Read a foreign-work-tree diff carefully rather than dismissing it.** `git --git-dir=<main>/.git --work-tree=<husk> diff <branch>` reported "193 files changed" for the empty directory above, which looked like noise. It wasn't: the output was `193 files changed, 21298 deletions(-)` - **pure deletions, one per tracked file**, and `git ls-tree -r --name-only <branch> | wc -l` is exactly 193. The command was correctly reporting that every tracked file was missing, which was true and was the answer. Prefer extracting the branch tip somewhere clean (`git archive <branch> | tar -x -C "$TMP"`) and comparing contents - it is unambiguous - but do not assume a large diff here is meaningless. *(Corrected 2026-08-09: an earlier version of this bullet claimed the number was meaningless because the command used the main repo's index. That explanation was invented, not verified, and the review of PR #94 disproved it.)*
+- Don't over-parallelize: realistic capacity for a solo maintainer is roughly 4-8 concurrent worktrees before you're bottlenecked on reviewing the resulting PRs rather than on agent throughput. This project's Phase 7 sequencing (one extension at a time) stays well under that ceiling on purpose - see the scoping note in `PROJECT_TODO.md`.
 
 ## Automatic enforcement via hooks (added 2026-08-05)
 
@@ -75,55 +75,55 @@ The worktree rule above is easy to state and easy to violate by accident (a sess
 
 Two starter hooks are wired up via `.claude/settings.json`:
 
-- **`.claude/hooks/check-worktree-scope.sh`** — denies any `Edit`/`Write` call targeting a file outside the session's assigned worktree. Opt a session into this check by exporting `CLAUDE_WORKTREE_ROOT` (its worktree's absolute path) before launching it; if unset, the hook is a no-op, so it doesn't restrict ordinary single-session work on the main checkout.
-- **`.claude/hooks/block-protected-branch-ops.sh`** — always active. Denies force-pushes, a direct checkout of `main`/`master`/`dev`, and `git reset --hard` from any `Bash` or `PowerShell` tool call, regardless of worktree. Defense in depth: a task session should never need to touch a shared branch directly, worktree or not. `dev` was added 2026-08-27 when it became the integration branch — it is now the one a session is most likely to reach for by reflex. `PowerShell` was added 2026-10-09 (#283): it is the primary shell in the Windows desktop app, and until then its calls never reached the hook.
+- **`.claude/hooks/check-worktree-scope.sh`** - denies any `Edit`/`Write` call targeting a file outside the session's assigned worktree. Opt a session into this check by exporting `CLAUDE_WORKTREE_ROOT` (its worktree's absolute path) before launching it; if unset, the hook is a no-op, so it doesn't restrict ordinary single-session work on the main checkout.
+- **`.claude/hooks/block-protected-branch-ops.sh`** - always active. Denies force-pushes, a direct checkout of `main`/`master`/`dev`, and `git reset --hard` from any `Bash` or `PowerShell` tool call, regardless of worktree. Defense in depth: a task session should never need to touch a shared branch directly, worktree or not. `dev` was added 2026-08-27 when it became the integration branch - it is now the one a session is most likely to reach for by reflex. `PowerShell` was added 2026-10-09 (#283): it is the primary shell in the Windows desktop app, and until then its calls never reached the hook.
   - **It needs a working interpreter**, the first of `python`, `python3` or `py` that runs. If none does, it denies every Bash and PowerShell call. A session started from that checkout then has no shell at all, until an interpreter works again (#282). That is the next section's fail-closed rule applied as written. The fix is outside Claude Code, and the deny message names the Windows setting that caused it on 2026-10-09.
   - **Every shell call pays for it**: about half a second with a working `python`, and 1 to 1.3 s while two Store stubs sit ahead of `py` (two measurements, 2026-10-09).
 
-Both hooks return a structured `permissionDecision: "deny"` with a human-readable reason on the offending call, rather than silently failing — see the scripts themselves for the exact contract. Extend this pattern (rather than replacing it) if more automatic guardrails come up; it's cheaper to add a new `PreToolUse` matcher than to keep re-explaining a rule in every session's prompt.
+Both hooks return a structured `permissionDecision: "deny"` with a human-readable reason on the offending call, rather than silently failing - see the scripts themselves for the exact contract. Extend this pattern (rather than replacing it) if more automatic guardrails come up; it's cheaper to add a new `PreToolUse` matcher than to keep re-explaining a rule in every session's prompt.
 
 ### Both of these were inert from Phase 4 to Phase 8 (found 2026-08-27)
 
 Read this before trusting any hook in this repo, including one you just wrote.
 
-Both parsed their input with **`jq`, which is not installed on the machine this repo is worked on and never has been.** The variable came back empty, and both scripts then hit an explicit `exit 0` — so every command they were written to deny was permitted, while this document said "always active" and `README.md` said "denied unconditionally". The window is `7bd9b86` (2026-08-07, partway through Phase 4) to 2026-08-27: about twenty days, five phases. **Not** Phases 1-3, which were finished and merged before these files existed — a first draft of this section said "Phase 1 through Phase 8" and was wrong, which is worth leaving on the record given what the section is about. Confirmed by running `git checkout main --help`, which matches the deny pattern and executed normally.
+Both parsed their input with **`jq`, which is not installed on the machine this repo is worked on and never has been.** The variable came back empty, and both scripts then hit an explicit `exit 0` - so every command they were written to deny was permitted, while this document said "always active" and `README.md` said "denied unconditionally". The window is `7bd9b86` (2026-08-07, partway through Phase 4) to 2026-08-27: about twenty days, five phases. **Not** Phases 1-3, which were finished and merged before these files existed - a first draft of this section said "Phase 1 through Phase 8" and was wrong, which is worth leaving on the record given what the section is about. Confirmed by running `git checkout main --help`, which matches the deny pattern and executed normally.
 
-That is `CLAUDE.md`'s "fails closed, never open" rule broken inside the mechanism meant to enforce it — the same shape as the inverted `@Profile("!prod")` predicate in `AGENT_LOG.md` 2026-08-01, and no easier to see.
+That is `CLAUDE.md`'s "fails closed, never open" rule broken inside the mechanism meant to enforce it - the same shape as the inverted `@Profile("!prod")` predicate in `AGENT_LOG.md` 2026-08-01, and no easier to see.
 
 What changed:
 
 - **Both hooks parse with Python instead**, chosen because it is actually present rather than because it is nicer.
 - **Neither has a path that permits a call it could not inspect.** Unparseable input is a deny. No interpreter at all is a deny, emitted as hand-written JSON so even that path needs nothing installed.
-- **`check-worktree-scope.sh` compares real paths, not string prefixes.** The old `case "$FILE_PATH" in "$CLAUDE_WORKTREE_ROOT"/*)` accepted `<root>/../My_Site/CLAUDE.md` — straight back into the shared checkout — and rejected a legitimate write whose separators or drive-letter case differed. It now normalises both sides and uses `os.path.commonpath`.
+- **`check-worktree-scope.sh` compares real paths, not string prefixes.** The old `case "$FILE_PATH" in "$CLAUDE_WORKTREE_ROOT"/*)` accepted `<root>/../My_Site/CLAUDE.md` - straight back into the shared checkout - and rejected a legitimate write whose separators or drive-letter case differed. It now normalises both sides and uses `os.path.commonpath`.
 
-**The general lesson, which is not about `jq`:** a guard that fails open is worse than no guard, because the documentation describing it becomes the thing people trust. Neither hook had a test, and nothing ever tried a command they were supposed to block — so "we have hooks" was load-bearing for eight phases without once being true. If you add a hook, first make it deny something and watch it happen.
+**The general lesson, which is not about `jq`:** a guard that fails open is worse than no guard, because the documentation describing it becomes the thing people trust. Neither hook had a test, and nothing ever tried a command they were supposed to block - so "we have hooks" was load-bearing for eight phases without once being true. If you add a hook, first make it deny something and watch it happen.
 
 **Known false positive, accepted:** `block-protected-branch-ops.sh` matches the whole command string, so a shell heredoc writing documentation that quotes a blocked command is itself blocked. Since #283 that covers PowerShell too, including a commit message or PR body passed inline or as a here-string. Write files with the `Write`/`Edit` tools rather than heredocs, and pass messages and bodies as files (`git commit -F`, `gh pr create --body-file`), which is the better habit anyway.
 
 ## Task distribution (added 2026-08-05)
 
-This is the mechanical counterpart to `docs/AUTONOMOUS_WORKFLOW.md`'s Senior Dev / junior / independent-reviewer model: the Senior Dev session uses the native `TaskCreate`/`TaskList`/`TaskUpdate` tools as the shared task board, breaking phase work from `PROJECT_TODO.md` into discrete tasks with real `addBlockedBy`/`addBlocks` dependencies (not a flat list), then for each independently-startable task creates a worktree and dispatches a fresh session scoped to just that one task. Once that task's branch is pushed and a PR opened, review happens in a genuinely separate session with no shared context (a new session/process, not a continuation of the implementing one) — per `docs/AUTONOMOUS_WORKFLOW.md`'s PR review protocol — with the automated gate (`mvn test`, including the Modulith `ApplicationModules.verify()` check) run first as a cheap filter before spending a fresh session's attention on it.
+This is the mechanical counterpart to `docs/AUTONOMOUS_WORKFLOW.md`'s Senior Dev / junior / independent-reviewer model: the Senior Dev session uses the native `TaskCreate`/`TaskList`/`TaskUpdate` tools as the shared task board, breaking phase work from `PROJECT_TODO.md` into discrete tasks with real `addBlockedBy`/`addBlocks` dependencies (not a flat list), then for each independently-startable task creates a worktree and dispatches a fresh session scoped to just that one task. Once that task's branch is pushed and a PR opened, review happens in a genuinely separate session with no shared context (a new session/process, not a continuation of the implementing one) - per `docs/AUTONOMOUS_WORKFLOW.md`'s PR review protocol - with the automated gate (`mvn test`, including the Modulith `ApplicationModules.verify()` check) run first as a cheap filter before spending a fresh session's attention on it.
 
 ## Dispatch cost: model choice and brief scope (added 2026-08-10)
 
 `CLAUDE.md`'s "Choosing a model when dispatching" holds the operative rule. This is the evidence behind it, kept here rather than in a file loaded into every session.
 
-**What prompted it.** The owner noticed unusually high usage. The cause was that **no dispatch had ever passed `model`**, so every agent inherited the Senior Dev's own. Per-agent totals reported in completion notifications ran mostly between 100k and 285k tokens, and the largest were not the hardest — a prose reflow that replaced newlines with spaces, and a round applying a list of six already-specified fixes, were both near the top.
+**What prompted it.** The owner noticed unusually high usage. The cause was that **no dispatch had ever passed `model`**, so every agent inherited the Senior Dev's own. Per-agent totals reported in completion notifications ran mostly between 100k and 285k tokens, and the largest were not the hardest - a prose reflow that replaced newlines with spaces, and a round applying a list of six already-specified fixes, were both near the top.
 
-**Be precise about what model choice does and does not fix.** It changes price per token, not the number of tokens. The measurable share of the fixed overhead — instructing every agent to read `CLAUDE.md`, `SPEC.md`, `PROJECT_TODO.md` and `docs/DECISIONS.md` in full — is on the order of 30k tokens against a 220k run, so roughly 15%. The rest is the work itself. Both levers are worth pulling; neither alone explains the total.
+**Be precise about what model choice does and does not fix.** It changes price per token, not the number of tokens. The measurable share of the fixed overhead - instructing every agent to read `CLAUDE.md`, `SPEC.md`, `PROJECT_TODO.md` and `docs/DECISIONS.md` in full - is on the order of 30k tokens against a 220k run, so roughly 15%. The rest is the work itself. Both levers are worth pulling; neither alone explains the total.
 
 **Why cold reviews stay expensive.** Independent review has repeatedly found defects that self-review and green suites did not: a credential leak where `fetch` followed a redirect and forwarded an admin password past the locality guard (reproduced on Node 24.14.0); a `-webkit-box-orient` declaration no test asserted, whose deletion left every test passing and the feature completely inert in a browser; and, more than once, false claims in the Senior Dev's own documentation. That is the layer to protect, and this policy leans harder on it.
 
-**Note what is *not* in that list.** An earlier draft cited a `CHECK` constraint that three-valued logic would have made permissive. That was a *prevented* defect — flagged in the dispatch brief and reasoned through by the implementer — not a review catch, and this project had already retracted it from a near-identical list on PR #98 for exactly that reason. It went back in anyway. Near-miss stories are the most quotable material here and the easiest to misattribute; check who actually caught a thing before crediting a layer with it.
+**Note what is *not* in that list.** An earlier draft cited a `CHECK` constraint that three-valued logic would have made permissive. That was a *prevented* defect - flagged in the dispatch brief and reasoned through by the implementer - not a review catch, and this project had already retracted it from a near-identical list on PR #98 for exactly that reason. It went back in anyway. Near-miss stories are the most quotable material here and the easiest to misattribute; check who actually caught a thing before crediting a layer with it.
 
 **Where the cheaper rows carry real risk, and it is not hypothetical.**
 
-- *Fix rounds.* `CLAUDE.md`'s "Review-fix scrutiny" bullet exists because this project shipped a defect **in a review response** — adding login rate limiting reused a shared limiter with an unnamespaced key and broke password reset. A fix round is not automatically mechanical, which is why the security/concurrency/migration row overrides the specification test.
+- *Fix rounds.* `CLAUDE.md`'s "Review-fix scrutiny" bullet exists because this project shipped a defect **in a review response** - adding login rate limiting reused a shared limiter with an unnamespaced key and broke password reset. A fix round is not automatically mechanical, which is why the security/concurrency/migration row overrides the specification test.
 - *Verification runs.* The whole thesis of `AGENT_LOG.md` is that tooling reports success without having performed the check. The seed-verification agent refused to claim an unmet gate when Docker was broken, labelled which demonstrations were stub-backed, and audited its own cleanup for a gap it could not close. That is judgement. Verification is deliberately **not** on the cheapest row.
 
-**Why there is an allowlist instead of a test.** Two attempts at a clean boundary have now failed against this project's own examples. "Is the contract settled" failed because the date-snapping refusal happened against a settled ADR. Its replacement — "can you write the acceptance criteria in advance" — failed on the *same* example: `AGENT_LOG.md` records that the agent refused because snapping "would rewrite a stored `2024-03-17` … directly contradicting the round-trip requirement **in the same brief**". The criteria were written; the agent had to notice two written requirements conflicted. The other two flagship cases fail the test the same way: issue #86 specified a mechanism (`line-clamp`) that turned out to be half a fix, and the `NgOptimizedImage` rejection came from reading library source nobody had asked to be read. What unites all three is an agent judging whether doing what was asked would achieve what was wanted — which is not predictable in advance, because a specifier able to predict it would have written a better brief. So `CLAUDE.md` errs expensive and lists the cheap cases explicitly rather than pretending a criterion exists.
+**Why there is an allowlist instead of a test.** Two attempts at a clean boundary have now failed against this project's own examples. "Is the contract settled" failed because the date-snapping refusal happened against a settled ADR. Its replacement - "can you write the acceptance criteria in advance" - failed on the *same* example: `AGENT_LOG.md` records that the agent refused because snapping "would rewrite a stored `2024-03-17` … directly contradicting the round-trip requirement **in the same brief**". The criteria were written; the agent had to notice two written requirements conflicted. The other two flagship cases fail the test the same way: issue #86 specified a mechanism (`line-clamp`) that turned out to be half a fix, and the `NgOptimizedImage` rejection came from reading library source nobody had asked to be read. What unites all three is an agent judging whether doing what was asked would achieve what was wanted - which is not predictable in advance, because a specifier able to predict it would have written a better brief. So `CLAUDE.md` errs expensive and lists the cheap cases explicitly rather than pretending a criterion exists.
 
-**The resume interaction.** `SendMessage` takes no model parameter, so a resumed agent keeps whatever it started on and in-flight work cannot be made cheaper. Where the cost policy and the resume rule conflict, resume wins — a cheap restart discards the context that rule exists to preserve.
+**The resume interaction.** `SendMessage` takes no model parameter, so a resumed agent keeps whatever it started on and in-flight work cannot be made cheaper. Where the cost policy and the resume rule conflict, resume wins - a cheap restart discards the context that rule exists to preserve.
 
 **Known risk, stated rather than discovered later.** A cheaper fix round will sometimes miss what an expensive one would have caught, which then lands on the cold review or ships. Revisit if review rounds start finding defects a fix round plainly should have.
 
@@ -131,7 +131,7 @@ This is the mechanical counterpart to `docs/AUTONOMOUS_WORKFLOW.md`'s Senior Dev
 
 The operative rule lives in `CLAUDE.md` ("When a dispatched agent dies mid-task"): **resume the agent via `SendMessage` with its ID rather than salvaging its work by hand**, and treat a dying agent's final message as a fragment rather than a status report. `AGENT_LOG.md`'s 2026-08-08 entry has the full account of why.
 
-The part that belongs here, because it interacts with the worktree rules above: **a dead agent's worktree is not automatically free.** Do not remove or reassign it while a resume is still possible — resuming a session whose working directory has been deleted or checked out to a different branch defeats the point. If you do decide to salvage instead, the worktree stays assigned to that task until its branch merges, and the deletion-before-prune ordering in the cleanup guidance above still applies (a half-removed worktree leaves a directory whose git commands silently resolve to the main checkout).
+The part that belongs here, because it interacts with the worktree rules above: **a dead agent's worktree is not automatically free.** Do not remove or reassign it while a resume is still possible - resuming a session whose working directory has been deleted or checked out to a different branch defeats the point. If you do decide to salvage instead, the worktree stays assigned to that task until its branch merges, and the deletion-before-prune ordering in the cleanup guidance above still applies (a half-removed worktree leaves a directory whose git commands silently resolve to the main checkout).
 
 ## Git worktree pattern (Phase 7 isolation exercise)
 
@@ -143,7 +143,7 @@ git worktree add ../My_Site-frontend-agent phase7/frontend-agent
 Launch a separate Claude Code session in each directory:
 
 - **Backend-agent session:** give it `CLAUDE.md`, `SPEC.md`, `docs/DECISIONS.md`, `docs/DATA_MODEL.md`, `docs/openapi.yaml`. Don't reference frontend requirements beyond what's already in `SPEC.md`'s user stories.
-- **Frontend-agent session:** give it only `docs/openapi.yaml` and `SPEC.md`'s user stories, developing against a mock server generated from the relevant contract addition — not the live backend (the correction from Phase 3's mistake; see `docs/AUTONOMOUS_WORKFLOW.md`). Don't explain backend implementation details you happen to know from watching it get built — that's the most likely way this test gets silently invalidated.
+- **Frontend-agent session:** give it only `docs/openapi.yaml` and `SPEC.md`'s user stories, developing against a mock server generated from the relevant contract addition - not the live backend (the correction from Phase 3's mistake; see `docs/AUTONOMOUS_WORKFLOW.md`). Don't explain backend implementation details you happen to know from watching it get built - that's the most likely way this test gets silently invalidated.
 
 Clean up once the isolation exercise's integration is done:
 
@@ -156,15 +156,15 @@ git worktree remove ../My_Site-frontend-agent
 
 `CLAUDE.md` carries the rule; this is the incident and the reasoning.
 
-**What happened.** Fifteen consecutive issues (#107-#124, plus #49 and #68 from earlier) were filed with **no labels at all**. The convention was unambiguous and visible in every one of the ~100 issues that came before: area labels only — `backend`, `frontend`, `infra`, `documentation` — with the stock GitHub set (`bug`, `enhancement`, `question`, ...) at **zero uses**. Nothing about the convention was ambiguous. It simply was not applied.
+**What happened.** Fifteen consecutive issues (#107-#124, plus #49 and #68 from earlier) were filed with **no labels at all**. The convention was unambiguous and visible in every one of the ~100 issues that came before: area labels only - `backend`, `frontend`, `infra`, `documentation` - with the stock GitHub set (`bug`, `enhancement`, `question`, ...) at **zero uses**. Nothing about the convention was ambiguous. It simply was not applied.
 
-**Why, and this is the part worth keeping.** The section in `CLAUDE.md` that carries the filing checklist was titled *"PR conventions"*. It is read before every PR and lists exactly what a PR needs, so it was followed exactly — for PRs. Issues had no entry anywhere, so nothing was skipped; there was nothing to skip. The rule was not broken, it was absent, and a checklist that is complete for one artifact reads as complete for everything.
+**Why, and this is the part worth keeping.** The section in `CLAUDE.md` that carries the filing checklist was titled *"PR conventions"*. It is read before every PR and lists exactly what a PR needs, so it was followed exactly - for PRs. Issues had no entry anywhere, so nothing was skipped; there was nothing to skip. The rule was not broken, it was absent, and a checklist that is complete for one artifact reads as complete for everything.
 
 The section is now *"Issue and PR conventions"*, which is a smaller change than it looks: the failure was scope, not content.
 
 **Two mechanical contributors:**
 
-- `gh issue create` accepts a filing with neither label nor milestone and reports success identically either way. There is no warning and no non-zero exit. Success output is not evidence the issue is complete — the same "verify the effect, not the exit code" rule that `AGENT_LOG.md` class 5 already documents for issue *linking*.
+- `gh issue create` accepts a filing with neither label nor milestone and reports success identically either way. There is no warning and no non-zero exit. Success output is not evidence the issue is complete - the same "verify the effect, not the exit code" rule that `AGENT_LOG.md` class 5 already documents for issue *linking*.
 - Labels have to be passed on the `create` call. Adding them afterwards means remembering, at the end of a filing session, that a thing which already looked finished was not.
 
 **The check**, which takes one command and is worth running after any batch of filings:
@@ -176,12 +176,12 @@ gh issue list --state open --limit 200 --json number,milestone --jq '[.[]|select
 
 Both should return `[]`.
 
-**On adding a label rather than forcing a wrong one.** Fixing the backlog surfaced one issue (#49, content migration) that no existing area covered — it is site copy, not backend, frontend, or infra. A `content` label was added for it rather than mislabelling it `documentation`, which would have made the taxonomy lie to keep the checklist green. If a genuine gap appears, widen the taxonomy and say so; do not round to the nearest wrong answer.
+**On adding a label rather than forcing a wrong one.** Fixing the backlog surfaced one issue (#49, content migration) that no existing area covered - it is site copy, not backend, frontend, or infra. A `content` label was added for it rather than mislabelling it `documentation`, which would have made the taxonomy lie to keep the checklist green. If a genuine gap appears, widen the taxonomy and say so; do not round to the nearest wrong answer.
 
 ## Closing keywords: the three incidents (added 2026-08-29)
 
 `CLAUDE.md` states the rules and points here for the evidence. It pointed here from 2026-08-15
-(`faa0f3d`) until this section was written — fourteen days in which the one sentence inviting a
+(`faa0f3d`) until this section was written - fourteen days in which the one sentence inviting a
 reader to check the evidence led nowhere (#162). It was found by auditing a stale worktree, not by
 anyone following it, which is the thing about a broken pointer.
 
@@ -194,7 +194,7 @@ missing is one someone will eventually decide to simplify.
 
 The repo's default branch was a stale `master` from creation, while every real PR targeted `main`.
 PRs #76, #77 and #79 all carried keywords, all linked **zero** issues, and were already merged by the
-time anyone noticed — their issues are permanently unlinked. PR #80 had the same bug and was still
+time anyone noticed - their issues are permanently unlinked. PR #80 had the same bug and was still
 open, so it is the one that could be repaired.
 
 The rendered PR body looks identical either way. The only way to see it is `closingIssuesReferences`
@@ -203,7 +203,7 @@ via GraphQL, and nobody had thought to check the mechanism at all.
 Fixed by switching the default branch to `main` and deleting `master` after confirming it was an
 ancestor, then rewriting #80's body and re-verifying: it closed all ten of its issues on merge.
 `AGENT_LOG.md`, 2026-08-02. **Superseded 2026-08-27:** the default is now `dev`, for the same
-mechanism — see the Branch model section above and `docs/DECISIONS.md`. Do not "restore" `main` as
+mechanism - see the Branch model section above and `docs/DECISIONS.md`. Do not "restore" `main` as
 the default on the strength of this paragraph; that would void every feature PR's keywords again.
 
 **What #80 also established, once it was the only variable left.** With the default corrected, #80's
@@ -223,7 +223,7 @@ each issue number.
 
 PR #100 opened with "Advances #49. **Deliberately does not close it**" and carried no intentional
 keyword. Further down, a sentence explaining what *would* finish the work said that applying it to a
-live site is what would close that issue — and GitHub matched the keyword there. Issue #49 closed on
+live site is what would close that issue - and GitHub matched the keyword there. Issue #49 closed on
 merge at 09:56:51 and was reopened 54 seconds later.
 
 The parser has no notion of context, negation, or the sentence around it. This is why `CLAUDE.md`
@@ -232,7 +232,7 @@ PR trying to close an issue, it is the one that isn't.
 
 ### 3. The PR documenting incident 2 re-committed it (2026-08-10)
 
-PR #101 was the fix — it added the rule to `CLAUDE.md`. Its own body quoted the offending sentence
+PR #101 was the fix - it added the rule to `CLAUDE.md`. Its own body quoted the offending sentence
 and its commit message repeated it in prose. `closingIssuesReferences` on that PR returned `49`, so
 merging it would have taken the same issue down a second time. Caught by the independent review, not
 by its author, hours after that author had written the rule. It was closed unmerged and superseded by
@@ -240,11 +240,11 @@ PR #102 on a clean branch, because the offending commit message could not be cor
 force-push.
 
 **What this established that the rule did not previously say: backticks neutralise a keyword,
-blockquotes do not.** PR #101 was an accidental controlled experiment — one occurrence in a
+blockquotes do not.** PR #101 was an accidental controlled experiment - one occurrence in a
 blockquote, one in a code span, same PR, same issue. Its rendered body carries exactly one
 `issue-keyword` marker, on the blockquoted occurrence; the backticked one renders as a plain `code`
 element with no keyword span and no reference. **Check that specific marker**, not the count of issue
-links — a body can carry several links for unrelated reasons, and "one reference" is not what is
+links - a body can carry several links for unrelated reasons, and "one reference" is not what is
 being claimed.
 
 The first rewrite of the rule claimed *neither* form neutralises, which was self-refuting: the
@@ -258,7 +258,7 @@ scanned separately.
 
 This is GitHub's documented behaviour rather than something this project has demonstrated: incident 3
 does not isolate it, because #101's body produced a #49 link too, so the two routes were never
-separated. This repo still has no natural experiment that separates them — every keyword-bearing
+separated. This repo still has no natural experiment that separates them - every keyword-bearing
 commit that has landed on an integration branch arrived in a PR whose body carried the same link.
 Stated here because a check that cannot see one of its inputs should say so.
 
@@ -266,7 +266,7 @@ Stated here because a check that cannot see one of its inputs should say so.
 
 The rules in `CLAUDE.md` are the operative version. The habits behind them:
 
-- Run the GraphQL check on **every** PR before merging, including — especially — ones meant to close
+- Run the GraphQL check on **every** PR before merging, including - especially - ones meant to close
   nothing. Two of the three incidents were PRs that were not trying to close anything.
 - Scan commit messages separately, since the check cannot see them.
 - When writing *about* keywords, put them in backticks. That is verified safe, and it is the
@@ -276,4 +276,4 @@ The rules in `CLAUDE.md` are the operative version. The habits behind them:
 
 ## AGENT_LOG.md discipline
 
-Log every session, start to finish, for the whole project — not just Phase 4/7 (see `AGENT_LOG.md`'s own header note). During the Phase 7 isolation exercise specifically, flag contract mismatches (endpoint doesn't match the OpenAPI schema, an assumed enum value the backend never validates, pagination shape drift) as their own category, separate from ordinary bugs — that's the actual differentiation artifact `PROJECT_TODO.md` calls out.
+Log every session, start to finish, for the whole project - not just Phase 4/7 (see `AGENT_LOG.md`'s own header note). During the Phase 7 isolation exercise specifically, flag contract mismatches (endpoint doesn't match the OpenAPI schema, an assumed enum value the backend never validates, pagination shape drift) as their own category, separate from ordinary bugs - that's the actual differentiation artifact `PROJECT_TODO.md` calls out.

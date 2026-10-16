@@ -126,8 +126,8 @@ export async function login(
  * The cache is per-run, not across runs: `teardown` deletes it (see {@link discardCachedToken}),
  * because an admin token that outlives the account it was minted for is a live credential
  * sitting on disk. That costs the suite one login per run on top of the admin journeys' two real
- * UI logins — three of `AuthService`'s five-per-15-minutes budget, so a second run inside the same
- * window fails on its third login — which is the deliberate trade.
+ * UI logins - three of `AuthService`'s five-per-15-minutes budget, so a second run inside the same
+ * window fails on its third login - which is the deliberate trade.
  *
  * The reuse path still matters *within* a run, and it revalidates against the API before
  * trusting what it read, so a backend restarted mid-run or a rotated secret falls back to a
@@ -208,7 +208,7 @@ async function writeCachedToken(token: string, expiresAt: string): Promise<void>
  * Both halves are needed, and deleting the row is the weaker of the two. `SecurityConfig`
  * configures a stateless resource server whose authorities come from the token's `roles` claim;
  * `AdminUserRepository` is consulted at login and never again. So a token minted before the row
- * was deleted keeps working for the rest of its hour — meaning that without this, the account
+ * was deleted keeps working for the rest of its hour - meaning that without this, the account
  * was cleaned up but the credential that actually grants admin write access stayed on disk.
  *
  * Idempotent (`force: true`), so it is safe in a teardown path that must not add failures of
@@ -267,11 +267,11 @@ async function collectPages<T>(fetchPage: (page: number) => Promise<PageResponse
 
 /**
  * Deletes every contact message this suite created, matched by the reserved `.invalid` email
- * domain in `support/env.ts` — never anything a developer submitted by hand.
+ * domain in `support/env.ts` - never anything a developer submitted by hand.
  *
  * **This frees the contact form's rate-limit window only partially, and the distinction
  * matters.** `ContactService` does derive the limit from a `count(*)` over `contact_message`
- * rather than from in-memory state, so deleting rows does move the counter — but it counts by
+ * rather than from in-memory state, so deleting rows does move the counter - but it counts by
  * `requester_ip_hash`, not by email:
  *
  * ```java
@@ -281,7 +281,7 @@ async function collectPages<T>(fetchPage: (page: number) => Promise<PageResponse
  * So this reclaims the slots *this suite* used, and nothing else. A message a developer
  * submitted by hand from the same machine inside the trailing hour still occupies a slot, and
  * no purge that stays inside the suite's own namespace can reclaim it. Widening the match would
- * mean deleting a developer's real data, which is not a trade this suite gets to make — so the
+ * mean deleting a developer's real data, which is not a trade this suite gets to make - so the
  * rate-limit journey asserts the precondition explicitly instead (see `tests/contact.spec.ts`).
  *
  * Deliberately narrower than {@link purgeE2eData}: the contact journeys call this between
@@ -324,7 +324,7 @@ export async function purgeE2eProjects(token: string): Promise<number> {
 }
 
 /**
- * Full cleanup — everything this suite could have created. Only for `setup` and `teardown`.
+ * Full cleanup - everything this suite could have created. Only for `setup` and `teardown`.
  *
  * Run before seeding as well as after the suite: a run that crashed before teardown must not be
  * able to poison the next one.

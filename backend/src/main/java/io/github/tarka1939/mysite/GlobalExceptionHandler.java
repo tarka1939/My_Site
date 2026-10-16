@@ -179,7 +179,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Fallback for anything not handled above or by the base class (NPE, DataAccessException,
-     * etc.) — without this, a truly unexpected exception falls through to Spring Boot's default
+     * etc.) - without this, a truly unexpected exception falls through to Spring Boot's default
      * error response instead of the RFC 9457 shape every other error on this API uses.
      * Deliberately doesn't echo {@code ex.getMessage()} to the client, since an unanticipated
      * exception's message could contain internal details (SQL, file paths); logs the full

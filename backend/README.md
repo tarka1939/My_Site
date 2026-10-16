@@ -14,14 +14,14 @@ Package-by-feature under `io.github.tarka1939.mysite`, with boundaries enforced 
 | `contact/` | `contact` (public, rate-limited), `contact-messages` (admin) |
 | `auth/` | `auth/login`, `auth/password-reset-request`, `auth/password-reset/validate`, `auth/password-reset` |
 | `about/` | `about` (public GET, admin PUT) |
-| `githubsync/` | `webhooks/github` — Phase 7a, off unless `GITHUB_SYNC_ENABLED=true` |
+| `githubsync/` | `webhooks/github` - Phase 7a, off unless `GITHUB_SYNC_ENABLED=true` |
 
 Cross-cutting pieces (security config, the exception handler, the shared rate limiter, client-IP
 resolution behind proxies, the async executor, the Resend client) live in the root package.
 Schema is Flyway-only, `src/main/resources/db/migration`.
 
 `mvn test` runs unit tests, Spring Modulith verification, and Testcontainers integration tests
-against real Postgres — those need a running Docker daemon, and fail rather than skip without one.
+against real Postgres - those need a running Docker daemon, and fail rather than skip without one.
 
 See `CLAUDE.md` (repo root) for the locked-in architecture conventions and `AGENT_LOG.md`
 for the judgment calls made while building it.
