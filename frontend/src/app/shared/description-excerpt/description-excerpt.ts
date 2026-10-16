@@ -44,8 +44,13 @@
  */
 const PARAGRAPH_BREAK = /\r?\n[ \t]*\r?\n/;
 
-/** Trailing punctuation that reads as a typo immediately before an ellipsis ("word,…"). */
-const TRAILING_PUNCTUATION = /[\s.,;:!?–—-]+$/;
+/**
+ * Trailing punctuation that reads as a typo immediately before an ellipsis ("word,…").
+ *
+ * The en and em dash are written as escapes because the repo's prose avoids them (CLAUDE.md), but
+ * they must stay in the class: descriptions are admin-authored and can still contain them.
+ */
+const TRAILING_PUNCTUATION = /[\s.,;:!?- - -]+$/;
 
 /**
  * Characters of description text a card may carry, excluding the appended ellipsis.
