@@ -80,11 +80,16 @@
                    tooltip reaches only a mouse. See needsTagToPublish().
 
                    The accessible name carries the title, as the buttons' names do, and starts with
-                   the visible text, so the name contains the label (WCAG 2.5.3). -->
+                   the visible text, so the name contains the label (WCAG 2.5.3).
+
+                   The project id is what keepFocusInRow() finds this row's link by, when an
+                   Unpublish puts this link where the focused button was. -->
               <a
+                #addTagLink
                 class="publish-blocked"
                 [routerLink]="['/admin/projects', project.id, 'edit']"
                 [attr.aria-label]="addTagToPublish + ' ' + project.title"
+                [attr.data-project-id]="project.id"
               >{{ addTagToPublish }}</a>
             } @else {
               <!-- An action label ("Publish"/"Unpublish") rather than a state label plus
@@ -97,9 +102,10 @@
                    two can never disagree (WCAG 2.5.3), and carries the title because a screen reader
                    moving button to button through a table hears "Publish" with no idea which row. -->
               <button
+                #publishToggle
                 type="button"
                 class="publish-toggle"
-                (click)="setPublished(project, !project.published)"
+                (click)="setPublished(project, !project.published, publishToggle)"
                 [disabled]="publishingId() === project.id"
                 [attr.aria-label]="publishAction(project) + ' ' + project.title"
               >

@@ -402,5 +402,63 @@ describe('AdminProjectsListComponent', () => {
       expect(rowFor(fixture, 'Delay').querySelector('.publish-toggle')).toBeNull();
       expect(addTagLink(fixture, 'Delay')?.textContent?.trim()).toBe('Add a tag to publish');
     });
+
+    describe('focus, when Unpublish turns into the way to a tag', () => {
+      // The pressed button is destroyed by the answer, because that row no longer offers Publish.
+      // A control that disappears while focused leaves focus on the page, so where a keyboard
+      // user's next Tab goes is up to the browser and a screen reader has nothing to say. The link
+      // standing where the button was is where they should be.
+
+      it('moves a keyboard user to the link that replaced the button', async () => {
+        updateProject.mockReturnValue(of({ ...LIVE_TAGLESS, published: false }));
+        const fixture = await renderComponent(AdminProjectsListComponent);
+        const toggle = publishButton(fixture, 'Delay');
+
+        toggle.focus();
+        expect(document.activeElement).toBe(toggle);
+        // Enter or Space on a focused button arrives as a click.
+        toggle.click();
+        await fixture.whenStable();
+
+        const link = addTagLink(fixture, 'Delay');
+        expect(link).not.toBeNull();
+        expect(document.activeElement).toBe(link);
+      });
+
+      it('moves nobody who was not on the button when it was pressed', async () => {
+        // A mouse click that does not focus the button, as in Safari. Focus was never in this row,
+        // so there is no place in it to keep.
+        updateProject.mockReturnValue(of({ ...LIVE_TAGLESS, published: false }));
+        const fixture = await renderComponent(AdminProjectsListComponent);
+
+        publishButton(fixture, 'Delay').click();
+        await fixture.whenStable();
+
+        // The link is there, so focus being elsewhere is a decision, not a missing link.
+        expect(addTagLink(fixture, 'Delay')).not.toBeNull();
+        expect(document.activeElement).not.toBe(addTagLink(fixture, 'Delay'));
+      });
+
+      it('does not pull back an admin who moved to another control while it ran', async () => {
+        const pending = new Subject<Project>();
+        updateProject.mockReturnValue(pending);
+        const fixture = await renderComponent(AdminProjectsListComponent);
+        const toggle = publishButton(fixture, 'Delay');
+
+        toggle.focus();
+        toggle.click();
+        await fixture.whenStable();
+        // On to the next row while Delay's request is still out.
+        const elsewhere = publishButton(fixture, 'Equalizer');
+        elsewhere.focus();
+
+        pending.next({ ...LIVE_TAGLESS, published: false });
+        pending.complete();
+        await fixture.whenStable();
+
+        expect(addTagLink(fixture, 'Delay')).not.toBeNull();
+        expect(document.activeElement).toBe(elsewhere);
+      });
+    });
   });
 });

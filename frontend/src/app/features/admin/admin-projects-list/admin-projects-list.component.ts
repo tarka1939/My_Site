@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DOCUMENT,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  inject,
+  signal,
+  viewChildren,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
@@ -65,6 +75,10 @@ function publicationChange(project: Project, published: boolean): ProjectWriteRe
 })
 export class AdminProjectsListComponent {
   private readonly projectsApi = inject(ProjectsService);
+  private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
+  /** Every "Add a tag to publish" link, which an Unpublish can hand focus to: keepFocusInRow(). */
+  private readonly addTagLinks = viewChildren<ElementRef<HTMLAnchorElement>>('addTagLink');
 
   protected readonly projects = signal<Project[]>([]);
   protected readonly page = signal(0);
@@ -108,14 +122,24 @@ export class AdminProjectsListComponent {
    *
    * Deleting is not the way to unpublish: a project the GitHub sync knows about is recreated as a
    * draft by the next push to its repository, so a delete meant as "hide this" comes back.
+   *
+   * `toggle` is the button that was pressed, so its row can keep focus if the answer replaces it
+   * (see keepFocusInRow()).
    */
-  protected setPublished(project: Project, published: boolean): void {
+  protected setPublished(project: Project, published: boolean, toggle?: HTMLElement): void {
     // The button is disabled while its own request is in flight; this is the guarantee behind that
     // UX, on the model of the project form's row handlers. A second PUT for the same project would
     // race the first, and the loser's response is what would end up rendered.
     if (this.publishingId() === project.id) {
       return;
     }
+
+    // Asked now, not when the answer arrives: the button is about to be disabled for the request,
+    // and a browser may take focus off a disabled control, so by then the question has no answer.
+    // A keyboard user is always on it; a mouse click focuses a button in some browsers and not in
+    // others (Safari), and where it does not, there is no place to keep.
+    const focusedToggle =
+      toggle !== undefined && this.document.activeElement === toggle ? toggle : null;
 
     this.publishError.set(null);
     this.publishingId.set(project.id);
@@ -129,10 +153,16 @@ export class AdminProjectsListComponent {
         // The response is the project as stored, so the row is replaced with it rather than patched
         // with what was asked for -- what is on screen then describes what the server did. No
         // reload: it would throw away the page position and re-fetch twenty rows to change one.
-        next: (updated) =>
+        next: (updated) => {
           this.projects.update((projects) =>
             projects.map((existing) => (existing.id === updated.id ? updated : existing)),
-          ),
+          );
+          // Only when the answer swaps the button for the link. Otherwise the same button stays put
+          // under the same @if branch, so there is no new control to move to.
+          if (focusedToggle && this.needsTagToPublish(updated)) {
+            this.keepFocusInRow(updated.id, focusedToggle);
+          }
+        },
         error: (problem: ApiProblem) => {
           // Optional-chained like both forms' handlers: errorInterceptor normalizes every
           // HttpErrorResponse into an ApiProblem but rethrows anything that is not one unchanged.
@@ -179,12 +209,50 @@ export class AdminProjectsListComponent {
    * that is where a tag can be added; the row cannot.
    *
    * A live project with no tags still gets Unpublish -- a draft may be tagless, so taking it down is
-   * allowed -- and the server's answer then puts this state on its row. setPublished() does not
-   * refuse a tagless publish itself: the server is the authority on the rule, and a request that
-   * reaches it anyway is refused with a 400 that publishError renders.
+   * allowed -- and the server's answer then puts this state on its row, taking focus along to the
+   * link if it was on the button (keepFocusInRow()). setPublished() does not refuse a tagless
+   * publish itself: the server is the authority on the rule, and a request that reaches it anyway
+   * is refused with a 400 that publishError renders.
    */
   protected needsTagToPublish(project: Project): boolean {
     return !project.published && project.tags.length === 0;
+  }
+
+  /**
+   * After an Unpublish turns a tagless project's button into "Add a tag to publish", put focus on
+   * that link: it is the control now standing where the one the admin pressed was.
+   *
+   * Without this, the pressed button is destroyed and focus is left on the page, not in the row.
+   * Where a keyboard user's next Tab goes then depends on the browser -- some restart from the top
+   * of the page -- and a screen reader is left with nothing to announce. With it, the link's name -- "Add a tag to publish <title>" -- is what is
+   * read next, which also says what just happened to the row.
+   *
+   * Only when focus has not moved on since. setPublished() has already established that focus was
+   * on the pressed button; this checks that it is still there, or on nothing (where a disabled or
+   * destroyed control leaves it). A user who has moved to another control while the request ran is
+   * left where they are. A click on blank page also leaves focus on nothing, so that case is
+   * treated as staying -- it cannot be told apart from a browser dropping focus off the disabled
+   * button.
+   *
+   * After the next render, because that is when the link exists: the row repaints only once the
+   * new project is set. The link is found by its project id rather than by position, because
+   * several rows can show one.
+   */
+  private keepFocusInRow(projectId: string, pressed: HTMLElement): void {
+    afterNextRender(
+      {
+        write: () => {
+          const active = this.document.activeElement;
+          if (active !== null && active !== this.document.body && active !== pressed) {
+            return;
+          }
+          this.addTagLinks()
+            .find((link) => link.nativeElement.dataset['projectId'] === projectId)
+            ?.nativeElement.focus();
+        },
+      },
+      { injector: this.injector },
+    );
   }
 
   protected deleteProject(project: Project): void {
