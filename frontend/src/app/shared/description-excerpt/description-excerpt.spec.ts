@@ -48,7 +48,7 @@ describe('toCardExcerpt', () => {
   });
 
   it('drops a trailing en or em dash as well, which admin-authored prose can still contain', () => {
-    for (const dash of ['-', ' - ']) {
+    for (const dash of ['\u2013', '\u2014']) {
       const excerpt = toCardExcerpt(`${'padding '.repeat(29)}tail ${dash} and more text beyond the cap`);
 
       expect(excerpt.endsWith(`${dash}…`)).toBe(false);

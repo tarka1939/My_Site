@@ -10,7 +10,7 @@ Never add "Co-Authored-By" lines to commits. Do not include Claude attribution i
 ## No typographic dashes
 
 Write the keyboard `-`. Never write an em dash, an en dash or any other Unicode dash (U+2010 to U+2015, U+2212). The rule covers code, comments, docs, commit messages, and PR and issue text. Use ` - ` for an aside and `60-75` for a range. This is the owner's rule from 2026-10-17: the dashes are correct typography, but they read as an AI giveaway. An exception needs a technical reason:
-- a regex that must match the character (write it as `—`);
+- a regex that must match the character (write it as `\u2014`);
 - an applied Flyway migration, whose checksum would change;
 - a test that deliberately probes non-ASCII input.
 
