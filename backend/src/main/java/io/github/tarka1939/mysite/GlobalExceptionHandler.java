@@ -92,6 +92,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    /**
+     * A write that would leave a published project with no tags (#148). The same body as a Bean
+     * Validation failure -- status, title, detail and an {@code errors} entry on {@code tags} --
+     * because the rule is a validation rule that Bean Validation cannot express: it depends on the
+     * project's stored {@code published} value, so it is checked in the service (see
+     * {@code ProjectService}). The client has no reason to tell the two apart, and the admin form's
+     * field-error handling then needs no special case.
+     */
+    @ExceptionHandler(TagRequiredToPublishException.class)
+    public ProblemDetail handleTagRequiredToPublish(TagRequiredToPublishException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, "Request failed validation");
+        problem.setTitle("Validation Failed");
+        problem.setProperty("errors", List.of(new FieldErrorDetail("tags", ex.getMessage())));
+        return problem;
+    }
+
     @ExceptionHandler(RateLimitExceededException.class)
     public ProblemDetail handleRateLimitExceeded(RateLimitExceededException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());

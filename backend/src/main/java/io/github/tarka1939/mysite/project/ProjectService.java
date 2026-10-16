@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import io.github.tarka1939.mysite.DuplicateRepoFullNameException;
 import io.github.tarka1939.mysite.PageResponse;
 import io.github.tarka1939.mysite.ResourceNotFoundException;
+import io.github.tarka1939.mysite.TagRequiredToPublishException;
 
 @Service
 public class ProjectService {
@@ -51,15 +52,20 @@ public class ProjectService {
 
     @Transactional
     public ProjectResponse createProject(ProjectWriteRequest request) {
+        // Absent means published, which is what POST has always done -- see
+        // ProjectWriteRequest.published for why the two verbs read the same silence differently.
+        // Worked out once, before anything is written, so the tag rule judges the very value that
+        // is stored: a create that omits published publishes, and is held to the rule.
+        boolean published = request.published() == null || request.published();
+        requireTagsToPublish(published, request.tags());
+
         Project project = new Project(request.title(), request.description());
         project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
         project.setImages(request.images().toArray(new String[0]));
         project.setTags(resolveTags(request.tags()));
         project.setStartedOn(request.startedOn());
         project.setCompletedOn(request.completedOn());
-        // Absent means published, which is what POST has always done -- see
-        // ProjectWriteRequest.published for why the two verbs read the same silence differently.
-        project.setPublished(request.published() == null || request.published());
+        project.setPublished(published);
         if (request.repoFullName() != null) {
             requireRepoFullNameUnclaimed(request.repoFullName(), null);
             project.setRepoFullName(request.repoFullName());
@@ -145,6 +151,22 @@ public class ProjectService {
     @Transactional
     public ProjectResponse updateProject(UUID id, ProjectWriteRequest request) {
         Project project = findProjectOrThrow(id);
+
+        // NOT a full replacement, unlike the fields below, and the asymmetry is the point.
+        // published is newer than the clients that PUT to this endpoint, so a body that omits it
+        // is not asking for it to be cleared -- it predates it. Reading that silence as
+        // "un-publish" would blank a live project on its next edit. See
+        // ProjectWriteRequest.published.
+        //
+        // Worked out before anything on the entity changes, because the tag rule needs the stored
+        // value: a PUT that omits published against a live project leaves it live, so it is held
+        // to the rule exactly as an explicit true is.
+        //
+        // Reading the stored value and then writing is a check-then-act in CLAUDE.md's sense.
+        // ACCEPTED, not missed -- the reasoning is on requireTagsToPublish.
+        boolean published = request.published() != null ? request.published() : project.isPublished();
+        requireTagsToPublish(published, request.tags());
+
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
@@ -157,14 +179,10 @@ public class ProjectService {
         project.setStartedOn(request.startedOn());
         project.setCompletedOn(request.completedOn());
 
-        // NOT unconditional, unlike the two lines above, and the asymmetry is the point.
-        // published and repoFullName are newer than the clients that PUT to this endpoint, so a
-        // body that omits them is not asking for them to be cleared -- it predates them. Reading
-        // that silence as "un-publish" would blank a live project on its next edit. See
-        // ProjectWriteRequest.published.
-        if (request.published() != null) {
-            project.setPublished(request.published());
-        }
+        // The value worked out above: the request's, or the stored one when it said nothing.
+        project.setPublished(published);
+        // NOT unconditional either, for published's reason: an older client's PUT that omits
+        // repoFullName is not a request to unlink.
         if (request.repoFullName() != null) {
             requireRepoFullNameUnclaimed(request.repoFullName(), id);
             project.setRepoFullName(request.repoFullName());
@@ -253,6 +271,55 @@ public class ProjectService {
                 throw new DuplicateRepoFullNameException(
                     "Another project already tracks the repository " + repoFullName);
             });
+    }
+
+    /**
+     * A published project needs at least one tag; a draft may have none (#148, the owner's option
+     * 3, "drafts are exempt"). Judged on the state the write leaves behind: {@code published} is
+     * the value about to be stored, which each caller works out first, not the field the request
+     * happened to carry. Not applied to rows already stored -- only to writes.
+     *
+     * <p><b>Why this is not {@code @Size(min = 1)} on {@code ProjectWriteRequest.tags}.</b> Whether
+     * the rule applies depends on {@code published}, so a field constraint would also refuse a
+     * tagless draft, which is exactly what a GitHub webhook creates and what #148 exists to let the
+     * owner save. A class-level constraint on the request gets only part of the way: it can see an
+     * explicit {@code published: true}, but one record serves both verbs, so it cannot tell that an
+     * omitted {@code published} means true on POST and "unchanged" on PUT, and it cannot see the
+     * stored value the PUT case turns on. Split between such a constraint and this method, the rule
+     * would live in two places with neither of them complete, so all of it lives here.
+     *
+     * <p><b>Concurrency: on PUT, a check-then-act on the stored {@code published}. ACCEPTED.</b>
+     * The value judged was read at the start of the request, and could change before the flush.
+     *
+     * <ul>
+     *   <li>Not through GitHub sync. {@link ProjectRepository#upsertFromGithub}'s
+     *       {@code DO UPDATE SET} names neither {@code published} nor the tags, and its insert half
+     *       writes {@code published = false} with no tags, so sync can neither publish a project
+     *       nor strip one.</li>
+     *   <li>Only through a second admin PUT to the same project, committing inside this one's
+     *       read-to-flush window. {@code Project} has no {@code @Version} and nothing takes a row
+     *       lock, so that is last-write-wins, as concurrent edits here always were. The outcome
+     *       mostly keeps the rule anyway: when any column of the row changes, Hibernate's UPDATE
+     *       writes every column back, stale {@code published} included, since there is no
+     *       {@code @DynamicUpdate} and nothing enables it globally. But the tags are rows in
+     *       {@code project_tags}, rewritten in the same flush and not by that UPDATE, and a PUT
+     *       that changes no column of the project row issues no UPDATE at all. So a tagless save
+     *       of a draft that changes nothing else, racing a publish-with-a-tag of the same draft,
+     *       can end published with no tags.</li>
+     * </ul>
+     *
+     * Accepted for the reason {@link #requireRepoFullNameUnclaimed} gives: one admin account and
+     * hand-driven form submissions, so the racing pair does not occur in this system's traffic.
+     * What it would leave behind is not corrupt either -- a published project without tags is a
+     * state any row could be in before #148, and the site renders it. Nor is it this check's to
+     * close: an explicit {@code published: false} with no tags, which reads nothing stored, races
+     * the same way. Closing it would take a row lock on the read or a {@code @Version} column, not
+     * a different check.
+     */
+    private static void requireTagsToPublish(boolean published, List<String> tagNames) {
+        if (published && tagNames.isEmpty()) {
+            throw new TagRequiredToPublishException();
+        }
     }
 
     private Set<Tag> resolveTags(List<String> tagNames) {
