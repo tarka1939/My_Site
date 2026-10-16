@@ -10,7 +10,10 @@ export interface PageMeta {
   readonly description?: string | null;
   /** `robots` content, i.e. `NOINDEX` (site-meta). Absent means indexable, and *removes* a stale tag. */
   readonly robots?: string;
-  /** Router URL of the page, e.g. `'/projects/abc?tag=dsp'`. Used to build `og:url`. */
+  /**
+   * Router URL of the page, e.g. `'/projects/abc?tag=dsp'`. Used to build `og:url` and the canonical
+   * link. Absent *removes* both, as with `robots`, rather than keeping the previous page's.
+   */
   readonly url?: string;
 }
 
@@ -23,11 +26,14 @@ export interface PageMeta {
  * crawler reads whichever it reaches first -- typically the oldest, i.e. the wrong one. That
  * silent-accumulation bug is what `seo.service.spec.ts` pins down.
  *
- * The tags this writes must already exist in `src/index.html` with matching selectors. They do, and
- * that is not incidental: the static ones are what a non-JS social scraper sees, and these are the
- * per-route overrides Googlebot sees after rendering. If a selector here and one there ever drift
- * apart (`property="og:title"` vs `name="og:title"`), `updateTag` will not find the static tag and
- * will append a duplicate instead of replacing it -- also covered by the spec.
+ * Every tag this writes, except `og:url` and the canonical link, must already exist in
+ * `src/index.html` with a matching selector. They do, and that is not incidental: the static ones
+ * are what a non-JS social scraper sees, and these are the per-route overrides Googlebot sees after
+ * rendering. If a selector here and one there ever drift apart (`property="og:title"` vs
+ * `name="og:title"`), `updateTag` will not find the static tag and will append a duplicate instead
+ * of replacing it -- also covered by the spec. The two exceptions name a page rather than the site,
+ * so `index.html` deliberately ships neither (see {@link setCanonicalUrl}); `updateTag` creates
+ * `og:url` on the first navigation, since it appends when no tag matches.
  *
  * **Escaping is not this class's job, and must not be.** `Meta` writes through
  * `Element.setAttribute`, which takes a string value, not markup -- so a description containing
@@ -110,11 +116,18 @@ export class SeoService {
    * DOM. It reaches only JS-executing crawlers, which is the same limitation every runtime tag here
    * has, and the same one prerendering would lift (see the 2026-08-10 SEO ADR).
    *
-   * `index.html`'s static `og:url` is an unresolvable placeholder, because the canonical domain does
-   * not exist yet (Phase 5 is paused, and `PROJECT_TODO.md` says not to guess it). At runtime the
-   * origin *is* known -- it is whatever origin served the app -- so a JS-executing crawler need not
-   * be told a placeholder. A non-JS scraper still sees the placeholder; that is the known limitation
-   * the ADR accepts, and it disappears when the real origin is filled in.
+   * `og:url` exists only at runtime: `index.html` deliberately ships none (#251). A static value is
+   * one URL for every route, and Facebook and LinkedIn treat `og:url` as the shared object's
+   * identity, so every shared project link would be cached as the root. A non-JS scraper now sees
+   * no `og:url` and should fall back to the URL it fetched; a JS-executing crawler is told the
+   * same thing here, from the origin that actually served the app.
+   *
+   * A page with no `url` gets neither tag, and whatever the previous page wrote is removed rather
+   * than inherited: a stale canonical is a wrong indexing instruction, and a stale `og:url` would
+   * make the page share as the one before it. That is the same "absent means none" rule
+   * {@link setRobots} follows. Nothing in the app takes this path today -- `SeoTitleStrategy`, the
+   * only caller of {@link applyPage}, always passes the router's URL, which is never empty (the
+   * root serialises as `'/'`) -- so it is a guarantee for the next caller, not a live case.
    *
    * Query string and fragment are dropped on purpose: the list page's tag filter and paging are
    * component state rather than URL state today, but if that changes, `?tag=dsp&page=2` must not
@@ -123,10 +136,12 @@ export class SeoService {
   private setCanonicalUrl(url: string | undefined): void {
     const origin = this.document.location?.origin;
     // `origin` is the string "null" for an opaque origin (a `file://` document, a sandboxed
-    // iframe). Composing a URL from it produces "null/projects/x", which is worse than the honest
-    // placeholder already in the markup -- so leave the static tag alone in that case, and write no
-    // canonical at all: a wrong canonical is a far more damaging instruction than a missing one.
+    // iframe). Composing a URL from it produces "null/projects/x", so treat it like a missing url
+    // and write neither tag: a wrong canonical is a far more damaging instruction than a missing
+    // one, and with no static og:url in the markup, missing is the honest state for both.
     if (!url || !origin || origin === 'null') {
+      this.meta.removeTag('property="og:url"');
+      this.document.head.querySelector('link[rel="canonical"]')?.remove();
       return;
     }
     const resolved = new URL(url, origin);
@@ -143,10 +158,11 @@ export class SeoService {
    * Google ignores the lot when a page presents more than one canonical, so appending one per
    * navigation would not merely be untidy, it would silently disable the tag.
    *
-   * Deliberately absent from `index.html`, unlike every other tag here. A static one could only
-   * name the placeholder origin, and a canonical pointing at an unresolvable host on every route is
-   * worse than none: `og:url` degrades to a bad share-card link, a canonical degrades to a bad
-   * indexing instruction. This only ever writes the origin that actually served the app.
+   * Deliberately absent from `index.html`, like `og:url` and for the same reason: a static one
+   * could only name one URL for every route. For `og:url` that made every shared project link
+   * preview as the root (#251); a canonical would be worse, since it would tell Google every page is
+   * a copy of that one -- a bad indexing instruction rather than a bad share-card link. This only
+   * ever writes the origin that actually served the app.
    */
   private updateCanonicalLink(href: string): void {
     const existing = this.document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
