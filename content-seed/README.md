@@ -199,8 +199,10 @@ Remote targets must additionally be HTTPS, since the admin password crosses that
 **Redirects are refused, and that is part of the guard, not a detail.** `fetch` follows redirects
 by default and the guard only ever sees `SEED_BACKEND_URL`, so a 3xx from an approved host would
 send the *next* request somewhere the guard never evaluated. Node strips the `Authorization` header
-across origins but forwards the request **body** verbatim — which on `/auth/login` is the plaintext
-admin password. That was reproduced on Node 24.14.0 against this script before `redirect: 'error'`
+across origins, but on a 307 or 308 it forwards the request **body** verbatim — which on
+`/auth/login` is the plaintext admin password. (A 301, 302 or 303 turns a POST into a GET without a
+body; a `PUT` carrying project copy keeps its body on a 301 or 302 as well.) The password case was
+reproduced on Node 24.14.0 against this script before `redirect: 'error'`
 was added to `request()`. The precondition is not exotic: it needs only something other than the
 intended backend answering on the expected port, which is the scenario in Troubleshooting below.
 

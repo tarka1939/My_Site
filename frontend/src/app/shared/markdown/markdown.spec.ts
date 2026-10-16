@@ -182,9 +182,9 @@ describe('markdownToSummaryText, hard breaks', () => {
   it('does not treat a hard line break as a paragraph break', () => {
     // markdown-it emits `<br>\n` for a trailing-double-space break, so mapping the tag alone left
     // a blank line behind and every paragraph-splitting caller read it as a paragraph boundary.
-    // The visible damage was a card excerpt and a meta description truncated at the first line of
-    // the opening sentence -- on Markdown hard-wrapped in an editor and pasted into the admin
-    // form, where a stray double space at a line end is entirely ordinary.
+    // The visible damage would be a card excerpt and a meta description truncated at the first
+    // line of the opening sentence -- on Markdown hard-wrapped in an editor and pasted into the
+    // admin form, where a stray double space at a line end is entirely ordinary.
     const source = 'A cross-platform equalizer,  \nbuilt on C++17.\n\nSecond paragraph.';
 
     const summary = markdownToSummaryText(source);
