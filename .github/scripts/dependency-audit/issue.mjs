@@ -132,10 +132,12 @@ export function createGh(repo, run = runGh) {
 
     comment: (number, body) => withBodyFile(body, (file) => run(['issue', 'comment', String(number), '--repo', repo, '--body-file', file])),
 
-    edit: (number, body, addLabels) =>
-      withBodyFile(body, (file) =>
-        run(['issue', 'edit', String(number), '--repo', repo, '--body-file', file, ...addLabels.flatMap((l) => ['--add-label', l])]),
-      ),
+    // Labels and the body are two calls on purpose. `gh issue edit --body-file --add-label` makes
+    // separate API requests for them, so one invocation can replace the body and then fail on the
+    // labels; see applyPlan for the order.
+    addLabels: (number, labels) => run(['issue', 'edit', String(number), '--repo', repo, ...labels.flatMap((l) => ['--add-label', l])]),
+
+    edit: (number, body) => withBodyFile(body, (file) => run(['issue', 'edit', String(number), '--repo', repo, '--body-file', file])),
   };
 }
 
@@ -183,18 +185,27 @@ async function createAndCheck(gh, plan) {
 }
 
 /**
- * Rewrite the body first, then comment. An edit that fails writes nothing, so the next run retries
- * it cleanly. The other order posted the comment and then failed the edit, and an edit that fails
- * every week (a body GitHub rejects) would have posted the same comment every week.
+ * Add the labels, then rewrite the body, then comment. The body carries the fingerprint, so it is
+ * the step after which the next run sees nothing to do: everything that can fail without losing
+ * anything goes before it, and only the comment after.
  *
- * The cost: a comment that fails after the edit is lost, because the new fingerprint is already in
- * the body and the next run sees nothing to do. So that failure says exactly that, and carries the
- * comment, which main() prints for posting by hand. The body itself shows the current findings.
+ *   - The labels first, in a call of their own. If they fail, nothing that matters was written
+ *     (adding a label twice is harmless), and the next run retries the whole update. In one call
+ *     with the body, gh could replace the body and then fail on the labels, and the comment would
+ *     be lost with nothing to say so.
+ *   - The body next. An edit that fails writes nothing, so the next run retries it cleanly. The
+ *     other order posted the comment and then failed the edit, and an edit that fails every week (a
+ *     body GitHub rejects) would have posted the same comment every week.
+ *   - The comment last. One that fails after the edit is lost, because the new fingerprint is
+ *     already in the body and the next run sees nothing to do. So that failure says exactly that,
+ *     and carries the comment, which main() prints for posting by hand. The body itself shows the
+ *     current findings.
  */
 export async function applyPlan(gh, plan) {
   if (plan.action === 'create') return createAndCheck(gh, plan);
   if (plan.action === 'update') {
-    await gh.edit(plan.number, plan.body, plan.addLabels);
+    if (plan.addLabels.length) await gh.addLabels(plan.number, plan.addLabels);
+    await gh.edit(plan.number, plan.body);
     try {
       await gh.comment(plan.number, plan.comment);
     } catch (error) {

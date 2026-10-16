@@ -1119,7 +1119,8 @@ describe('issue.mjs', () => {
   /** A fake `gh`: answers from a table of handlers, and records every call. */
   /**
    * `issue view` answers with what the last `issue create` asked for, as GitHub would, unless
-   * `viewAs` replaces that answer.
+   * `viewAs` replaces that answer. Each entry in `fail` is a command (`issue edit`) or a predicate
+   * on the full argument list, and a call it matches fails as gh would.
    */
   function fakeGh({ milestones = [{ number: 10, title: 'Phase 8', state: 'open' }], labels = ['backend', 'frontend', 'infra'], issues = [], fail = [], viewAs, createPrints } = {}) {
     const calls = [];
@@ -1128,7 +1129,7 @@ describe('issue.mjs', () => {
       const bodyIndex = args.indexOf('--body-file');
       calls.push({ args, body: bodyIndex === -1 ? null : readFileSync(args[bodyIndex + 1], 'utf8') });
       const command = args.slice(0, 2).join(' ');
-      if (fail.includes(command)) throw new Error(`gh ${command} failed: HTTP 422`);
+      if (fail.some((f) => (typeof f === 'function' ? f(args) : f === command))) throw new Error(`gh ${command} failed: HTTP 422`);
       const target = args.find((a) => a.startsWith('repos/')) ?? '';
       if (target.includes('/milestones')) return milestones.map((m) => JSON.stringify(m)).join('\n');
       if (target.includes('/labels/')) {
@@ -1213,21 +1214,51 @@ describe('issue.mjs', () => {
     await assert.rejects(applyPlan(gh, plan), /not an issue URL/);
   });
 
-  test('update rewrites the body and adds labels first, then comments', async () => {
+  const isLabelEdit = (args) => args[1] === 'edit' && args.includes('--add-label');
+  const isBodyEdit = (args) => args[1] === 'edit' && args.includes('--body-file');
+
+  test('update adds the labels, then rewrites the body, then comments, each in its own call', async () => {
     const { gh, calls } = fakeGh();
     const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body: 'edited by hand' }] });
     assert.equal(await applyPlan(gh, plan), '#300');
-    assert.deepEqual(calls.map((c) => c.args.slice(0, 3).join(' ')), ['issue edit 300', 'issue comment 300']);
-    assert.equal(calls[0].body, plan.body);
-    assert.ok(calls[0].args.join(' ').includes('--add-label backend --add-label frontend'));
-    assert.equal(calls[1].body, plan.comment);
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 3).join(' ')), ['issue edit 300', 'issue edit 300', 'issue comment 300']);
+    assert.deepEqual(calls[0].args, ['issue', 'edit', '300', '--repo', 'o/r', '--add-label', 'backend', '--add-label', 'frontend']);
+    assert.ok(isBodyEdit(calls[1].args) && !isLabelEdit(calls[1].args));
+    assert.equal(calls[1].body, plan.body);
+    assert.equal(calls[2].body, plan.comment);
   });
 
-  test('an edit that fails posts no comment, so a failure every week cannot repeat one every week', async () => {
-    const { gh, calls } = fakeGh({ fail: ['issue edit'] });
+  test('a clean update has no labels to add, and makes no label call', async () => {
+    const { gh, calls } = fakeGh();
+    const r = resultsWithFindings();
+    const open = { number: 300, state: 'open', body: planIssue({ results: r, issues: [] }).body };
+    const plan = planIssue({ results: cleanResults(), issues: [open] });
+    assert.deepEqual(plan.addLabels, []);
+    await applyPlan(gh, plan);
+    assert.ok(!calls.some((c) => isLabelEdit(c.args)));
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(' ')), ['issue edit', 'issue comment']);
+  });
+
+  test('a label call that fails leaves the body and posts no comment, so the next run retries it all', async () => {
+    const { gh, calls } = fakeGh({ fail: [isLabelEdit] });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body: 'edited by hand' }] });
+    await assert.rejects(applyPlan(gh, plan), (error) => {
+      assert.match(error.message, /gh issue edit failed/);
+      assert.equal(error.unpostedComment, undefined);
+      return true;
+    });
+    assert.equal(calls.length, 1);
+    assert.ok(isLabelEdit(calls[0].args));
+    assert.ok(!calls.some((c) => isBodyEdit(c.args) || c.args[1] === 'comment'));
+  });
+
+  test('a body edit that fails posts no comment, so a failure every week cannot repeat one every week', async () => {
+    const { gh, calls } = fakeGh({ fail: [isBodyEdit] });
     const plan = planIssue({ results: resultsWithFindings(), issues: [{ number: 300, state: 'open', body: 'edited by hand' }] });
     await assert.rejects(applyPlan(gh, plan), /gh issue edit failed/);
-    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(' ')), ['issue edit']);
+    assert.equal(calls.length, 2);
+    assert.ok(isLabelEdit(calls[0].args) && isBodyEdit(calls[1].args));
+    assert.ok(!calls.some((c) => c.args[1] === 'comment'));
   });
 
   test('a comment that fails after the edit says it is lost, and carries it for posting by hand', async () => {

@@ -107,9 +107,11 @@ Dev tooling is held to high for two reasons:
   the findings it is missing had been fixed.
 - The body carries a fingerprint of the findings in an HTML comment.
   - With the same findings as last week, nothing is written.
-  - With changed findings, the body is rewritten, then a comment says what changed. That order
-    means an edit GitHub rejects posts nothing, instead of the same comment every week. If the
-    comment fails after the edit, the run fails and prints the comment for posting by hand.
+  - With changed findings, any new area labels are added, then the body is rewritten, then a
+    comment says what changed, each in its own call. That order means a label or body edit GitHub
+    rejects posts nothing and is retried in full the next week, instead of posting the same comment
+    every week. If the comment fails after the edit, the run fails and prints the comment for
+    posting by hand.
   - The body always fits an issue, and always carries the fingerprint. A report too long for it is
     cut, and the run summary has all of it. Past about 250 findings at or above the floor, the
     saved state keeps only some of their keys. In that case the next change comment says it cannot
