@@ -370,8 +370,13 @@ const MAVEN_SCOPES = new Set(['compile', 'provided', 'runtime', 'test', 'system'
 /**
  * Parses the file `mvn dependency:list -DoutputFile=...` writes: a header, then one
  * `group:artifact:type[:classifier]:version:scope` per line, which plugin 3.10.0 (the version
- * Spring Boot's parent manages) follows with ` -- module name`. A line that fits neither is an
- * error, not a skip: a format change must fail the audit, never shrink it.
+ * Spring Boot's parent manages) follows with ` (optional)` for an optional dependency and then
+ * ` -- module name`. A line that fits neither is an error, not a skip: a format change must fail
+ * the audit, never shrink it.
+ *
+ * Optional is read and dropped. It only stops a dependency being passed on to a project that
+ * depends on this one; this project still has it, and Spring Boot's repackage puts it in the jar.
+ * So an optional dependency ships or not by its scope, like any other.
  */
 export function parseMavenDependencyList(text) {
   const deps = [];
@@ -379,7 +384,7 @@ export function parseMavenDependencyList(text) {
   for (const raw of stripBom(text).split(/\r?\n/)) {
     const line = raw.trim();
     if (line === '' || line === 'none' || /^The following files have been resolved:?$/.test(line)) continue;
-    const coords = line.replace(/\s+--\s.*$/, '');
+    const coords = line.replace(/\s+--\s.*$/, '').replace(/\s+\(optional\)$/, '');
     const parts = coords.split(':');
     const scope = parts.at(-1);
     if ((parts.length === 5 || parts.length === 6) && MAVEN_SCOPES.has(scope) && parts.every((p) => p !== '')) {

@@ -16,6 +16,8 @@
  *                              exit 1; that lockfile is npm-findings.lockfile.json
  *   npm-error.json             the same with --registry pointed at a closed port, exit 1
  *   maven-dependency-list.txt  `mvn dependency:list -DoutputFile=...` in backend/, 167 dependencies
+ *   maven-dependency-list-optional.txt  the same on 2026-10-16, with <optional>true</optional>
+ *                              added to postgresql in backend/pom.xml for the run and reverted
  *   maven-dependency-list-old.txt  three deliberately old versions, in the same format
  *   osv-clean.json             osv-query.mjs on maven-dependency-list.txt
  *   osv-findings.json          osv-query.mjs on maven-dependency-list-old.txt
@@ -253,6 +255,29 @@ describe('Maven dependency list', () => {
   test('reads a classifier', () => {
     const deps = parseMavenDependencyList('   org.example:lib:jar:tests:1.2.3:test -- module lib [auto]\n');
     assert.deepEqual(deps[0], { group: 'org.example', artifact: 'lib', type: 'jar', classifier: 'tests', version: '1.2.3', scope: 'test' });
+  });
+
+  test('reads an optional dependency, which ships by its scope like any other', () => {
+    // Real output with <optional>true</optional> on postgresql: it and its own dependency
+    // checker-qual come out as `...:runtime (optional) -- module ...`.
+    const text = fixture('maven-dependency-list-optional.txt');
+    assert.match(text, /org\.postgresql:postgresql:jar:42\.7\.13:runtime \(optional\) -- module org\.postgresql\.jdbc \[auto\]/);
+    const deps = parseMavenDependencyList(text);
+    assert.equal(deps.length, 167);
+    assert.deepEqual(
+      deps.find((d) => d.artifact === 'postgresql'),
+      { group: 'org.postgresql', artifact: 'postgresql', type: 'jar', classifier: null, version: '42.7.13', scope: 'runtime' },
+    );
+    assert.equal(deps.find((d) => d.artifact === 'checker-qual').scope, 'runtime');
+
+    const pkg = osvPackages(deps).find((p) => p.name === 'org.postgresql:postgresql');
+    const osvText = JSON.stringify({
+      packages: [{ ...pkg, ids: ['GHSA-o'] }],
+      vulns: { 'GHSA-o': { id: 'GHSA-o', summary: 's', aliases: [], severity: 'MODERATE', affected: [] } },
+    });
+    const f = backend({ osvText }).findings[0];
+    assert.equal(f.ships, true);
+    assert.equal(meetsFloor(f), true);
   });
 
   test('a line it cannot read fails the audit instead of shrinking it', () => {
