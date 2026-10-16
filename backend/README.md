@@ -1,7 +1,7 @@
 # /backend
 
-Spring Boot 4.1.1 app (Maven, JDK 25). See `PROJECT_TODO.md` for the phase plan and root
-`CLAUDE.md` → Commands for build/run/test.
+Spring Boot 4.1.1 app (Maven, JDK 25). See `PROJECT_TODO.md` for the phase plan and
+`backend/CLAUDE.md` for build/run/test.
 
 ## Status
 
