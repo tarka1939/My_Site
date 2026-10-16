@@ -36,6 +36,41 @@ runner is discarded after the job anyway. After those two changes, the image pul
 contact with Docker Hub. `deploy-backend.yml` does both as well (#287), with the same script, so the
 release path runs what every pull request has already run.
 
+## `e2e.yml` — the Playwright suite, on pull requests that can affect it
+
+Runs `/e2e` against a real backend, a real `ng serve` and a real Postgres. Issue #250. Like `ci.yml`
+it needs no secrets and deploys nothing.
+
+**When.** On pull requests whose changes touch `frontend/**`, `backend/**`, `e2e/**`,
+`docs/openapi.yaml` or `e2e.yml` itself, which is the owner's decision of 2026-10-14. Also by hand
+(`workflow_dispatch`), to learn whether `dev` is already red before blaming a pull request. There is
+no push or schedule trigger. It is a workflow of its own because a path filter applies to a whole
+workflow, and `ci.yml` runs unfiltered.
+
+**Not a required check.** `dev` has no branch protection and no ruleset (checked 2026-10-16), so a
+pull request the filter skips merges as usual, and so does one where this job is red. If it is ever
+made required, the filter has to move inside the job: GitHub leaves a required check that a path
+filter skipped pending, which would block every pull request touching none of those paths.
+
+What the job does, and why:
+
+- **A Postgres service on `TestPostgres.IMAGE`**, fresh per job, with the dev profile's own
+  credentials. They are also `e2e/support/db.ts`'s defaults, so no `DB_*` or `E2E_DB_*` variable is
+  set. The service cannot read the constant, because it starts before any step runs, so the first
+  step after checkout compares the running container's image with it and fails if they differ.
+- **No pull step for the image**, unlike `ci.yml`. The runner pulls a service itself, before any
+  step runs, in its "Initialize containers" step: three attempts, then `Docker pull failed with
+  exit code N` under Docker's own error. That failure is already fast and already named. The #285
+  failure the pull step exists for came from Testcontainers retrying inside the test run. A pull
+  that hangs instead has no limit of its own: the job's 30 minutes bound it, and it ends cancelled.
+- **Playwright starts both servers.** `CI=true` is set on every runner, and `playwright.config.ts`
+  keys off it: no reuse of running servers, one retry per failed test, and `forbidOnly`. The dev
+  profile starts with no environment at all, which is why the job needs no secrets.
+- **On failure**, the HTML report, the traces and screenshots, and a copy of the backend log
+  (`LOGGING_FILE_NAME`, because Playwright discards the backend's stdout) are uploaded for 7 days.
+  The test step has its own 20-minute limit inside the job's 30, because a step that times out
+  fails, and the upload still runs; a job that times out is cancelled, and it would not.
+
 ## `deploy-backend.yml` and `deploy-frontend.yml` — live on `main`
 
 Both run on push to `main` and by hand (`workflow_dispatch`), in a `production` environment, one at
