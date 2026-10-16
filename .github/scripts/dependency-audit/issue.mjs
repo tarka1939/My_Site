@@ -174,7 +174,13 @@ async function createAndCheck(gh, plan) {
   const url = String(await gh.create(plan)).trim();
   const number = /\/issues\/(\d+)$/.exec(url)?.[1];
   if (!number) throw new Error(`gh issue create printed ${JSON.stringify(url)}, not an issue URL, so its labels and milestone could not be checked.`);
-  const view = await gh.view(number);
+  let view;
+  try {
+    view = await gh.view(number);
+  } catch (error) {
+    // The issue exists by now; without its URL the run's log would not say which one to check.
+    throw new Error(`${url} was opened, but reading it back failed, so its labels and milestone were not checked; check them by hand: ${error.message}`);
+  }
   const labels = new Set((view?.labels ?? []).map((l) => l?.name));
   const missing = plan.labels.filter((l) => !labels.has(l)).map((l) => `the label ${l}`);
   if (view?.milestone?.title !== plan.milestone) missing.push(`the milestone "${plan.milestone}"`);
@@ -219,6 +225,18 @@ export async function applyPlan(gh, plan) {
   return null;
 }
 
+/** What a dry run prints for a plan: the calls applyPlan would make, in the order it makes them. */
+export function describePlan(plan) {
+  if (plan.action === 'create') {
+    return `Would open "${plan.title}", labels ${plan.labels.join(', ')}, milestone ${plan.milestone}:\n\n${plan.body}`;
+  }
+  if (plan.action === 'update') {
+    const labels = plan.addLabels.length ? `add the labels ${plan.addLabels.join(', ')} to #${plan.number}, then ` : '';
+    return `Would ${labels}set the body of #${plan.number} to:\n\n${plan.body}\n\nand then comment:\n\n${plan.comment}`;
+  }
+  return null;
+}
+
 async function main() {
   const { values } = parseArgs({
     options: { results: { type: 'string' }, repo: { type: 'string' }, write: { type: 'boolean', default: false } },
@@ -244,8 +262,8 @@ async function main() {
 
   if (!values.write) {
     console.log('Dry run: nothing was written.');
-    if (plan.action === 'create') console.log(`\nWould open "${plan.title}", labels ${plan.labels.join(', ')}, milestone ${plan.milestone}:\n\n${plan.body}`);
-    if (plan.action === 'update') console.log(`\nWould comment on #${plan.number}:\n\n${plan.comment}\n\nand set its body to:\n\n${plan.body}`);
+    const description = describePlan(plan);
+    if (description) console.log(`\n${description}`);
     return;
   }
   const where = await applyPlan(gh, plan);

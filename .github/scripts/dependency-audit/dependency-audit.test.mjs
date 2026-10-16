@@ -61,7 +61,7 @@ import {
   satisfiesRange,
 } from './lib.mjs';
 import { queryOsv } from './osv-query.mjs';
-import { applyPlan, assertWriteAllowed, createGh, preflight } from './issue.mjs';
+import { applyPlan, assertWriteAllowed, createGh, describePlan, preflight } from './issue.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 const FRONTEND_LOCK = fixture('npm-findings.lockfile.json');
@@ -1208,6 +1208,16 @@ describe('issue.mjs', () => {
     await assert.rejects(applyPlan(gh, plan), /without the label backend and the label frontend and the milestone "Phase 8"/);
   });
 
+  test('a create whose read-back fails names the issue that was opened', async () => {
+    const { gh, calls } = fakeGh({ fail: ['issue view'] });
+    const plan = planIssue({ results: resultsWithFindings(), issues: [] });
+    await assert.rejects(
+      applyPlan(gh, plan),
+      /^Error: https:\/\/github\.com\/o\/r\/issues\/400 was opened, but reading it back failed, so its labels and milestone were not checked; check them by hand: gh issue view failed: HTTP 422$/,
+    );
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(' ')), ['issue create', 'issue view']);
+  });
+
   test('a create that does not print an issue URL fails rather than skip the check', async () => {
     const { gh } = fakeGh({ createPrints: 'something else\n' });
     const plan = planIssue({ results: resultsWithFindings(), issues: [] });
@@ -1269,6 +1279,15 @@ describe('issue.mjs', () => {
       assert.equal(error.unpostedComment, plan.comment);
       return true;
     });
+  });
+
+  test('the dry run describes an update in the order applyPlan makes its calls', () => {
+    const plan = { action: 'update', number: 300, addLabels: ['backend', 'frontend'], body: 'THE BODY', comment: 'THE COMMENT' };
+    const text = describePlan(plan);
+    assert.equal(text, 'Would add the labels backend, frontend to #300, then set the body of #300 to:\n\nTHE BODY\n\nand then comment:\n\nTHE COMMENT');
+    assert.equal(describePlan({ ...plan, addLabels: [] }), 'Would set the body of #300 to:\n\nTHE BODY\n\nand then comment:\n\nTHE COMMENT');
+    assert.match(describePlan(planIssue({ results: resultsWithFindings(), issues: [] })), /^Would open "\[Phase 8\] [^"]+", labels backend, frontend, milestone Phase 8:\n\n/);
+    assert.equal(describePlan({ action: 'none', reason: '', notes: [] }), null);
   });
 
   test('nothing to do calls nothing', async () => {
