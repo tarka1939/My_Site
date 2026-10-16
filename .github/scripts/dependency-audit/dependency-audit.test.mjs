@@ -929,6 +929,43 @@ describe('the tracking issue', () => {
     const plan = planIssue({ results: big, issues: [{ number: 300, state: 'closed', state_reason: 'not_planned', body }] });
     assert.equal(plan.action, 'create');
   });
+
+  test('past the state cap, closing each new issue as not planned accepts every key in the end', () => {
+    const big = manyFindings(300);
+    const issues = [];
+    for (let week = 0; week < 6; week++) {
+      const plan = planIssue({ results: big, issues });
+      if (plan.action === 'none') break;
+      assert.equal(plan.action, 'create', `week ${week}`);
+      issues.push({ number: 400 + week, state: 'closed', state_reason: 'not_planned', body: plan.body });
+    }
+    const [first, second] = issues.map((i) => parseState(i.body));
+    assert.equal(first.complete, false, 'the first state must be capped, or this tests nothing');
+    // The second issue records first what the first could not, so two closes cover all 300.
+    const unrecorded = big.actionableKeys.filter((k) => !first.keys.includes(k));
+    assert.deepEqual(second.keys.slice(0, unrecorded.length), unrecorded);
+    assert.equal(issues.length, 2);
+    assert.equal(planIssue({ results: big, issues }).action, 'none');
+  });
+
+  test('an open issue past the state cap also keeps the keys not yet accepted first', () => {
+    const big = manyFindings(300);
+    const firstBody = planIssue({ results: big, issues: [] }).body;
+    const first = parseState(firstBody);
+    const changed = withFindings(big, big.findings.slice(1));
+    const plan = planIssue({
+      results: changed,
+      issues: [
+        { number: 400, state: 'closed', state_reason: 'not_planned', body: firstBody },
+        { number: 410, state: 'open', state_reason: null, body: firstBody },
+      ],
+    });
+    assert.equal(plan.action, 'update');
+    const keys = parseState(plan.body).keys;
+    const unaccepted = changed.actionableKeys.filter((k) => !first.keys.includes(k));
+    assert.ok(unaccepted.length > 0);
+    assert.deepEqual(keys.slice(0, unaccepted.length), unaccepted);
+  });
 });
 
 // -------------------------------------------------------------------------------------------------

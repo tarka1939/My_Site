@@ -777,12 +777,20 @@ export const ACCEPT_RULE =
  * The state to save: the fingerprint always, and as many keys as fit under STATE_LIMIT. When they
  * do not all fit, `complete: false` and `total` say so, the next change comment says it cannot list
  * what changed, and a closed issue accepts only the keys it recorded (see planIssue).
+ *
+ * `accepted` holds the acceptance keys already accepted by an issue closed as not planned. When the
+ * keys do not all fit, the ones not yet accepted are kept first. Otherwise each new issue would
+ * record the same leading keys as the last, and the keys past the cap could never be accepted: the
+ * issue would come back every week however many times it was closed as not planned.
  */
-export function boundedState(results) {
+export function boundedState(results, { accepted = new Set() } = {}) {
   const state = { v: 1, fingerprint: results.fingerprint, keys: results.actionableKeys };
   if (encodeState(state).length <= STATE_LIMIT) return state;
-  const total = results.actionableKeys.length;
-  const partial = (n) => ({ ...state, keys: results.actionableKeys.slice(0, n), complete: false, total });
+  const fresh = results.actionableKeys.filter((k) => !accepted.has(acceptanceKey(k)));
+  const old = results.actionableKeys.filter((k) => accepted.has(acceptanceKey(k)));
+  const keys = [...fresh, ...old];
+  const total = keys.length;
+  const partial = (n) => ({ ...state, keys: keys.slice(0, n), complete: false, total });
   let lo = 0;
   let hi = total - 1;
   while (lo < hi) {
@@ -793,7 +801,8 @@ export function boundedState(results) {
   return partial(lo);
 }
 
-export function renderIssueBody(results, { previous = null } = {}) {
+/** `accepted` is boundedState's: acceptance keys an issue closed as not planned already accepts. */
+export function renderIssueBody(results, { previous = null, accepted = new Set() } = {}) {
   const intro = [
     'This issue is kept up to date by the weekly dependency audit, `.github/workflows/dependency-audit.yml` (#273). ' +
       'It is edited only when the set of findings at or above the floor changes, with a comment saying what changed.',
@@ -803,7 +812,7 @@ export function renderIssueBody(results, { previous = null } = {}) {
       'an issue again. A new issue opens only for an advisory that is in no audit issue closed as not planned.',
   ];
   if (previous) intro.push('', `The previous set of findings was in #${previous}.`);
-  const state = encodeState(boundedState(results));
+  const state = encodeState(boundedState(results, { accepted }));
 
   const compose = (report) => [...intro, '', report, '', state].join('\n');
   let body = compose(renderReport(results, { headingLevel: 2 }));
@@ -916,6 +925,16 @@ export function planIssue({ results, issues }) {
   const actionable = results.findings.filter((f) => f.atFloor);
   const labels = [...new Set(actionable.map((f) => areaDef(f.area).issueLabel))];
   const notes = open.length > 1 ? [`${open.length} open issues carry the marker; only the newest, #${open[0].number}, is updated.`] : [];
+  // Acceptance key -> the newest issue closed as not planned that lists it.
+  const acceptedBy = new Map();
+  for (const issue of closed.filter((i) => i.state_reason === 'not_planned')) {
+    for (const key of issue.saved?.keys ?? []) {
+      const k = acceptanceKey(key);
+      if (!acceptedBy.has(k)) acceptedBy.set(k, issue.number);
+    }
+  }
+  // An open issue's body orders its state by this too, since it can be closed as not planned later.
+  const accepted = new Set(acceptedBy.keys());
 
   const target = open[0];
   if (target) {
@@ -927,7 +946,7 @@ export function planIssue({ results, issues }) {
         action: 'update',
         number: target.number,
         comment: renderCleanComment(results),
-        body: renderIssueBody(results),
+        body: renderIssueBody(results, { accepted }),
         addLabels: [],
         reason: `Clean now; #${target.number} still showed findings.`,
         notes,
@@ -937,7 +956,7 @@ export function planIssue({ results, issues }) {
       action: 'update',
       number: target.number,
       comment: renderChangeComment(target.saved, results),
-      body: renderIssueBody(results),
+      body: renderIssueBody(results, { accepted }),
       addLabels: labels,
       reason: `The findings at or above the floor changed since #${target.number} was last updated.`,
       notes,
@@ -948,13 +967,6 @@ export function planIssue({ results, issues }) {
     return { action: 'none', reason: 'No finding at or above the floor, and no open issue.', notes };
   }
   const lastClosed = closed[0];
-  const acceptedBy = new Map();
-  for (const issue of closed.filter((i) => i.state_reason === 'not_planned')) {
-    for (const key of issue.saved?.keys ?? []) {
-      const k = acceptanceKey(key);
-      if (!acceptedBy.has(k)) acceptedBy.set(k, issue.number);
-    }
-  }
   const actionableKeys = actionable.map((f) => acceptanceKey(findingKey(f)));
   if (actionableKeys.every((k) => acceptedBy.has(k))) {
     const by = [...new Set(actionableKeys.map((k) => acceptedBy.get(k)))].sort((a, b) => b - a);
@@ -969,7 +981,7 @@ export function planIssue({ results, issues }) {
   return {
     action: 'create',
     title: issueTitle(),
-    body: renderIssueBody(results, { previous: lastClosed?.number ?? null }),
+    body: renderIssueBody(results, { previous: lastClosed?.number ?? null, accepted }),
     labels,
     milestone: ISSUE.milestone,
     reason: `${actionable.length} finding(s) at or above the floor, and no open issue.`,
