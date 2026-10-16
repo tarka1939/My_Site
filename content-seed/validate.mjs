@@ -25,8 +25,8 @@ export const CONTRACT_FIELDS = [
 
 /** Joins a description's paragraph array back into the single string the contract expects.
  *
- *  The blank line between paragraphs is load-bearing: `description` renders as plain text with
- *  `white-space: pre-wrap`, not Markdown, so a blank line *is* the paragraph break. The trailing
+ *  The blank line between paragraphs is load-bearing: `description` renders as Markdown (#206),
+ *  where a blank line is what ends a paragraph and a single newline is not a break. The trailing
  *  newline reproduces what a YAML `|` block scalar produces in `docs/CONTENT_DRAFT.md`, which is
  *  also what that document's own character counts were measured against. */
 export function renderDescription(paragraphs) {

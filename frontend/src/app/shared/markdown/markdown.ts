@@ -36,8 +36,11 @@ import MarkdownIt from 'markdown-it';
  *
  * `linkify` is off so a bare URL stays text: descriptions cite repository paths and flags, and
  * auto-linking turns a fragment someone typed into a live link they did not write. `breaks` is off
- * so a single newline is not a `<br>` -- the seeded content wraps its source at column 100, and
- * turning those into hard breaks would render every paragraph as a ragged column.
+ * so a single newline is not a `<br>`, which is what CommonMark means by one: Markdown written in
+ * an editor is often hard-wrapped in its source, and turning those newlines into hard breaks would
+ * render every such paragraph as a ragged column. (The seeded descriptions are not wrapped --
+ * content-seed/projects.json keeps each paragraph as one string -- so this is about the next
+ * description, typed or pasted into the admin form.)
  */
 const renderer = new MarkdownIt({
   html: false,
