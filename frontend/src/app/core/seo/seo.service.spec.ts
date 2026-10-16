@@ -285,7 +285,7 @@ describe('index.html’s static sharing tags', () => {
     'text/html',
   ).head;
 
-  it('names no page URL, so a non-JS scraper falls back to the URL it fetched', () => {
+  it('names no page URL, so a non-JS scraper should fall back to the URL it fetched', () => {
     // #251. A static og:url is one value for every route, and Facebook and LinkedIn take it as the
     // shared object's identity, so every project link would be cached as, and linked to, the root.
     // A static canonical would be the same mistake told to Google. SeoService writes both per route.
