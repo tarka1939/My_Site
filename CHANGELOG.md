@@ -71,6 +71,8 @@ That ordering was deliberate - the runbook argues a first deploy should introduc
 
 ### Changed
 
+- **Plain hyphens instead of typographic dashes** (2026-10-17, #301, PR #302, frontend + backend + content + documentation). Every em dash and en dash in the repo is now the keyboard `-`. The owner's call: the dashes are correct typography, but they read as an AI giveaway. Visitors see it in the site's title and social previews ("Krzysztof Tarka - project portfolio"), in project periods ("March 2024 - June 2025"), and in the contact and reset-password messages. `CLAUDE.md` states the rule and its technical exceptions. The card excerpt still trims a trailing en or em dash, because the live descriptions contain them; those descriptions keep their dashes until they are re-seeded or edited.
+
 - **About is the landing page** (2026-09-24, #221, frontend). `/` now renders the About page, the projects list moves from `/` to `/projects`, and `/about` redirects to `/`. Project pages keep their `/projects/<id>` URLs. The sitemap lists `/`, `/projects` and `/contact`. Follow-up (#224): About comes first in the nav, the home page's title and heading are the owner's name, and Netlify answers `/about` with a 301 to `/`.
 
 - Project plan (`PROJECT_TODO.md`) revised: split frontend/backend hosting (GitHub Pages + Render/Railway/Fly.io), CORS + SPA-fallback requirements, package-by-feature backend structure, `ApplicationEventPublisher` + `@Async` executor + feature flags, GitHub Projects task tracking, and a new sequenced Phase 7 (GitHub webhook sync → agent build-log page → analytics → live DSP demo)
