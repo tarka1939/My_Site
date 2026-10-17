@@ -20,7 +20,7 @@ export const PROJECTS_ROUTES: Routes = [
     title: 'Krzysztof Tarka - Projects',
     data: {
       description:
-        'Every project in the portfolio, filterable by tag — software, audio and signal-processing work, each with links, images and the period it was built.',
+        'Every project in the portfolio, filterable by tag - software, audio and signal-processing work, each with links, images and the period it was built.',
     },
   },
   {

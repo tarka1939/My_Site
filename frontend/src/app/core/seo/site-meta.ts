@@ -25,7 +25,7 @@ export const SITE_NAME = 'Krzysztof Tarka';
  * earlier navigation, so there is nothing original left to read. Hence a constant, and hence the
  * instruction above.
  */
-export const SITE_TITLE = `${SITE_NAME} — project portfolio`;
+export const SITE_TITLE = `${SITE_NAME} - project portfolio`;
 
 /**
  * Fallback site description.
@@ -38,7 +38,7 @@ export const SITE_TITLE = `${SITE_NAME} — project portfolio`;
  * editing `index.html` alone cannot silently regress the running site.
  */
 export const SITE_DESCRIPTION =
-  'A portfolio of software and audio/DSP projects — what each one does, how it was built, and where to find the code.';
+  'A portfolio of software and audio/DSP projects - what each one does, how it was built, and where to find the code.';
 
 /**
  * `content` for `<meta name="robots">` on pages that must never be indexed: the admin area, the

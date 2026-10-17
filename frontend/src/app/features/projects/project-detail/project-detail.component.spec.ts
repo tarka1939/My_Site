@@ -397,7 +397,7 @@ describe('ProjectDetailComponent', () => {
     // Descriptions are admin-authored free text, so they can contain exactly the characters that
     // terminate an HTML attribute. The tag is written with setAttribute, so the value round-trips
     // and the browser escapes it on serialisation; nothing is injected into the document.
-    const nasty = 'Reads "config.xml" & <b>renders</b> it — a <script>alert(1)</script> test';
+    const nasty = 'Reads "config.xml" & <b>renders</b> it - a <script>alert(1)</script> test';
     getProject.mockReturnValue(of({ ...PROJECT, title: 'A "quoted" & <angled> title', description: nasty }));
     const scriptsBefore = document.querySelectorAll('script').length;
 

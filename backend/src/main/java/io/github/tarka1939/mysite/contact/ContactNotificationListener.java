@@ -11,7 +11,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import io.github.tarka1939.mysite.ResendEmailClient;
 
 /**
- * Emails the site owner when the contact form is used. Issue #186 — before this, submissions sat
+ * Emails the site owner when the contact form is used. Issue #186 - before this, submissions sat
  * in the database until someone thought to open the admin panel.
  *
  * <h2>Why this runs after the commit, on another thread, and swallows its own failures</h2>
@@ -20,11 +20,11 @@ import io.github.tarka1939.mysite.ResendEmailClient;
  * one because a third-party API had a bad minute is the worst outcome available here. So:
  *
  * <ul>
- *   <li>{@code AFTER_COMMIT} — the row is durable before anyone tries to send anything, and a
+ *   <li>{@code AFTER_COMMIT} - the row is durable before anyone tries to send anything, and a
  *       send failure has no transaction left to roll back.</li>
- *   <li>{@code @Async("taskExecutor")} — a slow or hanging Resend call must not hold the visitor's
+ *   <li>{@code @Async("taskExecutor")} - a slow or hanging Resend call must not hold the visitor's
  *       HTTP response open. The executor is the one AsyncConfig provisions.</li>
- *   <li>{@code catch (RuntimeException)} — belt and braces. An exception on the async thread
+ *   <li>{@code catch (RuntimeException)} - belt and braces. An exception on the async thread
  *       cannot reach the publisher anyway, but catching it here is what makes the intent
  *       reviewable and lets a unit test assert it directly.</li>
  * </ul>
@@ -42,7 +42,7 @@ public class ContactNotificationListener {
     /**
      * The visitor's name goes in the subject line, so it is truncated to something a mail client
      * will actually show. {@code @Size(max = 200)} on the request already bounds it; this bounds
-     * it again at the point where the length matters. Counted in code points rather than chars —
+     * it again at the point where the length matters. Counted in code points rather than chars -
      * see {@link #sanitizeForHeader(String)}.
      */
     private static final int MAX_SUBJECT_NAME_LENGTH = 100;
@@ -104,7 +104,7 @@ public class ContactNotificationListener {
     /**
      * The subject is the one field that becomes a MIME header, and it contains visitor-supplied
      * text, so every control character is stripped rather than escaped. Resend is called over
-     * JSON, so a newline could not break the request itself — Jackson would encode it — but it
+     * JSON, so a newline could not break the request itself - Jackson would encode it - but it
      * would arrive at Resend as a literal newline inside a value destined for a {@code Subject:}
      * header, which is the classic header-injection primitive (a smuggled {@code Bcc:} line).
      * Stripping at this end costs nothing and does not depend on assumptions about theirs.

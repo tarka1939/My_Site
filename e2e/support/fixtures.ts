@@ -18,7 +18,7 @@ import type { ProjectWriteRequest } from './api';
  * carries a long multi-paragraph description and two images; Beta carries a one-line description
  * and none. Only the pair proves anything: a card summarises a long description and reprints a
  * short one, a project with images gets a thumbnail and one without gets no `<img>` at all. Two
- * short imageless fixtures — what this file held before — cannot fail if the excerpt, the CSS line
+ * short imageless fixtures - what this file held before - cannot fail if the excerpt, the CSS line
  * clamp, or the gallery's alt text stops working, which is exactly what #99 reports.
  */
 
@@ -31,8 +31,8 @@ import type { ProjectWriteRequest } from './api';
  * asserts.
  *
  * The trailing `…-NOT-ON-CARD` markers are deliberate and are the point of the length. The card is
- * allowed to cut wherever the cap falls — the suite does not pin the cap, that belongs in
- * `frontend`'s unit tests — but text past it, and text from any later paragraph, must never appear
+ * allowed to cut wherever the cap falls - the suite does not pin the cap, that belongs in
+ * `frontend`'s unit tests - but text past it, and text from any later paragraph, must never appear
  * on a card. A marker fails that assertion loudly instead of leaving it to a subtle word.
  */
 const ALPHA_FIRST_PARAGRAPH =
@@ -48,14 +48,14 @@ const ALPHA_THIRD_PARAGRAPH =
  * Fixture image URLs.
  *
  * **Absolute `https:` URLs on a reserved `.invalid` domain, fulfilled by the browser-side route in
- * `projects.spec.ts` — never fetched from anywhere.** Three constraints had to hold at once and
+ * `projects.spec.ts` - never fetched from anywhere.** Three constraints had to hold at once and
  * this is the only shape that meets all three:
  *
  *  - `docs/openapi.yaml` types each entry as `format: uri`, `maxLength: 500`. A relative path
  *    (`/favicon.ico`) is a URI *reference*, not a URI, and a `data:` URL is a scheme most
  *    server-side URL validators reject. A plain absolute `https:` URL is the shape nothing can
  *    argue with, and these are ~40 characters.
- *  - The suite must not depend on a third-party host being reachable — the objection that kept
+ *  - The suite must not depend on a third-party host being reachable - the objection that kept
  *    images out of this file until now, and a correct one. RFC 2606 reserves `.invalid`, so this
  *    hostname can never resolve, for anyone, ever. The seeded production content uses
  *    `raw.githubusercontent.com`; borrowing that here would make every run of a *layout* test
@@ -97,8 +97,8 @@ export const FIXTURE_ALPHA_PERIOD = {
  *
  * `firstParagraph` is what the excerpt has to be a prefix of; `hiddenOnCard` is the text that must
  * not survive the summary. Note what is deliberately *absent*: the expected excerpt string itself.
- * Pinning it here would pin `CARD_EXCERPT_MAX_CHARS` in a second place, so tuning the cap — a
- * legitimate, purely visual change — would break a journey for no defect. The unit tests in
+ * Pinning it here would pin `CARD_EXCERPT_MAX_CHARS` in a second place, so tuning the cap - a
+ * legitimate, purely visual change - would break a journey for no defect. The unit tests in
  * `frontend/src/app/shared/description-excerpt` own the cap's exact behaviour. What only a real
  * browser can prove, and what this suite therefore asserts, is that the card summarises at all.
  */
@@ -125,7 +125,7 @@ export const CARD_DESCRIPTION_CLAMP_LINES = 3;
  * What the gallery's alt text must say, and what no alt text anywhere may say.
  *
  * `mustNotClaim` is issue #87's regression: alt text used to read "<title> screenshot <n>", a claim
- * about image *content* that nothing in the frontend is in a position to make — and one that was
+ * about image *content* that nothing in the frontend is in a position to make - and one that was
  * already false for drafted entries whose images are architecture diagrams.
  */
 export const FIXTURE_ALPHA_IMAGE_ALTS = [

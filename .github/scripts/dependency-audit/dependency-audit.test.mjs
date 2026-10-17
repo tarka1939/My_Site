@@ -630,7 +630,7 @@ describe('the report', () => {
   test('a failed audit is a warning, and its area says it was not checked', () => {
     const r = buildResults([backend({ mvnExitText: '1' }), npm(), npm({ area: 'e2e', ships: 'never' })], META);
     const md = renderReport(r);
-    assert.match(md, /\| Backend \| [^|]+ \| \*\*could not complete\*\* \| — \| — \|/);
+    assert.match(md, /\| Backend \| [^|]+ \| \*\*could not complete\*\* \| - \| - \|/);
     assert.match(md, /> \[!WARNING\]\n> \*\*Backend: the audit could not complete\.\*\* Maven could not resolve/);
     assert.match(md, /### Backend\n\nNot checked/);
   });

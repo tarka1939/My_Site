@@ -671,7 +671,7 @@ function findingRow(f) {
   const link = f.url ? `[${f.id}](${f.url})` : f.id;
   const aliases = f.aliases?.length ? ` (${f.aliases.join(', ')})` : '';
   const title = f.title ? `<br>${cell(f.title)}` : '';
-  const fixed = `${f.fixedIn ? code(f.fixedIn) : '—'}${f.fixNote ? `<br>${cell(f.fixNote)}` : ''}`;
+  const fixed = `${f.fixedIn ? code(f.fixedIn) : '-'}${f.fixNote ? `<br>${cell(f.fixNote)}` : ''}`;
   const ships = `${f.ships ? 'yes' : 'no'} (${f.scope})`;
   return `| ${severity} | ${code(f.package)} | ${code(f.version)} | ${link}${aliases}${title} | ${fixed} | ${ships} |`;
 }
@@ -697,7 +697,7 @@ export function renderReport(results, { headingLevel = 2, belowFloor = 'list' } 
   for (const a of results.areas) {
     const def = areaDef(a.area);
     if (a.status === 'errored') {
-      lines.push(`| ${def.label} | ${def.tool} | **could not complete** | — | — |`);
+      lines.push(`| ${def.label} | ${def.tool} | **could not complete** | - | - |`);
     } else {
       lines.push(`| ${def.label} | ${def.tool} | ${a.checked ?? '?'} ${def.unit} | ${a.findingCount} | ${a.actionableCount} |`);
     }

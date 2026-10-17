@@ -7,14 +7,14 @@
  *
  * - `support/db.ts` inserts that account straight into Postgres.
  * - `support/api.ts` issues `DELETE /projects/{id}` and `DELETE /contact-messages/{id}` against
- *   `BACKEND_URL` — during `setup` as well as `teardown` — authenticated as exactly that account.
+ *   `BACKEND_URL` - during `setup` as well as `teardown` - authenticated as exactly that account.
  *
  * The second is the more destructive of the two and used to be unguarded, which made the
  * database guard's promise ("this can only ever run locally") narrower than it read. Both are
  * checked here now, at module load, so a mistyped `E2E_BACKEND_URL` fails before Playwright
  * starts rather than partway through a purge.
  *
- * This is a structural guard, not a warning. Do not add a force flag or an env-var override —
+ * This is a structural guard, not a warning. Do not add a force flag or an env-var override -
  * if you want to point this suite at a shared environment, the answer is a different account,
  * not a bypass.
  */
@@ -22,7 +22,7 @@
 /**
  * Loopback names only, matched exactly. Everything else fails closed, which is what keeps near
  * misses like `127.0.0.2`, `0.0.0.0`, a trailing-dot `localhost.`, or a hostname that merely
- * resolves to loopback out — an allowlist gets that for free, a denylist would not.
+ * resolves to loopback out - an allowlist gets that for free, a denylist would not.
  */
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0:0:0:0:0:0:0:1']);
 

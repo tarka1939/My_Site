@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Resolves the requester's IP and hashes it (SHA-256 hex) — used anywhere a requester needs
+ * Resolves the requester's IP and hashes it (SHA-256 hex) - used anywhere a requester needs
  * to be rate-limited without storing a raw IP (see docs/DATA_MODEL.md: ContactMessage's
  * requester_ip_hash, same principle applied to password-reset-request).
  */
