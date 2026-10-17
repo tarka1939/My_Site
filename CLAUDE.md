@@ -147,7 +147,8 @@ cd e2e && npx playwright test -g "rate limit"       # one test by name
 bash .claude/hooks/hooks.test.sh
 
 # Content seeding (Node stdlib only, no npm install). The copy in projects.json was signed off
-# on 2026-10-14 (#49); read content-seed/README.md before running it against anything:
+# on 2026-08-17 and confirmed as published on 2026-10-14 (#49); read content-seed/README.md
+# before running it against anything:
 node content-seed/seed.mjs --dry-run
 node --test content-seed/validate.test.mjs
 ```
