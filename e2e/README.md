@@ -70,6 +70,34 @@ npm run install:browsers
 npm test
 ```
 
+## In CI
+
+`.github/workflows/e2e.yml` (#250) runs the whole suite on every pull request whose changes touch
+`frontend/`, `backend/`, `e2e/`, `docs/openapi.yaml` or the workflow itself, and by hand from the
+Actions tab (`workflow_dispatch`), for instance against `dev`. It starts a fresh Postgres service,
+on production's version, with the dev profile's credentials, and Playwright starts the backend and
+`ng serve` itself, because `CI` is set there: no running server is reused, a failed test gets one
+retry, and a stray `test.only` fails the run. The details are in `.github/workflows/README.md`.
+
+**A green run can still carry a flaky test.** A test that fails and then passes on its retry leaves
+the job green. Playwright's `github` reporter marks each failed attempt as an error annotation on the
+run, and the summary annotation counts it as flaky, so open the run, not only the check's colour.
+
+When the job fails, the run carries an artifact for 7 days: the HTML report, the traces and
+screenshots of the failed tests, and a copy of the backend's log, which is the only place a
+server-side stack trace survives the runner. Unzip it, then from `e2e/` run
+`npx playwright show-report <unzipped>/playwright-report` to read it the way you would a local run.
+
+The job is **not a required check**. A red run does not block a merge on its own, so read it.
+
+What CI does not cover, so it still rests on someone running the suite locally:
+
+- **Pull requests outside those paths.** They run no E2E job, by design: nothing outside them
+  reaches what the suite exercises.
+- **The branch after a merge.** There is no push trigger, so the suite runs on a pull request's
+  merge result, not on `dev` or `main` once the pull request lands. A `dev` → `main` promotion runs
+  it like any other pull request whenever it carries a change in those paths.
+
 ## The test admin account, and why it touches the database directly
 
 Everything this suite does goes through the real HTTP API — logging in, seeding fixture
@@ -162,9 +190,10 @@ Reruns must not depend on how the previous run ended, so:
 
 ## Things worth knowing before you extend this
 
-- **`AuthService` rate-limits login to 5 attempts per 15 minutes per IP.** The suite spends **two**
-  per run: `setup` logs in for its API token, and the admin journey logs in through the UI for
-  real. The token `setup` caches in `.auth/api-token.json` (gitignored) is reused for the rest of
+- **`AuthService` rate-limits login to 5 attempts per 15 minutes per IP.** The suite spends
+  **three** per run: `setup` logs in for its API token, and both tests in `admin.spec.ts` log in
+  through the UI for real (the second, added for #246, proves a stale token cannot block one). The
+  token `setup` caches in `.auth/api-token.json` (gitignored) is reused for the rest of
   that run, but deliberately *not* across runs — teardown deletes it, because a token that
   outlives the account it was minted for is a live admin credential sitting on disk, and the
   backend never re-checks a token's subject. One extra login per run is the price of that.
@@ -172,10 +201,11 @@ Reruns must not depend on how the previous run ended, so:
   Whether the budget ever bites depends on who owns the backend. That limiter is in-memory
   (`InMemoryRateLimiter`), unlike the contact form's, so it dies with the process:
 
-  - **Playwright started the backend** (nothing was on :8080) — it also stops it at the end, so
-    every run gets a fresh limiter and the budget effectively resets. You will not hit this.
+  - **Playwright started the backend** (nothing was on :8080, or `CI` is set) — it also stops it
+    at the end, so every run gets a fresh limiter and the budget effectively resets. You will not
+    hit this, and neither will CI.
   - **You started the backend** and Playwright is reusing it — the count accumulates across runs,
-    so roughly the **third** run inside a 15-minute window fails on a `429`.
+    so a **second** run inside a 15-minute window can already fail on a `429`.
 
   Either way the escape hatch is the same: **restart the backend**. `acquireToken` says so in the
   error rather than surfacing a bare status code.
@@ -205,8 +235,8 @@ Reruns must not depend on how the previous run ended, so:
   before #156: a card image that errors is now replaced by generated artwork, so a card whose URL
   fails DNS renders no `<img>` for the thumbnail assertions to find. The detail gallery still keeps
   its `<img>` and falls back to a broken-image placeholder, which is what its `naturalWidth` poll
-  is there to catch. Nothing in CI runs this suite, so that note and the one in `support/images.ts`
-  are the only warning a future reader gets.
+  is there to catch. A spec that forgets the stub now fails its pull request's E2E check (see
+  "In CI"); this note and the one in `support/images.ts` are what say why.
 - **Alpha is long and imaged; Beta is short and imageless. That asymmetry is load-bearing.** It is
   what lets one journey prove the card *summarises* a long description rather than truncating
   unconditionally, that the CSS line clamp actually lays out, and that a project with no images
