@@ -309,6 +309,29 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-18 - Senior Dev: the dash sweep committed a frontend that does not build, three times (PR #302)
+
+**Task given:** The owner asked on 2026-10-17 for every em dash, en dash and similar Unicode dash to become the keyboard `-`, with a rule against new ones (#301). PR #302, merged to `dev` 2026-10-18.
+
+**Agent(s) used:** Senior Dev (Opus) wrote the sweep script and the PR. A fresh Opus session gave it a cold review.
+
+**What went right:**
+- **The sweep was a script, not hand edits.** The review could replay it on `dev` and match every change outside the few hand edits, which is a stronger check than reading 81 files of diff.
+- **Branches merged while the PR was open were swept on the PR's own branch.** #300, #299 and #295 merged first, and the same script ran on each dev merge into #302, so none of those three had to be swept. #148's two branches, still unmerged, will be.
+
+**What went wrong (be specific):**
+1. **An escape typed into a tool argument reached the file as the character it names.** The excerpt's `TRAILING_PUNCTUATION` has to keep matching en and em dashes, because live descriptions contain them, so 6f64bcc was meant to write them as `\u2013\u2014`. The tool decoded both escapes on the way in, the file held the two dash characters, and the sweep turned them into hyphens. The class became `[\s.,;:!?- - -]`. There, `?- ` is a range running backwards, which is a syntax error, so the frontend does not build. The same decoding hit the new test's two dashes and the example escape in the `CLAUDE.md` rule.
+2. **The broken class was committed three times.** 6f64bcc, d0e98d3 and 720d9e2 all hold it, and none of them builds. The suite fails on every one of those trees, so it cannot have run on any of them before its commit. `CLAUDE.md` asks for each change to be committed as it passes its own check, and 6f64bcc never passed its check. Its message also says it wrote escapes, which its tree does not hold.
+
+**How it was caught:** The frontend suite failed on the regex. The `CLAUDE.md` line was found only by a byte check.
+
+**Fix applied:**
+- c24a02e rewrote all three as real escapes. The backslash was built from `[char]92` in PowerShell rather than typed, so nothing could decode it.
+- The owner chose on 2026-10-18 to merge as usual, not to squash or rewrite the pushed branch. So the three commits land on `dev` with the merge. `git bisect --first-parent` on `dev` never stops on them, and a plain bisect should `skip` them.
+
+**Takeaway for next time:**
+- **A tool argument decodes `\uXXXX`.** To get a literal escape into a file, build the backslash from a character code, then search the file's bytes for the character it names before committing.
+- **Run a change's own check before its commit, not after a run of commits.** That matters most for a mechanical sweep, which rewrites code nobody reads line by line. Here the suite would have caught the break at 6f64bcc.
 ## 2026-10-14 - Senior Dev: corrections that needed correcting, and a release-path step written from one outage
 
 **Task given:** Continue autonomously. That became two PRs to `dev`:
