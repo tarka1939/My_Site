@@ -2,8 +2,8 @@
 
 The backend's commands, and the local database it runs against. They moved here from the root
 `CLAUDE.md` (#188), which every agent is given in full, so that work outside `/backend` stops paying
-for them. This file adds to the root one, which still holds every rule, and it arrives with the
-first file read under `backend/`.
+for them. This file adds to the root one, which holds the project-wide rules; the few kept here
+apply only to these commands. It arrives with the first file read under `backend/`.
 
 ## Commands
 
@@ -40,10 +40,9 @@ Postgres only, not the backend. Production runs a plain jar under systemd on pur
 (`docs/DECISIONS.md`, 2026-09-04) and the Dockerfile is deferred, so there is no image to run the
 app from — and building one solely for local use would be the one place nobody deploys from.
 
-The image is **`postgres:16-alpine`, matching production**, not the `17-alpine` the Testcontainers
-suite uses. Local development should reproduce what ships. That does mean tests run against a
-different major version than production, which is a real if narrow risk: a migration valid on 17
-and not on 16 would pass CI and fail the deploy.
+The image is **`postgres:16-alpine`**, matching production and the Testcontainers suite
+(`TestPostgres.IMAGE`, #200), so local development, the tests and the deploy all run the same
+major version.
 
 ```bash
 docker compose up -d --wait      # --wait returns when Postgres can answer, not when it starts

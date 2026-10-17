@@ -2,7 +2,8 @@
 
 The frontend's commands. They moved here from the root `CLAUDE.md` (#188), which every agent is
 given in full, so that work outside `/frontend` stops paying for them. This file adds to the root
-one, which still holds every rule, and it arrives with the first file read under `frontend/`.
+one, which holds the project-wide rules; the few kept here apply only to these commands. It
+arrives with the first file read under `frontend/`.
 
 ## Commands
 
@@ -19,7 +20,8 @@ shells out to a Java-based generator.
 # Install:
 cd frontend && npm install
 
-# Dev server (proxies /api to localhost:8080 — see above; start the backend first for real data):
+# Dev server (proxies /api to localhost:8080, see above). For real data, start the backend first;
+# its commands and the local database are in backend/CLAUDE.md:
 cd frontend && npm start
 
 # Build (production, default --base-href /):

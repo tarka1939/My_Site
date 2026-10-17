@@ -127,12 +127,17 @@ file read under its directory: checked on 2026-10-16, for the main session and a
 subagent alike. So before running a command in a half you have not read a file from yet, read its
 `CLAUDE.md`. In a worktree, the copy that arrives is that worktree's own.
 
-### Other suites (none of these run in CI — `.github/workflows/ci.yml` runs only `mvn -B test`,
-`npm test`, `npm run lint`, and the API-client staleness check)
+### Other suites
+
+`.github/workflows/ci.yml` runs `mvn -B test`, `npm test`, `npm run lint` and the API-client
+staleness check on every pull request. `e2e.yml` runs the E2E suite below, on pull requests that
+change `frontend/`, `backend/`, `e2e/` or `docs/openapi.yaml` (#250). Nothing in CI runs the hook
+cases or the content-seed tests.
 
 ```bash
-# E2E (Playwright, /e2e — kept out of /frontend so Netlify never installs it). Needs Postgres
-# up; Playwright starts the backend and `ng serve` itself, or reuses running ones:
+# E2E (Playwright, /e2e, kept out of /frontend so Netlify never installs it). Needs Postgres up:
+# `docker compose up -d --wait` (backend/CLAUDE.md). Playwright starts the backend and `ng serve`
+# itself, or reuses running ones:
 cd e2e && npm install && npm run install:browsers   # once
 cd e2e && npm test
 cd e2e && npx playwright test tests/admin.spec.ts   # one journey
@@ -141,8 +146,8 @@ cd e2e && npx playwright test -g "rate limit"       # one test by name
 # PreToolUse hook cases (run after touching anything in .claude/hooks/):
 bash .claude/hooks/hooks.test.sh
 
-# Content seeding (Node stdlib only, no npm install). Copy in projects.json is not signed off —
-# read content-seed/README.md before running it against anything:
+# Content seeding (Node stdlib only, no npm install). The copy in projects.json was signed off
+# on 2026-10-14 (#49); read content-seed/README.md before running it against anything:
 node content-seed/seed.mjs --dry-run
 node --test content-seed/validate.test.mjs
 ```
@@ -185,7 +190,7 @@ Before considering a write endpoint, auth flow, or migration done, check every i
 - `docs/DECISIONS.md` — locked-in technical decisions and why
 - `docs/DATA_MODEL.md` — entities and relationships
 - `PROJECT_TODO.md` — phase-by-phase build plan
-- `docs/DEPLOYMENT.md` — the Phase 5 runbook: what only the owner can do, and the env vars the prod profile actually reads (they are not the ones `backend/CLAUDE.md`'s local-dev commands use)
+- `docs/DEPLOYMENT.md` - the Phase 5 runbook: what only the owner can do, and the env vars the prod profile actually reads (prod takes a full `DB_URL`; the dev profile's `DB_NAME`/`DB_USERNAME`/`DB_PASSWORD` default to the compose database, so local dev sets none)
 - `AGENT_LOG.md` — record agent mistakes/fixes here for the whole project, not just Phase 4
 - `docs/AGENT_WORKFLOW.md` — how to run agent sessions (sequential single-agent vs. dispatcher vs. isolated worktrees) and when each applies; see also `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md`
 - `docs/AUTONOMOUS_WORKFLOW.md` — the operative workflow from Phase 4's tail to the end of the project: one persistent "Senior Dev" session, independent fresh-session PR review, ambiguity/escalation handling, and the Phase 5 pre-flight checklist
