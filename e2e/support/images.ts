@@ -23,8 +23,8 @@ import type { Page } from '@playwright/test';
  * against a broken-image placeholder — so there it is the `naturalWidth > 0` poll, not a missing
  * element, that would catch an absent stub. Both specs that reach the public project list call it.
  *
- * Nothing in CI runs this suite (`.github/workflows/` holds only a README), so this comment is the
- * only warning a future reader gets. Keep it true.
+ * Since #250, `.github/workflows/e2e.yml` runs this suite on pull requests that touch it, so a spec
+ * that forgets this route fails there. This comment is what says why. Keep it true.
  *
  * SVG rather than a raster format: it is a few hundred bytes of text with an intrinsic size the
  * renderer can use immediately, and the label makes it obvious in a failure screenshot that the

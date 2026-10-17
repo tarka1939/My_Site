@@ -7,26 +7,25 @@ copy is meant to be edited, and editing it should never require reading the scri
 
 ---
 
-## ⚠ The copy in `projects.json` has not been signed off
+## The copy in `projects.json` is signed off
 
-The owner has decided **scope** (which five projects) and **dates**. The owner has **not approved
-the prose**. Every description in `projects.json` was transcribed from `docs/CONTENT_DRAFT.md` on
-branch `phase6/content-draft`, which describes itself as *"a document to be corrected, not a set of
-records to be loaded"*.
+The owner approved all five entries as written on 2026-08-17 (4e961f0), with one change to System
+Equalizer's `startedOn`, and on 2026-10-14 confirmed the copy as published (#49). Every description
+in `projects.json` was transcribed from `docs/CONTENT_DRAFT.md` on branch `phase6/content-draft`,
+which describes itself as *"a document to be corrected, not a set of records to be loaded"*.
 
 So:
 
 - **`projects.json` is the source of truth for what the site says.** Edit it, then re-run. The
   script never writes copy of its own and never edits the file.
-- The file carries `"_signedOff": false`. While that is false, every run prints an
-  `UNSIGNED-OFF COPY` banner. Flipping it to `true` is the owner's call and silences the banner —
-  nothing else changes.
+- The file carries `"_signedOff": true`, set in 4e961f0. If it is ever false, every run prints an
+  `UNSIGNED-OFF COPY` banner, and nothing else changes. Setting it is the owner's call.
 - Two entries carry **no dates at all, by decision** (both coursework entries). That is not an
   oversight to be helpfully filled in; see the `_dates` note on each record and §5.4/§5.5 of the
   draft.
-- **System Equalizer's `startedOn` is a floor, not a known date.** `2026-01-01` is the earliest
-  month the work provably existed by, not the month it began, and it is the one entry whose dates
-  the owner has not confirmed. The record says so in `_dates`. Do not let it harden into a fact.
+- **System Equalizer's `startedOn` was a floor until 2026-08-17.** The draft inferred `2026-01-01`
+  as the earliest month the work provably existed by. At sign-off the owner corrected it to November
+  2025, and the record's `_dates` note says so.
 
 Unanswered questions about the copy — which images to use, whether the repos should be renamed,
 whether the coursework entries should be split — live in the draft's "Needs your input" sections,
@@ -37,12 +36,15 @@ not here. This directory deliberately holds no opinions the draft does not.
 The source draft hard-wraps its prose at about 90 columns. **`projects.json` does not** — each
 paragraph is a single unbroken string that wraps to whatever width the reader has.
 
-This is deliberate. The detail page renders `description` with `white-space: pre-wrap`
-(`project-detail.component.scss:42`), and `pre-wrap` preserves *single* newlines as forced line
-breaks, not just blank ones. Carrying the draft's wrapping across would have pinned every paragraph
+This was deliberate. The detail page then rendered `description` as plain text with `white-space:
+pre-wrap`, and `pre-wrap` preserves *single* newlines as forced line breaks, not just blank ones. Carrying the draft's wrapping across would have pinned every paragraph
 to a hard break every ~92 characters regardless of viewport, which on a narrow screen reads as a
 broken page. The draft notes that blank lines survive as paragraph breaks and does not mention that
 its own wrapping survives too — that looks like an oversight rather than an intention.
+
+**Since #206 this no longer affects what a visitor sees.** Descriptions are Markdown, which renders a
+single newline inside a paragraph as a space, and `pre-wrap` is gone from the detail page. The
+reflow is harmless, and one string per paragraph is still how this file expresses paragraphs.
 
 **78 newlines were replaced with a single space each, and nothing else changed.** Verified per
 entry: the word sequence is identical to the draft, and every character count is unchanged, because
@@ -128,9 +130,8 @@ is a non-empty string in JavaScript and blank to the server.
 - **It does not write to Postgres.** Every change goes through the API, so it exercises the same
   validation, tag upsert, and event publication as the admin UI would.
 - **It is not a Flyway migration, and must not become one.** Migrations are permanent and replay
-  into every database that runs them, including throwaway CI ones. Copy that has not been signed
-  off has no business in migration history — the first correction would leave the wrong wording
-  there forever.
+  into every database that runs them, including throwaway CI ones. Portfolio copy has no business
+  in migration history — the first correction would leave the wrong wording there forever.
 - **It does not create, delete, or modify an admin account.**
 - **It does not delete anything in its normal mode.** See below.
 - **It does not touch contact messages or tags directly.** Tags are created implicitly by project
@@ -189,7 +190,7 @@ Loopback targets are allowed. **Anything else needs two independent keys:**
    `locality.mjs` — so pointing this at a real site is a reviewed code change, not something
    whoever is typing can decide. **It currently holds one host, `tarka1939.bieda.it` — the live
    backend.** So a run with `SEED_ALLOW_REMOTE_HOST=tarka1939.bieda.it` *will* write to
-   production; the copy it writes is still not signed off (see the top of this file).
+   production, with whatever `projects.json` holds at the time.
 2. The run must set `SEED_ALLOW_REMOTE_HOST` to that same hostname, so a host committed for a
    future deploy cannot quietly become someone's default local target.
 
@@ -198,22 +199,24 @@ Remote targets must additionally be HTTPS, since the admin password crosses that
 **Redirects are refused, and that is part of the guard, not a detail.** `fetch` follows redirects
 by default and the guard only ever sees `SEED_BACKEND_URL`, so a 3xx from an approved host would
 send the *next* request somewhere the guard never evaluated. Node strips the `Authorization` header
-across origins but forwards the request **body** verbatim — which on `/auth/login` is the plaintext
-admin password. That was reproduced on Node 24.14.0 against this script before `redirect: 'error'`
+across origins, but on a 307 or 308 it forwards the request **body** verbatim — which on
+`/auth/login` is the plaintext admin password. (A 301, 302 or 303 turns a POST into a GET without a
+body; a `PUT` carrying project copy keeps its body on a 301 or 302 as well.) The password case was
+reproduced on Node 24.14.0 against this script before `redirect: 'error'`
 was added to `request()`. The precondition is not exotic: it needs only something other than the
 intended backend answering on the expected port, which is the scenario in Troubleshooting below.
 
 So the promise is: **the bytes cannot leave loopback**, not merely that no env var names a remote
 host. Nothing in this API legitimately redirects, so refusing costs nothing.
 
-The reason for all of this: this script authenticates as an admin and writes portfolio copy that
-has not been signed off. A mistyped host should not be able to publish a draft.
+The reason for all of this: this script authenticates as an admin and overwrites the portfolio's
+copy. A mistyped host should not be able to publish an edit still in progress.
 
 ## Issue #97 (per-image alt text) is not implemented here
 
 [#97](https://github.com/tarka1939/My_Site/issues/97) proposes changing `images` from `[url]` to
-`[{url, alt}]`. It is **not merged**, so this seed builds against the contract as it stands: bare
-URL strings.
+`[{url, alt}]`. The owner approved it on 2026-10-14, but it is **not built**, so this seed builds
+against the contract as it stands: bare URL strings.
 
 When it does land, the change here is mechanical rather than a rewrite:
 
@@ -235,7 +238,7 @@ say what each image actually *contains*, which nothing on the frontend can inven
 
 ```jsonc
 {
-  "_signedOff": false,          // "_" keys are provenance notes, never sent to the API
+  "_signedOff": true,           // "_" keys are provenance notes, never sent to the API
   "projects": [
     {
       "_draft":  "...",         // where in CONTENT_DRAFT.md this came from
@@ -263,9 +266,9 @@ Two conventions:
   one line is unreviewable — which would defeat the point of a file that exists to be read and
   corrected. The join rebuilds the structure the draft's YAML `|` block scalar expressed, and the
   resulting lengths still match the draft's own compliance table (§4) exactly; the only difference
-  from the draft is the reflow described above. The blank line matters: descriptions render as
-  plain text with `white-space: pre-wrap`, not Markdown, so a blank line *is* the paragraph break —
-  and, for the same reason, a stray newline *inside* a paragraph would be a visible hard break.
+  from the draft is the reflow described above. The blank line matters: descriptions are Markdown
+  (#206), where a blank line *is* the paragraph break and a single newline inside a paragraph
+  renders as a space.
 
 The record order matches the draft's section order (§1.1, §1.2, §1.3, §2.1, §2.2) so the two can be
 read side by side. It carries no meaning to the API — there is no ordering field on the model

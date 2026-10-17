@@ -106,8 +106,8 @@ h1 {
 // `white-space: pre-wrap` used to live here, turning the source's blank lines into visible
 // paragraph gaps while the description was plain text. It is actively wrong now (#206): the
 // renderer emits real <p> elements, and pre-wrap would additionally preserve the newlines *inside*
-// each one -- so a paragraph whose source wraps at column 100, as the seeded content does, would
-// render with a hard break at every one of those columns.
+// each one -- so a paragraph whose source is hard-wrapped, as Markdown written in an editor often
+// is, would render with a hard break at every wrap.
 //
 // The block's own styling is .markdown-body in src/styles.scss, global because component styles do
 // not reach [innerHTML] content. This class stays for the layout slot around it.
