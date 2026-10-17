@@ -267,6 +267,21 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
     )
     .toBe(true);
 
+  // --- The description's measure (issue #297) ---------------------------------------------------
+  //
+  // The cap is on the text, not on the page: the description stops at a reading measure while the
+  // gallery above it keeps the full width (#211). Dropping the cap, or moving it onto the article,
+  // brings the two widths together and fails this. So does raising it past about 603px, 0.65 of
+  // 928px (70ch's 672px would fail), so a change to the measure needs this threshold moved too.
+  // Desktop Chrome's 1280px viewport is wide enough for the cap to apply (528px of 928px).
+  const widthOf = (el: Element) => el.getBoundingClientRect().width;
+  const descriptionWidth = await detailDescription.evaluate(widthOf);
+  const galleryWidth = await gallery.evaluate(widthOf);
+  expect(
+    descriptionWidth,
+    `the description (${descriptionWidth}px) must be capped well inside the gallery (${galleryWidth}px)`,
+  ).toBeLessThan(0.65 * galleryWidth);
+
   // The detail page renders the period from its own endpoint (GET /projects/{id}), not from the
   // list payload, so it is a genuinely separate path rather than a repeat of the assertion above.
   const detailDates = page.getByRole('article').locator('time');
