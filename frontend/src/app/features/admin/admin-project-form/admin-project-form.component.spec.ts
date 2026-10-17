@@ -575,6 +575,204 @@ describe('AdminProjectFormComponent', () => {
     });
   });
 
+  describe('a tag is required to publish, not to save (#148)', () => {
+    /** What a GitHub push creates: a draft, linked to its repository, with no tags at all. */
+    const TAGLESS_DRAFT = {
+      ...EXISTING_PROJECT,
+      tags: [],
+      published: false,
+      repoFullName: 'tarka1939/Equalizer',
+    };
+
+    /** The API's sentence for the same refusal, written out so a drift on either side fails. */
+    const REQUIRED_TO_PUBLISH = 'At least one tag is required to publish';
+
+    /** The body of the only write this form has sent, whichever verb it used. */
+    function sentBody() {
+      const call = updateProject.mock.calls[0] ?? createProject.mock.calls[0];
+      expect(call).toBeDefined();
+      return call[0].projectWriteRequest;
+    }
+
+    function fillTitleAndDescription(fixture: ComponentFixture<AdminProjectFormComponent>): void {
+      fixture.componentInstance['form'].patchValue({
+        title: 'Equalizer',
+        description: 'A DSP project',
+      });
+    }
+
+    it('saves a tagless draft as it is', async () => {
+      // The failure #148 was filed for, as it was observed: open an auto-created draft, write its
+      // description, press Save -- blocked by "At least one tag is required".
+      getAnyProject.mockReturnValue(of(TAGLESS_DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      const host = fixture.nativeElement as HTMLElement;
+
+      expect(publishedBox(fixture).checked).toBe(false);
+      expect(host.querySelector<HTMLInputElement>('#project-tags')?.value).toBe('');
+
+      await type(fixture, '#project-description', 'Now actually written up.');
+      await save(fixture);
+
+      expect(updateProject).toHaveBeenCalledTimes(1);
+      expect(sentBody().tags).toEqual([]);
+      expect(sentBody().published).toBe(false);
+      expect(errorTextFor(host, 'project-tags')).toBeNull();
+    });
+
+    it('creates a draft with no tags when the box is unticked', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      fillTitleAndDescription(fixture);
+
+      await toggleCheckbox(fixture, '#project-published');
+      await save(fixture);
+
+      expect(createProject).toHaveBeenCalledTimes(1);
+      expect(sentBody().tags).toEqual([]);
+      expect(sentBody().published).toBe(false);
+    });
+
+    it('refuses to publish with no tags, and says why in the tags slot', async () => {
+      // The create route's box starts ticked, so this is a publish.
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      fillTitleAndDescription(fixture);
+
+      await save(fixture);
+
+      expect(createProject).not.toHaveBeenCalled();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-tags')).toBe(REQUIRED_TO_PUBLISH);
+      const input = host.querySelector('#project-tags');
+      expect(input?.getAttribute('aria-invalid')).toBe('true');
+      expect(input?.getAttribute('aria-describedby')).toBe('project-tags-error');
+      expect(host.querySelector('#project-tags-error')?.getAttribute('role')).toBe('alert');
+      // In the slot, not beside Save: a rule about tags belongs where the tags are typed.
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it('counts a box of commas and spaces as no tags', async () => {
+      // Validators.required accepted this, and submit() then sent `tags: []` -- which, with the box
+      // ticked, is now a 400. The check reads the list the request would carry, not the raw text.
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      fillTitleAndDescription(fixture);
+      await type(fixture, '#project-tags', ' , ,  ');
+
+      await save(fixture);
+
+      expect(createProject).not.toHaveBeenCalled();
+      expect(errorTextFor(fixture.nativeElement as HTMLElement, 'project-tags')).toBe(
+        REQUIRED_TO_PUBLISH,
+      );
+    });
+
+    it('takes the message down when the box is unticked, and puts it back when ticked', async () => {
+      // The requirement belongs to the pair, so it has to follow the box as well as the tags. A
+      // validator re-runs only when its own control changes: without the re-check, unticking would
+      // leave a draft that is perfectly saveable marked invalid, and say so.
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      const host = fixture.nativeElement as HTMLElement;
+      // Reached and left empty -- the touched-or-dirty gate every message on this form waits for.
+      await type(fixture, '#project-tags', 'dsp');
+      await type(fixture, '#project-tags', '');
+
+      // Presence first, or the disappearance below proves nothing.
+      expect(publishedBox(fixture).checked).toBe(true);
+      expect(errorTextFor(host, 'project-tags')).toBe(REQUIRED_TO_PUBLISH);
+
+      await toggleCheckbox(fixture, '#project-published');
+
+      expect(publishedBox(fixture).checked).toBe(false);
+      expect(errorTextFor(host, 'project-tags')).toBeNull();
+      expect(host.querySelector('#project-tags')?.getAttribute('aria-invalid')).toBeNull();
+      expect(fixture.componentInstance['form'].controls.tags.valid).toBe(true);
+
+      await toggleCheckbox(fixture, '#project-published');
+
+      expect(errorTextFor(host, 'project-tags')).toBe(REQUIRED_TO_PUBLISH);
+      expect(host.querySelector('#project-tags')?.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('blocks a tagless draft from being published, saying so when Save is pressed', async () => {
+      getAnyProject.mockReturnValue(of(TAGLESS_DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      const host = fixture.nativeElement as HTMLElement;
+
+      await toggleCheckbox(fixture, '#project-published');
+
+      // Not yet: the tags box has not been reached, and no message on this form opens before its
+      // control is touched or a save is attempted. Ticking a box is not typing in the tags.
+      expect(errorTextFor(host, 'project-tags')).toBeNull();
+
+      await save(fixture);
+
+      expect(updateProject).not.toHaveBeenCalled();
+      expect(errorTextFor(host, 'project-tags')).toBe(REQUIRED_TO_PUBLISH);
+    });
+
+    it('publishes a tagless draft once it has a tag', async () => {
+      // The workflow #148 says could not be completed: open the draft, tag it, publish it.
+      getAnyProject.mockReturnValue(of(TAGLESS_DRAFT));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await toggleCheckbox(fixture, '#project-published');
+      await type(fixture, '#project-tags', 'dsp');
+      await save(fixture);
+
+      expect(updateProject).toHaveBeenCalledTimes(1);
+      expect(sentBody().tags).toEqual(['dsp']);
+      expect(sentBody().published).toBe(true);
+    });
+
+    it("puts the server's tags verdict in the tags slot", async () => {
+      // Reachable only where the server judges differently from this form -- a tab open across a
+      // deploy that changed the rule, say. errorInterceptor stays quiet for a 400 with field
+      // errors, so this slot is the only thing that will say why the save failed.
+      createProject.mockReturnValue(throwError(() => validationProblem('tags', REQUIRED_TO_PUBLISH)));
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      fillRequiredFields(fixture);
+
+      await save(fixture);
+
+      expect(createProject).toHaveBeenCalledTimes(1);
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-tags')).toBe(REQUIRED_TO_PUBLISH);
+      const input = host.querySelector('#project-tags');
+      expect(input?.getAttribute('aria-invalid')).toBe('true');
+      expect(host.querySelector(`#${input?.getAttribute('aria-describedby')}`)?.textContent).toContain(
+        REQUIRED_TO_PUBLISH,
+      );
+      expect(host.querySelector('.form-error')).toBeNull();
+    });
+
+    it("drops the server's tags verdict when the box is unticked, and leaves the others", async () => {
+      // "Required to publish" stops being true the moment the box is unticked, so it cannot stay
+      // under the tags looking current. Only the tags verdicts go: the title's is about the title.
+      createProject.mockReturnValue(
+        throwError(() =>
+          problemWith([
+            { field: 'tags', message: REQUIRED_TO_PUBLISH },
+            { field: 'title', message: 'A project with this title already exists' },
+          ]),
+        ),
+      );
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(errorTextFor(host, 'project-tags')).toBe(REQUIRED_TO_PUBLISH);
+
+      await toggleCheckbox(fixture, '#project-published');
+
+      expect(errorTextFor(host, 'project-tags')).toBeNull();
+      expect(fixture.componentInstance['fieldErrors']()['tags']).toBeUndefined();
+      expect(errorTextFor(host, 'project-title')).toBe('A project with this title already exists');
+    });
+  });
+
   describe('when the project fails to load', () => {
     function failFirstLoad(): void {
       getAnyProject.mockReturnValueOnce(throwError(() => LOAD_FAILURE));
@@ -738,7 +936,8 @@ describe('AdminProjectFormComponent', () => {
       const host = fixture.nativeElement as HTMLElement;
       expect(errorTextFor(host, 'project-title')).toBe('Title is required');
       expect(errorTextFor(host, 'project-description')).toBe('Description is required');
-      expect(errorTextFor(host, 'project-tags')).toBe('At least one tag is required');
+      // The create route's box starts ticked, so a blank form would publish with no tags (#148).
+      expect(errorTextFor(host, 'project-tags')).toBe('At least one tag is required to publish');
       for (const id of ['project-title-error', 'project-description-error', 'project-tags-error']) {
         const message = host.querySelector(`#${id}`);
         expect(message?.getAttribute('role')).toBe('alert');
