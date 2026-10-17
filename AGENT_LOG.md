@@ -332,6 +332,7 @@ Copy this block per entry:
 **Takeaway for next time:**
 - **A tool argument decodes `\uXXXX`.** To get a literal escape into a file, build the backslash from a character code, then search the file's bytes for the character it names before committing.
 - **Run a change's own check before its commit, not after a run of commits.** That matters most for a mechanical sweep, which rewrites code nobody reads line by line. Here the suite would have caught the break at 6f64bcc.
+
 ## 2026-10-14 - Senior Dev: corrections that needed correcting, and a release-path step written from one outage
 
 **Task given:** Continue autonomously. That became two PRs to `dev`:
