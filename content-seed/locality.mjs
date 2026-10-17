@@ -5,8 +5,8 @@
  *
  * It exists because `seed.mjs` authenticates as an admin and issues writes: `POST`/`PUT
  * /projects` in its normal mode, and `DELETE /projects/{id}` under `--remove`. Pointed at a live
- * site, a mistyped host would overwrite published portfolio copy with copy its owner has not yet
- * signed off, or delete rows it did not create.
+ * site, a mistyped host would overwrite the published copy with whatever `projects.json` holds at
+ * the time, an edit still in progress included, or delete rows it did not create.
  *
  * The check runs at import time, before a token is ever requested, so a bad `SEED_BACKEND_URL`
  * fails on the first line of output rather than partway through a write loop.
@@ -68,8 +68,9 @@ const APPROVED_DEPLOYMENT_HOSTS = new Set(['tarka1939.bieda.it']);
 
 const WHY =
   `This script authenticates as an admin and writes portfolio content through the API ` +
-  `(POST/PUT /projects, and DELETE /projects/{id} under --remove). The copy it applies has not ` +
-  `been signed off — see content-seed/README.md — so it must not reach a public site by accident.`;
+  `(POST/PUT /projects, and DELETE /projects/{id} under --remove). It overwrites the copy on the ` +
+  `site it targets, so it must not reach a public site by accident — see "The locality guard" in ` +
+  `content-seed/README.md.`;
 
 function refuse(source, resolved, detail = '', extra = '') {
   throw new Error(

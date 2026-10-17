@@ -37,8 +37,10 @@
  */
 
 /**
- * A blank line -- the paragraph break this content uses (see the `white-space: pre-wrap` note in
- * the detail component's SCSS). Tolerates CRLF and a "blank" line that carries spaces or tabs.
+ * A blank line -- the paragraph break in what this is given. Markdown sources (a project
+ * description, the About body) go through `markdownToSummaryText` first, whose `stripToText`
+ * closes every block except a list item with one; a route's static description is plain
+ * single-paragraph text. Tolerates CRLF and a "blank" line that carries spaces or tabs.
  */
 const PARAGRAPH_BREAK = /\r?\n[ \t]*\r?\n/;
 

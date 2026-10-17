@@ -125,8 +125,9 @@ export async function login(
  *
  * The cache is per-run, not across runs: `teardown` deletes it (see {@link discardCachedToken}),
  * because an admin token that outlives the account it was minted for is a live credential
- * sitting on disk. That costs the suite one login per run on top of the admin journey's real UI
- * login — two of `AuthService`'s five-per-15-minutes budget — which is the deliberate trade.
+ * sitting on disk. That costs the suite one login per run on top of the admin journeys' two real
+ * UI logins — three of `AuthService`'s five-per-15-minutes budget, so a second run inside the same
+ * window fails on its third login — which is the deliberate trade.
  *
  * The reuse path still matters *within* a run, and it revalidates against the API before
  * trusting what it read, so a backend restarted mid-run or a rotated secret falls back to a

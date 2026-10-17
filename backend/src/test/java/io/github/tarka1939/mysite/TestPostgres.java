@@ -25,9 +25,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * already had twice — a hostname hand-copied across files (#178), a canonical origin across five
  * (#182) — where the copies drift silently because nothing asserts they agree.
  *
- * <p>One place left to change now, and {@code docker-compose.yml} is the only other file in the
- * repository naming a Postgres version. The third copy is the VPS itself, which no constant can
- * reach; {@code psql --version} there is the check.
+ * <p>One place left to change now. Two other files in the repository select a Postgres image:
+ * {@code docker-compose.yml}, and the service container in {@code .github/workflows/e2e.yml}, which
+ * cannot read this constant but checks itself against it on every run (#250). The last copy is the
+ * VPS itself, which no constant can reach; {@code psql --version} there is the check.
  */
 public final class TestPostgres {
 
