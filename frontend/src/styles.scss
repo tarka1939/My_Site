@@ -458,7 +458,8 @@ main:focus {
   border: 0;
 }
 
-// Rendered Markdown (#206) -- project descriptions on the detail page and in the admin preview.
+// Rendered Markdown (#206) -- project descriptions and the About body, on the public pages and in
+// the admin previews of each.
 //
 // **Global rather than component-scoped, and that is forced, not stylistic.** Angular's emulated
 // encapsulation scopes a component's styles by stamping an attribute onto its elements when the
@@ -471,7 +472,33 @@ main:focus {
 // The reset-ish `:first-child`/`:last-child` margin rules exist because the renderer's output
 // always begins and ends with a block element that carries its own margin, which would otherwise
 // add a gap above and below the whole description that no other block on the page has.
+//
+// **The measure (#297, the owner's call: 70ch on 2026-10-14, revised to 55ch once 70ch was
+// measured).** `main` is 960px wide, which ran Markdown prose at about 120 characters a line
+// against a comfortable 60-75. The cap is here, on the text, so the project description, the About
+// body and both admin previews share it. Nothing around them narrows: a project's gallery keeps the
+// full width (#211). `ch` is the width of the "0" glyph, and most letters are narrower, so the
+// number is not characters a line. 70ch measured in a browser on 2026-10-16 (1280px viewport, 16px
+// IBM Plex Sans, the live System Equalizer description) at 672px and 83-95 characters a line, 89
+// on average; 55ch, on the same page and text, is 528px and 57-75 characters, 69 on average. A
+// wide code block scrolls inside the box (`pre` below). In a container narrower than the cap it
+// does nothing.
+//
+// Written as 33rem, which is 55ch of 16px IBM Plex Sans exactly (a "0" is 0.6em, so 9.6px), and
+// not as 55ch. `ch` is measured on whichever face is showing. Until Plex Sans arrives that is
+// 'IBM Plex Sans Fallback', which is matched to Plex on average letter width, not on the "0", so
+// 55ch would be about 495px, and the text would reflow when the font swapped. The fallback faces
+// and the preload in index.html exist to stop that reflow. A rem does not depend on the face, and
+// it scales with the reader's font size the same way, because this text is 1rem.
+//
+// `overflow-wrap: anywhere` because the cap made a long unbroken word likely to overflow: inline
+// code at 14px mono is about 8.5px a character, so a path or a flag of more than about 62
+// characters ran past the box, and bare URLs stay plain text (`linkify: false` in markdown.ts). It
+// breaks such a word only where it would not fit. `pre` does not wrap at all, so it is unaffected.
 .markdown-body {
+  max-width: 33rem;
+  overflow-wrap: anywhere;
+
   > :first-child {
     margin-top: 0;
   }
@@ -535,9 +562,9 @@ main:focus {
     padding: 0.1em 0.3em;
   }
 
-  // A fenced block is the one place in a description that can be wider than the column: code does
-  // not reflow, so it scrolls rather than forcing the whole page to. `code` inside it drops the
-  // inline chip styling, which would otherwise draw a plate on a plate.
+  // A fenced block is the one place in rendered Markdown whose content can be wider than the
+  // column: code does not reflow, so it scrolls rather than forcing the whole page to. `code`
+  // inside it drops the inline chip styling, which would otherwise draw a plate on a plate.
   pre {
     background: var(--color-surface-muted);
     border-radius: 0.375rem;
