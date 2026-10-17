@@ -1,6 +1,6 @@
 # Autonomous Workflow (Phase 4 tail to the end of the project)
 
-This document specifies how the project runs from this point to the end of the project — originally scoped through Phase 6, extended 2026-09-24 to Phases 7 and 8, where it was already in use: one persistent "Senior Dev" session the user (product owner) talks to directly, which coordinates and dispatches phase work to fresh implementation agents against `PROJECT_TODO.md`, dispatches PR review to independent sessions, and escalates only on genuine blockers. This supersedes the per-phase kickoff-prompt workflow used for Phases 1-3 — those worked, but required the user to hand-write a new prompt every phase. This is the standing replacement.
+This document specifies how the project runs from this point to the end of the project - originally scoped through Phase 6, extended 2026-09-24 to Phases 7 and 8, where it was already in use: one "Senior Dev" role the user (product owner) talks to directly, run since 2026-10-18 as a succession of sessions rather than one kept alive (see "Ending a Senior Dev session" below), which coordinates and dispatches phase work to fresh implementation agents against `PROJECT_TODO.md`, dispatches PR review to independent sessions, and escalates only on genuine blockers. This supersedes the per-phase kickoff-prompt workflow used for Phases 1-3 - those worked, but required the user to hand-write a new prompt every phase. This is the standing replacement.
 
 **Long-term direction (2026-09-24), approached incrementally rather than designed up front:** the user handling only secrets/credentials and decisions — the escalation list below. When something else still needs the user's hands, that is a candidate improvement to note, not a failure of the workflow.
 
@@ -32,6 +32,7 @@ Three obligations this places on the Senior Dev specifically, since they are the
 2. **Keep the escalation channel open, and mean it.** If a cheaper agent says the approach looks wrong, that is the signal the policy depends on — re-dispatch on Opus rather than restating the brief. The most valuable implementation outcomes on this project came from agents contradicting their instructions, and a cost policy that suppresses that has bought nothing. Note this is *doubt*, not *failure*: repeated failure at the same thing is already covered below and still stops for the user rather than escalating to a bigger model.
 3. **Scope the brief.** Model comes from the agent definition, so it is set once rather than remembered. (The tooling states reasoning effort is configurable there too, but no key name is documented in anything available here and neither definition sets one — so treat effort as *not currently controlled*, rather than claiming a lever this project does not actually pull.) Brief scope is the part that is genuinely per-task. Name the sections that bear on the task rather than instructing a full read of documents that now run to thousands of lines, and scope a review to the diff's risk rather than a standing-doc sweep. The role definitions now carry this instruction themselves, so it holds whether or not a brief repeats it.
 4. **A resume cannot be re-priced.** `SendMessage` takes no model parameter, so continuing a terminated agent keeps whatever it started on. Where this policy and the resume rule conflict, resume wins — a cheap restart discards the context that rule exists to preserve.
+5. **A stand-in agent has no default (added 2026-10-18).** The defaults above live in the `backend-agent` and `frontend-agent` definitions, so they apply only to dispatches of those types. A `general-purpose` agent standing in for one has no `model` in any frontmatter and inherits the Senior Dev's own: the silent default this section was written to remove. It came back on 2026-10-16. The Bash tool was denied on the owner's machine, because the `PreToolUse` hook fails closed when `python` does not run, so neither specialist type could work. Every dispatch went to `general-purpose` without a `model`, and all of them ran on Opus, including frontend work that `frontend-agent` puts on Sonnet and an eight-item fix list that `CLAUDE.md`'s table puts there too. While a workaround like that is in use, pass `model` on every dispatch, chosen by the role the agent stands in for.
 
 The independent review layer stays on the expensive model unconditionally. It is the layer with the best demonstrated hit rate, this policy leans harder on it, and cutting it would remove the check that makes everything else affordable.
 
@@ -95,6 +96,31 @@ server listening.
 ## When a dispatched agent dies mid-task
 
 See `CLAUDE.md`'s "When a dispatched agent dies mid-task" for the operative rule. In short: **resume the agent via `SendMessage` with its ID rather than salvaging its work by hand** — its context survives, and a dying agent's final message is a fragment, not a status report. Three agents were lost to API/session limits on 2026-08-07 and all three were salvaged manually when a resume would have been correct; one of them had died mid-mutation-test and left a deliberate defect in the working tree. `AGENT_LOG.md`'s 2026-08-08 entry has the full account.
+
+## Ending a Senior Dev session (added 2026-10-18)
+
+**The Senior Dev is a role, not one session.** Until 2026-10-18 it ran as one conversation, kept alive across days and compacted several times. By 2026-10-16 its transcript had reached 68 MB, and the owner reported the fastest token use the project had seen. Length costs on every call, because every tool call re-sends the whole context. Most of a Senior Dev's calls are small coordination steps: a board edit, a metadata check, one CI look. Each pays for everything above it. Compaction shrinks the context but does not fix this. Its summary is written without knowing what is already recorded elsewhere, so it carries finished work forward, and every later call re-sends that too. The last summary in that session restated pages of already-merged PRs.
+
+**Continuity lives in the record, not the conversation.** What a coordinator needs is held in:
+- GitHub: the PRs, the issues and the project board;
+- `PROJECT_TODO.md`, `AGENT_LOG.md` and `docs/DECISIONS.md`;
+- for a local session, Claude Code's project memory.
+
+A new session that reads them starts with what the old one knew, less whatever it had not written down. The handoff covers that gap.
+
+**End the session instead of compacting it:**
+- when a batch of PRs has merged and nothing is in flight. This is the natural boundary, and it needs the shortest handoff.
+- before a second compaction.
+- when resuming after a long gap, such as a usage-limit reset or overnight. The prompt cache has usually expired by then, so the first call re-sends the whole context uncached. A fresh session pays that only for what it needs.
+
+**Close what the next session cannot reopen.** An agent belongs to the session that dispatched it, and a new session should be treated as unable to resume it. So the resume-first rule above ends at the boundary. Let in-flight agents finish and commit before ending the session. If one must be stopped, record its worktree's state in the handoff. The next session then treats that tree the way `CLAUDE.md` treats any salvage: as an unknown intermediate state, running the tests first.
+
+**The handoff carries only what the record does not.** It is the new session's first message. A fact already in GitHub or a tracked file gets a pointer, not a restatement. It carries:
+- each worktree in use: its path, branch, `git rev-parse --short HEAD` and `git status --porcelain`, and whether it is pushed;
+- the questions waiting on the owner, and any owner decision not yet written into an issue, a PR or a doc;
+- the next step, with the agent and model for each dispatch it needs.
+
+A handoff that reads like a compaction summary has given up the point of making one.
 
 ## Reporting
 
