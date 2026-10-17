@@ -9,12 +9,11 @@ Never add "Co-Authored-By" lines to commits. Do not include Claude attribution i
 
 ## No typographic dashes
 
-Write the keyboard `-`. Never write an em dash, an en dash or any other Unicode dash (U+2010 to U+2015, U+2212). The rule covers code, comments, docs, commit messages, and PR and issue text. Use ` - ` for an aside and `60-75` for a range. This is the owner's rule from 2026-10-17: the dashes are correct typography, but they read as an AI giveaway. An exception needs a technical reason:
-- a regex that must match the character (write it as `\u2014`);
-- an applied Flyway migration, whose checksum would change;
-- a test that deliberately probes non-ASCII input.
+Write the keyboard `-`. Never write an em dash, an en dash or any other Unicode dash (U+2010 to U+2015, U+2212), or an HTML entity for one. The rule covers code, comments, docs, commit messages, and PR and issue text. Use ` - ` for an aside and `60-75` for a range. This is the owner's rule from 2026-10-17, because the dashes read as an AI giveaway. An exception needs a technical reason:
+- code that must match or produce the character, such as a regex or a test of non-ASCII input: write it as an escape (`\u2014`), never the character;
+- an applied Flyway migration, whose checksum would change.
 
-In Markdown, don't start a wrapped line with `- `, because that turns the line into a list item. To check, run `git grep -nP '[\x{2010}-\x{2015}\x{2212}]'`. Until the owner converts them, its only hits are three files in `.claude/hooks/`, which agents leave alone.
+In Markdown, don't start a wrapped line with `- `, because that turns the line into a list item. To check, run `git grep -nP '[\x{2010}-\x{2015}\x{2212}]|&[mn]dash;|&#821[12];'`. Until the owner converts them, its only hits are three files in `.claude/hooks/`, which agents leave alone.
 
 ## Branches
 
