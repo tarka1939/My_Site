@@ -95,10 +95,10 @@ start without them.**
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
 | `TLS_TERMINATED_UPSTREAM` | `true` in `prod`, `false` otherwise | #260. Tells Tomcat that TLS ended before the request arrived, so the app sees `https` and sends HSTS. Leave it alone unless the app is ever served without a TLS-terminating proxy in front - see "Certificates" in 4.8 |
 
-> **Note a naming trap.** `CLAUDE.md`'s local-development section tells you to set `DB_NAME`,
-> `DB_USERNAME`, `DB_PASSWORD` - that is the **dev** profile. The **prod** profile takes a full
-> `DB_URL` instead of a database name. Copying the local instructions to the server gives you an app
-> that will not start.
+> **Note a naming trap.** The **dev** profile reads `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD`, and
+> their defaults match the Docker Compose database, so local development sets none of them
+> (`backend/CLAUDE.md`). The **prod** profile takes a full `DB_URL` instead of a database name.
+> Copying the dev variables to the server gives you an app that will not start.
 
 ---
 

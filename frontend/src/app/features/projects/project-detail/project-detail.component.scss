@@ -110,7 +110,10 @@ h1 {
 // is, would render with a hard break at every wrap.
 //
 // The block's own styling is .markdown-body in src/styles.scss, global because component styles do
-// not reach [innerHTML] content. This class stays for the layout slot around it.
+// not reach [innerHTML] content. That includes its measure (#297), which is capped there rather than
+// here so the About page and both admin previews share it. The cap is on the text alone, not on
+// `main` or the article, so the title, the gallery and the links keep the full width: the gallery
+// was widened on purpose (#211). This class stays for the layout slot around it.
 .description {
   margin: 1rem 0;
 }
