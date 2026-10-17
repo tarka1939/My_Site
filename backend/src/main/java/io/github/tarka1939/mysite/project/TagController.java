@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Read-only — tags are created implicitly (upserted by name) via project writes, see
+ * Read-only - tags are created implicitly (upserted by name) via project writes, see
  * {@link ProjectService#resolveTags}. No POST /tags, matching docs/openapi.yaml.
  */
 @RestController

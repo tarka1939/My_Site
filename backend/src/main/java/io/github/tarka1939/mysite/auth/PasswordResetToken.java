@@ -12,7 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * A single-use password reset token, stored hashed (never the raw token — same principle as
+ * A single-use password reset token, stored hashed (never the raw token - same principle as
  * {@code AdminUser.passwordHash}). 30-minute expiry per docs/DATA_MODEL.md, deliberately
  * shorter than the 1-hour JWT session expiry since a leaked reset token is a higher-risk
  * artifact (email interception).

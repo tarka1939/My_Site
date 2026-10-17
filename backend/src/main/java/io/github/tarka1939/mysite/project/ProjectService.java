@@ -73,7 +73,7 @@ public class ProjectService {
 
         // saveAndFlush (not save): @CreationTimestamp/@UpdateTimestamp are populated by
         // Hibernate at flush time. A plain save() defers that flush to transaction commit,
-        // which happens after this method returns — the response DTO would see null
+        // which happens after this method returns - the response DTO would see null
         // createdAt/updatedAt otherwise.
         Project saved = projectRepository.saveAndFlush(project);
         eventPublisher.publishEvent(new ProjectCreatedEvent(saved.getId()));

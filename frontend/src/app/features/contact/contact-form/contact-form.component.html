@@ -13,7 +13,7 @@
 </p>
 
 @if (submitted()) {
-  <p role="status">Thanks for reaching out &mdash; I'll get back to you soon.</p>
+  <p role="status">Thanks for reaching out - I'll get back to you soon.</p>
 } @else {
   <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
     <!-- Each field renders one message slot holding either this form's own validator message or the
@@ -89,7 +89,7 @@
         <p class="form-error-heading">Your message was not sent.</p>
         <p>
           The site refused it for a reason it cannot show you here, and nothing you change above
-          will get past it &mdash; this is a fault on my side, not in what you wrote. Sending it
+          will get past it - this is a fault on my side, not in what you wrote. Sending it
           again will most likely fail the same way. You can still find me on
           <a href="https://github.com/tarka1939" rel="me">GitHub</a>.
         </p>

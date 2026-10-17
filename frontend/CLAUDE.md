@@ -10,7 +10,7 @@ arrives with the first file read under `frontend/`.
 ### Frontend (`/frontend`)
 
 Requires Node 24+. `ng serve`'s dev-server proxy (`frontend/proxy.conf.json`) forwards `/api/*`
-to `http://localhost:8080` so the browser sees same-origin requests — the backend's CORS allowlist
+to `http://localhost:8080` so the browser sees same-origin requests - the backend's CORS allowlist
 (`app.cors.allowed-origins`) holds only the deployed Netlify origin, never `localhost:4200`, so
 without the proxy every API call from `ng serve` fails with a CORS error. Regenerating the API
 client (`npm run generate:api`) needs Java (JDK 11+) on `PATH`, since `openapi-generator-cli`
@@ -40,6 +40,6 @@ cd frontend && npm run generate:api
 # bypassSecurityTrust* calls and raw innerHTML-style DOM writes, either of which would make the
 # Markdown renderer an XSS sink:
 cd frontend && npm run lint
-# No formatter: `frontend/.prettierrc` exists from the Angular scaffold but nothing runs it —
+# No formatter: `frontend/.prettierrc` exists from the Angular scaffold but nothing runs it -
 # don't reformat files wholesale with it.
 ```
