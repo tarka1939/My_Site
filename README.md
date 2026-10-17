@@ -138,7 +138,7 @@ cd frontend && npm install && npm start
 
 `ng serve`'s dev-server proxy (`frontend/proxy.conf.json`) forwards `/api/*` to `localhost:8080`,
 so the browser sees same-origin requests — the backend's CORS allowlist holds only the deployed
-Netlify origin, not `localhost`. See `CLAUDE.md`'s Commands section for the
+Netlify origin, not `localhost`. See `backend/CLAUDE.md` and `frontend/CLAUDE.md` for the
 full command reference (tests, builds, regenerating the API client, etc.).
 
 ### End-to-end tests
