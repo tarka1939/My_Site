@@ -271,9 +271,9 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   //
   // The cap is on the text, not on the page: the description stops at a reading measure while the
   // gallery above it keeps the full width (#211). Dropping the cap, or moving it onto the article,
-  // brings the two widths together and fails this. A ratio rather than 528px, so a rounding or
-  // font difference does not fail it; Desktop Chrome's 1280px viewport is wide enough for the cap
-  // to apply (528px of 928px).
+  // brings the two widths together and fails this. So does raising it past about 603px, 0.65 of
+  // 928px (70ch's 672px would fail), so a change to the measure needs this threshold moved too.
+  // Desktop Chrome's 1280px viewport is wide enough for the cap to apply (528px of 928px).
   const widthOf = (el: Element) => el.getBoundingClientRect().width;
   const descriptionWidth = await detailDescription.evaluate(widthOf);
   const galleryWidth = await gallery.evaluate(widthOf);

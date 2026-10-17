@@ -562,9 +562,9 @@ main:focus {
     padding: 0.1em 0.3em;
   }
 
-  // A fenced block is the one place in a description whose content can be wider than the column:
-  // code does not reflow, so it scrolls rather than forcing the whole page to. `code` inside it drops the
-  // inline chip styling, which would otherwise draw a plate on a plate.
+  // A fenced block is the one place in rendered Markdown whose content can be wider than the
+  // column: code does not reflow, so it scrolls rather than forcing the whole page to. `code`
+  // inside it drops the inline chip styling, which would otherwise draw a plate on a plate.
   pre {
     background: var(--color-surface-muted);
     border-radius: 0.375rem;
