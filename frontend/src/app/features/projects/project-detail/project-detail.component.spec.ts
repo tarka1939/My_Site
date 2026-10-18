@@ -17,6 +17,7 @@ import {
   seoTags,
 } from '../../../../testing/seo-tags';
 import { clickOn, renderComponent } from '../../../../testing/zoneless';
+import { AnalyticsTracker } from '../../../core/analytics/analytics-tracker';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { TagsService } from '../../../core/api/api/tags.service';
 import { Project } from '../../../core/api/model/project';
@@ -941,5 +942,98 @@ describe('ProjectDetailComponent, full-screen image viewer', () => {
     fixture!.destroy();
 
     expect(document.documentElement.style.overflow).toBe('');
+  });
+});
+
+/**
+ * Following one of a project's own links is counted (Phase 7c). The tracker is stubbed here: what
+ * it sends, and when it sends nothing, is analytics-tracker.spec.ts's subject. This block pins only
+ * the page's half, which is which gestures call it and with what.
+ */
+describe('ProjectDetailComponent, counting link clicks', () => {
+  const PROJECT_ID = '3f2b8c1e-7d4a-4e9b-a6c5-0d1e2f3a4b5c';
+  const GITHUB = 'https://github.com/tarka1939/Equalizer';
+  /** A query string with `&`, so a URL that was re-encoded or rebuilt on the way would show. */
+  const DEMO = 'https://example.com/demo/?lang=en&v=2';
+  const LINKED: Project = {
+    ...PROJECT,
+    id: PROJECT_ID,
+    images: [],
+    links: [
+      { label: 'GitHub', url: GITHUB },
+      { label: 'Demo', url: DEMO },
+    ],
+  };
+  let recordLinkClick: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    clearSeoTags();
+    recordLinkClick = vi.fn();
+
+    await TestBed.configureTestingModule({
+      imports: [ProjectDetailComponent],
+      providers: [
+        provideRouter([]),
+        { provide: ProjectsService, useValue: { getProject: () => of(LINKED) } },
+        // Deliberately not the project's id: the click must send the id the API answered with.
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: new BehaviorSubject(convertToParamMap({ id: 'id-from-the-url' })) },
+        },
+        { provide: AnalyticsTracker, useValue: { recordLinkClick } },
+      ],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    clearSeoTags();
+  });
+
+  /** Renders the page and returns its two links, checked present so no test passes on none. */
+  async function renderLinks(): Promise<HTMLAnchorElement[]> {
+    const fixture = await renderComponent(ProjectDetailComponent);
+    const host = fixture.nativeElement as HTMLElement;
+    // A click on a link with an href makes jsdom attempt a navigation it does not implement, and
+    // report that as an error. Cancelling the default on the way down stops that without touching
+    // the page's own listener, which still runs at the link.
+    host.addEventListener('click', (event) => event.preventDefault(), { capture: true });
+    const links = [...host.querySelectorAll<HTMLAnchorElement>('.link-list a')];
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([GITHUB, DEMO]);
+    return links;
+  }
+
+  it('counts a click with the project id and the link URL exactly as the API gave them', async () => {
+    const [, demo] = await renderLinks();
+
+    demo.click();
+
+    expect(recordLinkClick).toHaveBeenCalledExactlyOnceWith(PROJECT_ID, DEMO);
+  });
+
+  it('counts a middle click, which fires auxclick and no click', async () => {
+    const [github] = await renderLinks();
+
+    github.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+
+    expect(recordLinkClick).toHaveBeenCalledExactlyOnceWith(PROJECT_ID, GITHUB);
+  });
+
+  it('does not count a right click, which only opens a menu', async () => {
+    const [github] = await renderLinks();
+
+    github.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+
+    expect(recordLinkClick).not.toHaveBeenCalled();
+    // Positive counterpart on the same link, so the absence above is not a listener that is missing.
+    github.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(recordLinkClick).toHaveBeenCalledExactlyOnceWith(PROJECT_ID, GITHUB);
+  });
+
+  it('still opens every link in a new tab without an opener or a referrer', async () => {
+    // Counting added listeners to these links; it must not have changed how they open.
+    for (const link of await renderLinks()) {
+      expect(link.getAttribute('target')).toBe('_blank');
+      expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    }
   });
 });

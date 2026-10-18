@@ -15,6 +15,7 @@ Package-by-feature under `io.github.tarka1939.mysite`, with boundaries enforced 
 | `auth/` | `auth/login`, `auth/password-reset-request`, `auth/password-reset/validate`, `auth/password-reset` |
 | `about/` | `about` (public GET, admin PUT) |
 | `githubsync/` | `webhooks/github` - Phase 7a, off unless `GITHUB_SYNC_ENABLED=true` |
+| `analytics/` | `analytics/page-views`, `analytics/link-clicks` (public POST), `admin/analytics` (admin GET) - Phase 7c, off unless `ANALYTICS_ENABLED=true` |
 
 Cross-cutting pieces (security config, the exception handler, the shared rate limiter, client-IP
 resolution behind proxies, the async executor, the Resend client) live in the root package.

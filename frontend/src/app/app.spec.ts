@@ -33,6 +33,18 @@ describe('App', () => {
     expect(compiled.querySelector('.site-nav__brand')?.textContent).toContain('Krzysztof Tarka');
   });
 
+  it('links to the privacy page from the footer, beside the copyright line', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const footer = (fixture.nativeElement as HTMLElement).querySelector('footer.site-footer')!;
+
+    expect(footer.querySelector('p')?.textContent).toContain('Krzysztof Tarka. All rights reserved.');
+    const links = [...footer.querySelectorAll('a')];
+    expect(links.map((link) => [link.textContent?.trim(), link.getAttribute('href')])).toEqual([
+      ['Privacy', '/privacy'],
+    ]);
+  });
+
   it('shows an "Admin" login link when logged out', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();

@@ -1,5 +1,6 @@
 package io.github.tarka1939.mysite.project;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -122,6 +123,52 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public ProjectResponse getProject(UUID id) {
         return ProjectResponse.from(findProjectOrThrow(id));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // For the analytics module (Phase 7c, #58/#59). Three narrow questions rather than access to
+    // the repository or the entity: analytics may ask whether an event names something on the
+    // public site, and what the dashboard should call a project and its links, and nothing more.
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Whether {@code id} names a project on the public site. False for a draft and for an id that
+     * names nothing, which the caller does not get to tell apart -- the same reason
+     * {@link #getPublishedProject} answers both with one 404.
+     */
+    @Transactional(readOnly = true)
+    public boolean isPublishedProject(UUID id) {
+        return projectRepository.existsByIdAndPublishedTrue(id);
+    }
+
+    /**
+     * Whether {@code url} is exactly one of a published project's current link URLs. Exact means
+     * {@code String.equals}: no case folding, no trailing-slash or scheme normalisation, since
+     * the client sends the URL as the project's {@code links} gave it. False for a draft or an
+     * unknown id, as {@link #isPublishedProject} is.
+     */
+    @Transactional(readOnly = true)
+    public boolean isPublishedProjectLink(UUID id, String url) {
+        return projectRepository.findByIdAndPublishedTrue(id)
+            .map(project -> project.getLinks().stream().anyMatch(link -> url.equals(link.url())))
+            .orElse(false);
+    }
+
+    /**
+     * The title and current links of each project among {@code ids} that still exists, published
+     * or not, in one query. An id with no project -- deleted since -- is simply absent from the
+     * map, which is how the caller learns it was deleted.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, ProjectTitleAndLinks> findTitlesAndLinks(Collection<UUID> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, ProjectTitleAndLinks> byId = new HashMap<>();
+        for (Project project : projectRepository.findAllById(ids)) {
+            byId.put(project.getId(), new ProjectTitleAndLinks(project.getId(), project.getTitle(), project.getLinks()));
+        }
+        return byId;
     }
 
     private static boolean hasTagFilter(List<String> tagNames) {

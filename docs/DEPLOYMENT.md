@@ -93,6 +93,7 @@ start without them.**
 | `GITHUB_SYNC_ENABLED` | `false` | Leave off. Phase 7a is built but not meant to be live yet |
 | `GITHUB_WEBHOOK_SECRET` | empty | Only read when sync is enabled |
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
+| `ANALYTICS_ENABLED` | `false` | Phase 7c. `true` starts counting page views and project link clicks; the value is compared ignoring case, and anything else is off. While off, the event endpoints answer 404, the tracker's failed requests show nothing, and the admin dashboard says counting is off. Nothing else goes with it: the daily salt lives only in memory, by design |
 | `TLS_TERMINATED_UPSTREAM` | `true` in `prod`, `false` otherwise | #260. Tells Tomcat that TLS ended before the request arrived, so the app sees `https` and sends HSTS. Leave it alone unless the app is ever served without a TLS-terminating proxy in front - see "Certificates" in 4.8 |
 
 > **Note a naming trap.** The **dev** profile reads `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD`, and
