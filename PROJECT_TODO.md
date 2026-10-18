@@ -251,7 +251,7 @@ These are the four "give the backend a real job" candidates from earlier. Build 
 - [ ] New `agentlog` package: parse `AGENT_LOG.md` (or move its entries into the DB directly, arguably cleaner) and expose via a read-only endpoint
 - [ ] A frontend page rendering it well - mostly a content/rendering task, not a hard backend problem, which is exactly why it's cheap here despite high payoff: it's your actual differentiation artifact from the multi-agent workflow, made visible to someone who'd never clone the repo
 
-**7c. Custom analytics** - **next**, by the owner's choice on 2026-10-14. The plan's order had 7b first. The order of 7b and 7d after it is not decided.
+**7c. Custom analytics** - **in progress** (epic #72), chosen as next by the owner on 2026-10-14. The plan's order had 7b first. The order of 7b and 7d after it is not decided. On 2026-10-18 the owner chose the design: page views and project link clicks, a visitor counted once per page and day under a daily salt held only in memory, every row kept, and a privacy note with Do Not Track and Global Privacy Control honoured. The ADR (`docs/DECISIONS.md`, 2026-10-18), the table in `docs/DATA_MODEL.md` and the contract came first, on `feat/analytics-adr-72`. The backend and frontend are being built against them. The privacy note's wording waits on the owner's sign-off.
 - [ ] New `analytics` package: event-ingestion endpoint (page view, project click) with basic dedup/rate limiting so one visitor can't spam events
 - [ ] Aggregation queries (views per project over time) - this is where the real backend substance is, not the ingestion endpoint itself
 - [ ] Simple dashboard view, behind the admin auth if you built it
