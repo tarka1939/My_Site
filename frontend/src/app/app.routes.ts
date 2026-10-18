@@ -35,6 +35,11 @@ export const routes: Routes = [
     loadChildren: () => import('./features/contact/contact.routes').then((m) => m.CONTACT_ROUTES),
   },
   {
+    // What the visit counting records (Phase 7c), linked from the footer of every page.
+    path: 'privacy',
+    loadChildren: () => import('./features/privacy/privacy.routes').then((m) => m.PRIVACY_ROUTES),
+  },
+  {
     // Matches the link the backend emails via PasswordResetService (app.frontend-url + this path,
     // see backend/src/main/resources/application.yml) -- keep in sync if that path ever changes.
     path: 'reset-password',
