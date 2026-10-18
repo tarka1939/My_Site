@@ -48,9 +48,10 @@ const KNOWN_PAGES: readonly string[] = Object.values(AnalyticsPage);
  * project's own links. The design is the 2026-10-18 analytics ADR in docs/DECISIONS.md.
  *
  * Nothing is sent while the browser asks not to be tracked (Do Not Track or Global Privacy
- * Control) or while the admin is logged in. Both are checked for every event, not once at start, so
- * a visitor who switches a signal on, or an admin who logs in, stops being counted from the next
- * event on. The server drops such events too; this keeps them from being sent at all.
+ * Control) or while the admin is logged in, in this tab (see mayCount for what that leaves). Both
+ * are checked for every event, not once at start, so a visitor who switches a signal on, or an
+ * admin who logs in, stops being counted from the next event on. The server drops such events too;
+ * this keeps them from being sent at all.
  *
  * Every request opts out of the error toast and every failure is swallowed. Counting is for the
  * owner's curiosity, and a visitor must never be told it failed: the endpoints answer 404 whenever
@@ -122,6 +123,16 @@ export class AnalyticsTracker {
     this.send(this.api.recordPageView({ pageViewEvent: event }, 'body', false, { context: quiet() }));
   }
 
+  /**
+   * Whether an event may be sent: neither privacy signal is on, and no live admin session is held.
+   *
+   * The session is this tab's alone. AuthService keeps it in memory and mirrors it to
+   * sessionStorage, which belongs to one tab: a reload keeps it, a new tab or window starts
+   * without it. So the admin's own visits in a tab where they are not logged in, or once their
+   * session has expired, are counted like anyone's. The tracker cannot see another tab's session,
+   * and the server can only drop a request that carries the admin's token, which a tab without a
+   * session does not send.
+   */
   private mayCount(): boolean {
     const signals = this.signals;
     if (signals?.doNotTrack === '1' || signals?.globalPrivacyControl === true) {
