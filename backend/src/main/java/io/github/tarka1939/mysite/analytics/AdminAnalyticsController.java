@@ -37,8 +37,8 @@ public class AdminAnalyticsController {
     static final int MAX_RANGE_DAYS = 366;
 
     /**
-     * The handler method's name, which prefixes both range errors' keys, the same
-     * {@code method.parameter} form a Bean Validation failure on a query parameter gets.
+     * The handler method's name, which prefixes the keys of all four date and range errors: the
+     * same {@code method.parameter} form a Bean Validation failure on a query parameter gets.
      * {@code AdminAnalyticsIntegrationTest#theErrorKeyPrefixIsTheHandlersName} pins it to the
      * method's actual name.
      */

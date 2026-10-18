@@ -1,9 +1,10 @@
 package io.github.tarka1939.mysite;
 
 /**
- * A query parameter that is well-formed on its own but wrong given the others, such as a date
- * range that ends before it starts. Answered as a 400 with one field error, the same body a Bean
- * Validation failure on a query parameter gets, so a client handles both alike.
+ * A well-formed query parameter that is wrong on its own or given the others, such as a date
+ * outside the supported years or a range that ends before it starts. Answered as a 400 with one
+ * field error, the same body a Bean Validation failure on a query parameter gets, so a client
+ * handles both alike.
  *
  * <p>For rules Bean Validation cannot reach cleanly: the analytics summary's range (#59) is checked
  * after its defaults are filled in from today's date, which a constraint on the raw, possibly

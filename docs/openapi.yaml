@@ -706,13 +706,14 @@ paths:
                 $ref: '#/components/schemas/AnalyticsSummary'
         '400':
           description: |
-            The range is invalid. A `to` outside 0001-01-01 to 9999-12-31 is a field error keyed
-            `getAnalyticsSummary.to` and a `from` outside it one keyed `getAnalyticsSummary.from`
-            (`to` is checked first, and a default `from` is checked like a sent one). Then `to`
-            before `from` is a field error keyed `getAnalyticsSummary.to`, and a range longer than
-            366 days one keyed `getAnalyticsSummary.from`, prefixed with the handler name like
-            every query-parameter violation (see ValidationProblemDetail). A value that does not
-            parse as a date is a 400 as well, as a plain problem with no `errors`.
+            The range is invalid. Every key below is prefixed with the handler name, like every
+            query-parameter violation (see ValidationProblemDetail). A `to` outside 0001-01-01 to
+            9999-12-31 is a field error keyed `getAnalyticsSummary.to` and a `from` outside it one
+            keyed `getAnalyticsSummary.from` (`to` is checked first, and a default `from` is checked
+            like a sent one). Then `to` before `from` is a field error keyed
+            `getAnalyticsSummary.to`, and a range longer than 366 days one keyed
+            `getAnalyticsSummary.from`. A value that does not parse as a date is a 400 as well, as a
+            plain problem with no `errors`.
           content:
             application/problem+json:
               schema:

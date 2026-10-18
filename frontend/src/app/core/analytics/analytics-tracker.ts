@@ -127,11 +127,11 @@ export class AnalyticsTracker {
    * Whether an event may be sent: neither privacy signal is on, and no live admin session is held.
    *
    * The session is this tab's alone. AuthService keeps it in memory and mirrors it to
-   * sessionStorage, which belongs to one tab: a reload keeps it, a new tab or window starts
-   * without it. So the admin's own visits in a tab where they are not logged in, or once their
-   * session has expired, are counted like anyone's. The tracker cannot see another tab's session,
-   * and the server can only drop a request that carries the admin's token, which a tab without a
-   * session does not send.
+   * sessionStorage, which belongs to one tab: a reload keeps it, and a new tab or window usually
+   * starts without it (Duplicate Tab copies it). So the admin's own visits in a tab where they are
+   * not logged in, or once their session has expired, are counted like anyone's. The tracker
+   * cannot see another tab's session, and the server can only drop a request that carries the
+   * admin's token, which a tab without a session does not send.
    */
   private mayCount(): boolean {
     const signals = this.signals;

@@ -98,9 +98,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * A query parameter wrong given the others (the analytics summary's range, #59). The same body
-     * as {@link #handleConstraintViolation} gives a query-parameter violation, with the same
-     * {@code handlerName.parameter} key, for the same reason as the #148 handler above.
+     * A query parameter wrong on its own or given the others (the analytics summary's dates and
+     * range, #59). The same body as {@link #handleConstraintViolation} gives a query-parameter
+     * violation, with the same {@code handlerName.parameter} key, for the same reason as the #148
+     * handler above.
      */
     @ExceptionHandler(InvalidQueryParameterException.class)
     public ProblemDetail handleInvalidQueryParameter(InvalidQueryParameterException ex) {
