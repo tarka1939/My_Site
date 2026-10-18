@@ -8,7 +8,10 @@ import { HttpInterceptorFn, provideHttpClient, withInterceptors } from '@angular
 import { TitleStrategy, provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
-import { provideApi } from './core/api';
+// From its own file, not the `./core/api` barrel. The barrel re-exports every generated service,
+// and importing it from here kept all of them in the initial bundle rather than in the lazy chunks
+// that use them: 323.37 kB against the 320 kB budget with the barrel, 303.83 kB without (Phase 7c).
+import { provideApi } from './core/api/provide-api';
 import { environment } from '../environments/environment';
 import { AnalyticsTracker } from './core/analytics/analytics-tracker';
 import { authInterceptor } from './core/auth/auth.interceptor';
