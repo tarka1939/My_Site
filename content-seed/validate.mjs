@@ -138,8 +138,14 @@ export function validate(records) {
       // A record cannot set `published` (it is not in CONTRACT_FIELDS), and a create that omits it
       // publishes, so every record this seed creates goes live. The API refuses to publish a
       // project with no tags (#148), so an empty list would fail mid-apply like any other 400.
+      // Stricter than the API for an update: a PUT to an existing draft would accept `[]` and
+      // leave it a draft. The validator runs before any request, so it cannot tell which records
+      // are updates, and refusing every empty list is the safe side.
       if (record.tags.length === 0) {
-        fail('tags is empty - every seeded project is published, and the API refuses to publish one with no tags');
+        fail(
+          'tags is empty - a seeded create is published, and the API refuses to publish a project ' +
+            'with no tags',
+        );
       }
       record.tags.forEach((tag, t) => {
         if (typeof tag !== 'string' || tag.length < 1 || tag.length > 50) {

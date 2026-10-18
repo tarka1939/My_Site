@@ -914,7 +914,7 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - **That rests on Hibernate, so a test pins it.** `ProjectUpdateStaleReadIntegrationTest` commits a publish between a tagless save's read and its flush. Adding `@DynamicUpdate` to `Project` fails it. So #304, where an admin PUT writes stale values over the sync-owned columns, should be fixed with `@Column(updatable = false)` on those columns, as it proposes, and not with `@DynamicUpdate`.
 - **A live project that already has no tags stays live.** Its next save has to add a tag or unpublish it. The list keeps Unpublish for it.
 - **Sync is unchanged.** It still writes no tags, and its drafts now save as they are.
-- **A request can fail in two rounds.** Bean Validation runs before the service. A request with a blank title that would also publish with no tags gets the title error first, and the tags error only after the title is fixed. The admin form checks both before it sends, so only other API clients see this.
+- **A request can fail in two rounds.** Bean Validation runs before the service. A request with a blank title that would also publish with no tags gets the title error first, and the tags error only after the title is fixed. The admin form never sends a tagless publish, so only other API clients see this.
 
 ### [YYYY-MM-DD] - [Decision title]
 

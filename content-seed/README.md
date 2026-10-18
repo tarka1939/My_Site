@@ -128,6 +128,7 @@ is a non-empty string in JavaScript and blank to the server.
 It also refuses an empty `tags` list. A record cannot set `published`, and a create that omits it
 publishes, so every record this seed creates goes live, and the API refuses to publish a project
 with no tags (#148).
+
 ## What it does not do
 
 - **It does not write to Postgres.** Every change goes through the API, so it exercises the same
