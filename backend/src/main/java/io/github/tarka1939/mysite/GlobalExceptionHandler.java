@@ -45,27 +45,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
         MethodArgumentNotValidException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request
     ) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Request failed validation");
-        problem.setTitle("Validation Failed");
-
         List<FieldErrorDetail> errors = ex.getBindingResult().getFieldErrors().stream()
             .map(fe -> new FieldErrorDetail(fe.getField(), fe.getDefaultMessage()))
             .toList();
-        problem.setProperty("errors", errors);
-        return ResponseEntity.status(status).headers(headers).body(problem);
+        return ResponseEntity.status(status).headers(headers).body(validationProblem(status, errors));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST, "Request failed validation");
-        problem.setTitle("Validation Failed");
-
         List<FieldErrorDetail> errors = ex.getConstraintViolations().stream()
             .map(cv -> new FieldErrorDetail(cv.getPropertyPath().toString(), cv.getMessage()))
             .toList();
-        problem.setProperty("errors", errors);
-        return problem;
+        return validationProblem(HttpStatus.BAD_REQUEST, errors);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -102,11 +93,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(TagRequiredToPublishException.class)
     public ProblemDetail handleTagRequiredToPublish(TagRequiredToPublishException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST, "Request failed validation");
-        problem.setTitle("Validation Failed");
-        problem.setProperty("errors", List.of(new FieldErrorDetail("tags", ex.getMessage())));
-        return problem;
+        return validationProblem(
+            HttpStatus.BAD_REQUEST, List.of(new FieldErrorDetail("tags", ex.getMessage())));
     }
 
     @ExceptionHandler(RateLimitExceededException.class)
@@ -208,6 +196,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
         problem.setTitle("Internal Server Error");
+        return problem;
+    }
+
+    /**
+     * The body of every validation failure, whichever of the three handlers above raised it. One
+     * builder, so Bean Validation's two failures and the tag rule's cannot drift apart: the client
+     * branches on this shape without knowing which one it got.
+     */
+    private static ProblemDetail validationProblem(HttpStatusCode status, List<FieldErrorDetail> errors) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Request failed validation");
+        problem.setTitle("Validation Failed");
+        problem.setProperty("errors", errors);
         return problem;
     }
 
