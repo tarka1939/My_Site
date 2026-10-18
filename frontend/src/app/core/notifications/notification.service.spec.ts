@@ -44,4 +44,45 @@ describe('NotificationService', () => {
 
     expect(shown()).toEqual(['error: Again.']);
   });
+
+  // #313: a successful login takes down every error from before it, and nothing else.
+  describe('dismissAll', () => {
+    it('removes every toast at the given level and keeps the others in order', () => {
+      service.info('Saved.');
+      service.error('Invalid username or password');
+      service.info('Also saved.');
+      service.error('Too many requests -- please wait a moment and try again.');
+
+      service.dismissAll('error');
+
+      expect(shown()).toEqual(['info: Saved.', 'info: Also saved.']);
+    });
+
+    it('removes info toasts when asked for info, leaving the errors', () => {
+      service.error('Failed.');
+      service.info('Saved.');
+
+      service.dismissAll('info');
+
+      expect(shown()).toEqual(['error: Failed.']);
+    });
+
+    it('does nothing when no toast is at that level', () => {
+      service.info('Saved.');
+      const before = service.notifications();
+
+      service.dismissAll('error');
+
+      expect(service.notifications()).toEqual(before);
+    });
+
+    it('leaves the replacing in place: a message dismissed this way shows again when repeated', () => {
+      service.error('Again.');
+      service.dismissAll('error');
+      service.error('Again.');
+      service.error('Again.');
+
+      expect(shown()).toEqual(['error: Again.']);
+    });
+  });
 });
