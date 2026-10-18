@@ -56,10 +56,12 @@ describe('projectFieldName', () => {
     'Tags',
     'title ',
     'links[0].url.extra',
-    // Names that live on Object.prototype, which a plain `in` lookup would find.
+    // Names that live on Object.prototype, which a plain `in` lookup would find, at the top level
+    // and as a link's part.
     'constructor',
     'toString',
     '__proto__',
+    'links[0].constructor',
   ])('maps nothing for %j, so the caller shows the message alone', (key) => {
     expect(projectFieldName(key)).toBeNull();
   });

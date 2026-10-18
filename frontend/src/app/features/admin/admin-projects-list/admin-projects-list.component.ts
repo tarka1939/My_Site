@@ -172,8 +172,8 @@ export class AdminProjectsListComponent {
             const verb = published ? 'publish' : 'unpublish';
             // Each reason names its field the way the form labels it (#308), since the link below
             // goes there: "Tags", or "Link 1's URL" for `links[0].url`. A key nothing maps gets the
-            // message alone -- most of the API's messages name their subject anyway, and a wire key
-            // is a word the admin never chose.
+            // message alone, since a wire key is a word the admin never chose. The one such key the
+            // API has, `repoFullName`, is never in this PUT, so no rejection here can name it.
             const reasons = fieldErrors
               .map(({ field, message }) => {
                 const name = projectFieldName(field);

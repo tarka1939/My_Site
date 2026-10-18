@@ -351,7 +351,7 @@ describe('AdminProjectsListComponent', () => {
       throwError(() =>
         problemWith([
           { field: 'tags', message: 'At least one tag is required to publish' },
-          { field: 'links[0].url', message: 'must be a valid URL' },
+          { field: 'links[0].url', message: 'must not be blank' },
           { field: 'images[0]', message: 'size must be between 0 and 500' },
           // A key with no label on the form: the message goes out alone rather than with the key.
           { field: 'repoFullName', message: 'size must be between 0 and 255' },
@@ -366,7 +366,7 @@ describe('AdminProjectsListComponent', () => {
     expect(text).toContain(
       'Could not publish "Equalizer". The server rejected it -- ' +
         'Tags: At least one tag is required to publish; ' +
-        "Link 1's URL: must be a valid URL; " +
+        "Link 1's URL: must not be blank; " +
         "Image 1's URL: size must be between 0 and 500; " +
         'size must be between 0 and 255.',
     );

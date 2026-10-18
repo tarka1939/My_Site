@@ -208,6 +208,8 @@ export class AdminProjectFormComponent {
    * Every field label the template shows, read from the source the projects list also names fields
    * by when it reports a rejected Publish (#308). That message links here, so the name it gives a
    * field has to be the one the admin then finds on it -- held once, they cannot be edited apart.
+   * The validators' own messages above ("Title is required") still spell the word out, because
+   * they follow the API's wording; renaming a field means changing those too.
    */
   protected readonly labels = PROJECT_FIELD_LABELS;
   protected readonly rowLabels = PROJECT_ROW_INPUT_LABELS;
