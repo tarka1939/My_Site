@@ -20,7 +20,7 @@
          points at: role="alert" announces the message once as it appears, and the description is
          what carries the reason on every later visit to the field. -->
     <div class="field">
-      <label for="project-title">Title</label>
+      <label for="project-title">{{ labels.title }}</label>
       <input
         id="project-title"
         type="text"
@@ -34,7 +34,7 @@
     </div>
 
     <div class="field">
-      <label for="project-description">Description</label>
+      <label for="project-description">{{ labels.description }}</label>
       <textarea
         id="project-description"
         rows="6"
@@ -69,7 +69,7 @@
     </div>
 
     <div class="field">
-      <label for="project-tags">Tags (comma-separated)</label>
+      <label for="project-tags">{{ labels.tags }} (comma-separated)</label>
       <!-- readonly while a save is in flight, for the reason the link and image rows are frozen:
            `tags[2]` indexes the list this one control holds, so a verdict computed against the tags
            that were sent lands on whatever the box holds when it arrives. Edit "a, b, c" down to
@@ -114,7 +114,7 @@
           formControlName="published"
           aria-describedby="project-published-hint"
         />
-        <label for="project-published">Published</label>
+        <label for="project-published">{{ labels.published }}</label>
       </div>
       <p id="project-published-hint" class="field-hint">
         Unticked keeps this a draft: it stays off the public project list, and its page answers
@@ -126,7 +126,7 @@
       <legend>Project period</legend>
 
       <div class="field">
-        <label for="project-started-on">Start date</label>
+        <label for="project-started-on">{{ labels.startedOn }}</label>
         <input
           id="project-started-on"
           type="date"
@@ -147,7 +147,7 @@
       </div>
 
       <div class="field">
-        <label for="project-completed-on">Completion date</label>
+        <label for="project-completed-on">{{ labels.completedOn }}</label>
         <input
           id="project-completed-on"
           type="date"
@@ -173,18 +173,18 @@
     </fieldset>
 
     <fieldset formArrayName="links">
-      <legend>Links</legend>
+      <legend>{{ labels.links }}</legend>
       <!-- track link, not $index. [formGroupName]="$index" is positional, so tracking by index
            reuses the row that was at position i for the group now at position i without rebinding
            it: remove the first of two links and the DOM keeps showing the removed one's text while
            the model holds the survivor's -- which is what a PUT would then send. Tracking the
            FormGroup identity makes the removed row's DOM go with it. -->
       @for (link of form.controls.links.controls; track link) {
-        @let labelError = rowError(link.controls.label, 'Link label', linkFieldKey($index, 'label'));
-        @let urlError = rowError(link.controls.url, 'Link URL', linkFieldKey($index, 'url'));
+        @let labelError = rowError(link.controls.label, rowLabels.linkLabel, linkFieldKey($index, 'label'));
+        @let urlError = rowError(link.controls.url, rowLabels.linkUrl, linkFieldKey($index, 'url'));
         <div class="repeatable-group" [formGroupName]="$index">
           <div class="repeatable-row">
-            <label [attr.for]="'link-label-' + $index" class="visually-hidden">Link label</label>
+            <label [attr.for]="'link-label-' + $index" class="visually-hidden">{{ rowLabels.linkLabel }}</label>
             <input
               [id]="'link-label-' + $index"
               type="text"
@@ -193,7 +193,7 @@
               [attr.aria-describedby]="labelError ? 'link-label-' + $index + '-error' : null"
               [attr.aria-invalid]="labelError ? 'true' : null"
             />
-            <label [attr.for]="'link-url-' + $index" class="visually-hidden">Link URL</label>
+            <label [attr.for]="'link-url-' + $index" class="visually-hidden">{{ rowLabels.linkUrl }}</label>
             <input
               [id]="'link-url-' + $index"
               type="url"
@@ -223,14 +223,14 @@
     </fieldset>
 
     <fieldset formArrayName="images">
-      <legend>Image URLs</legend>
+      <legend>{{ labels.images }}</legend>
       <!-- track image, for the same reason as the links above: [formControlName]="$index" is
            positional, so an index-tracked row survives a removal still bound to its old value. -->
       @for (image of form.controls.images.controls; track image) {
-        @let imageError = rowError(image, 'Image URL', imageFieldKey($index));
+        @let imageError = rowError(image, rowLabels.imageUrl, imageFieldKey($index));
         <div class="repeatable-group">
           <div class="repeatable-row">
-            <label [attr.for]="'image-' + $index" class="visually-hidden">Image URL</label>
+            <label [attr.for]="'image-' + $index" class="visually-hidden">{{ rowLabels.imageUrl }}</label>
             <input
               [id]="'image-' + $index"
               type="url"
