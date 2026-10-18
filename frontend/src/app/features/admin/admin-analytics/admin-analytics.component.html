@@ -28,15 +28,15 @@
     <dl class="totals">
       <div>
         <dt>Views</dt>
-        <dd>{{ view.totals.views | number }}</dd>
+        <dd>{{ count(view.totals.views) }}</dd>
       </div>
       <div>
         <dt>Visitor-days</dt>
-        <dd>{{ view.totals.visitorDays | number }}</dd>
+        <dd>{{ count(view.totals.visitorDays) }}</dd>
       </div>
       <div>
         <dt>Link clicks</dt>
-        <dd>{{ view.totals.linkClicks | number }}</dd>
+        <dd>{{ count(view.totals.linkClicks) }}</dd>
       </div>
     </dl>
     <p class="muted">
@@ -66,11 +66,11 @@
                 <span class="bar-track" aria-hidden="true">
                   <span class="bar" [style.width.%]="barWidth(day.views, view.maxViews)"></span>
                 </span>
-                <span>{{ day.views | number }}</span>
+                <span>{{ count(day.views) }}</span>
               </div>
             </td>
-            <td class="num">{{ day.visitors | number }}</td>
-            <td class="num">{{ day.linkClicks | number }}</td>
+            <td class="num">{{ count(day.visitors) }}</td>
+            <td class="num">{{ count(day.linkClicks) }}</td>
           </tr>
         }
       </tbody>
@@ -88,7 +88,7 @@
         @for (row of view.summary.pages; track row.page) {
           <tr>
             <th scope="row">{{ pageLabel(row.page) }}</th>
-            <td class="num">{{ row.views | number }}</td>
+            <td class="num">{{ count(row.views) }}</td>
           </tr>
         }
       </tbody>
@@ -113,8 +113,8 @@
               <th scope="row" [class.muted]="project.title === null">
                 {{ project.title ?? 'Deleted project' }}
               </th>
-              <td class="num">{{ project.views | number }}</td>
-              <td class="num">{{ project.linkClicks | number }}</td>
+              <td class="num">{{ count(project.views) }}</td>
+              <td class="num">{{ count(project.linkClicks) }}</td>
             </tr>
             @for (link of project.links; track link.url) {
               <tr class="link-row">
@@ -126,7 +126,7 @@
                 </th>
                 <!-- Empty on purpose: a link has clicks, and views are counted per project. -->
                 <td></td>
-                <td class="num">{{ link.clicks | number }}</td>
+                <td class="num">{{ count(link.clicks) }}</td>
               </tr>
             }
           </tbody>
