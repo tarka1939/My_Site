@@ -5,8 +5,8 @@ info:
     API contract for My Site's portfolio CMS (Project/Tag CRUD, contact form, admin auth).
 
     Scope: Phase 1-3 core endpoints, plus each Phase 7 extension endpoint as its sub-phase
-    actually starts (see PROJECT_TODO.md). Phase 7a's GitHub webhook receiver is now in; the
-    agent log, analytics and DSP demo endpoints are still out -- those entities remain marked
+    actually starts (see PROJECT_TODO.md). Phase 7a's GitHub webhook receiver and Phase 7c's
+    analytics are in; the agent log and DSP demo endpoints are still out -- those entities remain marked
     draft/unconfirmed in docs/DATA_MODEL.md and get their own OpenAPI additions when their
     sub-phase begins.
 
@@ -17,6 +17,9 @@ info:
       signature over the raw request body rather than by a bearer token. It is documented here
       because this file is the record of every HTTP endpoint the backend serves, not only the
       subset the SPA calls -- see that operation's description for the reasoning.
+    - POST /analytics/page-views and POST /analytics/link-clicks are public and take no token.
+      The site calls them as visitors use it, and every well-formed event is answered 204,
+      whether it was counted or not. See their descriptions.
     - Errors use RFC 9457 Problem Details (application/problem+json), matching Spring's native
       ProblemDetail support -- see the ProblemDetail and ValidationProblemDetail schemas. The
       exception is a missing or refused bearer token: that 401 has no body, and its reason is in
@@ -56,6 +59,11 @@ tags:
     description: Admin login
   - name: About
     description: The single "About" page -- public read, admin-gated replace (#213)
+  - name: Analytics
+    description: |
+      The site's own visitor counts (Phase 7c): two public event endpoints that the site's pages
+      call, and an admin summary. Off unless `app.analytics.enabled` is true. The privacy design
+      is the 2026-10-18 analytics ADR in docs/DECISIONS.md.
   - name: Webhooks
     description: |
       Inbound deliveries from third-party systems. Not called by this API's frontend, and not
@@ -577,6 +585,144 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /analytics/page-views:
+    post:
+      operationId: recordPageView
+      summary: Count a public page being shown
+      description: |
+        Public. The site calls this each time it shows a public page. Every well-formed event is
+        answered 204, whether it was counted or not, so the answer says nothing about what was
+        stored.
+
+        **Counted at most once per visitor, page and day.** A visitor is the requester's IP
+        address, hashed under a random salt that exists only in the server's memory and is
+        replaced each UTC day. A second view of the same page by the same visitor on the same day
+        adds nothing, which is why GET /admin/analytics counts visitor-days, not page loads.
+
+        **Dropped without saying so**, still with 204, when:
+        - the request carries `DNT: 1` or `Sec-GPC: 1`;
+        - it carries a valid admin bearer token;
+        - its `User-Agent` is missing, or names a bot, a crawler or a headless browser;
+        - `projectId` is not a published project.
+
+        A different answer for any of these would tell a caller something: whether an address
+        was already counted today, or that a draft with a given id exists.
+
+        **Feature flag.** Off by default. While `app.analytics.enabled` is false this path is not
+        mapped and answers 404. The site sends events either way and ignores every failure.
+      tags: [Analytics]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PageViewEvent'
+      responses:
+        '204':
+          description: Well-formed. Says nothing about whether the view was counted.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/AnalyticsDisabled'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /analytics/link-clicks:
+    post:
+      operationId: recordLinkClick
+      summary: Count a click on one of a project's links
+      description: |
+        Public. A project's page calls this when a visitor follows one of the project's own links,
+        such as its repository or a demo. Everything under POST /analytics/page-views applies here
+        too: at most one row per visitor, project, link and day; the same reasons to drop an
+        event; 204 for every well-formed one; and the same flag.
+
+        One more reason to drop: `url` must be one of the project's links as they are now,
+        compared exactly. A URL the project no longer has, or never had, is not counted.
+      tags: [Analytics]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkClickEvent'
+      responses:
+        '204':
+          description: Well-formed. Says nothing about whether the click was counted.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/AnalyticsDisabled'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /admin/analytics:
+    get:
+      operationId: getAnalyticsSummary
+      summary: Views and link clicks per day, page and project, for a range of days (admin)
+      description: |
+        Days are UTC days, and both ends of the range are included. With neither parameter the
+        range is the 30 days ending today. With one, the other is filled in: `to` defaults to
+        today, and `from` to 29 days before `to`.
+
+        **What the numbers mean.** Events are stored at most once per visitor, page and day (see
+        POST /analytics/page-views), so a view is a visitor who saw that page on that day, not a
+        page load. A day's `visitors` is the number of distinct visitors that day, across every
+        page. Visitors cannot be counted across days, because each day's hashes are unrelated to
+        the next day's. A range therefore has no visitor total, and the sum of `visitors` is
+        visitor-days.
+
+        **Feature flag.** 404 while `app.analytics.enabled` is false, like the event endpoints.
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: |
+            First day of the range, included (UTC). Defaults to 29 days before `to`. Must be a date
+            from 0001-01-01 to 9999-12-31.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: |
+            Last day of the range, included (UTC). Defaults to today. Must be a date from
+            0001-01-01 to 9999-12-31.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummary'
+        '400':
+          description: |
+            The range is invalid. Every key below is prefixed with the handler name, like every
+            query-parameter violation (see ValidationProblemDetail). A `to` outside 0001-01-01 to
+            9999-12-31 is a field error keyed `getAnalyticsSummary.to` and a `from` outside it one
+            keyed `getAnalyticsSummary.from` (`to` is checked first, and a default `from` is checked
+            like a sent one). Then `to` before `from` is a field error keyed
+            `getAnalyticsSummary.to`, and a range longer than 366 days one keyed
+            `getAnalyticsSummary.from`. A value that does not parse as a date is a 400 as well, as a
+            plain problem with no `errors`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/AnalyticsDisabled'
+
   /webhooks/github:
     post:
       operationId: receiveGithubWebhook
@@ -782,6 +928,12 @@ components:
             $ref: '#/components/schemas/ProblemDetail'
     RateLimited:
       description: Too many requests from this requester
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    AnalyticsDisabled:
+      description: Analytics is turned off (`app.analytics.enabled` is false), so this path is not mapped.
       content:
         application/problem+json:
           schema:
@@ -1229,6 +1381,156 @@ components:
             The raw reset token from the emailed link (compared against the stored hash
             server-side). Carried in the body rather than as a query parameter so it never reaches
             a proxy or CDN access log.
+
+    AnalyticsPage:
+      type: string
+      description: |
+        A public page, from a closed list. No path, query string or other free text is sent, so
+        nothing in a URL, such as a password-reset token, can reach the table. The password-reset,
+        admin and not-found pages are not on the list and are never counted. `about` is the site
+        root.
+      enum: [about, projects, project, contact, privacy]
+
+    PageViewEvent:
+      type: object
+      required: [page]
+      properties:
+        page:
+          $ref: '#/components/schemas/AnalyticsPage'
+        projectId:
+          type: string
+          format: uuid
+          description: |
+            The project whose page was shown. Required when `page` is `project`, and refused for
+            any other page, with a field error on `projectId` either way.
+
+    LinkClickEvent:
+      type: object
+      required: [projectId, url]
+      properties:
+        projectId:
+          type: string
+          format: uuid
+          description: The project whose link was followed.
+        url:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: The link's URL, exactly as the project's `links` give it.
+          example: https://github.com/tarka1939/Equalizer
+
+    AnalyticsSummary:
+      type: object
+      required: [from, to, days, pages, projects]
+      properties:
+        from:
+          type: string
+          format: date
+          description: First day of the range, included, after defaults are applied.
+        to:
+          type: string
+          format: date
+          description: Last day of the range, included, after defaults are applied.
+        days:
+          type: array
+          description: One entry per day of the range, oldest first, including days with no events.
+          items:
+            $ref: '#/components/schemas/AnalyticsDay'
+        pages:
+          type: array
+          description: |
+            One entry per page on the AnalyticsPage list, in that list's order, including pages with
+            no views. The `project` entry is the sum over every project's page.
+          items:
+            $ref: '#/components/schemas/AnalyticsPageCount'
+        projects:
+          type: array
+          description: |
+            Every project with at least one view or link click in the range, most viewed first,
+            then most clicked, then by `projectId`. A project deleted since is included, with a
+            null `title`.
+          items:
+            $ref: '#/components/schemas/AnalyticsProjectCount'
+
+    AnalyticsDay:
+      type: object
+      required: [date, views, visitors, linkClicks]
+      properties:
+        date:
+          type: string
+          format: date
+        views:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Page views that day, across every page.
+        visitors:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Distinct visitors that day, across every page and link.
+        linkClicks:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Link clicks that day, across every project.
+
+    AnalyticsPageCount:
+      type: object
+      required: [page, views]
+      properties:
+        page:
+          $ref: '#/components/schemas/AnalyticsPage'
+        views:
+          type: integer
+          format: int64
+          minimum: 0
+
+    AnalyticsProjectCount:
+      type: object
+      required: [projectId, title, views, linkClicks, links]
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+          description: |
+            The project's title now, or null if it has been deleted since. A project unpublished
+            since keeps its title here.
+        views:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Views of this project's page.
+        linkClicks:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Clicks on this project's links, all of them together.
+        links:
+          type: array
+          description: Clicks per link URL, most clicked first, then by URL. Only URLs clicked in the range.
+          items:
+            $ref: '#/components/schemas/AnalyticsLinkCount'
+
+    AnalyticsLinkCount:
+      type: object
+      required: [url, label, clicks]
+      properties:
+        url:
+          type: string
+        label:
+          type: string
+          nullable: true
+          description: |
+            The label the project gives this URL now, or null if the project no longer has a link
+            with this URL, or no longer exists.
+        clicks:
+          type: integer
+          format: int64
+          minimum: 0
 
     GithubWebhookAck:
       type: object

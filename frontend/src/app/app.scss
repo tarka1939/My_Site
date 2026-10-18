@@ -62,7 +62,14 @@ main {
   min-height: 60vh;
 }
 
+// A row since the Privacy link joined the copyright line (Phase 7c). Baseline-aligned, so the
+// link's text sits on the line's text whatever the paragraph's margins are, and wrapping, so on a
+// narrow phone the link drops under the line rather than overflowing it.
 .site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 1.5rem;
   max-width: 60rem;
   margin: 0 auto;
   padding: 1rem;

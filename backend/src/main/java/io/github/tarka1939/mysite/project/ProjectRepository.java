@@ -68,6 +68,12 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
      */
     Optional<Project> findByIdAndPublishedTrue(UUID id);
 
+    /**
+     * Behind {@code ProjectService.isPublishedProject}, which analytics asks of every project page
+     * view. By primary key, so no index beyond the key is needed.
+     */
+    boolean existsByIdAndPublishedTrue(UUID id);
+
     // ---------------------------------------------------------------------------------------
     // GitHub sync.
     // ---------------------------------------------------------------------------------------

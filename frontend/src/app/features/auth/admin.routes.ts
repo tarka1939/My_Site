@@ -83,6 +83,14 @@ export const ADMIN_ROUTES: Routes = [
           ),
         title: 'Krzysztof Tarka - Admin - Message',
       },
+      {
+        path: 'analytics',
+        loadComponent: () =>
+          import('../admin/admin-analytics/admin-analytics.component').then(
+            (m) => m.AdminAnalyticsComponent,
+          ),
+        title: 'Krzysztof Tarka - Admin - Analytics',
+      },
     ],
   },
 ];

@@ -916,6 +916,41 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - **Sync is unchanged.** It still writes no tags, and its drafts now save as they are.
 - **A request can fail in two rounds.** Bean Validation runs before the service. A request with a blank title that would also publish with no tags gets the title error first, and the tags error only after the title is fixed. The admin form never sends a tagless publish, so only other API clients see this.
 
+### 2026-10-18 - Phase 7c analytics: one row per visitor, page and day, under a salt that never leaves memory
+
+**Context:** Phase 7c (#72) gives the site analytics of its own: an ingestion endpoint (#58), aggregation (#59), an admin dashboard (#60), and the constraints `SPEC.md` set from the start (#61): no fingerprinting, no third-party trackers, no stored IPs. Most visitors are probably in the EU. On 2026-10-18 the owner chose what is counted, what a visitor is, how long rows are kept and what visitors are told. The rest of this entry is how those four answers are built, and the smaller choices made along the way.
+
+**Decision:**
+
+1. **Two things are counted: page views and project link clicks.** A page view is one public page shown, named from a closed list (`about`, `projects`, `project`, `contact`, `privacy`) and, on a project's own page, tied to that project. A link click is a click on one of a published project's own links (its repository, its demo), recorded by the link's URL. Nothing else is recorded: no path or query string, no referrer, no user agent, no screen size, no time on page. When it happened is kept as the UTC day alone, not the time. The list is closed so the client cannot send free text. A URL could carry a password-reset token, and a free-text field could carry anything the server never asked for. The password-reset page, the admin pages and the not-found page are not on the list.
+2. **A visitor is their IP, hashed with a salt that exists only in memory and is replaced every day.** The hash is `HMAC-SHA256(salt, ip)`. The salt is 32 random bytes made on the first event of each UTC day, and it is never written anywhere: not to the database, a log or a file. It is replaced on the first event of the next UTC day, not at midnight itself, so a quiet site holds the previous day's salt until then. It can make no new hash in that time: a hash is only ever made under the salt for the day the clock reads. Once it is replaced, nothing can link that day's hashes to an address or to the next day's. The address comes from `ClientIpResolver` (#168), like every other per-IP decision here.
+3. **One row per visitor, page, project, link and day.** A unique index over those columns and an `INSERT ... ON CONFLICT DO NOTHING`, so a reload or a second tab adds nothing, and two concurrent requests cannot both insert. The index is `NULLS NOT DISTINCT`, since most rows have no project and no link, and Postgres otherwise treats two nulls as different and would never find the duplicate. So a "view" on the dashboard is a visitor who saw that page that day, not a page load.
+4. **Rows are kept.** No retention job. Once its day is over, a row holds no address and nothing that can be tied back to one.
+5. **A visitor who asks not to be tracked is not counted.** The browser sends nothing while `navigator.doNotTrack` is `"1"` or `navigator.globalPrivacyControl` is true. The server drops any event that arrives with `DNT: 1` or `Sec-GPC: 1` all the same. A privacy note at `/privacy`, linked from the footer, says what is counted and what is not. Its wording is the owner's to sign off before it ships.
+6. **The admin's own visits, and self-declared bots, are not counted.** The browser sends nothing while the admin is logged in. The server drops an event that carries a valid admin token, or a user agent that calls itself a bot, a crawler or a headless browser, or none at all.
+7. **Every well-formed event is answered `204 No Content`,** whether it was stored, was already counted today, or was dropped for any reason above, including naming a project that does not exist or is not published. A different answer for "already counted" would let anyone ask whether an address had visited today, and a 404 for a draft's id would confirm the draft exists. A malformed body gets the usual 400, and a visitor sending too fast gets 429.
+8. **Behind a flag, off by default:** `app.analytics.enabled` (`ANALYTICS_ENABLED`), on 7a's pattern (`@ConditionalOnGithubSyncEnabled`). While it is off, neither the ingestion nor the admin endpoints exist, and both answer 404. The browser sends events anyway, and ignores every failure; the dashboard says analytics is turned off.
+
+The endpoints are `POST /api/v1/analytics/page-views`, `POST /api/v1/analytics/link-clicks`, and `GET /api/v1/admin/analytics` for a range of days. They are specified in `docs/openapi.yaml`.
+
+**Alternatives considered:**
+- *A hosted tool: Plausible, Umami, GoatCounter, Google Analytics.* `SPEC.md` rules out third-party trackers, and the point of Phase 7 is to give the backend a real job.
+- *Count every page load.* Simpler, but one visitor pressing reload would look like interest, and nothing would bound the table.
+- *An id in a cookie or `localStorage`.* It would recognise a returning visitor across days, which is the cross-session tracking `SPEC.md` excludes, and storing it on the device is what the cookie rules require consent for.
+- *Hash the IP with no salt, or a fixed one,* as `ClientIpHasher` does for rate limiting. There are only about four billion IPv4 addresses, so an unsalted SHA-256 of one is reversed by trying them all, and a salt that is kept is one more input to that search. Only a salt that is thrown away prevents it.
+- *Put the user agent into the hash too,* as Plausible does, to tell apart people who share an address. The owner chose the IP alone. People behind one address on one day count as one visitor, which undercounts.
+- *Delete rows after some months.* The owner chose to keep them, since a row whose salt is gone cannot be tied to anyone.
+- *A foreign key from the event to `project`.* Deleting a project would then have to delete its history, which the owner chose to keep, or set it to null. Set to null collides with the unique index: two deleted projects' rows for one visitor and day become identical, and the second delete fails. So `project_id` has no constraint. It is checked against the published projects when the event arrives, and a deleted project's rows stay, shown on the dashboard as a deleted project.
+
+**Consequences:**
+- A restart makes a new salt, so a visitor seen both before and after a restart on the same day counts twice. Deploys are rare, and this is accepted.
+- Days are UTC days, so a dashboard day starts at 01:00 or 02:00 in Poland.
+- Visitors can be counted per day but not over a range: each day's hashes are unrelated to the next day's. Totals over a range are visitor-days, and the dashboard says so.
+- The ingestion endpoints are public and unauthenticated, like the contact form. They are rate limited per visitor through the shared `InMemoryRateLimiter`, under their own `analytics:` key prefix (see the limiter's key contract).
+- Someone sending events from many addresses can still inflate the numbers. Nothing depends on them but the owner's curiosity, and each address is still held to one row per page and day.
+- The CSP does not change: `connect-src` already names the API, and no new script is loaded.
+- The draft `AnalyticsEvent` in `docs/DATA_MODEL.md` becomes the real table. Its note that the contact form's `requester_ip_hash` has "the same privacy stance" stops being true: that hash is unsalted and kept, so it can be reversed. That is a separate issue, not changed here.
+
 ### [YYYY-MM-DD] - [Decision title]
 
 **Context:**

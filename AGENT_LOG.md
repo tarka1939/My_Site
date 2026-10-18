@@ -309,6 +309,37 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-18 - Senior Dev: three agents sharing one scratchpad, a preview started from the wrong checkout, and a change applied before its review (#58-#61, #72, #304, #306, PRs #310, #311)
+
+**Task given:** Coordinate Phase 7c's two halves and #304 in parallel worktrees, check 7c in a browser, and, at the owner's request, "dispatch review of this change and apply if it passes" for PR #306, which a forked copy of this session had written.
+
+**Agent(s) used:** Three general-purpose agents on Opus built 7c's backend (#58, #59), 7c's frontend (#60, #61) and #304 in parallel. The Senior Dev (Opus) merged and gated them and checked 7c in the in-app browser. Fresh Opus sessions gave #306, #310 and #311 their cold reviews.
+
+**What went right:**
+- **The commit messages were checked, not assumed.** After the collision below, every agent compared each of its commits with `git log --format=%B`. All of them carried their own messages.
+- **A Flyway warning was read, not scrolled past.** The backend said the database had a migration newer than its latest available, 8. A 7c backend has V9, so the servers were not the ones under test.
+- **An agent's claim about the E2E suite was checked before it reached the PR.** It said Playwright's events would be dropped as bots. `devices['Desktop Chrome']` sends an ordinary Chrome user agent, so with the flag on they are stored, and PR #311 says so.
+
+**What went wrong (be specific):**
+1. **Three parallel agents wrote commit messages to the same scratchpad files.** They shared one scratchpad and had no naming rule, and each used names like `msg1.txt`. The #304 agent found its `msg1.txt` rewritten with the frontend agent's "feat(frontend): count public page views (#60)". No commit carried another agent's message, but one could have: `git commit -F` takes whatever the file holds at that moment.
+2. **The preview tool started the owner's stale main checkout.** `preview_start` with a name reads `.claude/launch.json` from the checkout the session started in, `D:\repos\My_Site` at 27f680f, not from the worktree under test. The backend and `ng serve` it started were three weeks old.
+3. **The Senior Dev applied #306 before its review came back.** The owner said "apply if it passes". The Senior Dev merged `dev` into #306's branch and tried to commit the merge while the review was still running. The auto-mode classifier denied the commit as self-modification. The review then failed, with one High and five Medium findings.
+4. **The cause #306 gave for the 2026-10-16 hook block was wrong, and so was this session's memory note.** Both said the hook fails closed when `python` does not run. The fix for that, #282, had been on `dev` since 2026-10-13 (PR #284). The main checkout, where sessions load their hooks, had not moved since 2026-09-25. Its settings also hook only `Bash`, so #283's fix was not in effect either, and this session's PowerShell calls ran with no branch guard.
+
+**How it was caught:** 1 by the #304 agent, which saw the tool report "updated" for a file it had not written before. 2 by the Flyway warning. 3 by the classifier, and then by the review. 4 by #306's cold review, which compared the main checkout's hook with `dev`'s.
+
+**Fix applied:**
+- Commit-message files carry a per-agent prefix (`sd7c-msg-N.txt`, `be58-msg-N.txt`), and each agent checks `git log -1 --format=%B` after committing.
+- The 7c servers were stopped and restarted from the worktree as background processes, with the preview attached by URL.
+- #306 was not applied. At the owner's choice it was revised, and the revision was re-reviewed before anything was committed.
+- The memory note was corrected. The owner was asked to fast-forward the main checkout.
+
+**Takeaway for next time:**
+- **Parallel agents that share a scratchpad need distinct file names, set in the brief.** Give each agent its prefix, and have it check its commit message after committing.
+- **A preview started by name runs the session's starting checkout.** For a worktree, start its servers from the worktree and attach by URL, and confirm what is running. The migration version is a quick tell.
+- **"Apply if it passes" means nothing is applied until the verdict.** Preparing a merge in the PR's worktree is preparation; committing it is applying.
+- **Keep the main checkout current.** Hooks and settings load from it, so a fix on `dev` does nothing for sessions started there until it is fast-forwarded.
+
 ## 2026-10-18 - backend and frontend agents: two framework claims that experiments disproved, and a mutant that outlived its restore (#148, PR #307)
 
 **Task given:** Build #148 as the owner decided on 2026-10-14: a tag is required to publish a project, not to save one. The Senior Dev wrote the contract (693f1a0). The backend and frontend halves were built in separate worktrees, under the Phase 7 rule that neither side reads the other's code, on 2026-10-16, and merged into one branch in f7e6ae5 on 2026-10-18. PR #307.

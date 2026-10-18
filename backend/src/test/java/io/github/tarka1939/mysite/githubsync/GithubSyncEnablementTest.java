@@ -66,9 +66,9 @@ class GithubSyncEnablementTest {
 
     /**
      * A non-boolean value must not read as "on". {@code @ConditionalOnProperty}'s
-     * {@code havingValue="true"} is an equality check, not a truthiness one, which is the
+     * {@code havingValue="true"} is compared ignoring case, not as a truthiness test, which is the
      * behaviour wanted here -- but it is worth pinning, since the whole design leans on the
-     * flag having exactly one way to be enabled.
+     * flag having one word, in any case, that enables it.
      */
     @Test
     void aGarbageFlagValue_isNotOn() {

@@ -358,6 +358,70 @@ class ProjectServiceTest {
         assertThat(response.published()).isTrue();
     }
 
+    // ---------------------------------------------------------------------------------------
+    // The analytics lookups (#58, #59).
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void isPublishedProject_asksForThePublishedRowOnly() {
+        UUID id = UUID.randomUUID();
+        when(projectRepository.existsByIdAndPublishedTrue(id)).thenReturn(true);
+
+        assertThat(projectService.isPublishedProject(id)).isTrue();
+        verify(projectRepository, never()).existsById(any());
+    }
+
+    @Test
+    void isPublishedProjectLink_matchesOneOfThePublishedProjectsLinksExactly() {
+        UUID id = UUID.randomUUID();
+        Project project = new Project("Equalizer", "A DSP project");
+        project.setLinks(List.of(
+            new Link("GitHub", "https://github.com/tarka1939/Equalizer"),
+            new Link("Demo", "https://example.com/eq")));
+        when(projectRepository.findByIdAndPublishedTrue(id)).thenReturn(Optional.of(project));
+
+        assertThat(projectService.isPublishedProjectLink(id, "https://example.com/eq")).isTrue();
+        // Exactly: no case folding, no trailing-slash or scheme normalisation.
+        assertThat(projectService.isPublishedProjectLink(id, "https://github.com/tarka1939/equalizer")).isFalse();
+        assertThat(projectService.isPublishedProjectLink(id, "https://example.com/eq/")).isFalse();
+        assertThat(projectService.isPublishedProjectLink(id, "http://example.com/eq")).isFalse();
+        // A label is not a URL.
+        assertThat(projectService.isPublishedProjectLink(id, "Demo")).isFalse();
+    }
+
+    @Test
+    void isPublishedProjectLink_isFalseForAProjectThatIsNotPublishedOrDoesNotExist() {
+        UUID id = UUID.randomUUID();
+        when(projectRepository.findByIdAndPublishedTrue(id)).thenReturn(Optional.empty());
+
+        assertThat(projectService.isPublishedProjectLink(id, "https://example.com/eq")).isFalse();
+        verify(projectRepository, never()).findById(any());
+    }
+
+    @Test
+    void findTitlesAndLinks_returnsWhatExistsKeyedById_publishedOrNot() {
+        UUID draftId = UUID.randomUUID();
+        UUID deletedId = UUID.randomUUID();
+        Project draft = mock(Project.class);
+        when(draft.getId()).thenReturn(draftId);
+        when(draft.getTitle()).thenReturn("Draft");
+        when(draft.getLinks()).thenReturn(List.of(new Link("GitHub", "https://github.com/x/y")));
+        when(projectRepository.findAllById(Set.of(draftId, deletedId))).thenReturn(List.of(draft));
+
+        var found = projectService.findTitlesAndLinks(Set.of(draftId, deletedId));
+
+        assertThat(found).containsOnlyKeys(draftId);
+        assertThat(found.get(draftId)).isEqualTo(new ProjectTitleAndLinks(
+            draftId, "Draft", List.of(new Link("GitHub", "https://github.com/x/y"))));
+        verify(draft, never()).isPublished();
+    }
+
+    @Test
+    void findTitlesAndLinks_withNoIds_runsNoQuery() {
+        assertThat(projectService.findTitlesAndLinks(Set.of())).isEmpty();
+        verifyNoInteractions(projectRepository);
+    }
+
     private static ProjectWriteRequest writeRequest(List<String> tags, Boolean published) {
         return new ProjectWriteRequest(
             "Title", "Description", List.of(), List.of(), tags, null, null, published, null);

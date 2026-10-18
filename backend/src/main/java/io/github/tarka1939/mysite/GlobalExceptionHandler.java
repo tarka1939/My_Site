@@ -97,6 +97,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpStatus.BAD_REQUEST, List.of(new FieldErrorDetail("tags", ex.getMessage())));
     }
 
+    /**
+     * A query parameter wrong on its own or given the others (the analytics summary's dates and
+     * range, #59). The same body as {@link #handleConstraintViolation} gives a query-parameter
+     * violation, with the same {@code handlerName.parameter} key, for the same reason as the #148
+     * handler above.
+     */
+    @ExceptionHandler(InvalidQueryParameterException.class)
+    public ProblemDetail handleInvalidQueryParameter(InvalidQueryParameterException ex) {
+        return validationProblem(
+            HttpStatus.BAD_REQUEST, List.of(new FieldErrorDetail(ex.field(), ex.getMessage())));
+    }
+
     @ExceptionHandler(RateLimitExceededException.class)
     public ProblemDetail handleRateLimitExceeded(RateLimitExceededException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());

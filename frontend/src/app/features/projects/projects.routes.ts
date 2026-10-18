@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { AnalyticsPage } from '../../core/api/model/analyticsPage';
 import { ProjectsListComponent } from './projects-list/projects-list.component';
 
 /** Mounted under `projects` in app.routes.ts: `/projects` is the list, `/projects/:id` a project. */
@@ -21,6 +22,8 @@ export const PROJECTS_ROUTES: Routes = [
     data: {
       description:
         'Every project in the portfolio, filterable by tag - software, audio and signal-processing work, each with links, images and the period it was built.',
+      // Counted as a page view (core/analytics/analytics-tracker.ts).
+      analyticsPage: AnalyticsPage.Projects,
     },
   },
   {
@@ -32,6 +35,11 @@ export const PROJECTS_ROUTES: Routes = [
     // project is not loaded until after this navigation completes -- ProjectDetailComponent
     // replaces both once the API responds. These are what a crawler sees if that request fails,
     // and what shows for the moment before it resolves.
-    data: { description: 'A project from the portfolio: what it does and how it was built.' },
+    //
+    // Counted as a page view of this project: the tracker sends the `:id` param as `projectId`.
+    data: {
+      description: 'A project from the portfolio: what it does and how it was built.',
+      analyticsPage: AnalyticsPage.Project,
+    },
   },
 ];

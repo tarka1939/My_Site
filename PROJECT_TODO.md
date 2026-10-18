@@ -251,11 +251,11 @@ These are the four "give the backend a real job" candidates from earlier. Build 
 - [ ] New `agentlog` package: parse `AGENT_LOG.md` (or move its entries into the DB directly, arguably cleaner) and expose via a read-only endpoint
 - [ ] A frontend page rendering it well - mostly a content/rendering task, not a hard backend problem, which is exactly why it's cheap here despite high payoff: it's your actual differentiation artifact from the multi-agent workflow, made visible to someone who'd never clone the repo
 
-**7c. Custom analytics** - **next**, by the owner's choice on 2026-10-14. The plan's order had 7b first. The order of 7b and 7d after it is not decided.
-- [ ] New `analytics` package: event-ingestion endpoint (page view, project click) with basic dedup/rate limiting so one visitor can't spam events
-- [ ] Aggregation queries (views per project over time) - this is where the real backend substance is, not the ingestion endpoint itself
-- [ ] Simple dashboard view, behind the admin auth if you built it
-- [ ] Privacy: no fingerprinting, no third-party trackers, IP addresses hashed or not stored - you're likely serving EU visitors, and this is a detail worth being able to explain, not just a nice-to-have
+**7c. Custom analytics** - **complete** (epic #72, PR #311, 2026-10-18), behind the `ANALYTICS_ENABLED` flag and off by default. Chosen as next by the owner on 2026-10-14. The plan's order had 7b first. The order of 7b and 7d after it is not decided. On 2026-10-18 the owner chose the design: page views and project link clicks, a visitor counted once per page and day under a daily salt held only in memory, every row kept, and a privacy note with Do Not Track and Global Privacy Control honoured. The ADR (`docs/DECISIONS.md`, 2026-10-18), the table in `docs/DATA_MODEL.md` and the contract came first, and the backend and frontend were built against them in separate worktrees. The owner signed off the privacy note's wording on 2026-10-18. Counting in production starts when the owner sets `ANALYTICS_ENABLED=true` on the VPS.
+- [x] New `analytics` package: event-ingestion endpoint (page view, project click) with basic dedup/rate limiting so one visitor can't spam events
+- [x] Aggregation queries (views per project over time) - this is where the real backend substance is, not the ingestion endpoint itself
+- [x] Simple dashboard view, behind the admin auth if you built it
+- [x] Privacy: no fingerprinting, no third-party trackers, IP addresses hashed or not stored - you're likely serving EU visitors, and this is a detail worth being able to explain, not just a nice-to-have
 
 **7d. Live DSP/audio demo endpoint**
 - [ ] Build this last - your most differentiated feature, but also the most operationally risky one

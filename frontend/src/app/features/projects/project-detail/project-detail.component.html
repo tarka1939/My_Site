@@ -83,7 +83,16 @@
       <h2>Links</h2>
       <ul class="link-list">
         @for (link of project.links; track link.url) {
-          <li><a [href]="link.url" target="_blank" rel="noopener noreferrer">{{ link.label }}</a></li>
+          <!-- Each follow is counted (Phase 7c); see linkFollowed() and linkAuxClicked(). -->
+          <li>
+            <a
+              [href]="link.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              (click)="linkFollowed(project, link.url)"
+              (auxclick)="linkAuxClicked($event, project, link.url)"
+            >{{ link.label }}</a>
+          </li>
         }
       </ul>
     }
