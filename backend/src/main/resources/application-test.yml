@@ -38,6 +38,13 @@ app:
     # would switch them to creating real Project rows -- and they would still pass, which is the
     # bad half.
     synced-repositories: ""
+  analytics:
+    # Off, explicitly, for the same reason as github-sync above. An exported ANALYTICS_ENABLED=true
+    # would map the event endpoints in every @SpringBootTest context, and a test that posts an
+    # event for some other reason would start writing analytics_event rows and taking from the
+    # shared rate limiter. The analytics tests that need it on set it per-context, which outranks
+    # this; the flag-off test relies on this pin and on the base default agreeing.
+    enabled: false
   jwt:
     # Fixed test secret so @SpringBootTest contexts can resolve app.jwt.secret without an
     # env var -- deliberately not the dev default, to keep test config self-contained.

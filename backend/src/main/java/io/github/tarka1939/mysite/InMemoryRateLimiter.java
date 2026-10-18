@@ -25,10 +25,12 @@ import org.springframework.stereotype.Component;
  * <h2>Key contract: one window per key</h2>
  * A given key must always be passed the same {@code window}. This is not a new constraint
  * introduced by eviction - it has always held: calling one key with a short window prunes away
- * hits that a longer-window call on the same key was still counting. All three current callers
+ * hits that a longer-window call on the same key was still counting. All four current callers
  * hold to it by namespacing their keys ({@code "login:"}, {@code "password-reset:"},
- * {@code "password-reset-validate:"}), and since every key is a prefix plus a fixed-length
- * SHA-256 hex hash, keys built from different prefixes differ in length and cannot collide.
+ * {@code "password-reset-validate:"}, and analytics' {@code "analytics:"}, one window for both
+ * event endpoints), and since every key is a prefix plus a fixed-length 64-character hex hash
+ * (SHA-256 for the first three, the daily HMAC-SHA256 visitor hash for analytics), keys built
+ * from different prefixes differ in length and cannot collide.
  *
  * <h2>Eviction (issue #78)</h2>
  * A key that is never queried again - a one-time visitor - used to sit in the map for the
@@ -69,9 +71,12 @@ public class InMemoryRateLimiter {
 
     /**
      * Entries tolerated before a write sweeps. Sized so the real callers (per-IP login,
-     * password-reset-request and password-reset-validate buckets on a solo portfolio site) never
-     * reach it in normal operation; it exists to cap a flood of one-shot keys, not to tune
-     * steady-state behaviour.
+     * password-reset-request and password-reset-validate buckets, and analytics' per-visitor
+     * bucket, on a solo portfolio site) never reach it in normal operation; it exists to cap a
+     * flood of one-shot keys, not to tune steady-state behaviour. Analytics is the one caller
+     * every visitor reaches, and its key for a visitor changes each UTC day with the salt, so it
+     * is the caller that brings the map to this threshold over time; the sweep then removes each
+     * of its keys an hour (today's longest window) after that key's last hit.
      */
     static final int DEFAULT_SWEEP_THRESHOLD = 1024;
 
