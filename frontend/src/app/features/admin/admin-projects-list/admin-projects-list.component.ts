@@ -15,6 +15,7 @@ import { ProjectsService } from '../../../core/api/api/projects.service';
 import { Project } from '../../../core/api/model/project';
 import { ProjectWriteRequest } from '../../../core/api/model/projectWriteRequest';
 import { ApiProblem } from '../../../core/http/api-problem';
+import { projectFieldName } from '../../../shared/project-field-labels/project-field-labels';
 
 const PAGE_SIZE = 20;
 
@@ -169,8 +170,15 @@ export class AdminProjectsListComponent {
           const fieldErrors = problem?.fieldErrors ?? [];
           if (fieldErrors.length > 0) {
             const verb = published ? 'publish' : 'unpublish';
+            // Each reason names its field the way the form labels it (#308), since the link below
+            // goes there: "Tags", or "Link 1's URL" for `links[0].url`. A key nothing maps gets the
+            // message alone -- most of the API's messages name their subject anyway, and a wire key
+            // is a word the admin never chose.
             const reasons = fieldErrors
-              .map(({ field, message }) => `${field}: ${message}`)
+              .map(({ field, message }) => {
+                const name = projectFieldName(field);
+                return name === null ? message : `${name}: ${message}`;
+              })
               .join('; ');
             this.publishError.set({
               projectId: project.id,
