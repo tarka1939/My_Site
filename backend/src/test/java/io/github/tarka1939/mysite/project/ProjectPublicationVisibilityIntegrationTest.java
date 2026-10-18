@@ -109,7 +109,7 @@ class ProjectPublicationVisibilityIntegrationTest {
 
     @Test
     void thePublicListingExcludesDrafts_andTheAdminListingIncludesThem() {
-        createProject(token, "Listing: published one", true, null);
+        createProject(token, "Listing: published one", true, "listing");
         createProject(token, "Listing: draft one", false, null);
 
         List<Map<String, Object>> publicContent = content(restTemplate.getForEntity(
@@ -147,14 +147,16 @@ class ProjectPublicationVisibilityIntegrationTest {
      */
     @Test
     void aPutThatSaysNothingAboutPublication_leavesALiveProjectLive() {
-        String id = createProject(token, "Stays live", true, null);
+        String id = createProject(token, "Stays live", true, "live");
 
+        // Tagged since #148: with no tags this PUT would leave a live project tagless, which is
+        // now a 400 -- covered in ProjectTagRequiredToPublishIntegrationTest.
         ResponseEntity<Map> updated = restTemplate.exchange(
             url("/api/v1/projects/" + id), HttpMethod.PUT,
             new HttpEntity<>(Map.of(
                 "title", "Stays live, edited",
                 "description", "Edited by a client that has never heard of published",
-                "tags", List.of()), authHeaders(token)),
+                "tags", List.of("live")), authHeaders(token)),
             Map.class);
 
         assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -166,7 +168,8 @@ class ProjectPublicationVisibilityIntegrationTest {
     /** ...and un-publishing still works, when it is asked for explicitly. */
     @Test
     void aPutThatSaysPublishedFalse_takesTheProjectOffTheSite() {
-        String id = createProject(token, "Goes dark", true, null);
+        // The PUT below sends no tags, and still may: un-publishing leaves a draft (#148).
+        String id = createProject(token, "Goes dark", true, "dark");
 
         restTemplate.exchange(url("/api/v1/projects/" + id), HttpMethod.PUT,
             new HttpEntity<>(Map.of(
@@ -192,12 +195,13 @@ class ProjectPublicationVisibilityIntegrationTest {
     void aPutThatSaysPublishedTrue_reachesADraftAndPublishesIt() {
         String id = createProject(token, "Draft to publish", false, null);
 
+        // A tag, since publishing needs one (#148).
         ResponseEntity<Map> updated = restTemplate.exchange(
             url("/api/v1/projects/" + id), HttpMethod.PUT,
             new HttpEntity<>(Map.of(
                 "title", "Draft to publish",
                 "description", "Published via PUT",
-                "tags", List.of(),
+                "tags", List.of("published-via-put"),
                 "published", true), authHeaders(token)),
             Map.class);
 
@@ -234,14 +238,16 @@ class ProjectPublicationVisibilityIntegrationTest {
      */
     @Test
     void claimingARepositoryAnotherProjectAlreadyTracks_is409() {
-        createProject(token, "First claimant", true, null, "tarka1939/Conflict");
+        createProject(token, "First claimant", true, "claimed", "tarka1939/Conflict");
 
+        // Tagged, so the tag rule (#148) cannot answer first: this create omits published, which
+        // publishes, and untagged it would be a 400 before the repository was ever compared.
         ResponseEntity<String> second = restTemplate.postForEntity(
             url("/api/v1/projects"),
             new HttpEntity<>(Map.of(
                 "title", "Second claimant",
                 "description", "Wants the same repository",
-                "tags", List.of(),
+                "tags", List.of("claimed"),
                 "repoFullName", "TARKA1939/conflict"), authHeaders(token)),
             String.class);
 
@@ -253,13 +259,14 @@ class ProjectPublicationVisibilityIntegrationTest {
     /** A repoFullName that is not owner/name could never match a delivery, so it is a 400. */
     @Test
     void aRepoFullNameThatIsNotOwnerSlashName_is400() {
-
+        // Tagged, so the 400 can only be the repoFullName pattern's. Untagged, this create would
+        // also break the tag rule (#148), and the test would stay green with the pattern deleted.
         ResponseEntity<String> response = restTemplate.postForEntity(
             url("/api/v1/projects"),
             new HttpEntity<>(Map.of(
                 "title", "Bad repo name",
                 "description", "Not a GitHub full name",
-                "tags", List.of(),
+                "tags", List.of("bad-repo-name"),
                 "repoFullName", "just-a-name"), authHeaders(token)),
             String.class);
 

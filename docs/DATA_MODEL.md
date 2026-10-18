@@ -29,6 +29,8 @@ Draft the ER diagram and entity definitions here before writing migrations or JP
 
 Relationships: many-to-many with `Tag` via join table `project_tags` (`project_id` FK, `tag_id` FK, composite PK, `ON DELETE CASCADE` both sides). Needs pagination/filtering support from the start (Phase 2 - retrofitting later, once real data and a frontend depend on the shape, is the thing to avoid).
 
+**A published project needs at least one tag; a draft may have none** (#148, ADR 2026-10-14). The schema does not hold this: a `CHECK` constraint sees one row, and the tags are rows in `project_tags`. `ProjectService` enforces it on every write, judged on the state the write would leave. GitHub sync's drafts arrive with no tags, so the diagram's zero-or-more `}o--o{` is still right.
+
 ### Tag
 
 | Field | Type | Notes |

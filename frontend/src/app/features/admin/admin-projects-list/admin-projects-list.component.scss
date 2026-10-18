@@ -68,6 +68,18 @@ td {
   color: inherit;
 }
 
+// Stands where the publish toggle would (#148), so it takes that control's size rather than the
+// body size of the Edit link beside it. The link colour is the global accent.
+.publish-blocked {
+  font-size: var(--text-sm);
+}
+
+// "No tags" in an otherwise-filled column: a statement about the row, not data, so it is muted --
+// 5.99:1 light / 5.91:1 dark on the page ground, per the token's note in styles.scss.
+.no-tags {
+  color: var(--color-text-muted);
+}
+
 .actions .delete {
   border: none;
   background: transparent;

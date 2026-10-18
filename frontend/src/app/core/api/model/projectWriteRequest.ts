@@ -11,7 +11,7 @@ import { Link } from './link';
 
 
 /**
- * Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.  startedOn/completedOn are both optional and both nullable. Because this body is also used for full replacement (PUT), omitting either field clears it -- it does not preserve the stored value.  `published` and `repoFullName` are the two exceptions to that rule, and the exception is deliberate -- see each field. 
+ * Body for both create (POST) and full update (PUT). Tags are given as names -- unknown names are created (upserted), not rejected.  startedOn/completedOn are both optional and both nullable. Because this body is also used for full replacement (PUT), omitting either field clears it -- it does not preserve the stored value.  `published` and `repoFullName` are the two exceptions to that rule, and the exception is deliberate -- see each field.  **A published project needs at least one tag (#148).** `tags` may be empty only while the project is a draft. The rule applies to the state the request would leave behind, not to the fields it happens to carry, so all three of these are rejected with 400 and a field error on `tags`:   - `published: true` with no tags;   - a create with no tags that omits `published`, since omitted means published on create;   - a PUT with no tags that omits `published`, against a project that is already published,     since omitted means \"leave it as it is\". A draft can be saved with no tags, including one a GitHub webhook created, which always arrives with none. It needs a tag only to be published.  This is not `minItems`, because whether it applies depends on `published` and, on PUT, on the stored value. It is checked when a project is written, not applied to existing rows. 
  */
 export interface ProjectWriteRequest { 
     title: string;
@@ -22,7 +22,7 @@ export interface ProjectWriteRequest {
     links?: Array<Link>;
     images?: Array<string>;
     /**
-     * Tag names. Matched case-insensitively against existing tags; new names create a new Tag row.
+     * Tag names. Matched case-insensitively against existing tags; new names create a new Tag row. May be empty only for a project that stays a draft -- see this schema\'s description for the rule and the 400 it answers. 
      */
     tags: Array<string>;
     /**
@@ -34,7 +34,7 @@ export interface ProjectWriteRequest {
      */
     completedOn?: string | null;
     /**
-     * Whether the project appears on the public site.  **Omitted or null means \"leave it as it is\"** -- the one exception, with `repoFullName`, to this body\'s otherwise-full-replacement semantics. The exception is deliberate: this field did not exist before Phase 7a, so a PUT from a client that predates it carries no statement about publication at all, and reading that silence as `false` would un-publish a live project on its next edit. That is the same \"the site goes blank\" failure the Phase 7a migration guards against, reached through the API instead.  On create, omitted means **true**: a project entered by hand through the CMS is meant to be live, which is what POST has always done. Un-publishing therefore takes an explicit `false`. 
+     * Whether the project appears on the public site.  **Omitted or null means \"leave it as it is\"** -- the one exception, with `repoFullName`, to this body\'s otherwise-full-replacement semantics. The exception is deliberate: this field did not exist before Phase 7a, so a PUT from a client that predates it carries no statement about publication at all, and reading that silence as `false` would un-publish a live project on its next edit. That is the same \"the site goes blank\" failure the Phase 7a migration guards against, reached through the API instead.  On create, omitted means **true**: a project entered by hand through the CMS is meant to be live, which is what POST has always done. Un-publishing therefore takes an explicit `false`.  A project can only be published with at least one tag -- see this schema\'s description. 
      */
     published?: boolean | null;
     /**
