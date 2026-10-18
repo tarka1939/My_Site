@@ -101,15 +101,31 @@ public class Project {
     //
     // They have getters but no setters on purpose. Sync does not load an entity and mutate it:
     // ProjectRepository.upsertFromGithub writes all three in one atomic statement whose SET
-    // list is the boundary, and a setter here would be an invitation to bypass that.
+    // list is the boundary. A setter or @PreUpdate added later would be silently dropped from
+    // every UPDATE (see below), so anything that must change them has to use native SQL too.
+    //
+    // updatable = false, so that an admin save cannot write them either (#304). A save loads
+    // this entity, and its flush is an UPDATE of every updatable column. If these were among
+    // them, the save would write back what it read at load time over anything a sync committed
+    // in between. Nothing on the JPA side writes them after insert -- there are no setters, and
+    // the upsert is native SQL, which this mapping does not reach -- so leaving them out of the
+    // UPDATE costs nothing. insertable is unchanged: a project the CMS creates inserts null,
+    // null and false. The entity a racing save holds still carries the values it read, so that
+    // save's response reports them, while the row keeps what sync wrote.
+    //
+    // Not @DynamicUpdate, which would also keep them out of a save that does not change them.
+    // It would stop every save writing published together with its tags, and that is what keeps
+    // two racing saves from leaving a published project with no tags (docs/DECISIONS.md,
+    // 2026-10-14, Consequences; pinned by ProjectUpdateStaleReadIntegrationTest). This
+    // mapping is pinned by ProjectUpdateConcurrentSyncIntegrationTest.
 
-    @Column(name = "last_pushed_at")
+    @Column(name = "last_pushed_at", updatable = false)
     private Instant lastPushedAt;
 
-    @Column(name = "default_branch", length = 255)
+    @Column(name = "default_branch", length = 255, updatable = false)
     private String defaultBranch;
 
-    @Column(nullable = false)
+    @Column(nullable = false, updatable = false)
     private boolean archived;
 
     @CreationTimestamp
