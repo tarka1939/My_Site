@@ -208,9 +208,9 @@ export class AdminProjectsListComponent {
    * the reason in its own words, so the reason is the control. It goes to the edit form because
    * that is where a tag can be added; the row cannot.
    *
-   * A live project with no tags still gets Unpublish -- a draft may be tagless, so taking it down is
-   * allowed -- and the server's answer then puts this state on its row, taking focus along to the
-   * link if it was on the button (keepFocusInRow()). setPublished() does not refuse a tagless
+   * A live project with no tags still gets Unpublish, since a draft may be tagless and taking it
+   * down is allowed. The server's answer then puts this state on its row, taking focus along to
+   * the link if it was on the button (keepFocusInRow()). setPublished() does not refuse a tagless
    * publish itself: the server is the authority on the rule, and a request that reaches it anyway
    * is refused with a 400 that publishError renders.
    */
@@ -224,8 +224,9 @@ export class AdminProjectsListComponent {
    *
    * Without this, the pressed button is destroyed and focus is left on the page, not in the row.
    * Where a keyboard user's next Tab goes then depends on the browser -- some restart from the top
-   * of the page -- and a screen reader is left with nothing to announce. With it, the link's name -- "Add a tag to publish <title>" -- is what is
-   * read next, which also says what just happened to the row.
+   * of the page -- and a screen reader is left with nothing to announce. With it, the link's name,
+   * "Add a tag to publish <title>", is what is read next, which also says what just happened to
+   * the row.
    *
    * Only when focus has not moved on since. setPublished() has already established that focus was
    * on the pressed button; this checks that it is still there, or on nothing (where a disabled or
