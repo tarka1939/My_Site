@@ -39,11 +39,11 @@ export class AdminLoginComponent {
       next: (response) => {
         this.auth.setSession(response);
         this.submitting.set(false);
-        // Any error toast still on screen is about signing in, which has now worked (#313): an
-        // earlier attempt's 401, 429, 5xx or network failure, or the session-expiry notice that
-        // sent the admin here. Nothing else on this page raises an error. Taken down before
-        // navigating, so the admin pages never open under it. An info toast is not about signing
-        // in, so it stays.
+        // Any error toast still on screen is out of date now that signing in has worked (#313): an
+        // earlier attempt's 401, 429, 5xx or network failure, the session-expiry notice that sent
+        // the admin here, or one carried over from a page left before coming here. This page sends
+        // no other request. Taken down before navigating, so the admin pages never open under it.
+        // An info toast reports a success rather than a failure, so it stays.
         this.notifications.dismissAll('error');
         this.router.navigateByUrl(this.resolveReturnUrl());
       },
