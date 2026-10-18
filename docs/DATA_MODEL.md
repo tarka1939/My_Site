@@ -53,7 +53,7 @@ Was floated in the original data-model draft; confirmed out of scope in `SPEC.md
 | email | varchar(320), not null | max length per RFC 5321; validate format at the DTO layer, not here |
 | message | text, not null | |
 | created_at | timestamptz, not null default `now()` | |
-| requester_ip_hash | varchar(64), not null | sha-256 hex digest of requester IP, never the raw IP - same privacy stance as `AnalyticsEvent.visitor_hash` below |
+| requester_ip_hash | varchar(64), not null | sha-256 hex digest of requester IP, never the raw IP. **Unsalted and kept**, so unlike `AnalyticsEvent.visitor_hash` below it can be reversed by hashing every IPv4 address (see the 2026-10-18 analytics ADR) |
 
 Rate limiting: no separate table - query `count(*) where requester_ip_hash = ? and created_at > now() - interval` at request time. Revisit only if this endpoint sees enough volume for that query to matter.
 
@@ -96,7 +96,7 @@ _Added 2026-07-24 - see `docs/DECISIONS.md` → Password reset flow ADR. Support
 
 ## Phase 7 extension entities
 
-**These are inferred from the Phase 7 feature descriptions in `PROJECT_TODO.md` - the TODO does not specify exact fields. Treat every table below as a draft to confirm or rewrite before implementing, not a settled schema.** GithubSyncRecord is no longer a draft - see below.
+**These are inferred from the Phase 7 feature descriptions in `PROJECT_TODO.md` - the TODO does not specify exact fields. Treat every table below as a draft to confirm or rewrite before implementing, not a settled schema.** GithubSyncRecord and AnalyticsEvent are no longer drafts - see below.
 
 ### GithubSyncRecord (7a - GitHub webhook auto-sync)
 
@@ -152,15 +152,23 @@ TODO floats two options: parse `AGENT_LOG.md` directly, or move entries into the
 
 ### AnalyticsEvent (7c - custom analytics)
 
-Privacy constraint from the TODO: no fingerprinting, no third-party trackers, IPs hashed or not stored at all.
+**Decided 2026-10-18** (Phase 7c ADR in `docs/DECISIONS.md`, #72). Privacy constraint from the TODO: no fingerprinting, no third-party trackers, IPs hashed or not stored at all. Here they are hashed under a salt that is never stored, so after its day a row cannot be tied to an address.
+
+#### `analytics_event`
 
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid, PK | |
-| project_id | uuid, FK → Project, nullable | null for site-wide events |
-| event_type | varchar(50), not null | e.g. `page_view`, `project_click` |
-| occurred_at | timestamptz, not null default `now()` | |
-| visitor_hash | varchar(64), not null | sha-256 of IP + daily-rotating salt (not raw IP) - dedup/rate-limiting only, not cross-session tracking |
+| event_type | varchar(20), not null | `page_view` or `link_click`, held by a `CHECK` |
+| page | varchar(20), not null | `about`, `projects`, `project`, `contact` or `privacy`, held by a `CHECK`. A closed list, so no path, query string or other free text from the client is stored. A link click's page is always `project` |
+| project_id | uuid, nullable, **no FK** | Set exactly when `page` is `project` (a `CHECK`). Checked against the published projects when the event arrives, and kept when the project is later deleted, so its history stays. A foreign key would have to cascade that history away or set it to null, and null rows collide in the unique index below |
+| link_url | varchar(500), nullable | Set exactly when `event_type` is `link_click` (a `CHECK`). One of the project's own link URLs at the time of the click; anything else is dropped before insert |
+| visitor_hash | char(64), not null | Hex `HMAC-SHA256(salt, ip)`. The salt is random, made per UTC day, held only in memory, and dropped when the day ends |
+| occurred_on | date, not null | The UTC day, and the only record of when. The same day the salt belongs to |
+
+**`ux_analytics_event_dedup`**, unique on `(occurred_on, visitor_hash, event_type, page, project_id, link_url) NULLS NOT DISTINCT`. This is the dedup: the insert is `ON CONFLICT DO NOTHING`, so one visitor makes at most one row per page, project, link and day, and two concurrent requests cannot both insert. `NULLS NOT DISTINCT` (Postgres 15+; production runs 16) is what makes two `about` views by one visitor collide, since their `project_id` and `link_url` are both null. `occurred_on` leads, so the same index serves the dashboard's date-range queries.
+
+No retention job: rows are kept.
 
 ### DspJob (7d - live DSP/audio demo)
 
@@ -223,11 +231,11 @@ erDiagram
     }
 ```
 
-Phase 7 entities relate back to `PROJECT` as follows. `GITHUB_SYNC_RECORD` is built (Phase 7a) and shown as implemented - note it has **no** `PROJECT` relationship yet, because the link is issue #54's open decision. The rest are still speculative - see the caveat above each table - and are not implemented until their sub-phase starts:
+Phase 7 entities relate back to `PROJECT` as follows. `GITHUB_SYNC_RECORD` is built (Phase 7a) and shown as implemented - note it has **no** `PROJECT` relationship yet, because the link is issue #54's open decision. `ANALYTICS_EVENT` is decided (Phase 7c), and its line to `PROJECT` is dotted because it is an id with no foreign key. The rest are still speculative - see the caveat above each table - and are not implemented until their sub-phase starts:
 
 ```mermaid
 erDiagram
-    PROJECT ||--o{ ANALYTICS_EVENT : "nullable FK"
+    PROJECT |o..o{ ANALYTICS_EVENT : "project_id, no FK"
     GITHUB_SYNC_RECORD {
         uuid id PK
         string github_delivery_id UK
@@ -238,10 +246,12 @@ erDiagram
     }
     ANALYTICS_EVENT {
         uuid id PK
-        uuid project_id FK
         string event_type
-        timestamptz occurred_at
+        string page
+        uuid project_id "nullable, no FK"
+        string link_url "nullable"
         string visitor_hash
+        date occurred_on
     }
     AGENT_LOG_ENTRY {
         uuid id PK
