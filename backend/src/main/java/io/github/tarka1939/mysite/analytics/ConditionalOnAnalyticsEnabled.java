@@ -14,8 +14,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
  * same predicate spelled out on every class).
  *
  * <p>{@code matchIfMissing} stays false, so an absent property is off, and {@code havingValue =
- * "true"} is an equality test, so exactly one string turns it on. Both are asserted in
- * {@code AnalyticsEnablementTest}.
+ * "true"} is compared ignoring case, so {@code true} in any case turns it on and nothing else
+ * does. Both are asserted in {@code AnalyticsEnablementTest}.
  *
  * <p>Off means none of the annotated beans exist: no controller, so neither the two event paths
  * nor {@code /api/v1/admin/analytics} is mapped, and each answers 404 from the dispatcher. The

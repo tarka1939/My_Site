@@ -49,20 +49,23 @@ class AnalyticsEnablementTest {
         contextRunner.withPropertyValues("app.analytics.enabled=false").run(AnalyticsEnablementTest::assertNoneExist);
     }
 
-    /** {@code havingValue = "true"} is an equality test, so nothing else turns it on. */
+    /** {@code havingValue = "true"} is not a truthiness test, so a value that sounds on is off. */
     @Test
     void aGarbageFlagValue_isNotOn() {
         contextRunner.withPropertyValues("app.analytics.enabled=yes").run(AnalyticsEnablementTest::assertNoneExist);
     }
 
+    /** {@code havingValue} is compared ignoring case, so {@code true} in any case turns it on. */
+    @Test
+    void anUpperCaseTrue_isOn() {
+        contextRunner.withPropertyValues("app.analytics.enabled=TRUE")
+            .run(AnalyticsEnablementTest::assertAllExist);
+    }
+
     @Test
     void enabled_wiresEveryAnalyticsBean() {
-        contextRunner.withPropertyValues("app.analytics.enabled=true").run(context -> {
-            assertThat(context).hasNotFailed();
-            for (Class<?> gated : GATED) {
-                assertThat(context).hasSingleBean(gated);
-            }
-        });
+        contextRunner.withPropertyValues("app.analytics.enabled=true")
+            .run(AnalyticsEnablementTest::assertAllExist);
     }
 
     /**
@@ -85,6 +88,13 @@ class AnalyticsEnablementTest {
             .containsExactlyInAnyOrderElementsOf(GATED.stream().map(Class::getName).toList());
         for (Class<?> gated : GATED) {
             assertThat(gated.isAnnotationPresent(ConditionalOnAnalyticsEnabled.class)).as(gated.getName()).isTrue();
+        }
+    }
+
+    private static void assertAllExist(AssertableApplicationContext context) {
+        assertThat(context).hasNotFailed();
+        for (Class<?> gated : GATED) {
+            assertThat(context).hasSingleBean(gated);
         }
     }
 
