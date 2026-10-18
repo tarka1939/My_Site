@@ -88,6 +88,8 @@ describe('AnalyticsTracker', () => {
       ['/projects', { page: 'projects' }],
       [`/projects/${PROJECT_ID}`, { page: 'project', projectId: PROJECT_ID }],
       ['/contact', { page: 'contact' }],
+      // "...the contact page and this one", as the privacy page itself says.
+      ['/privacy', { page: 'privacy' }],
     ])('counts %s as %j', async (url, body) => {
       await router.navigateByUrl(url);
 
