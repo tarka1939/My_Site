@@ -13,7 +13,7 @@ import jakarta.persistence.Table;
 
 /**
  * Phase 1 scope: schema + entity mapping only. The submission endpoint and rate limiting
- * are Phase 2 work — see PROJECT_TODO.md.
+ * are Phase 2 work - see PROJECT_TODO.md.
  */
 @Entity
 @Table(name = "contact_message")

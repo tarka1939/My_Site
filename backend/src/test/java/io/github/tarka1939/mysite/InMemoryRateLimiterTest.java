@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 /**
- * Covers the limiting behaviour itself and the key eviction added for issue #78 — in
+ * Covers the limiting behaviour itself and the key eviction added for issue #78 - in
  * particular that eviction cannot swallow a hit, which is the race adding eviction at all
  * introduces (see the class javadoc on {@link InMemoryRateLimiter}).
  */
@@ -119,7 +119,7 @@ class InMemoryRateLimiterTest {
 
         assertThat(shortCallerOnly.trackedKeys()).isEmpty();
 
-        // Same key, same age — but a one-hour caller exists, so twenty minutes is inside the
+        // Same key, same age - but a one-hour caller exists, so twenty minutes is inside the
         // bound this limiter has actually been told about, and nothing may be dropped.
         MutableClock withLong = new MutableClock(START);
         InMemoryRateLimiter bothCallers = new InMemoryRateLimiter(withLong);
@@ -156,7 +156,7 @@ class InMemoryRateLimiterTest {
      * count is exact and interleaving-independent: the seeded hit is stale for every acquirer,
      * so whether the key was evicted, pruned in place, or recreated, exactly {@code maxHits} of
      * the eight may be admitted. A correct implementation cannot fail this for timing reasons
-     * — there is no interleaving that produces another number — so it is not a flaky test; what
+     * - there is no interleaving that produces another number - so it is not a flaky test; what
      * is probabilistic is only how many rounds it takes to catch a broken one.
      */
     @Test

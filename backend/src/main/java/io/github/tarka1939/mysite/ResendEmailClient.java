@@ -17,19 +17,19 @@ import org.springframework.web.client.RestClient;
 
 /**
  * Thin wrapper around Resend's transactional email REST API (see docs/DECISIONS.md's
- * "JWT expiry and password reset flow" ADR — chosen over self-hosted SMTP for deliverability).
+ * "JWT expiry and password reset flow" ADR - chosen over self-hosted SMTP for deliverability).
  *
  * <p>Lives in the application's base package rather than in {@code auth/} because it now has two
  * callers in two different modules: password reset ({@code auth}) and contact-form notification
  * ({@code contact}). Leaving it in {@code auth} would have made {@code contact} depend on the
- * auth module purely to send mail — a dependency Spring Modulith would have permitted (it is a
+ * auth module purely to send mail - a dependency Spring Modulith would have permitted (it is a
  * base-package type of that module, so part of its API) but which says something false about the
  * design. Email delivery is shared infrastructure, and this package is already where this project
  * keeps shared infrastructure: {@code ClientIpHasher} and {@code InMemoryRateLimiter} are here for
  * exactly the same reason, both having outgrown a single module.
  *
  * <p>If {@code RESEND_API_KEY} isn't configured, sends are skipped with a warning log rather
- * than failing the request — per the Phase 2 kickoff instructions, the reset flow shouldn't
+ * than failing the request - per the Phase 2 kickoff instructions, the reset flow shouldn't
  * block on a Resend account existing yet. This is a designed no-op for an absent optional value,
  * not a lazy check on a malformed one (CLAUDE.md's config-validation rule).
  */
@@ -58,7 +58,7 @@ public class ResendEmailClient {
     /**
      * {@code @Autowired} is load-bearing, not decoration. Adding the second constructor below made
      * this a class with two candidate constructors and no annotated one, at which point Spring
-     * stops guessing and looks for a no-arg constructor it will not find — every application
+     * stops guessing and looks for a no-arg constructor it will not find - every application
      * context in the suite failed to start with "No default constructor found" until this was
      * added. Compilation and the non-Spring unit tests were both perfectly happy.
      */
@@ -106,13 +106,13 @@ public class ResendEmailClient {
      * Bounds every call to Resend in both directions.
      *
      * <p>An infinite timeout was survivable while the only caller was {@code requestReset} on the
-     * request thread — the visitor was already waiting, and a hung request eventually met the
+     * request thread - the visitor was already waiting, and a hung request eventually met the
      * container's own limits. It is not survivable now. Since #186, {@code ResendEmailClient} is
      * called from {@code ContactNotificationListener} on the shared {@code taskExecutor}: if
      * Resend blackholes connections rather than refusing them, those threads hang forever, the
      * queue behind them fills and never drains, and every subsequent contact-form notification is
      * dropped until the process restarts. Nothing throws, so the listener's
-     * {@code catch (RuntimeException)} never fires — the failure is invisible as well as
+     * {@code catch (RuntimeException)} never fires - the failure is invisible as well as
      * permanent.
      *
      * <p>The connect timeout lives on the JDK {@link HttpClient} (the only place it can) and the

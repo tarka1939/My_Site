@@ -5,7 +5,7 @@
  * Split out of `seed.mjs` so it can be exercised on its own: importing `seed.mjs` runs the locality
  * guard, installs global error handlers, and executes the whole run at module load, none of which a
  * test of "does this reject a blank tag" should have to stand up. Nothing in here touches the
- * network, the filesystem, the environment, or any global — it is a function of its argument.
+ * network, the filesystem, the environment, or any global - it is a function of its argument.
  *
  * See `validate.test.mjs`, run with `node --test content-seed/`.
  */
@@ -39,7 +39,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * True only for a real calendar date in `YYYY-MM-DD`.
  *
  * The shape check alone is not enough: `2026-02-30`, `2026-13-01` and `0000-00-00` all match the
- * pattern, pass to the API, and come back as a 400 from Jackson — *mid-loop*, after earlier records
+ * pattern, pass to the API, and come back as a 400 from Jackson - *mid-loop*, after earlier records
  * have already been written. Catching it here is the whole reason validation runs before the first
  * socket. Round-tripping through `Date.UTC` rejects overflow, because JS normalises an impossible
  * date to a real one (Feb 30 becomes Mar 2) and the components then no longer match. Leap years
@@ -67,7 +67,7 @@ function isUri(value) {
  * True for a string that is present but carries no visible characters.
  *
  * Mirrors Jakarta's `@NotBlank`, which the backend puts on `title`, `description`, every `tags`
- * element, and both `LinkDto` fields — and which a plain length check does not model. A
+ * element, and both `LinkDto` fields - and which a plain length check does not model. A
  * whitespace-only description passed local validation, reached the API, and came back as
  * `{"field":"description","message":"must not be blank"}` *mid-apply*, after earlier records were
  * already written. That is the exact failure the pre-flight validator exists to prevent, so the
@@ -83,7 +83,7 @@ function isBlank(value) {
 /**
  * Re-checks every constraint `ProjectWriteRequest` declares, locally, before any network call.
  *
- * The API enforces these too, so this is not the last line of defence — it is the one that fails
+ * The API enforces these too, so this is not the last line of defence - it is the one that fails
  * *before* a partial apply. Without it, an over-length description on the fourth record leaves the
  * first three already written and the run half-done. Errors are collected rather than thrown one
  * at a time so an editing pass sees every problem at once.
@@ -100,7 +100,7 @@ export function validate(records) {
 
     for (const key of Object.keys(record)) {
       if (!key.startsWith('_') && !CONTRACT_FIELDS.includes(key)) {
-        fail(`unknown field "${key}" — not in ProjectWriteRequest, and not a "_" provenance note`);
+        fail(`unknown field "${key}" - not in ProjectWriteRequest, and not a "_" provenance note`);
       }
     }
 
@@ -108,13 +108,13 @@ export function validate(records) {
     if (typeof record.title !== 'string' || record.title.length < 1) {
       fail('title is required and must be a non-empty string');
     } else {
-      if (isBlank(record.title)) fail('title is blank — the API rejects it with @NotBlank');
+      if (isBlank(record.title)) fail('title is blank - the API rejects it with @NotBlank');
       if (record.title.length > 200) fail(`title is ${record.title.length} chars, max 200`);
       const first = seenTitles.get(record.title);
       if (first !== undefined) {
         // Titles are this seed's identity (see `reconcile`), so duplicates inside the file would
         // make the second record overwrite the first on every run.
-        fail(`duplicate title, also used by projects[${first}] — titles must be unique`);
+        fail(`duplicate title, also used by projects[${first}] - titles must be unique`);
       } else {
         seenTitles.set(record.title, index);
       }
@@ -127,7 +127,7 @@ export function validate(records) {
       fail('description must contain only strings');
     } else {
       const rendered = renderDescription(record.description);
-      if (isBlank(rendered)) fail('description renders blank — the API rejects it with @NotBlank');
+      if (isBlank(rendered)) fail('description renders blank - the API rejects it with @NotBlank');
       if (rendered.length > 5000) fail(`description renders to ${rendered.length} chars, max 5000`);
     }
 
@@ -135,11 +135,23 @@ export function validate(records) {
     if (!Array.isArray(record.tags)) {
       fail('tags is required and must be an array of names');
     } else {
+      // A record cannot set `published` (it is not in CONTRACT_FIELDS), and a create that omits it
+      // publishes, so every record this seed creates goes live. The API refuses to publish a
+      // project with no tags (#148), so an empty list would fail mid-apply like any other 400.
+      // Stricter than the API for an update: a PUT to an existing draft would accept `[]` and
+      // leave it a draft. The validator runs before any request, so it cannot tell which records
+      // are updates, and refusing every empty list is the safe side.
+      if (record.tags.length === 0) {
+        fail(
+          'tags is empty - a seeded create is published, and the API refuses to publish a project ' +
+            'with no tags',
+        );
+      }
       record.tags.forEach((tag, t) => {
         if (typeof tag !== 'string' || tag.length < 1 || tag.length > 50) {
           fail(`tags[${t}] must be a string of 1-50 chars`);
         } else if (isBlank(tag)) {
-          fail(`tags[${t}] is blank — the API rejects it with @NotBlank`);
+          fail(`tags[${t}] is blank - the API rejects it with @NotBlank`);
         }
       });
     }
@@ -155,7 +167,7 @@ export function validate(records) {
           if (typeof link?.label !== 'string' || link.label.length < 1 || link.label.length > 50) {
             fail(`${at}.label must be a string of 1-50 chars`);
           } else if (isBlank(link.label)) {
-            fail(`${at}.label is blank — the API rejects it with @NotBlank`);
+            fail(`${at}.label is blank - the API rejects it with @NotBlank`);
           }
           if (typeof link?.url !== 'string' || link.url.length < 1 || link.url.length > 500) {
             fail(`${at}.url must be a string of 1-500 chars`);
@@ -187,7 +199,7 @@ export function validate(records) {
       }
     }
 
-    // dates — the three rules the API answers with a 400, checked here so the file can be fixed
+    // dates - the three rules the API answers with a 400, checked here so the file can be fixed
     // before a run rather than during one.
     const { startedOn, completedOn } = record;
     for (const [name, value] of [
@@ -203,7 +215,7 @@ export function validate(records) {
       }
     }
     if (completedOn && !startedOn) {
-      fail('completedOn is set without startedOn — a project cannot finish without having started');
+      fail('completedOn is set without startedOn - a project cannot finish without having started');
     }
     if (completedOn && startedOn && completedOn < startedOn) {
       // Both are zero-padded YYYY-MM-DD, so lexical order is chronological order.

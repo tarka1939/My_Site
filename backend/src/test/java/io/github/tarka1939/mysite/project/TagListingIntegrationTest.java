@@ -19,7 +19,7 @@ import io.github.tarka1939.mysite.TestPostgres;
 import jakarta.persistence.EntityManager;
 
 /**
- * GET /tags returns only tags attached to at least one project (issue #124) — the listing
+ * GET /tags returns only tags attached to at least one project (issue #124) - the listing
  * populates the public "filter by tag" control, so a tag matching zero projects is a filter
  * value that leads nowhere.
  *
@@ -29,7 +29,7 @@ import jakarta.persistence.EntityManager;
  * test. Migrations V1 through V5 run, V5 being the index this query's WHERE column needs.
  *
  * <p>{@code @Transactional} rolls each test back, so every method starts with an empty
- * {@code tag} table — which is what lets the assertions below use {@code containsExactly} over
+ * {@code tag} table - which is what lets the assertions below use {@code containsExactly} over
  * the whole listing rather than fishing for individual names.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -58,7 +58,7 @@ class TagListingIntegrationTest {
     void tagWithNoProjectIsExcluded() {
         // Exactly how the six live orphans got there: a tag row outliving every project that
         // referenced it. Saved directly, since there is no way to create an unattached tag
-        // through the API — which is the whole reason they are invisible until the filter
+        // through the API - which is the whole reason they are invisible until the filter
         // control renders one.
         tagRepository.saveAndFlush(new Tag("orphan"));
 
@@ -97,7 +97,7 @@ class TagListingIntegrationTest {
         flushAndClear();
 
         assertThat(tagService.listTags()).extracting(TagResponse::name).doesNotContain("dsp");
-        // The row itself is still there — it is filtered out, not cleaned up. If this ever
+        // The row itself is still there - it is filtered out, not cleaned up. If this ever
         // starts failing, something has begun deleting orphans, and the concurrency argument
         // in TagRepository#findAllInUseOrderByNameAsc needs revisiting rather than this line.
         assertThat(tagRepository.findByNameIgnoreCase("dsp")).isPresent();
@@ -106,7 +106,7 @@ class TagListingIntegrationTest {
         flushAndClear();
 
         assertThat(tagService.listTags()).extracting(TagResponse::name).containsExactly("dsp");
-        // Reattached the same row rather than creating a second "dsp" — the upsert did not
+        // Reattached the same row rather than creating a second "dsp" - the upsert did not
         // have to work around a deleted row, which is exactly what not deleting buys.
         assertThat(tagService.listTags()).extracting(TagResponse::id).containsExactly(tagId);
     }

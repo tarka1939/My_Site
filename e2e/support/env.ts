@@ -6,7 +6,7 @@ import { assertLocalUrl } from './locality';
  * relies on is defined. Nothing else in the suite should read `process.env` directly.
  *
  * Both URLs below are run through `support/locality.ts` as they are read, so a target outside
- * the loopback allowlist fails at import time — before Playwright loads its config, and long
+ * the loopback allowlist fails at import time - before Playwright loads its config, and long
  * before `purgeE2eData` could issue a DELETE against it.
  */
 
@@ -64,5 +64,5 @@ export const TAG_BETA = 'e2e-beta';
 export const TAG_ADMIN_CREATED = 'e2e-admin-created';
 
 /** Where `setup` caches the admin JWT for the rest of the run. Gitignored.
- *  `fileURLToPath`, not `URL.pathname` — the latter yields `/D:/...` on Windows. */
+ *  `fileURLToPath`, not `URL.pathname` - the latter yields `/D:/...` on Windows. */
 export const TOKEN_FILE = fileURLToPath(new URL('../.auth/api-token.json', import.meta.url));

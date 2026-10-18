@@ -32,7 +32,7 @@ const NEW_PASSWORD_MESSAGES: Record<string, string> = {
 
 /** What the newPassword slot says when the server rejected it and sent no reason with it. */
 const UNEXPLAINED_FIELD_REJECTION =
-  'This was not accepted, but the site did not say why — try a different password.';
+  'This was not accepted, but the site did not say why - try a different password.';
 
 /**
  * What the page is able to offer, which is not the same question as what the form contains. Each

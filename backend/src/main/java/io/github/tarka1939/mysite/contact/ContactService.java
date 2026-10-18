@@ -50,7 +50,7 @@ public class ContactService {
         }
 
         ContactMessage message = new ContactMessage(request.name(), request.email(), request.message(), ipHash);
-        // saveAndFlush: same @CreationTimestamp flush-timing reason as ProjectService — the
+        // saveAndFlush: same @CreationTimestamp flush-timing reason as ProjectService - the
         // ack DTO needs createdAt populated before it's built, not deferred to commit.
         ContactMessage saved = contactMessageRepository.saveAndFlush(message);
 

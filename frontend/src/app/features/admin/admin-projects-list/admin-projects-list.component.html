@@ -10,9 +10,13 @@
 
 <!-- A publish that was rejected with field errors, which errorInterceptor deliberately does not
      toast. Outside the table so it cannot be scrolled past horizontally, and above it so it is
-     read before the row it is about. -->
-@if (publishError(); as message) {
-  <p class="publish-error" role="alert">{{ message }}</p>
+     read before the row it is about. The link is the way to fix it: from up here, the row's own
+     Edit link can be a full page of rows away. -->
+@if (publishError(); as failure) {
+  <p class="publish-error" role="alert">
+    {{ failure.message }}
+    <a [routerLink]="['/admin/projects', failure.projectId, 'edit']">Edit "{{ failure.title }}"</a>
+  </p>
 }
 
 @if (loading()) {
@@ -57,27 +61,57 @@
               <span class="status status--draft">Draft</span>
             }
           </td>
-          <td>{{ project.tags.map((t) => t.name).join(', ') }}</td>
+          <td>
+            <!-- A word rather than an empty cell, for the Status column's reason: blank reads as
+                 "failed to render" as easily as "none". Tagless is a real state since #148 -- every
+                 auto-created draft starts that way -- and it is why such a draft offers no Publish. -->
+            @if (project.tags.length > 0) {
+              {{ project.tags.map((t) => t.name).join(', ') }}
+            } @else {
+              <span class="no-tags">No tags</span>
+            }
+          </td>
           <td class="actions">
             <a [routerLink]="['/admin/projects', project.id, 'edit']">Edit</a>
-            <!-- An action label ("Publish"/"Unpublish") rather than a state label plus
-                 aria-pressed. The two are alternatives, not a pair: a toggle button announces as
-                 "<name>, pressed", so a button that renames itself to the action would be read out
-                 as "Unpublish, pressed" -- which says the opposite of what is true. State is the
-                 Status column's job here; this button says what pressing it does.
+            @if (needsTagToPublish(project)) {
+              <!-- In place of Publish, which the API would refuse for a draft with no tags (#148).
+                   A link that states the reason rather than a disabled button beside one: a disabled
+                   button takes no focus, so tabbing never reaches it or its explanation, and a
+                   tooltip reaches only a mouse. See needsTagToPublish().
 
-                 The accessible name is built from the same expression as the visible text so the
-                 two can never disagree (WCAG 2.5.3), and carries the title because a screen reader
-                 moving button to button through a table hears "Publish" with no idea which row. -->
-            <button
-              type="button"
-              class="publish-toggle"
-              (click)="setPublished(project, !project.published)"
-              [disabled]="publishingId() === project.id"
-              [attr.aria-label]="publishAction(project) + ' ' + project.title"
-            >
-              {{ publishAction(project) }}
-            </button>
+                   The accessible name carries the title, as the buttons' names do, and starts with
+                   the visible text, so the name contains the label (WCAG 2.5.3).
+
+                   The project id is what keepFocusInRow() finds this row's link by, when an
+                   Unpublish puts this link where the focused button was. -->
+              <a
+                #addTagLink
+                class="publish-blocked"
+                [routerLink]="['/admin/projects', project.id, 'edit']"
+                [attr.aria-label]="addTagToPublish + ' ' + project.title"
+                [attr.data-project-id]="project.id"
+              >{{ addTagToPublish }}</a>
+            } @else {
+              <!-- An action label ("Publish"/"Unpublish") rather than a state label plus
+                   aria-pressed. The two are alternatives, not a pair: a toggle button announces as
+                   "<name>, pressed", so a button that renames itself to the action would be read out
+                   as "Unpublish, pressed" -- which says the opposite of what is true. State is the
+                   Status column's job here; this button says what pressing it does.
+
+                   The accessible name is built from the same expression as the visible text so the
+                   two can never disagree (WCAG 2.5.3), and carries the title because a screen reader
+                   moving button to button through a table hears "Publish" with no idea which row. -->
+              <button
+                #publishToggle
+                type="button"
+                class="publish-toggle"
+                (click)="setPublished(project, !project.published, publishToggle)"
+                [disabled]="publishingId() === project.id"
+                [attr.aria-label]="publishAction(project) + ' ' + project.title"
+              >
+                {{ publishAction(project) }}
+              </button>
+            }
             <button
               type="button"
               class="delete"

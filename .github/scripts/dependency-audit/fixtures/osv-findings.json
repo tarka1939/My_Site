@@ -1,0 +1,1279 @@
+{
+  "source": "https://api.osv.dev",
+  "packages": [
+    {
+      "name": "com.fasterxml.jackson.core:jackson-databind",
+      "version": "2.13.0",
+      "scopes": [
+        "test"
+      ],
+      "ids": [
+        "GHSA-3wrr-7qpf-2prh",
+        "GHSA-3x8x-79m2-3w2w",
+        "GHSA-57j2-w4cx-62h2",
+        "GHSA-5jmj-h7xm-6q6v",
+        "GHSA-cxp5-3px4-pw24",
+        "GHSA-gx83-3vf8-gh7j",
+        "GHSA-hgj6-7826-r7m5",
+        "GHSA-j3rv-43j4-c7qm",
+        "GHSA-jjjh-jjxp-wpff",
+        "GHSA-rgv9-q543-rqg4",
+        "GHSA-rmj7-2vxq-3g9f",
+        "GHSA-vvgp-rfg2-7rr6",
+        "GHSA-wjgm-6hv5-3cvf",
+        "GHSA-wv8q-qhhj-9h54"
+      ]
+    },
+    {
+      "name": "org.postgresql:postgresql",
+      "version": "42.2.0",
+      "scopes": [
+        "runtime"
+      ],
+      "ids": [
+        "GHSA-24rp-q3w6-vc56",
+        "GHSA-562r-vg33-8x8h",
+        "GHSA-673j-qm5f-xpv8",
+        "GHSA-727h-hrw8-jg8q",
+        "GHSA-88cc-g835-76rp",
+        "GHSA-98qh-xjc8-98pq",
+        "GHSA-r38f-c4h4-hqq2",
+        "GHSA-v7wg-cpwc-24m4"
+      ]
+    },
+    {
+      "name": "org.springframework:spring-core",
+      "version": "6.1.0",
+      "scopes": [
+        "compile",
+        "test"
+      ],
+      "ids": [
+        "GHSA-659m-px2c-25wj",
+        "GHSA-jmp9-x22r-554x"
+      ]
+    }
+  ],
+  "vulns": {
+    "GHSA-24rp-q3w6-vc56": {
+      "id": "GHSA-24rp-q3w6-vc56",
+      "summary": "org.postgresql:postgresql vulnerable to SQL Injection via line comment generation",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2024-1597",
+        "CVE-2024-1597"
+      ],
+      "withdrawn": null,
+      "severity": "CRITICAL",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "42.2.28"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.3.0"
+                },
+                {
+                  "fixed": "42.3.9"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.4.0"
+                },
+                {
+                  "fixed": "42.4.4"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.5.0"
+                },
+                {
+                  "fixed": "42.5.5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.6.0"
+                },
+                {
+                  "fixed": "42.6.1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.7.0"
+                },
+                {
+                  "fixed": "42.7.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-3wrr-7qpf-2prh": {
+      "id": "GHSA-3wrr-7qpf-2prh",
+      "summary": "jackson-databind: Deeply nested JsonNode throws StackOverflowError for toString()",
+      "aliases": [
+        "CVE-2026-50193"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.10.0"
+                },
+                {
+                  "fixed": "2.14.0"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-3x8x-79m2-3w2w": {
+      "id": "GHSA-3x8x-79m2-3w2w",
+      "summary": "jackson-databind possible Denial of Service if using JDK serialization to serialize JsonNode",
+      "aliases": [
+        "CVE-2021-46877"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.10.0"
+                },
+                {
+                  "fixed": "2.12.6"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.13.0"
+                },
+                {
+                  "fixed": "2.13.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-659m-px2c-25wj": {
+      "id": "GHSA-659m-px2c-25wj",
+      "summary": "Spring Framework Denial of Service via AntPathMatcher",
+      "aliases": [
+        "CVE-2026-41848"
+      ],
+      "withdrawn": null,
+      "severity": "LOW",
+      "affected": [
+        {
+          "name": "org.springframework:spring-core",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "7.0.0"
+                },
+                {
+                  "fixed": "7.0.8"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.springframework:spring-core",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "6.2.0"
+                },
+                {
+                  "fixed": "6.2.19"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.springframework:spring-core",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "6.1.0"
+                },
+                {
+                  "last_affected": "6.1.21"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.springframework:spring-core",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "last_affected": "5.3.39"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-57j2-w4cx-62h2": {
+      "id": "GHSA-57j2-w4cx-62h2",
+      "summary": "Deeply nested json in jackson-databind",
+      "aliases": [
+        "CVE-2020-36518"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.13.0"
+                },
+                {
+                  "fixed": "2.13.2.1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "2.12.6.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-5jmj-h7xm-6q6v": {
+      "id": "GHSA-5jmj-h7xm-6q6v",
+      "summary": "jackson-databind has case-insensitive deserialization bypasses per-property @JsonIgnoreProperties",
+      "aliases": [
+        "CVE-2026-54515"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "3.1.0"
+                },
+                {
+                  "fixed": "3.1.4"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.8.0"
+                },
+                {
+                  "fixed": "2.18.9"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.22.0"
+                },
+                {
+                  "fixed": "2.22.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-562r-vg33-8x8h": {
+      "id": "GHSA-562r-vg33-8x8h",
+      "summary": "TemporaryFolder on unix-like systems does not limit access to created files",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2022-41946",
+        "CVE-2022-41946"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.2.0"
+                },
+                {
+                  "fixed": "42.2.27"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.3.0"
+                },
+                {
+                  "fixed": "42.3.8"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.4.0"
+                },
+                {
+                  "fixed": "42.4.3"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.5.0"
+                },
+                {
+                  "fixed": "42.5.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-673j-qm5f-xpv8": {
+      "id": "GHSA-673j-qm5f-xpv8",
+      "summary": "pgjdbc Arbitrary File Write Vulnerability",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2022-26520",
+        "CVE-2022-26520",
+        "GHSA-727h-hrw8-jg8q"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.1.0"
+                },
+                {
+                  "fixed": "42.3.3"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-88cc-g835-76rp": {
+      "id": "GHSA-88cc-g835-76rp",
+      "summary": "Improper Restriction of XML External Entity Reference",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2020-13692",
+        "CVE-2020-13692"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "9.4.1212.jre6"
+                },
+                {
+                  "fixed": "42.2.13"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-727h-hrw8-jg8q": {
+      "id": "GHSA-727h-hrw8-jg8q",
+      "summary": "Path traversal in org.postgresql:postgresql",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2022-26520",
+        "CVE-2022-26520",
+        "GHSA-673j-qm5f-xpv8"
+      ],
+      "withdrawn": null,
+      "severity": "LOW",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.1.0"
+                },
+                {
+                  "fixed": "42.3.3"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-98qh-xjc8-98pq": {
+      "id": "GHSA-98qh-xjc8-98pq",
+      "summary": "pgjdbc: Unbounded PBKDF2 iterations in SCRAM authentication allows CPU exhaustion DoS",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2026-42198",
+        "CVE-2026-42198"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.2.0"
+                },
+                {
+                  "fixed": "42.7.11"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-cxp5-3px4-pw24": {
+      "id": "GHSA-cxp5-3px4-pw24",
+      "summary": "jackson-databind quadratic forward-reference completion ",
+      "aliases": [
+        "CVE-2026-91777"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.7"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.5.0"
+                },
+                {
+                  "fixed": "2.18.11"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.22.0"
+                },
+                {
+                  "fixed": "2.22.3"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-j3rv-43j4-c7qm": {
+      "id": "GHSA-j3rv-43j4-c7qm",
+      "summary": "jackson-databind has a PolymorphicTypeValidator bypass via generic type parameters that allows arbitrary class instantiation",
+      "aliases": [
+        "CVE-2026-54512"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.10.0"
+                },
+                {
+                  "fixed": "2.18.8"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "3.0.0"
+                },
+                {
+                  "fixed": "3.1.4"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-jjjh-jjxp-wpff": {
+      "id": "GHSA-jjjh-jjxp-wpff",
+      "summary": "Uncontrolled Resource Consumption in Jackson-databind",
+      "aliases": [
+        "CVE-2022-42003"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.4.0-rc1"
+                },
+                {
+                  "fixed": "2.12.7.1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.13.0"
+                },
+                {
+                  "fixed": "2.13.4.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-hgj6-7826-r7m5": {
+      "id": "GHSA-hgj6-7826-r7m5",
+      "summary": "jackson-databind: InetSocketAddress deserialization triggers eager DNS resolution (SSRF)",
+      "aliases": [
+        "CVE-2026-54514"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.0.0"
+                },
+                {
+                  "fixed": "2.18.8"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.4"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "3.0.0"
+                },
+                {
+                  "fixed": "3.1.4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-gx83-3vf8-gh7j": {
+      "id": "GHSA-gx83-3vf8-gh7j",
+      "summary": "jackson-databind: Comparable missing from DefaultBaseTypeLimitingValidator's unsafe base types (incomplete PolymorphicTypeValidator denylist)",
+      "aliases": [
+        "CVE-2026-83557"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.11.0"
+                },
+                {
+                  "fixed": "2.18.10"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.6"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.22.0"
+                },
+                {
+                  "fixed": "2.22.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-jmp9-x22r-554x": {
+      "id": "GHSA-jmp9-x22r-554x",
+      "summary": "Spring Framework annotation detection mechanism may result in improper authorization",
+      "aliases": [
+        "CVE-2025-41249"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "org.springframework:spring-core",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "5.3.0"
+                },
+                {
+                  "last_affected": "5.3.44"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.springframework:spring-core",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "6.0.0"
+                },
+                {
+                  "last_affected": "6.1.22"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.springframework:spring-core",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "6.2.0"
+                },
+                {
+                  "fixed": "6.2.11"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-rgv9-q543-rqg4": {
+      "id": "GHSA-rgv9-q543-rqg4",
+      "summary": "Uncontrolled Resource Consumption in FasterXML jackson-databind",
+      "aliases": [
+        "CVE-2022-42004"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.4.0-rc1"
+                },
+                {
+                  "fixed": "2.12.7.1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.13.0"
+                },
+                {
+                  "fixed": "2.13.4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-r38f-c4h4-hqq2": {
+      "id": "GHSA-r38f-c4h4-hqq2",
+      "summary": "PostgreSQL JDBC Driver SQL Injection in ResultSet.refreshRow() with malicious column names",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2022-31197",
+        "CVE-2022-31197"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "42.2.26"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.4.0"
+                },
+                {
+                  "fixed": "42.4.1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.3.0"
+                },
+                {
+                  "fixed": "42.3.7"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-rmj7-2vxq-3g9f": {
+      "id": "GHSA-rmj7-2vxq-3g9f",
+      "summary": "jackson-databind has an array subtype allowlist bypass in BasicPolymorphicTypeValidator (allowIfSubTypeIsArray)",
+      "aliases": [
+        "CVE-2026-54513"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.10.0"
+                },
+                {
+                  "fixed": "2.18.8"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.4"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "3.0.0"
+                },
+                {
+                  "fixed": "3.1.4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-v7wg-cpwc-24m4": {
+      "id": "GHSA-v7wg-cpwc-24m4",
+      "summary": "pgjdbc Does Not Check Class Instantiation when providing Plugin Classes",
+      "aliases": [
+        "BIT-postgresql-jdbc-driver-2022-21724",
+        "CVE-2022-21724"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "9.4.1208"
+                },
+                {
+                  "fixed": "42.2.25"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "org.postgresql:postgresql",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "42.3.0"
+                },
+                {
+                  "fixed": "42.3.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-vvgp-rfg2-7rr6": {
+      "id": "GHSA-vvgp-rfg2-7rr6",
+      "summary": "jackson-databind: Incomplete fix for CVE-2026-54514: eager DNS resolution (SSRF) still present in InetAddress deserialization",
+      "aliases": [
+        "CVE-2026-77310"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.0.0"
+                },
+                {
+                  "fixed": "2.18.9"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.22.0"
+                },
+                {
+                  "fixed": "2.22.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-wjgm-6hv5-3cvf": {
+      "id": "GHSA-wjgm-6hv5-3cvf",
+      "summary": "jackson-databind: Path Deserialization Missing Scheme Allowlist for FileSystemProvider Resolution",
+      "aliases": [
+        "CVE-2026-19032"
+      ],
+      "withdrawn": null,
+      "severity": "MODERATE",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.8.0"
+                },
+                {
+                  "fixed": "2.18.10"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.6"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.22.0"
+                },
+                {
+                  "fixed": "2.22.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "GHSA-wv8q-qhhj-9h54": {
+      "id": "GHSA-wv8q-qhhj-9h54",
+      "summary": "jackson-databind retains every unknown raw type ID ",
+      "aliases": [
+        "CVE-2026-91776"
+      ],
+      "withdrawn": null,
+      "severity": "HIGH",
+      "affected": [
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.0.0"
+                },
+                {
+                  "fixed": "2.18.11"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.19.0"
+                },
+                {
+                  "fixed": "2.21.7"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "com.fasterxml.jackson.core:jackson-databind",
+          "ranges": [
+            {
+              "events": [
+                {
+                  "introduced": "2.22.0"
+                },
+                {
+                  "fixed": "2.22.3"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "queriedAt": "2026-10-14T10:02:09.468Z"
+}

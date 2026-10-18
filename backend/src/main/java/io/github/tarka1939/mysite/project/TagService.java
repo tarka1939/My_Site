@@ -15,7 +15,7 @@ public class TagService {
     }
 
     /**
-     * Tags currently in use — those attached to at least one project — name-ascending.
+     * Tags currently in use - those attached to at least one project - name-ascending.
      *
      * <p>The filtering is the point, not an optimisation: this listing populates the public
      * "filter by tag" control, and an orphaned tag there is a filter value that returns an

@@ -93,7 +93,7 @@ describe('SeoService', () => {
     // the guard on seedStaticSeoTags, which builds the seeded tags with setAttribute: interpolated
     // into markup instead, the first quote here would end the attribute and the seeded head would
     // quietly be something other than what this test asked for.
-    const nasty = 'He said "hi" & <script>alert(1)</script> — 5 < 6';
+    const nasty = 'He said "hi" & <script>alert(1)</script> - 5 < 6';
     const scriptsBefore = document.querySelectorAll('script').length;
     seedStaticTags(nasty);
     const seo = createService();
@@ -152,7 +152,7 @@ describe('SeoService', () => {
     // setAttribute, which takes a string rather than markup, so the value round-trips and the
     // browser escapes it on serialisation. Building the tag by string concatenation instead --
     // head.innerHTML += ... -- would break out of the attribute here.
-    const nasty = 'He said "hi" & <script>alert(1)</script> — 5 < 6';
+    const nasty = 'He said "hi" & <script>alert(1)</script> - 5 < 6';
     const scriptsBefore = document.querySelectorAll('script').length;
 
     createService().applyPage({ description: nasty });

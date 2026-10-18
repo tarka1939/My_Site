@@ -12,7 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * The single admin account (see SPEC.md's "no multi-user support" non-goal — no registration
+ * The single admin account (see SPEC.md's "no multi-user support" non-goal - no registration
  * endpoint, this row is provisioned via a Flyway seed migration only).
  */
 @Entity

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import io.github.tarka1939.mysite.DuplicateRepoFullNameException;
 import io.github.tarka1939.mysite.PageResponse;
 import io.github.tarka1939.mysite.ResourceNotFoundException;
+import io.github.tarka1939.mysite.TagRequiredToPublishException;
 
 @Service
 public class ProjectService {
@@ -51,15 +52,20 @@ public class ProjectService {
 
     @Transactional
     public ProjectResponse createProject(ProjectWriteRequest request) {
+        // Absent means published, which is what POST has always done -- see
+        // ProjectWriteRequest.published for why the two verbs read the same silence differently.
+        // Worked out once, before anything is written, so the tag rule judges the very value that
+        // is stored: a create that omits published publishes, and is held to the rule.
+        boolean published = request.published() == null || request.published();
+        requireTagsToPublish(published, request.tags());
+
         Project project = new Project(request.title(), request.description());
         project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
         project.setImages(request.images().toArray(new String[0]));
         project.setTags(resolveTags(request.tags()));
         project.setStartedOn(request.startedOn());
         project.setCompletedOn(request.completedOn());
-        // Absent means published, which is what POST has always done -- see
-        // ProjectWriteRequest.published for why the two verbs read the same silence differently.
-        project.setPublished(request.published() == null || request.published());
+        project.setPublished(published);
         if (request.repoFullName() != null) {
             requireRepoFullNameUnclaimed(request.repoFullName(), null);
             project.setRepoFullName(request.repoFullName());
@@ -67,7 +73,7 @@ public class ProjectService {
 
         // saveAndFlush (not save): @CreationTimestamp/@UpdateTimestamp are populated by
         // Hibernate at flush time. A plain save() defers that flush to transaction commit,
-        // which happens after this method returns — the response DTO would see null
+        // which happens after this method returns - the response DTO would see null
         // createdAt/updatedAt otherwise.
         Project saved = projectRepository.saveAndFlush(project);
         eventPublisher.publishEvent(new ProjectCreatedEvent(saved.getId()));
@@ -145,10 +151,30 @@ public class ProjectService {
     @Transactional
     public ProjectResponse updateProject(UUID id, ProjectWriteRequest request) {
         Project project = findProjectOrThrow(id);
+
+        // NOT a full replacement, unlike the fields below, and the asymmetry is the point.
+        // published is newer than the clients that PUT to this endpoint, so a body that omits it
+        // is not asking for it to be cleared -- it predates it. Reading that silence as
+        // "un-publish" would blank a live project on its next edit. See
+        // ProjectWriteRequest.published.
+        //
+        // Worked out before anything on the entity changes, because the tag rule needs the stored
+        // value: a PUT that omits published against a live project leaves it live, so it is held
+        // to the rule exactly as an explicit true is.
+        //
+        // Reading the stored value and then writing is a check-then-act in CLAUDE.md's sense,
+        // considered rather than missed: requireTagsToPublish says why it cannot leave a published
+        // project untagged.
+        boolean published = request.published() != null ? request.published() : project.isPublished();
+        requireTagsToPublish(published, request.tags());
+
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setLinks(request.links().stream().map(l -> new Link(l.label(), l.url())).toList());
         project.setImages(request.images().toArray(new String[0]));
+        // Always a new set: replacing it is what makes the flush write the project row, published
+        // included, alongside the tags. Read requireTagsToPublish before changing how tags are
+        // written here.
         project.setTags(resolveTags(request.tags()));
         // Unconditional assignment, including null: PUT is a full replacement, so omitting
         // startedOn/completedOn clears them rather than preserving what's stored. Skipping
@@ -157,14 +183,10 @@ public class ProjectService {
         project.setStartedOn(request.startedOn());
         project.setCompletedOn(request.completedOn());
 
-        // NOT unconditional, unlike the two lines above, and the asymmetry is the point.
-        // published and repoFullName are newer than the clients that PUT to this endpoint, so a
-        // body that omits them is not asking for them to be cleared -- it predates them. Reading
-        // that silence as "un-publish" would blank a live project on its next edit. See
-        // ProjectWriteRequest.published.
-        if (request.published() != null) {
-            project.setPublished(request.published());
-        }
+        // The value worked out above: the request's, or the stored one when it said nothing.
+        project.setPublished(published);
+        // NOT unconditional either, for published's reason: an older client's PUT that omits
+        // repoFullName is not a request to unlink.
         if (request.repoFullName() != null) {
             requireRepoFullNameUnclaimed(request.repoFullName(), id);
             project.setRepoFullName(request.repoFullName());
@@ -253,6 +275,58 @@ public class ProjectService {
                 throw new DuplicateRepoFullNameException(
                     "Another project already tracks the repository " + repoFullName);
             });
+    }
+
+    /**
+     * A published project needs at least one tag; a draft may have none (#148, the owner's option
+     * 3, "drafts are exempt"). Judged on the state the write leaves behind: {@code published} is
+     * the value about to be stored, which each caller works out first, not the field the request
+     * happened to carry. Not applied to rows already stored -- only to writes.
+     *
+     * <p><b>Why this is not {@code @Size(min = 1)} on {@code ProjectWriteRequest.tags}.</b> Whether
+     * the rule applies depends on {@code published}, so a field constraint would also refuse a
+     * tagless draft, which is exactly what a GitHub webhook creates and what #148 exists to let the
+     * owner save. A class-level constraint on the request gets only part of the way: it can see an
+     * explicit {@code published: true}, but one record serves both verbs, so it cannot tell that an
+     * omitted {@code published} means true on POST and "unchanged" on PUT, and it cannot see the
+     * stored value the PUT case turns on. Split between such a constraint and this method, the rule
+     * would live in two places with neither of them complete, so all of it lives here.
+     *
+     * <p><b>Concurrency.</b> On PUT the {@code published} judged here was read at the start of the
+     * request and can change before the flush: a check-then-act in CLAUDE.md's sense. A published
+     * project with no tags is <b>not reachable</b> through it. That one of two concurrent edits is
+     * lost is <b>accepted</b>, as it always was here.
+     *
+     * <ul>
+     *   <li>GitHub sync cannot be the other writer. {@link ProjectRepository#upsertFromGithub}'s
+     *       {@code DO UPDATE SET} names neither {@code published} nor the tags, and its insert half
+     *       writes {@code published = false} with no tags, so sync can neither publish a project
+     *       nor strip one.</li>
+     *   <li>A second admin PUT to the same project can be, but every PUT writes its
+     *       {@code published} and its tags together, in one flush that starts by updating the
+     *       project row. {@link #updateProject} always replaces the tags set; replacing it makes
+     *       the row dirty even when no column changed; and with no {@code @DynamicUpdate} (none
+     *       here, and nothing enables it globally) that UPDATE writes every column, the
+     *       {@code published} this request judged included, before {@code project_tags} is
+     *       rewritten. Two such flushes queue on the row lock, so whichever commits last lands its
+     *       whole pair, and each pair passed this check against what it read. The other edit is
+     *       lost -- last-write-wins, since {@code Project} has no {@code @Version} -- which is the
+     *       standing behaviour, and the racing pair needs two admin submissions within one
+     *       request's span from a single admin account: the call
+     *       {@link #requireRepoFullNameUnclaimed} makes.</li>
+     * </ul>
+     *
+     * "Replacing the set makes the row dirty" is the step everything rests on, and it is
+     * Hibernate's behaviour rather than this code's. Without it, a PUT that changed no column would
+     * only rewrite {@code project_tags}, and a tagless save of a draft racing a publish of it could
+     * end published with no tags. Observed on Hibernate 7.4, and pinned by
+     * {@code ProjectUpdateStaleReadIntegrationTest}, which is what notices if a change to how the
+     * tags are written, or a Hibernate upgrade, takes it away.
+     */
+    private static void requireTagsToPublish(boolean published, List<String> tagNames) {
+        if (published && tagNames.isEmpty()) {
+            throw new TagRequiredToPublishException();
+        }
     }
 
     private Set<Tag> resolveTags(List<String> tagNames) {

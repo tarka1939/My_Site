@@ -14,7 +14,7 @@ open while changing anything about SSH.
 
 ## 1. Generate a key that exists only for GitHub
 
-On your own machine, not the server. **This is a third key** — not the one you log in with, and not
+On your own machine, not the server. **This is a third key** - not the one you log in with, and not
 the one the assistant uses. It ends up able to run one script and nothing else, which is only true
 if it is not also a general-access key.
 
@@ -27,7 +27,7 @@ rest in GitHub's secret store, and its power is bounded by step 2 instead.
 
 ## 2. Install the public half, restricted
 
-On the VPS, as `deploy`. The `command=` prefix is the whole point — it forces `deploy.sh` for every
+On the VPS, as `deploy`. The `command=` prefix is the whole point - it forces `deploy.sh` for every
 use of this key, whatever the client asks for, so possession becomes *"can trigger a deploy"* rather
 than *"owns the host"*.
 
@@ -76,7 +76,7 @@ sudo -n /usr/bin/systemctl restart mysite   # should work, no password
 sudo -n /usr/bin/systemctl restart ssh      # should be REFUSED
 ```
 
-If the second one succeeds, the entry is too broad — fix it before continuing.
+If the second one succeeds, the entry is too broad - fix it before continuing.
 
 ## 5. Add the secrets
 
@@ -84,14 +84,14 @@ If the second one succeeds, the entry is too broad — fix it before continuing.
 
 | Name | Value |
 |---|---|
-| `DEPLOY_SSH_KEY` | the entire contents of `~/.ssh/mysite_github_deploy` — the **private** half, including the BEGIN/END lines |
+| `DEPLOY_SSH_KEY` | the entire contents of `~/.ssh/mysite_github_deploy` - the **private** half, including the BEGIN/END lines |
 | `DEPLOY_KNOWN_HOSTS` | the host key line, below |
 | `DEPLOY_HOST` | `lee159.mikrus.xyz` |
 | `DEPLOY_PORT` | `10159` |
 | `NETLIFY_AUTH_TOKEN` | Netlify → User settings → Applications → Personal access tokens |
 | `NETLIFY_SITE_ID` | Netlify → Site configuration → General → Site ID |
 
-For `DEPLOY_KNOWN_HOSTS`, run this **on your own machine** and paste the output — pinning the key
+For `DEPLOY_KNOWN_HOSTS`, run this **on your own machine** and paste the output - pinning the key
 rather than accepting it on first use, because trust-on-first-use on a deploy path means the very
 first run trusts whatever answers:
 
@@ -107,7 +107,7 @@ ssh-keygen -lF "[lee159.mikrus.xyz]:10159"
 ```
 
 **The rule from the 2026-09-03 security ADR now applies to workflow YAML.** GitHub masks known
-secret values in logs, but only exact matches — a secret that is base64-decoded, split, or
+secret values in logs, but only exact matches - a secret that is base64-decoded, split, or
 interpolated into a larger string is no longer masked, and this repository's logs are public.
 
 ## 6. Switch Netlify's own build off
@@ -119,7 +119,7 @@ Netlify → **Site configuration → Build & deploy → Continuous deployment �
 builds**.
 
 This is what makes #38 a move rather than a duplication. It also ends per-PR deploy previews, which
-is a real capability being traded for a single visible pipeline — the backend deliberately does not
+is a real capability being traded for a single visible pipeline - the backend deliberately does not
 allowlist their origins anyway.
 
 ## 7. First run, by hand
@@ -129,7 +129,7 @@ one you chose to start.
 
 **Actions → Deploy backend → Run workflow → set "Use workflow from" to `main`.** The selector
 defaults to `dev`, the default branch, and running against `dev` deploys every unpromoted commit
-through a pipeline that has never run — two unknowns at once, which is what `docs/CI_PLAN.md` §8 is
+through a pipeline that has never run - two unknowns at once, which is what `docs/CI_PLAN.md` §8 is
 sequenced to avoid. Watch it, then check the site.
 
 Then the same for **Deploy frontend**.
@@ -143,7 +143,7 @@ by hand.
 
 **The break must compile and pass the tests.** The workflow runs `mvn clean package` on the runner
 before anything is shipped, so a syntax error fails there, `deploy.sh` never runs, and the run goes
-red having tested nothing — which reads exactly like a passing drill. What reaches the rollback is a
+red having tested nothing - which reads exactly like a passing drill. What reaches the rollback is a
 build that is fine on the runner and refuses to start on the host. The drill run on 2026-09-24 used
 a class no test can see, because no test activates the `prod` profile:
 
@@ -155,7 +155,7 @@ class RollbackDrill {
 }
 ```
 
-The API is down for the length of the attempt — about 2m20s in that run: 90s of health checks on the
+The API is down for the length of the attempt - about 2m20s in that run: 90s of health checks on the
 bad build, then the previous one restarting. The frontend stays up but cannot load data. Expect:
 
 - `deploy.sh` reports the health check never passed
@@ -176,11 +176,11 @@ held: `health check never passed after 90s -- rolling back`, the failed jar kept
 
 Recorded because it is the argument for the shape above, not decoration.
 
-- **`DEPLOY_SSH_KEY`** — can run `deploy.sh` on the host and nothing else. It cannot open a shell,
+- **`DEPLOY_SSH_KEY`** - can run `deploy.sh` on the host and nothing else. It cannot open a shell,
   forward a port, or read a file. It *can* deploy an arbitrary jar, so it is not harmless: an
   attacker with it can replace the application. That is bounded by GitHub's control of the secret
   and by the workflow being the only caller.
-- **`NETLIFY_AUTH_TOKEN`** — Netlify account-wide, not site-scoped. Rotate it in Netlify's UI if it
+- **`NETLIFY_AUTH_TOKEN`** - Netlify account-wide, not site-scoped. Rotate it in Netlify's UI if it
   is ever exposed.
-- **`DEPLOY_HOST` / `DEPLOY_PORT` / `DEPLOY_KNOWN_HOSTS`** — not secrets in any real sense; they are
+- **`DEPLOY_HOST` / `DEPLOY_PORT` / `DEPLOY_KNOWN_HOSTS`** - not secrets in any real sense; they are
   secrets here only to keep the host out of a public workflow file and its logs.

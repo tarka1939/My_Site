@@ -27,20 +27,20 @@ So:
   as the earliest month the work provably existed by. At sign-off the owner corrected it to November
   2025, and the record's `_dates` note says so.
 
-Unanswered questions about the copy — which images to use, whether the repos should be renamed,
-whether the coursework entries should be split — live in the draft's "Needs your input" sections,
+Unanswered questions about the copy - which images to use, whether the repos should be renamed,
+whether the coursework entries should be split - live in the draft's "Needs your input" sections,
 not here. This directory deliberately holds no opinions the draft does not.
 
 ### One difference from the draft: the prose is reflowed
 
-The source draft hard-wraps its prose at about 90 columns. **`projects.json` does not** — each
+The source draft hard-wraps its prose at about 90 columns. **`projects.json` does not** - each
 paragraph is a single unbroken string that wraps to whatever width the reader has.
 
 This was deliberate. The detail page then rendered `description` as plain text with `white-space:
 pre-wrap`, and `pre-wrap` preserves *single* newlines as forced line breaks, not just blank ones. Carrying the draft's wrapping across would have pinned every paragraph
 to a hard break every ~92 characters regardless of viewport, which on a narrow screen reads as a
 broken page. The draft notes that blank lines survive as paragraph breaks and does not mention that
-its own wrapping survives too — that looks like an oversight rather than an intention.
+its own wrapping survives too - that looks like an oversight rather than an intention.
 
 **Since #206 this no longer affects what a visitor sees.** Descriptions are Markdown, which renders a
 single newline inside a paragraph as a space, and `pre-wrap` is gone from the detail page. The
@@ -52,7 +52,7 @@ one character was swapped for another. None of the 78 sat next to a hyphen or ex
 so no word was joined wrongly and no double space was produced.
 
 Blank lines between paragraphs are still how paragraph breaks are expressed, and are still
-load-bearing — they are the separate array elements. **Do not re-wrap these strings by hand.**
+load-bearing - they are the separate array elements. **Do not re-wrap these strings by hand.**
 
 ---
 
@@ -88,15 +88,15 @@ node content-seed/seed.mjs --help
 |---|---|---|
 | `SEED_BACKEND_URL` | `http://127.0.0.1:8080` | Backend origin. Checked by the guard below. |
 | `SEED_ADMIN_USERNAME` | `admin` | |
-| `SEED_ADMIN_PASSWORD` | *(none — required)* | |
-| `SEED_ALLOW_REMOTE_HOST` | *(none)* | Half of the deployment door. Useless on its own — see below. |
+| `SEED_ADMIN_PASSWORD` | *(none - required)* | |
+| `SEED_ALLOW_REMOTE_HOST` | *(none)* | Half of the deployment door. Useless on its own - see below. |
 
 Note the login rate limit: the backend allows **5 login attempts per 15 minutes per IP**, and each
 non-dry run spends one. `--dry-run` spends none, because it only reads the public list endpoint.
 
 ## What it does
 
-1. Validates `projects.json` against every constraint `ProjectWriteRequest` declares — field names,
+1. Validates `projects.json` against every constraint `ProjectWriteRequest` declares - field names,
    lengths, item counts, URI syntax, real calendar dates, blank-but-non-empty strings, and the two
    date rules (`completedOn` may not precede `startedOn`, and may not be present without it).
    **All of it before any network call**, so a bad edit cannot leave a half-applied run behind.
@@ -111,12 +111,12 @@ non-dry run spends one. `--dry-run` spends none, because it only reads the publi
 node --test content-seed/validate.test.mjs
 ```
 
-`node:test` and `node:assert` from the standard library — nothing to install, consistent with the
+`node:test` and `node:assert` from the standard library - nothing to install, consistent with the
 rest of this directory. The validator lives in `validate.mjs`, separate from `seed.mjs`, precisely
 so it can be exercised without standing up the locality guard, the global error handlers, or a run.
 
-The suite covers the contract limits, the date rules, the structural checks, and the locality guard
-— but it exists because of two defects that local validation *should* have caught and didn't: an
+The suite covers the contract limits, the date rules, the structural checks, and the locality guard -
+but it exists because of two defects that local validation *should* have caught and didn't: an
 impossible date (`2026-02-30`) and a whitespace-only description. Both reached the API and failed
 server-side mid-apply, after earlier records were already written. Those two cases are pinned, and
 both were confirmed to fail the suite when the fix is reverted.
@@ -125,20 +125,24 @@ The validator mirrors Jakarta's `@NotBlank`, which the backend puts on `title`, 
 every `tags` element, and both `LinkDto` fields. A plain length check does not model that: `"   "`
 is a non-empty string in JavaScript and blank to the server.
 
+It also refuses an empty `tags` list. A record cannot set `published`, and a create that omits it
+publishes, so every record this seed creates goes live, and the API refuses to publish a project
+with no tags (#148).
+
 ## What it does not do
 
 - **It does not write to Postgres.** Every change goes through the API, so it exercises the same
   validation, tag upsert, and event publication as the admin UI would.
 - **It is not a Flyway migration, and must not become one.** Migrations are permanent and replay
   into every database that runs them, including throwaway CI ones. Portfolio copy has no business
-  in migration history — the first correction would leave the wrong wording there forever.
+  in migration history - the first correction would leave the wrong wording there forever.
 - **It does not create, delete, or modify an admin account.**
 - **It does not delete anything in its normal mode.** See below.
 - **It does not touch contact messages or tags directly.** Tags are created implicitly by project
   writes; there is no `DELETE /tags`, so re-running with a tag removed from the data file detaches
   it from the project but leaves the tag row in place. `--remove` has the same limit: it deletes
   the projects and their tag links, and leaves every tag row behind. Clearing those means a manual
-  `DELETE FROM tag` against a local database — not something this script can do through the API.
+  `DELETE FROM tag` against a local database - not something this script can do through the API.
 - **It does not control the order tags are displayed in.** Verified against the running backend:
   tags come back in a different order from the one they were sent in. The set round-trips, the
   sequence does not. So the ordering in `projects.json` is for the reader of that file only, and a
@@ -152,7 +156,7 @@ projects, not ten. Running it after editing `projects.json` updates the five in 
 what makes the file a source of truth rather than a one-shot import.
 
 Title matching is used because the API offers nothing better: there is no external-id or slug
-field, and no filter-by-title. The alternative — a local file recording created ids — would make
+field, and no filter-by-title. The alternative - a local file recording created ids - would make
 idempotency depend on one machine's disk, and would break the moment the seed ran from anywhere
 else.
 
@@ -165,30 +169,30 @@ Known failure modes, stated plainly:
 - **Renaming a `title` in the data file orphans the old row.** The next run no longer recognises
   it, creates a new project under the new title, and leaves the old one behind. It is not deleted,
   because the script genuinely cannot tell it apart from something a human made. Delete it by hand.
-- **A hand-made project with one of these exact titles would be adopted** — overwritten by a normal
+- **A hand-made project with one of these exact titles would be adopted** - overwritten by a normal
   run, deleted by `--remove`. This is the one case where "never touches what it didn't create"
   depends on titles not colliding. The five titles are distinctive enough that this is unlikely,
   but it is a real limit of title matching rather than something the script defends against.
 - **Two stored projects sharing a seeded title is ambiguous, so the run refuses** rather than
-  picking one — in **both** modes. `--remove` used to delete both silently, which turned a title
+  picking one - in **both** modes. `--remove` used to delete both silently, which turned a title
   collision into exactly the data loss the bullet above warns about; it now refuses the same way
   `apply` does. Resolve it by hand and re-run.
 - `--remove` deletes exactly the stored projects whose title appears in `projects.json`, logs each
   one **after** its delete succeeds, and reports how many it left alone. It is the only mode that
-  deletes. If it fails partway it says how many it actually removed — it does not announce the
+  deletes. If it fails partway it says how many it actually removed - it does not announce the
   batch up front, because the one destructive mode should never overstate what it did.
 
 ## The locality guard
 
-`locality.mjs` is modelled on `e2e/support/locality.ts` — same loopback allowlist, same fail-closed
+`locality.mjs` is modelled on `e2e/support/locality.ts` - same loopback allowlist, same fail-closed
 shape, same refusal to grow a `--force` flag. It runs at import time, before a credential is read
 or a socket opened.
 
 Loopback targets are allowed. **Anything else needs two independent keys:**
 
 1. The hostname must appear in `APPROVED_DEPLOYMENT_HOSTS`, a committed constant in
-   `locality.mjs` — so pointing this at a real site is a reviewed code change, not something
-   whoever is typing can decide. **It currently holds one host, `tarka1939.bieda.it` — the live
+   `locality.mjs` - so pointing this at a real site is a reviewed code change, not something
+   whoever is typing can decide. **It currently holds one host, `tarka1939.bieda.it` - the live
    backend.** So a run with `SEED_ALLOW_REMOTE_HOST=tarka1939.bieda.it` *will* write to
    production, with whatever `projects.json` holds at the time.
 2. The run must set `SEED_ALLOW_REMOTE_HOST` to that same hostname, so a host committed for a
@@ -199,7 +203,7 @@ Remote targets must additionally be HTTPS, since the admin password crosses that
 **Redirects are refused, and that is part of the guard, not a detail.** `fetch` follows redirects
 by default and the guard only ever sees `SEED_BACKEND_URL`, so a 3xx from an approved host would
 send the *next* request somewhere the guard never evaluated. Node strips the `Authorization` header
-across origins, but on a 307 or 308 it forwards the request **body** verbatim — which on
+across origins, but on a 307 or 308 it forwards the request **body** verbatim - which on
 `/auth/login` is the plaintext admin password. (A 301, 302 or 303 turns a POST into a GET without a
 body; a `PUT` carrying project copy keeps its body on a 301 or 302 as well.) The password case was
 reproduced on Node 24.14.0 against this script before `redirect: 'error'`
@@ -220,15 +224,15 @@ against the contract as it stands: bare URL strings.
 
 When it does land, the change here is mechanical rather than a rewrite:
 
-- `projects.json` — three URLs in total across all five entries (two on System Equalizer, one on
+- `projects.json` - three URLs in total across all five entries (two on System Equalizer, one on
   Counter App; the other three entries have `"images": []`). Each becomes an object with an `alt`
   string. The alt text itself is **new copy that has to be written and approved**, which is the
   real cost, not the format change.
-- `seed.mjs` — one validation branch, the block commented `images` in `validate()`. Nothing else
+- `seed.mjs` - one validation branch, the block commented `images` in `validate()`. Nothing else
   reads `images`; it is passed through by the field allowlist untouched.
 
 Worth knowing when it lands: System Equalizer's two images are architecture **diagrams**, not
-screenshots. The detail page used to hardcode `"<title> screenshot N"`, which said so wrongly — but
+screenshots. The detail page used to hardcode `"<title> screenshot N"`, which said so wrongly - but
 that was already fixed by issue #87 (commit `c730443`, an ancestor of this branch). It now calls
 `projectImageAlt()`, which emits `"System Equalizer, image 1 of 2"` and cites these very diagrams
 as the reason it exists. So the mislabelling is already gone; what #97 would add is the ability to
@@ -245,7 +249,7 @@ say what each image actually *contains*, which nothing on the frontend can inven
       "_dates":  "...",         // why these date values, or why they are null
       "title": "...",
       "startedOn": "2026-01-01",
-      "completedOn": null,      // null means ongoing — a value, not missing data
+      "completedOn": null,      // null means ongoing - a value, not missing data
       "description": ["para", "para"],
       "tags": ["..."],
       "links": [{ "label": "...", "url": "..." }],
@@ -263,7 +267,7 @@ Two conventions:
   unrecognised key without an underscore is a validation error rather than a silent no-op.
 - **`description` is an array of paragraphs**, joined with a blank line and given a trailing
   newline. JSON has no multi-line string literal, and a 2,536-character description escaped onto
-  one line is unreviewable — which would defeat the point of a file that exists to be read and
+  one line is unreviewable - which would defeat the point of a file that exists to be read and
   corrected. The join rebuilds the structure the draft's YAML `|` block scalar expressed, and the
   resulting lengths still match the draft's own compliance table (§4) exactly; the only difference
   from the draft is the reflow described above. The blank line matters: descriptions are Markdown
@@ -271,7 +275,7 @@ Two conventions:
   renders as a space.
 
 The record order matches the draft's section order (§1.1, §1.2, §1.3, §2.1, §2.2) so the two can be
-read side by side. It carries no meaning to the API — there is no ordering field on the model
+read side by side. It carries no meaning to the API - there is no ordering field on the model
 (issue #88).
 
 ## Troubleshooting
@@ -289,12 +293,12 @@ still serving. Observed directly while verifying this script: the Maven job was 
 netstat -ano -p TCP | grep 8080          # any LISTENING row means a backend is still up
 ```
 
-Then confirm the PID is the one you think it is before stopping it — on Windows,
+Then confirm the PID is the one you think it is before stopping it - on Windows,
 `Get-CimInstance Win32_Process -Filter "ProcessId = <pid>"` shows the full command line, which
 should name `MySiteApplication` and its active profile.
 
 This matters beyond tidiness. A stale backend from a *different branch* will happily answer a seed
 run or a test suite, and everything will look green against code that isn't the code under test.
 That failure mode has already produced one false verification result on this project. Any time a
-run's results look surprising — or suspiciously fine — check what is actually listening before
+run's results look surprising - or suspiciously fine - check what is actually listening before
 trusting them.

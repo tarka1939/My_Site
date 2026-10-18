@@ -5,7 +5,7 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 
 /**
- * Shared page wrapper matching docs/openapi.yaml's PageMeta + content shape — used instead of
+ * Shared page wrapper matching docs/openapi.yaml's PageMeta + content shape - used instead of
  * serializing Spring Data's raw {@code Page<T>} directly, which would leak internal
  * pageable/sort metadata not in the public contract.
  */

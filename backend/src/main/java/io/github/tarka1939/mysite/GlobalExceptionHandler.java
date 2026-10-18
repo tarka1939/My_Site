@@ -45,27 +45,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
         MethodArgumentNotValidException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request
     ) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Request failed validation");
-        problem.setTitle("Validation Failed");
-
         List<FieldErrorDetail> errors = ex.getBindingResult().getFieldErrors().stream()
             .map(fe -> new FieldErrorDetail(fe.getField(), fe.getDefaultMessage()))
             .toList();
-        problem.setProperty("errors", errors);
-        return ResponseEntity.status(status).headers(headers).body(problem);
+        return ResponseEntity.status(status).headers(headers).body(validationProblem(status, errors));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST, "Request failed validation");
-        problem.setTitle("Validation Failed");
-
         List<FieldErrorDetail> errors = ex.getConstraintViolations().stream()
             .map(cv -> new FieldErrorDetail(cv.getPropertyPath().toString(), cv.getMessage()))
             .toList();
-        problem.setProperty("errors", errors);
-        return problem;
+        return validationProblem(HttpStatus.BAD_REQUEST, errors);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -90,6 +81,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         problem.setTitle("Conflict");
         problem.setProperty("errors", List.of(new FieldErrorDetail("repoFullName", ex.getMessage())));
         return problem;
+    }
+
+    /**
+     * A write that would leave a published project with no tags (#148). The same body as a Bean
+     * Validation failure -- status, title, detail and an {@code errors} entry on {@code tags} --
+     * because the rule is a validation rule that Bean Validation cannot express: it depends on the
+     * project's stored {@code published} value, so it is checked in the service (see
+     * {@code ProjectService}). The client has no reason to tell the two apart, and the admin form's
+     * field-error handling then needs no special case.
+     */
+    @ExceptionHandler(TagRequiredToPublishException.class)
+    public ProblemDetail handleTagRequiredToPublish(TagRequiredToPublishException ex) {
+        return validationProblem(
+            HttpStatus.BAD_REQUEST, List.of(new FieldErrorDetail("tags", ex.getMessage())));
     }
 
     @ExceptionHandler(RateLimitExceededException.class)
@@ -179,7 +184,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Fallback for anything not handled above or by the base class (NPE, DataAccessException,
-     * etc.) — without this, a truly unexpected exception falls through to Spring Boot's default
+     * etc.) - without this, a truly unexpected exception falls through to Spring Boot's default
      * error response instead of the RFC 9457 shape every other error on this API uses.
      * Deliberately doesn't echo {@code ex.getMessage()} to the client, since an unanticipated
      * exception's message could contain internal details (SQL, file paths); logs the full
@@ -191,6 +196,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
         problem.setTitle("Internal Server Error");
+        return problem;
+    }
+
+    /**
+     * The body of every validation failure, whichever of the three handlers above raised it. One
+     * builder, so Bean Validation's two failures and the tag rule's cannot drift apart: the client
+     * branches on this shape without knowing which one it got.
+     */
+    private static ProblemDetail validationProblem(HttpStatusCode status, List<FieldErrorDetail> errors) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Request failed validation");
+        problem.setTitle("Validation Failed");
+        problem.setProperty("errors", errors);
         return problem;
     }
 

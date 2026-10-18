@@ -14,14 +14,14 @@ import { assertLocalHost } from './locality';
  */
 
 /**
- * Connection settings for the *same* database the backend under test is using — not an
+ * Connection settings for the *same* database the backend under test is using - not an
  * independent target. That is a real constraint, not a preference:
  * `backend/src/main/resources/application-dev.yml` hardcodes
  * `jdbc:postgresql://localhost:5432/${DB_NAME:mysite_dev}`, so it exposes no env var for host
  * or port at all, and names the other three `DB_NAME` / `DB_USERNAME` / `DB_PASSWORD`.
  *
  * So `E2E_DB_HOST` and `E2E_DB_PORT` can only ever be moved *away* from what the application
- * reads — they are kept solely so the locality guard below has something to check, and
+ * reads - they are kept solely so the locality guard below has something to check, and
  * `e2e/README.md` deliberately does not advertise them as overrides. The other three must be
  * set in both namespaces or the suite provisions `e2e-admin` into a database the backend never
  * opens, which surfaces later as an unexplained 401 on the admin journey's login.
@@ -36,7 +36,7 @@ const DB_PASSWORD = process.env.E2E_DB_PASSWORD ?? 'mysite';
  * The admin row written below carries a password committed to a public repository in plain
  * text, so the insert has to be *impossible* to aim anywhere but a local throwaway. The
  * allowlist itself lives in `support/locality.ts`, shared with the destructive HTTP path in
- * `support/api.ts` — the guard's promise was only half true while it covered this file alone.
+ * `support/api.ts` - the guard's promise was only half true while it covered this file alone.
  */
 function assertLocalDatabase(): void {
   assertLocalHost(DB_HOST, 'E2E_DB_HOST');
@@ -67,11 +67,11 @@ export async function provisionE2eAdmin(): Promise<void> {
   assertLocalDatabase();
 
   // Cost 10 matches Spring's BCryptPasswordEncoder default. bcryptjs emits a $2b$ hash, which
-  // Spring's BCrypt verifies alongside $2a$/$2y$ — no encoder configuration needed.
+  // Spring's BCrypt verifies alongside $2a$/$2y$ - no encoder configuration needed.
   const passwordHash = await bcrypt.hash(E2E_ADMIN_PASSWORD, 10);
 
   await withClient(async (client) => {
-    // Guard against a schema that hasn't been migrated yet — a confusing "relation does not
+    // Guard against a schema that hasn't been migrated yet - a confusing "relation does not
     // exist" from pg is much harder to act on than this.
     const { rows } = await client.query<{ exists: boolean }>(
       `SELECT to_regclass('public.admin_user') IS NOT NULL AS exists`,

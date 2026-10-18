@@ -15,7 +15,7 @@
     <artifactId>mysite-backend</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>mysite-backend</name>
-    <description>Backend for My Site — portfolio CMS (Spring Boot)</description>
+    <description>Backend for My Site - portfolio CMS (Spring Boot)</description>
 
     <properties>
         <java.version>25</java.version>

@@ -30,7 +30,7 @@ import jakarta.persistence.EntityManager;
 
 /**
  * Boots the full application context against a real Postgres via Testcontainers, running the
- * real Flyway migrations (V1__init.sql through V4__project_dates.sql) — H2-in-tests would
+ * real Flyway migrations (V1__init.sql through V4__project_dates.sql) - H2-in-tests would
  * pass jsonb/text[] mapping bugs, and would not enforce V4's CHECK constraint the way
  * Postgres does. See PROJECT_TODO.md's Phase 1 Testcontainers item.
  *
@@ -86,7 +86,7 @@ class ProjectRepositoryIntegrationTest {
     void createProjectThroughService_populatesTimestampsInResponse() {
         // Regression guard: ProjectService must saveAndFlush (not save) so Hibernate's
         // @CreationTimestamp/@UpdateTimestamp generators have run before the response DTO
-        // is built — a plain save() defers that flush to commit, after the method returns,
+        // is built - a plain save() defers that flush to commit, after the method returns,
         // and a mock-based unit test can't catch it since mocks don't simulate flush timing.
         ProjectWriteRequest request = new ProjectWriteRequest(
             "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"), null, null, null, null);
