@@ -1,10 +1,16 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+import {
+  ApplicationConfig,
+  inject,
+  provideAppInitializer,
+  provideBrowserGlobalErrorListeners,
+} from '@angular/core';
 import { HttpInterceptorFn, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { TitleStrategy, provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
 import { provideApi } from './core/api';
 import { environment } from '../environments/environment';
+import { AnalyticsTracker } from './core/analytics/analytics-tracker';
 import { authInterceptor } from './core/auth/auth.interceptor';
 import { errorInterceptor } from './core/http/error.interceptor';
 import { SeoTitleStrategy } from './core/seo/seo-title.strategy';
@@ -28,5 +34,9 @@ export const appConfig: ApplicationConfig = {
     // same per-navigation timing, now also applying each route's description/robots meta tags --
     // see core/seo/seo-title.strategy.ts.
     { provide: TitleStrategy, useClass: SeoTitleStrategy },
+    // Page views (Phase 7c). Started here, once, rather than from a component, so no component spec
+    // sends requests by rendering a page. An initializer runs before the router's first
+    // navigation, so the page a visitor lands on is counted too.
+    provideAppInitializer(() => inject(AnalyticsTracker).start()),
   ],
 };

@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { AnalyticsPage } from '../../core/api/model/analyticsPage';
 import { ContactFormComponent } from './contact-form/contact-form.component';
 
 export const CONTACT_ROUTES: Routes = [
@@ -14,6 +15,8 @@ export const CONTACT_ROUTES: Routes = [
       // it for the admin view, and nothing emails or forwards it, so "goes straight to my inbox"
       // would be a claim the system does not implement.
       description: 'Get in touch - questions about a project, work enquiries, or anything else.',
+      // Counted as a page view (core/analytics/analytics-tracker.ts).
+      analyticsPage: AnalyticsPage.Contact,
     },
   },
 ];
