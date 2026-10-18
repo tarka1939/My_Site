@@ -55,9 +55,10 @@ Was floated in the original data-model draft; confirmed out of scope in `SPEC.md
 | email | varchar(320), not null | max length per RFC 5321; validate format at the DTO layer, not here |
 | message | text, not null | |
 | created_at | timestamptz, not null default `now()` | |
-| requester_ip_hash | varchar(64), not null | sha-256 hex digest of requester IP, never the raw IP. **Unsalted and kept**, so unlike `AnalyticsEvent.visitor_hash` below it can be reversed by hashing every IPv4 address (see the 2026-10-18 analytics ADR) |
 
-Rate limiting: no separate table - query `count(*) where requester_ip_hash = ? and created_at > now() - interval` at request time. Revisit only if this endpoint sees enough volume for that query to matter.
+**Nothing about the sender's address is stored** (#309). The table used to have a `requester_ip_hash` column, an unsalted SHA-256 of the sender's IP kept for as long as the message, which could be reversed by hashing every IPv4 address; it existed only so the rate limit could count rows. `V10` dropped it and its index, taking the existing hashes with it.
+
+Rate limiting: in memory, through `InMemoryRateLimiter` under the key `"contact:" + ClientIpHasher hash`, 5 messages per trailing hour per client IP, as login and password reset are limited. No table and no column. The budget resets when the backend restarts, which is accepted, and deleting messages does not refund it.
 
 ### AboutPage (#213, V8)
 
@@ -213,7 +214,6 @@ erDiagram
         string email
         text message
         timestamptz created_at
-        string requester_ip_hash
     }
     ADMIN_USER {
         uuid id PK
@@ -277,4 +277,5 @@ erDiagram
 - `V3__password_reset_token_hash_index.sql` (Phase 2) - adds a unique index on `password_reset_token.token_hash` (see PasswordResetToken table above), caught in cross-review after V1/V2 had already shipped without one.
 - `V4__project_dates.sql` (Phase 6) - adds nullable `project.started_on` and `project.completed_on` plus a `CHECK` enforcing that `completed_on` neither precedes `started_on` nor exists without it. Additive and non-destructive: both columns are nullable, so existing rows are untouched and no backfill is required. See the 2026-08-08 project-dates ADR in `docs/DECISIONS.md`.
 - `V8__about_page.sql` (Phase 6, #213) - creates `about_page` (see AboutPage above) and inserts its one row. Additive; touches nothing existing. V5-V7 (tag index, GitHub sync record, project publication fields) landed with Phase 7a and are described by their own files.
+- `V10__drop_contact_message_requester_ip_hash.sql` (#309) - drops `contact_message.requester_ip_hash` and `ix_contact_message_ip_hash_created_at` (see ContactMessage above). Destructive by design: the existing rows' hashes go with the column, and the messages themselves are untouched. Not reversible, and a jar from before it fails Hibernate's schema validation against the new schema, so a rollback past it needs the column restored first. V9 (`analytics_event`) is described by its own file.
 - Record schema changes here as they land, or link to migration files directly.
