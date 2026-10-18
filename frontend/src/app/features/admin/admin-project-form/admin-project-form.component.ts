@@ -35,6 +35,10 @@ import {
 } from '../../../shared/form-errors/form-errors';
 import { renderMarkdown } from '../../../shared/markdown/markdown';
 import {
+  PROJECT_FIELD_LABELS,
+  PROJECT_ROW_INPUT_LABELS,
+} from '../../../shared/project-field-labels/project-field-labels';
+import {
   PROJECT_PERIOD_MESSAGES,
   validateProjectPeriod,
 } from '../../../shared/project-period/project-period';
@@ -199,6 +203,16 @@ export class AdminProjectFormComponent {
     images: new FormArray<FormControl<string>>([]),
     published: this.publishedControl,
   });
+
+  /**
+   * Every field label the template shows, read from the source the projects list also names fields
+   * by when it reports a rejected Publish (#308). That message links here, so the name it gives a
+   * field has to be the one the admin then finds on it -- held once, they cannot be edited apart.
+   * The validators' own messages above ("Title is required") still spell the word out, so renaming
+   * a field means changing those too.
+   */
+  protected readonly labels = PROJECT_FIELD_LABELS;
+  protected readonly rowLabels = PROJECT_ROW_INPUT_LABELS;
 
   /**
    * The period rules the API enforces (see ProjectWriteRequest in docs/openapi.yaml), checked here
