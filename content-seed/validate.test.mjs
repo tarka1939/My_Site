@@ -80,6 +80,10 @@ describe('validate - blank but non-empty (@NotBlank)', () => {
     rejects([valid({ tags: ['python', '  '] })], /tags\[1\] is blank/);
   });
 
+  test('rejects an empty tags list, which the API refuses to publish', () => {
+    rejects([valid({ tags: [] })], /tags is empty/);
+  });
+
   test('rejects a blank link label', () => {
     rejects(
       [valid({ links: [{ label: ' ', url: 'https://example.invalid/' }] })],
