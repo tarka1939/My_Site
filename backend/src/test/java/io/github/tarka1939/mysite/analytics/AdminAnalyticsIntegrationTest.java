@@ -360,6 +360,19 @@ class AdminAnalyticsIntegrationTest {
     }
 
     /**
+     * The first refused day on each side, so a bound that drifted outward is caught: the far
+     * values above would still be refused by a check loosened to year 99999. Both parse, and
+     * Postgres would answer for both, so only the bound stands between them and a 200.
+     */
+    @Test
+    void theDayAfterTheLastAndTheDayBeforeTheFirst_areRefused() throws Exception {
+        assertRangeProblem(get(SUMMARY).param("from", "9999-12-31").param("to", "+10000-01-01"),
+            "getAnalyticsSummary.to", DATE_OUT_OF_RANGE);
+        assertRangeProblem(get(SUMMARY).param("from", "0000-12-31").param("to", "0001-01-01"),
+            "getAnalyticsSummary.from", DATE_OUT_OF_RANGE);
+    }
+
+    /**
      * Not a field error: binding fails before the handler runs, and ResponseEntityExceptionHandler
      * answers with Spring's own body for a MethodArgumentTypeMismatchException. The contract says
      * only "a plain problem with no errors"; the whole body is pinned so a Spring upgrade that
