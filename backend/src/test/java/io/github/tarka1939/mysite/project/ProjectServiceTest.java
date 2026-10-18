@@ -6,13 +6,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +31,7 @@ import org.springframework.data.domain.Pageable;
 
 import io.github.tarka1939.mysite.PageResponse;
 import io.github.tarka1939.mysite.ResourceNotFoundException;
+import io.github.tarka1939.mysite.TagRequiredToPublishException;
 
 @ExtendWith(MockitoExtension.class)
 class ProjectServiceTest {
@@ -151,9 +155,12 @@ class ProjectServiceTest {
 
     @Test
     void createProject_mapsTheDatePeriodOntoTheEntity() {
+        // Tagged since #148: omitting published on create publishes, and a published project
+        // needs a tag. The dates are what this test is about.
         ProjectWriteRequest request = new ProjectWriteRequest(
-            "Equalizer", "A DSP project", List.of(), List.of(), List.of(),
+            "Equalizer", "A DSP project", List.of(), List.of(), List.of("dsp"),
             LocalDate.of(2024, 3, 1), LocalDate.of(2025, 6, 1), null, null);
+        when(tagRepository.findByNameIgnoreCase("dsp")).thenReturn(Optional.of(new Tag("dsp")));
         when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProjectResponse response = projectService.createProject(request);
@@ -211,5 +218,154 @@ class ProjectServiceTest {
 
         assertThatThrownBy(() -> projectService.deleteProject(id))
             .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // -------------------------------------------------------------------------------------
+    // #148: a published project needs at least one tag; a draft may have none. The rule judges
+    // the state the request leaves behind, not the fields it carries -- hence the omitted-
+    // published cases, which mean opposite things on the two verbs.
+    // -------------------------------------------------------------------------------------
+
+    @Test
+    void createProject_publishedTrueWithNoTags_isRejected() {
+        assertThatThrownBy(() -> projectService.createProject(writeRequest(List.of(), true)))
+            .isInstanceOf(TagRequiredToPublishException.class)
+            .hasMessage("At least one tag is required to publish");
+
+        verifyNothingWritten();
+    }
+
+    @Test
+    void createProject_omittingPublishedWithNoTags_isRejected_becauseOmittedMeansPublishedOnCreate() {
+        assertThatThrownBy(() -> projectService.createProject(writeRequest(List.of(), null)))
+            .isInstanceOf(TagRequiredToPublishException.class);
+
+        verifyNothingWritten();
+    }
+
+    @Test
+    void createProject_draftWithNoTags_isAllowed() {
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.createProject(writeRequest(List.of(), false));
+
+        assertThat(response.published()).isFalse();
+        assertThat(response.tags()).isEmpty();
+    }
+
+    @Test
+    void updateProject_publishedTrueWithNoTags_isRejected_whenPublishingADraft() {
+        UUID id = UUID.randomUUID();
+        Project draft = new Project("Draft title", "Draft description");
+        when(projectRepository.findById(id)).thenReturn(Optional.of(draft));
+
+        assertThatThrownBy(() -> projectService.updateProject(id, writeRequest(List.of(), true)))
+            .isInstanceOf(TagRequiredToPublishException.class);
+
+        verifyNothingWritten();
+        assertThat(draft.isPublished()).isFalse();
+    }
+
+    /**
+     * The case that needs the stored value, and the reason the rule is in the service: the body is
+     * identical to an allowed draft save (see the next test), and only the project it lands on
+     * decides. Omitted means "leave it as it is", and as it is, is published.
+     */
+    @Test
+    void updateProject_omittingPublishedWithNoTags_againstAPublishedProject_isRejected() {
+        UUID id = UUID.randomUUID();
+        Project live = new Project("Live title", "Live description");
+        live.setPublished(true);
+        live.setTags(Set.of(new Tag("dsp")));
+        when(projectRepository.findById(id)).thenReturn(Optional.of(live));
+
+        assertThatThrownBy(() -> projectService.updateProject(id, writeRequest(List.of(), null)))
+            .isInstanceOf(TagRequiredToPublishException.class)
+            .hasMessage("At least one tag is required to publish");
+
+        verifyNothingWritten();
+        // Checked before the entity is touched. This one is managed in the real thing, so a
+        // mutation before the throw would be undone only by the rollback; nothing relies on that.
+        assertThat(live.getTitle()).isEqualTo("Live title");
+        assertThat(live.getTags()).extracting(Tag::getName).containsExactly("dsp");
+        assertThat(live.isPublished()).isTrue();
+    }
+
+    @Test
+    void updateProject_omittingPublishedWithNoTags_againstADraft_isAllowedAndStaysADraft() {
+        UUID id = UUID.randomUUID();
+        when(projectRepository.findById(id)).thenReturn(Optional.of(new Project("Draft", "Draft")));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.updateProject(id, writeRequest(List.of(), null));
+
+        assertThat(response.published()).isFalse();
+        assertThat(response.tags()).isEmpty();
+    }
+
+    @Test
+    void updateProject_explicitlyAsADraftWithNoTags_isAllowed() {
+        UUID id = UUID.randomUUID();
+        when(projectRepository.findById(id)).thenReturn(Optional.of(new Project("Draft", "Draft")));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.updateProject(id, writeRequest(List.of(), false));
+
+        assertThat(response.published()).isFalse();
+        assertThat(response.tags()).isEmpty();
+    }
+
+    /** Un-publishing and clearing the tags in one PUT: what it leaves behind is a tagless draft. */
+    @Test
+    void updateProject_unpublishingAndClearingTheTagsTogether_isAllowed() {
+        UUID id = UUID.randomUUID();
+        Project live = new Project("Live", "Live");
+        live.setPublished(true);
+        live.setTags(Set.of(new Tag("dsp")));
+        when(projectRepository.findById(id)).thenReturn(Optional.of(live));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.updateProject(id, writeRequest(List.of(), false));
+
+        assertThat(response.published()).isFalse();
+        assertThat(response.tags()).isEmpty();
+    }
+
+    @Test
+    void updateProject_publishingADraftWithATag_isAllowed() {
+        UUID id = UUID.randomUUID();
+        when(projectRepository.findById(id)).thenReturn(Optional.of(new Project("Draft", "Draft")));
+        when(tagRepository.findByNameIgnoreCase("dsp")).thenReturn(Optional.of(new Tag("dsp")));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.updateProject(id, writeRequest(List.of("dsp"), true));
+
+        assertThat(response.published()).isTrue();
+        assertThat(response.tags()).extracting(TagResponse::name).containsExactly("dsp");
+    }
+
+    @Test
+    void updateProject_omittingPublishedWithATag_againstAPublishedProject_isAllowedAndStaysLive() {
+        UUID id = UUID.randomUUID();
+        Project live = new Project("Live", "Live");
+        live.setPublished(true);
+        when(projectRepository.findById(id)).thenReturn(Optional.of(live));
+        when(tagRepository.findByNameIgnoreCase("dsp")).thenReturn(Optional.of(new Tag("dsp")));
+        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProjectResponse response = projectService.updateProject(id, writeRequest(List.of("dsp"), null));
+
+        assertThat(response.published()).isTrue();
+    }
+
+    private static ProjectWriteRequest writeRequest(List<String> tags, Boolean published) {
+        return new ProjectWriteRequest(
+            "Title", "Description", List.of(), List.of(), tags, null, null, published, null);
+    }
+
+    /** No row, no tag and no event: the rule is checked before anything is written. */
+    private void verifyNothingWritten() {
+        verify(projectRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(tagRepository, eventPublisher);
     }
 }

@@ -23,6 +23,10 @@ import jakarta.validation.constraints.Size;
  * are boxed so that "the client said nothing" is distinguishable from "the client said false /
  * null". The reasons are documented with each component.
  *
+ * @param tags tag names, required as a key but allowed to be empty -- only while the project
+ *     stays a draft (#148). That condition is deliberately not {@code @Size(min = 1)} here: it
+ *     depends on {@code published} and, on PUT, on the stored value, which no constraint on this
+ *     record can see. {@code ProjectService.requireTagsToPublish} enforces it and says why.
  * @param published whether the project appears on the public site, or null for "leave it as it
  *     is".
  *     <p>Null-means-unchanged is a deliberate departure from this body's full-replacement

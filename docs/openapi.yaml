@@ -975,6 +975,20 @@ components:
 
         `published` and `repoFullName` are the two exceptions to that rule, and the exception is
         deliberate -- see each field.
+
+        **A published project needs at least one tag (#148).** `tags` may be empty only while the
+        project is a draft. The rule applies to the state the request would leave behind, not to
+        the fields it happens to carry, so all three of these are rejected with 400 and a field
+        error on `tags`:
+          - `published: true` with no tags;
+          - a create with no tags that omits `published`, since omitted means published on create;
+          - a PUT with no tags that omits `published`, against a project that is already published,
+            since omitted means "leave it as it is".
+        A draft can be saved with no tags, including one a GitHub webhook created, which always
+        arrives with none. It needs a tag only to be published.
+
+        This is not `minItems`, because whether it applies depends on `published` and, on PUT, on
+        the stored value. It is checked when a project is written, not applied to existing rows.
       required: [title, description, tags]
       properties:
         title:
@@ -1018,7 +1032,10 @@ components:
             type: string
             minLength: 1
             maxLength: 50
-          description: Tag names. Matched case-insensitively against existing tags; new names create a new Tag row.
+          description: |
+            Tag names. Matched case-insensitively against existing tags; new names create a new Tag
+            row. May be empty only for a project that stays a draft -- see this schema's
+            description for the rule and the 400 it answers.
         startedOn:
           type: string
           format: date
@@ -1050,6 +1067,8 @@ components:
             On create, omitted means **true**: a project entered by hand through the CMS is meant to
             be live, which is what POST has always done. Un-publishing therefore takes an explicit
             `false`.
+
+            A project can only be published with at least one tag -- see this schema's description.
           example: true
         repoFullName:
           type: string
