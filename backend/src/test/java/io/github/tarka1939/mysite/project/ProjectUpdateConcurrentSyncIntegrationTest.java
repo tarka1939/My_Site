@@ -28,8 +28,8 @@ import io.github.tarka1939.mysite.TestPostgres;
  * updatable column, so if {@code last_pushed_at}, {@code default_branch} and {@code archived} were
  * among them, the save would write whatever it read at load time over anything
  * {@link ProjectRepository#upsertFromGithub} committed in between. The next delivery for the
- * repository would correct them; until then the project would show the old push, branch and
- * archived flag.
+ * repository would correct whichever of them its payload carries; until then the project would
+ * show the old push, branch and archived flag.
  *
  * <p>All three are asserted, softly, so a regression on any one of them is named in the failure
  * rather than hidden behind the first.
