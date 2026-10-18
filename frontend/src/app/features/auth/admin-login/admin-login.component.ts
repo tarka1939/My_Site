@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService as AuthApiService } from '../../../core/api/api/auth.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { NotificationService } from '../../../core/notifications/notification.service';
 
 @Component({
   selector: 'app-admin-login',
@@ -14,6 +15,7 @@ import { AuthService } from '../../../core/auth/auth.service';
 export class AdminLoginComponent {
   private readonly authApi = inject(AuthApiService);
   private readonly auth = inject(AuthService);
+  private readonly notifications = inject(NotificationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly formBuilder = inject(FormBuilder);
@@ -37,10 +39,17 @@ export class AdminLoginComponent {
       next: (response) => {
         this.auth.setSession(response);
         this.submitting.set(false);
+        // Any error toast still on screen is about signing in, which has now worked (#313): an
+        // earlier attempt's 401, 429, 5xx or network failure, or the session-expiry notice that
+        // sent the admin here. Nothing else on this page raises an error. Taken down before
+        // navigating, so the admin pages never open under it. An info toast is not about signing
+        // in, so it stays.
+        this.notifications.dismissAll('error');
         this.router.navigateByUrl(this.resolveReturnUrl());
       },
       error: () => {
-        // Surfaced globally by errorInterceptor (invalid credentials -> 401, no field errors).
+        // Surfaced globally by errorInterceptor (invalid credentials -> 401, no field errors). The
+        // toast stays while the admin retries, and the success branch above takes it down.
         this.submitting.set(false);
       },
     });
