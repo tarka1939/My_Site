@@ -306,8 +306,8 @@ public class ProjectService {
      *       {@code published} and its tags together, in one flush that starts by updating the
      *       project row. {@link #updateProject} always replaces the tags set; replacing it makes
      *       the row dirty even when no column changed; and with no {@code @DynamicUpdate} (none
-     *       here, and nothing enables it globally) that UPDATE writes every column, the
-     *       {@code published} this request judged included, before {@code project_tags} is
+     *       here, and nothing enables it globally) that UPDATE writes every updatable column,
+     *       the {@code published} this request judged included, before {@code project_tags} is
      *       rewritten. Two such flushes queue on the row lock, so whichever commits last lands its
      *       whole pair, and each pair passed this check against what it read. The other edit is
      *       lost -- last-write-wins, since {@code Project} has no {@code @Version} -- which is the

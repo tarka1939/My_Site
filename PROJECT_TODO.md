@@ -243,7 +243,7 @@ These are the four "give the backend a real job" candidates from earlier. Build 
 
 > **Follow-up, done:** #148 - an auto-created draft has no tags and the edit form required one, so open-edit-publish could not be completed. Publishing from the list worked. Needed an editorial decision, not a patch. **Decided 2026-10-14:** a tag is required to publish, not to save. **Built 2026-10-18 (PR #307):** the API refuses a write that would leave a project published with no tags, drafts save as they are, and the admin form and list follow the rule. The ADR is in `docs/DECISIONS.md`, 2026-10-14.
 >
-> **Known follow-up:** #304 - an admin PUT writes every column of the project row, the sync-owned `last_pushed_at`, `default_branch` and `archived` included, so it can write stale values over a concurrent sync's. Found while building #148.
+> **Follow-up, done:** #304 - an admin PUT wrote every column of the project row, the sync-owned `last_pushed_at`, `default_branch` and `archived` included, so it could write stale values over a concurrent sync's. Found while building #148. **Fixed 2026-10-18 (PR #310):** the three columns are `updatable = false`, so a save leaves them as sync wrote them.
 >
 > **Not yet wired to anything real.** Per the 2026-08-05 note above, pointing GitHub's webhook at a live endpoint waited on Phase 5. Phase 5 is complete (2026-09-25), so it now waits only on the owner's decision to turn it on. The flag is off by default.
 
