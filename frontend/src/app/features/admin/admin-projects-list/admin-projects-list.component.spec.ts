@@ -73,12 +73,26 @@ function pageOf(content: Project[]) {
 }
 
 function validationProblem(field: string, message: string): ApiProblem {
+  return problemWith([{ field, message }]);
+}
+
+/** A 400 carrying several violations at once, which is what the API sends -- it does not dedup. */
+function problemWith(fieldErrors: { field: string; message: string }[]): ApiProblem {
   return {
     status: 400,
     title: 'Bad Request',
-    fieldErrors: [{ field, message }],
+    fieldErrors,
     rateLimited: false,
   };
+}
+
+/** The publish banner's text, as the admin reads it -- link text included. */
+function bannerText(fixture: ComponentFixture<AdminProjectsListComponent>): string {
+  const banner = (fixture.nativeElement as HTMLElement).querySelector('.publish-error');
+  if (!banner) {
+    throw new Error('no publish error banner is rendered');
+  }
+  return banner.textContent ?? '';
 }
 
 /** The row for `title`, found the way a reader finds it -- by the title in its first cell. */
@@ -324,10 +338,42 @@ describe('AdminProjectsListComponent', () => {
     const alert = (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]');
     const message = alert?.textContent ?? '';
     expect(message).toContain('Equalizer');
-    expect(message).toContain('tags');
-    expect(message).toContain('At least one tag is required to publish');
+    expect(message).toContain('Tags: At least one tag is required to publish');
     // And the row still reports the truth: the publish did not happen.
     expect(statusOf(fixture, 'Equalizer')).toBe('Draft');
+  });
+
+  it('names each field the way the form labels it, never by the API key (#308)', async () => {
+    // The banner links to the form, so its word for a field is the one the admin will find there.
+    // It used to print the key: "tags: At least one tag is required to publish". The exact sentence
+    // is asserted, so the wording around the reasons is pinned along with how each is named.
+    updateProject.mockReturnValue(
+      throwError(() =>
+        problemWith([
+          { field: 'tags', message: 'At least one tag is required to publish' },
+          { field: 'links[0].url', message: 'must not be blank' },
+          { field: 'images[0]', message: 'size must be between 0 and 500' },
+          // A key with no label on the form: the message goes out alone rather than with the key.
+          { field: 'repoFullName', message: 'size must be between 0 and 255' },
+        ]),
+      ),
+    );
+    const fixture = await renderComponent(AdminProjectsListComponent);
+
+    await clickPublish(fixture, 'Equalizer');
+
+    const text = bannerText(fixture);
+    expect(text).toContain(
+      'Could not publish "Equalizer". The server rejected it -- ' +
+        'Tags: At least one tag is required to publish; ' +
+        "Link 1's URL: must not be blank; " +
+        "Image 1's URL: size must be between 0 and 500; " +
+        'size must be between 0 and 255.',
+    );
+    // The sentence above has no key in it; this covers the rest of the banner, the link included.
+    for (const key of ['tags:', 'links[0]', 'images[0]', 'repoFullName']) {
+      expect(text).not.toContain(key);
+    }
   });
 
   it('links a rejected publish to the form where it can be fixed', async () => {

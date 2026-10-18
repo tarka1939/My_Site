@@ -9,6 +9,10 @@ import {
 import { BehaviorSubject, config, of, Subject, throwError } from 'rxjs';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { ApiProblem } from '../../../core/http/api-problem';
+import {
+  PROJECT_FIELD_LABELS,
+  PROJECT_ROW_INPUT_LABELS,
+} from '../../../shared/project-field-labels/project-field-labels';
 import { clickOn, renderComponent, submitForm, typeInto } from '../../../../testing/zoneless';
 import { AdminProjectFormComponent } from './admin-project-form.component';
 
@@ -295,6 +299,31 @@ describe('AdminProjectFormComponent', () => {
       expect(input?.type).toBe('date');
       expect(host.querySelector(`label[for="${id}"]`)?.textContent?.trim()).toBeTruthy();
     }
+  });
+
+  it('labels its fields with the names the projects list reports rejections by (#308)', async () => {
+    // The list's publish banner names a field from PROJECT_FIELD_LABELS and links here, so the word
+    // it uses has to be the one the admin finds on the form. The template binds those constants;
+    // this is what fails if a label is typed back in as a literal and then reworded on one side.
+    // The wording itself is pinned in project-field-labels.spec.ts.
+    const fixture = await renderComponent(AdminProjectFormComponent);
+    await clickAddRow(fixture, 'links');
+    await clickAddRow(fixture, 'images');
+
+    const host = fixture.nativeElement as HTMLElement;
+    const textOf = (selector: string) => host.querySelector(selector)?.textContent?.trim();
+
+    expect(textOf('label[for="project-title"]')).toBe(PROJECT_FIELD_LABELS.title);
+    expect(textOf('label[for="project-description"]')).toBe(PROJECT_FIELD_LABELS.description);
+    expect(textOf('label[for="project-tags"]')).toBe(`${PROJECT_FIELD_LABELS.tags} (comma-separated)`);
+    expect(textOf('label[for="project-published"]')).toBe(PROJECT_FIELD_LABELS.published);
+    expect(textOf('label[for="project-started-on"]')).toBe(PROJECT_FIELD_LABELS.startedOn);
+    expect(textOf('label[for="project-completed-on"]')).toBe(PROJECT_FIELD_LABELS.completedOn);
+    expect(textOf('fieldset[formarrayname="links"] > legend')).toBe(PROJECT_FIELD_LABELS.links);
+    expect(textOf('fieldset[formarrayname="images"] > legend')).toBe(PROJECT_FIELD_LABELS.images);
+    expect(textOf('label[for="link-label-0"]')).toBe(PROJECT_ROW_INPUT_LABELS.linkLabel);
+    expect(textOf('label[for="link-url-0"]')).toBe(PROJECT_ROW_INPUT_LABELS.linkUrl);
+    expect(textOf('label[for="image-0"]')).toBe(PROJECT_ROW_INPUT_LABELS.imageUrl);
   });
 
   it('sends explicit nulls when no dates are entered', () => {
