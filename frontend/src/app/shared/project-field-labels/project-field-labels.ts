@@ -78,7 +78,8 @@ const LINK_KEY = /^links\[(\d+)\]\.([A-Za-z]+)$/;
 
 /**
  * 1-based, the way the form counts its rows to the admin ("Remove link 1"). The API's index is the
- * position in the list it was sent, which is the order the form and the list both show.
+ * position in the list it was sent, which is the order the form shows its rows in and the projects
+ * list's Tags column shows the tags in.
  */
 function position(index: string): number {
   return Number(index) + 1;
