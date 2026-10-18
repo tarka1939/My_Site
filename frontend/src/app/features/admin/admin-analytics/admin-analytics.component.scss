@@ -54,6 +54,12 @@ tbody th {
   font-weight: var(--weight-body);
 }
 
+// A date would otherwise break at its first hyphen at phone width ("2026-" over "10-18"). The
+// Views column's 50% is a preference the table gives up first.
+time {
+  white-space: nowrap;
+}
+
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
