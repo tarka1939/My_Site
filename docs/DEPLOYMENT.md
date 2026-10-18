@@ -1185,9 +1185,9 @@ and should be fine regardless.
 
 Both test messages are real rows. Delete them from `/admin/messages` once you are satisfied.
 
-One quirk worth knowing before you do: the contact form's rate limit counts rows in the database, so
-deleting messages refunds the quota. Harmless here, and the reason you can send a second test
-immediately after the first.
+Deleting them does not refund the contact form's rate limit: since #309 it is held in memory, 5
+messages per hour per client IP, and counts submissions rather than stored rows. Two test messages
+are well inside it, and restarting the backend resets it if you ever need more.
 
 ---
 
