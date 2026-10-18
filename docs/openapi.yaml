@@ -682,14 +682,18 @@ paths:
         - name: from
           in: query
           required: false
-          description: First day of the range, included (UTC). Defaults to 29 days before `to`.
+          description: |
+            First day of the range, included (UTC). Defaults to 29 days before `to`. Must be a date
+            from 0001-01-01 to 9999-12-31.
           schema:
             type: string
             format: date
         - name: to
           in: query
           required: false
-          description: Last day of the range, included (UTC). Defaults to today.
+          description: |
+            Last day of the range, included (UTC). Defaults to today. Must be a date from
+            0001-01-01 to 9999-12-31.
           schema:
             type: string
             format: date
@@ -702,11 +706,13 @@ paths:
                 $ref: '#/components/schemas/AnalyticsSummary'
         '400':
           description: |
-            The range is invalid. `to` before `from` is a field error keyed
-            `getAnalyticsSummary.to`, and a range longer than 366 days one keyed
-            `getAnalyticsSummary.from`, prefixed with the handler name like every query-parameter
-            violation (see ValidationProblemDetail). A value that does not parse as a date is a
-            400 as well, as a plain problem with no `errors`.
+            The range is invalid. A `to` outside 0001-01-01 to 9999-12-31 is a field error keyed
+            `getAnalyticsSummary.to` and a `from` outside it one keyed `getAnalyticsSummary.from`
+            (`to` is checked first, and a default `from` is checked like a sent one). Then `to`
+            before `from` is a field error keyed `getAnalyticsSummary.to`, and a range longer than
+            366 days one keyed `getAnalyticsSummary.from`, prefixed with the handler name like
+            every query-parameter violation (see ValidationProblemDetail). A value that does not
+            parse as a date is a 400 as well, as a plain problem with no `errors`.
           content:
             application/problem+json:
               schema:

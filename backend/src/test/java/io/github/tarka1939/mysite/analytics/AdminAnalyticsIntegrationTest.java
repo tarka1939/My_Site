@@ -60,6 +60,8 @@ class AdminAnalyticsIntegrationTest {
 
     private static final String SUMMARY = "/api/v1/admin/analytics";
 
+    private static final String DATE_OUT_OF_RANGE = "must be a date from 0001-01-01 to 9999-12-31";
+
     private static final String H1 = "1".repeat(64);
     private static final String H2 = "2".repeat(64);
     private static final String H3 = "3".repeat(64);
@@ -306,6 +308,55 @@ class AdminAnalyticsIntegrationTest {
             "getAnalyticsSummary.from", "must make a range of at most 366 days, both ends included");
         assertRangeProblem(get(SUMMARY).param("from", LocalDate.now(ZoneOffset.UTC).minusDays(400).toString()),
             "getAnalyticsSummary.from", "must make a range of at most 366 days, both ends included");
+    }
+
+    /**
+     * The parser takes a nine-digit year of either sign, so these parse and are the controller's to
+     * refuse. Unrefused they were a 500 from Postgres or from {@code LocalDate} arithmetic, or a
+     * 200 for a range of nothing. The end is checked first, so {@code to} is the field whenever
+     * both ends are out. A literal {@code +} is as MockMvc sends it; over HTTP it is %2B.
+     */
+    @Test
+    void aFarFutureTo_isAFieldErrorOnTo() throws Exception {
+        assertRangeProblem(get(SUMMARY).param("to", "+999999999-12-31"),
+            "getAnalyticsSummary.to", DATE_OUT_OF_RANGE);
+    }
+
+    /** With no {@code from}, deriving its default from this {@code to} would itself have thrown. */
+    @Test
+    void aFarPastToAlone_isAFieldErrorOnTo() throws Exception {
+        assertRangeProblem(get(SUMMARY).param("to", "-999999999-01-02"),
+            "getAnalyticsSummary.to", DATE_OUT_OF_RANGE);
+    }
+
+    @Test
+    void aFarPastRange_isAFieldErrorOnTo_sinceTheEndIsCheckedFirst() throws Exception {
+        assertRangeProblem(
+            get(SUMMARY).param("from", "-999999999-01-01").param("to", "-999999999-01-02"),
+            "getAnalyticsSummary.to", DATE_OUT_OF_RANGE);
+    }
+
+    /** Before this check, only the 366-day limit stood between this and Postgres. */
+    @Test
+    void aFarPastFromWithAnOrdinaryTo_isAFieldErrorOnFrom() throws Exception {
+        assertRangeProblem(
+            get(SUMMARY).param("from", "-999999999-01-01").param("to", TO.toString()),
+            "getAnalyticsSummary.from", DATE_OUT_OF_RANGE);
+    }
+
+    /** The default start is checked like a sent one: 29 days before 0001-01-10 is in year 0. */
+    @Test
+    void aDefaultFromBeforeYear1_isAFieldErrorOnFrom() throws Exception {
+        assertRangeProblem(get(SUMMARY).param("to", "0001-01-10"),
+            "getAnalyticsSummary.from", DATE_OUT_OF_RANGE);
+    }
+
+    /** The limits are inclusive, and Postgres and {@code plusDays} both cope with them. */
+    @Test
+    void theFirstAndLastSupportedDays_areAccepted() throws Exception {
+        assertThat(summary(LocalDate.of(9999, 12, 1), LocalDate.of(9999, 12, 31)).days())
+            .hasSize(31);
+        assertThat(summary(LocalDate.of(1, 1, 1), LocalDate.of(1, 1, 2)).days()).hasSize(2);
     }
 
     /**
