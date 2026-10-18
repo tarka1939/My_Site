@@ -57,9 +57,9 @@ import org.springframework.stereotype.Component;
  * <h2>Known gap: the previous salt lives until the next event</h2>
  * Rotation is lazy, on the first event of a new day, which needs no scheduler. Until that event
  * arrives, yesterday's salt stays in memory: for a moment after midnight on a busy day, and for as
- * long as the site goes without an event on a quiet one. That is later than the ADR's "When the
- * day ends it is dropped". No new hash can be made under it once the day has changed, since
- * {@link #identify} only ever uses the salt for the day it has just read.
+ * long as the site goes without an event on a quiet one. The ADR says so. No new hash can be
+ * made under it once the day has changed, since {@link #identify} only ever uses the salt for the
+ * day it has just read.
  */
 @Component
 @ConditionalOnAnalyticsEnabled
