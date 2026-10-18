@@ -1,0 +1,102 @@
+// The range presets as one row of radios, without the fieldset's default frame.
+.range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  border: none;
+}
+
+.range legend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+  font-weight: var(--weight-emphasis);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.totals dt {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.totals dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+// Row headers name the row; the UA would centre them and set them bold.
+tbody th {
+  font-weight: var(--weight-body);
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+// The Views column is wide so its bars have room to differ.
+.views {
+  width: 50%;
+}
+
+.bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bar-track {
+  flex: 1;
+}
+
+.bar {
+  display: block;
+  height: 0.5rem;
+  background: var(--color-accent);
+}
+
+.link-row th {
+  padding-left: 1.5rem;
+}
+
+.url {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+code {
+  font-family: var(--font-mono);
+}
+
+.failure {
+  color: var(--color-error);
+}

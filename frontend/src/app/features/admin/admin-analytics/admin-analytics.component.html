@@ -1,0 +1,146 @@
+<h1>Analytics</h1>
+
+<fieldset class="range">
+  <legend>Range</legend>
+  @for (days of ranges; track days) {
+    <label>
+      <input
+        type="radio"
+        name="analytics-range"
+        [checked]="range() === days"
+        (change)="selectRange(days)"
+      />
+      Last {{ days }} days
+    </label>
+  }
+</fieldset>
+
+@if (loaded(); as view) {
+  <!-- The range as the API applied it, which is what the numbers below cover. -->
+  <p class="muted">
+    <time [attr.datetime]="view.summary.from">{{ view.summary.from }}</time> to
+    <time [attr.datetime]="view.summary.to">{{ view.summary.to }}</time>, in UTC days.
+  </p>
+
+  @if (view.empty) {
+    <p>No views in this range.</p>
+  } @else {
+    <dl class="totals">
+      <div>
+        <dt>Views</dt>
+        <dd>{{ view.totals.views | number }}</dd>
+      </div>
+      <div>
+        <dt>Visitor-days</dt>
+        <dd>{{ view.totals.visitorDays | number }}</dd>
+      </div>
+      <div>
+        <dt>Link clicks</dt>
+        <dd>{{ view.totals.linkClicks | number }}</dd>
+      </div>
+    </dl>
+    <p class="muted">
+      A view is a visitor who saw a page that day, not a page load, and visitors are counted per
+      day, so their total is visitor-days.
+    </p>
+
+    <h2 id="analytics-days">By day</h2>
+    <table aria-labelledby="analytics-days">
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col" class="num views">Views</th>
+          <th scope="col" class="num">Visitors</th>
+          <th scope="col" class="num">Link clicks</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (day of view.summary.days; track day.date) {
+          <tr>
+            <th scope="row"><time [attr.datetime]="day.date">{{ day.date }}</time></th>
+            <td class="num">
+              <!-- The bar repeats the number beside it, so it is hidden from assistive technology.
+                   A wrapper does the row layout: display on the cell itself would stop it being
+                   a table cell. -->
+              <div class="bar-cell">
+                <span class="bar-track" aria-hidden="true">
+                  <span class="bar" [style.width.%]="barWidth(day.views, view.maxViews)"></span>
+                </span>
+                <span>{{ day.views | number }}</span>
+              </div>
+            </td>
+            <td class="num">{{ day.visitors | number }}</td>
+            <td class="num">{{ day.linkClicks | number }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+
+    <h2 id="analytics-pages">By page</h2>
+    <table aria-labelledby="analytics-pages">
+      <thead>
+        <tr>
+          <th scope="col">Page</th>
+          <th scope="col" class="num">Views</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of view.summary.pages; track row.page) {
+          <tr>
+            <th scope="row">{{ pageLabel(row.page) }}</th>
+            <td class="num">{{ row.views | number }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+
+    <h2 id="analytics-projects">By project</h2>
+    @if (view.summary.projects.length === 0) {
+      <p>No project page was viewed and no project link was followed in this range.</p>
+    } @else {
+      <table aria-labelledby="analytics-projects">
+        <thead>
+          <tr>
+            <th scope="col">Project and its links</th>
+            <th scope="col" class="num">Views</th>
+            <th scope="col" class="num">Link clicks</th>
+          </tr>
+        </thead>
+        <!-- One tbody per project, so each project's link rows stay grouped under it. -->
+        @for (project of view.summary.projects; track project.projectId) {
+          <tbody>
+            <tr>
+              <th scope="row" [class.muted]="project.title === null">
+                {{ project.title ?? 'Deleted project' }}
+              </th>
+              <td class="num">{{ project.views | number }}</td>
+              <td class="num">{{ project.linkClicks | number }}</td>
+            </tr>
+            @for (link of project.links; track link.url) {
+              <tr class="link-row">
+                <th scope="row">
+                  @if (link.label !== null) {
+                    {{ link.label }}
+                  }
+                  <span class="url">{{ link.url }}</span>
+                </th>
+                <!-- Empty on purpose: a link has clicks, and views are counted per project. -->
+                <td></td>
+                <td class="num">{{ link.clicks | number }}</td>
+              </tr>
+            }
+          </tbody>
+        }
+      </table>
+    }
+  }
+} @else if (state().kind === 'off') {
+  <p>
+    Analytics is turned off on the server, so nothing is being counted. To turn it on, set
+    <code>ANALYTICS_ENABLED=true</code> in the backend's environment and restart it.
+  </p>
+} @else if (failure(); as message) {
+  <p class="failure" role="alert">Could not load the analytics. {{ message }}</p>
+} @else {
+  <p role="status">Loading&hellip;</p>
+}
