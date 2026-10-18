@@ -11,7 +11,7 @@ import { PRIVACY_ROUTES } from './privacy.routes';
  * Reached through the real route table and the real SeoTitleStrategy, so the title and the meta
  * description asserted here are the ones a visitor's tab and a crawler get.
  *
- * The copy is the owner's draft and will change, so these pin its shape (one h1, the sections in
+ * The copy is the owner's and may change, so these pin its shape (one h1, the sections in
  * order, the list, the router link) and the claims the code has to keep true, not every word.
  */
 describe('PrivacyPageComponent', () => {
