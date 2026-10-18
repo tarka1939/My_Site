@@ -311,12 +311,12 @@ Copy this block per entry:
 
 ## 2026-10-18 - backend and frontend agents: two framework claims that experiments disproved, and a mutant that outlived its restore (#148, PR #307)
 
-**Task given:** Build #148 as the owner decided on 2026-10-14: a tag is required to publish a project, not to save one. The Senior Dev wrote the contract (693f1a0). The backend and frontend halves were built in separate worktrees, under the Phase 7 rule that neither side reads the other's code, from 2026-10-16 to 2026-10-17, and merged in f7e6ae5. PR #307.
+**Task given:** Build #148 as the owner decided on 2026-10-14: a tag is required to publish a project, not to save one. The Senior Dev wrote the contract (693f1a0). The backend and frontend halves were built in separate worktrees, under the Phase 7 rule that neither side reads the other's code, on 2026-10-16, and merged into one branch in f7e6ae5 on 2026-10-18. PR #307.
 
-**Agent(s) used:** Two general-purpose agents on Opus, briefed with `backend-agent`'s and `frontend-agent`'s rules. They stood in for those two because the Bash tool, the only shell either has, was blocked by a hook at the time. The Senior Dev (Opus) checked the result in a browser, and a fresh Opus session gave it a cold review.
+**Agent(s) used:** Two general-purpose agents on Opus, briefed with `backend-agent`'s and `frontend-agent`'s rules. They stood in for those two because the Bash tool, the only shell either has, was blocked by a hook at the time. The Senior Dev (Opus) checked the admin list and form in a browser. A fresh Opus session gave it a cold review, which found nothing of High or Medium severity. It confirmed both corrected claims with mutations of its own, and its smaller findings were fixed in 1fedf19, ab50f62 and 298975e.
 
 **What went right:**
-- **Each wrong claim was caught by the agent that made it, by an experiment, before review.** Each was corrected in one comment-only commit (fe438ab and 0f8adaa).
+- **Each wrong claim was caught by the agent that made it, by an experiment, before review.** Each was corrected in its own commit: fe438ab rewrote the javadoc and added a test that pins the behaviour, and 0f8adaa changed comments only.
 - **The backend agent pinned what its corrected argument rests on.** The argument depends on Hibernate's behaviour, not this code's, so `ProjectUpdateStaleReadIntegrationTest` tests that behaviour, and a mutation showed the test fails without it.
 - **A red run on a clean source tree was investigated, not re-run until green.** That is how the stale class below was found.
 - **Something out of scope was reported rather than fixed in passing.** An admin PUT writes every column, so it can write stale values over a concurrent sync's. That became #304.

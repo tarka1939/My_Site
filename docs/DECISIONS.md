@@ -897,7 +897,7 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 
 ### 2026-10-14 - A tag is required to publish a project, not to save one
 
-**Context:** Nothing required a project to have tags. The contract's `ProjectWriteRequest.tags` is `@NotNull` with no `minItems`, so `[]` was valid, but the admin form demanded a tag on every save. Phase 7a's sync creates an unmatched repository as an unpublished draft and never writes `tags` (ADR 2026-08-18), so every auto-created draft arrives with none. The edit form then refused to save it, while the list's Publish button could put it live with no tags, where the tag filter never shows it (#148).
+**Context:** Nothing required a project to have tags. The contract's `ProjectWriteRequest.tags` is required with no `minItems` (`@NotNull` on the DTO), so `[]` was valid, but the admin form demanded a tag on every save. Phase 7a's sync creates an unmatched repository as an unpublished draft and never writes `tags` (ADR 2026-08-18), so every auto-created draft arrives with none. The edit form then refused to save it, while the list's Publish button could put it live with no tags, where the tag filter never shows it (#148).
 
 **Decision:** A write that would leave a project published must leave it with at least one tag. The rule is judged on the state the write leaves behind, not on the request's `published` alone. A create that omits `published` publishes, and a PUT that omits it keeps the stored value, so both are held to the rule, as well as an explicit `published: true`. A draft saves with no tags, and one PUT can unpublish and clear the tags together.
 - **Where it is enforced:** `ProjectService` checks it before anything is written. A violation is the existing 400 problem shape, with one field error on `tags`: "At least one tag is required to publish".
@@ -914,6 +914,7 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - **That rests on Hibernate, so a test pins it.** `ProjectUpdateStaleReadIntegrationTest` commits a publish between a tagless save's read and its flush. Adding `@DynamicUpdate` to `Project` fails it. So #304, where an admin PUT writes stale values over the sync-owned columns, should be fixed with `@Column(updatable = false)` on those columns, as it proposes, and not with `@DynamicUpdate`.
 - **A live project that already has no tags stays live.** Its next save has to add a tag or unpublish it. The list keeps Unpublish for it.
 - **Sync is unchanged.** It still writes no tags, and its drafts now save as they are.
+- **A request can fail in two rounds.** Bean Validation runs before the service. A request with a blank title that would also publish with no tags gets the title error first, and the tags error only after the title is fixed. The admin form checks both before it sends, so only other API clients see this.
 
 ### [YYYY-MM-DD] - [Decision title]
 
