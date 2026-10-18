@@ -309,6 +309,35 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-10-18 - backend and frontend agents: two framework claims that experiments disproved, and a mutant that outlived its restore (#148, PR #307)
+
+**Task given:** Build #148 as the owner decided on 2026-10-14: a tag is required to publish a project, not to save one. The Senior Dev wrote the contract (693f1a0). The backend and frontend halves were built in separate worktrees, under the Phase 7 rule that neither side reads the other's code, from 2026-10-16 to 2026-10-17, and merged in f7e6ae5. PR #307.
+
+**Agent(s) used:** Two general-purpose agents on Opus, briefed with `backend-agent`'s and `frontend-agent`'s rules. They stood in for those two because the Bash tool, the only shell either has, was blocked by a hook at the time. The Senior Dev (Opus) checked the result in a browser, and a fresh Opus session gave it a cold review.
+
+**What went right:**
+- **Each wrong claim was caught by the agent that made it, by an experiment, before review.** Each was corrected in one comment-only commit (fe438ab and 0f8adaa).
+- **The backend agent pinned what its corrected argument rests on.** The argument depends on Hibernate's behaviour, not this code's, so `ProjectUpdateStaleReadIntegrationTest` tests that behaviour, and a mutation showed the test fails without it.
+- **A red run on a clean source tree was investigated, not re-run until green.** That is how the stale class below was found.
+- **Something out of scope was reported rather than fixed in passing.** An admin PUT writes every column, so it can write stale values over a concurrent sync's. That became #304.
+
+**What went wrong (be specific):**
+1. **The backend's first comment described a race that does not exist.** 471d540's javadoc on `requireTagsToPublish` said a PUT that changes no column of the project row issues no UPDATE. So, it said, a tagless draft save racing a publish could end published with no tags. An experiment against Hibernate 7.4 showed otherwise. Equal-valued scalar setters leave the row clean, but replacing the tags set dirties it, and `updateProject` always replaces it. With no `@DynamicUpdate`, the UPDATE then writes every column, including the `published` value the check judged. The last PUT to commit lands its whole pair. Left in place, the comment would have invited a fix for a race that is not there.
+2. **The frontend's first comment said a subscription had to come first, and it did not.** 75f2969 said, in a constructor comment, a spec comment and its own commit message, that the Published box's re-check of the tags had to be subscribed before the load pipeline. Otherwise, it said, a loaded tagless draft would stay unsaveable. A mutation showed otherwise: with the subscription moved below the load, or deleted, "saves a tagless draft as it is" stayed green. The template shows the form only once loading ends, and `FormGroupDirective.addControl()` re-validates each control it binds, with `emitEvent` false. So the load is put right without the subscription. What the subscription does is re-check the tags when the admin ticks or unticks the box, and four specs catch its removal. 75f2969's message stays in history, still wrong.
+3. **Restoring a mutation left the mutant compiled.** To test the pin, the backend agent added `@DynamicUpdate` to `Project` and later restored the file from a backup with `Copy-Item`, which keeps the backup's modification time. Maven's incremental compile saw no newer source ("Nothing to compile - all classes are up to date"), and `target/classes/Project.class` still held `DynamicUpdate`. The next full run reported 316 tests with 1 failure on a source tree whose hash matched the original. A byte-exact check of the source cannot see this.
+
+**How it was caught:** 1 and 2 by experiments each agent ran on its own claim. 3 by the agent noticing a failure the source could not explain, and reading the compiled class.
+
+**Fix applied:**
+- fe438ab rewrote the javadoc and added `ProjectUpdateStaleReadIntegrationTest`, and bc6da94 names both Hibernate behaviours the test rests on.
+- 0f8adaa corrected both frontend comments, and now says which claims were measured.
+- `mvn -B clean test` then gave 316 tests and 0 failures.
+
+**Takeaway for next time:**
+- **A claim about when a framework flushes or validates is a hypothesis until a test or a mutation shows it.** Both of these read as careful reasoning, and both were wrong. Say in the comment whether a claim was measured or reasoned, as 0f8adaa's does.
+- **When a correctness argument rests on framework behaviour, pin the behaviour, not only the outcome.** Then a framework upgrade, or an annotation like `@DynamicUpdate`, fails a test instead of quietly undoing the argument.
+- **After restoring a source file from a backup, build with `mvn clean` before trusting the result.** `Copy-Item` keeps the backup's timestamp, so an incremental build can keep the mutant's class.
+
 ## 2026-10-18 - Senior Dev: the dash sweep committed a frontend that does not build, three times (PR #302)
 
 **Task given:** The owner asked on 2026-10-17 for every em dash, en dash and similar Unicode dash to become the keyboard `-`, with a rule against new ones (#301). PR #302, merged to `dev` 2026-10-18.
@@ -317,7 +346,7 @@ Copy this block per entry:
 
 **What went right:**
 - **The sweep was a script, not hand edits.** The review could replay it on `dev` and match every change outside the few hand edits, which is a stronger check than reading 81 files of diff.
-- **Branches merged while the PR was open were swept on the PR's own branch.** #300, #299 and #295 merged first, and the same script ran on each dev merge into #302, so none of those three had to be swept. #148's two branches, still unmerged, will be.
+- **Branches merged while the PR was open were swept on the PR's own branch.** #300, #299 and #295 merged first, and the same script ran on each dev merge into #302, so none of those three had to be swept. #148's two branches added no dashes, so merging `dev` into them after #302 needed no sweep (PR #307).
 
 **What went wrong (be specific):**
 1. **An escape typed into a tool argument reached the file as the character it names.** The excerpt's `TRAILING_PUNCTUATION` has to keep matching en and em dashes, because live descriptions contain them, so 6f64bcc was meant to write them as `\u2013\u2014`. The tool decoded both escapes on the way in, the file held the two dash characters, and the sweep turned them into hyphens. The class became `[\s.,;:!?- - -]`. There, `?- ` is a range running backwards, which is a syntax error, so the frontend does not build. The same decoding hit the new test's two dashes and the example escape in the `CLAUDE.md` rule.

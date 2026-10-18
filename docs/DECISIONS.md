@@ -895,6 +895,26 @@ Also considered: a draft/publish state and edit history, as projects have. Rejec
 - #118's contact email waits for the same domain.
 - The 2026-10-04 ADR says nothing depends on a plain-HTTP request being reported as secure, because "there are no cookies". When the cookie is built, that consequence needs re-checking.
 
+### 2026-10-14 - A tag is required to publish a project, not to save one
+
+**Context:** Nothing required a project to have tags. The contract's `ProjectWriteRequest.tags` is `@NotNull` with no `minItems`, so `[]` was valid, but the admin form demanded a tag on every save. Phase 7a's sync creates an unmatched repository as an unpublished draft and never writes `tags` (ADR 2026-08-18), so every auto-created draft arrives with none. The edit form then refused to save it, while the list's Publish button could put it live with no tags, where the tag filter never shows it (#148).
+
+**Decision:** A write that would leave a project published must leave it with at least one tag. The rule is judged on the state the write leaves behind, not on the request's `published` alone. A create that omits `published` publishes, and a PUT that omits it keeps the stored value, so both are held to the rule, as well as an explicit `published: true`. A draft saves with no tags, and one PUT can unpublish and clear the tags together.
+- **Where it is enforced:** `ProjectService` checks it before anything is written. A violation is the existing 400 problem shape, with one field error on `tags`: "At least one tag is required to publish".
+- **The contract** states the rule in prose, since whether it applies depends on `published`, and on a PUT that omits `published`, on the stored value. No schema keyword can say that.
+- **The admin UI** follows it. The form asks for a tag only while Published is ticked. In the projects list, a tagless draft gets a link to its edit form where Publish would be. It is a link rather than a disabled button, because a disabled button takes no focus, so a keyboard user would never reach it or its explanation.
+
+**Alternatives considered:**
+- *Dropping the form's requirement* (#148's option 1). It is the cheapest, and it makes the form agree with the API and the list. But an untagged project is invisible to the tag filter, so it would make that editorial choice silently.
+- *A tag on every write,* `minItems: 1` (option 2). Sync would then have to supply tags, from GitHub's `language` or `topics`. That reopens the 2026-08-18 rule that sync never writes a curated field.
+- *A Bean Validation constraint.* `@Size(min = 1)` would refuse drafts. A class-level constraint cannot tell a create's omitted `published`, which means true, from a PUT's, which means unchanged, and it cannot see the stored value.
+
+**Consequences:**
+- **The PUT check is a check-then-act on the stored `published`.** A racing pair still cannot leave a live project with no tags. Every PUT replaces the tags set, which dirties the project row, and with no `@DynamicUpdate` Hibernate's UPDATE writes every column, `published` included. So the last PUT to commit lands the whole pair it checked. The edit that loses is the standing last-write-wins, since there is no `@Version`.
+- **That rests on Hibernate, so a test pins it.** `ProjectUpdateStaleReadIntegrationTest` commits a publish between a tagless save's read and its flush. Adding `@DynamicUpdate` to `Project` fails it. So #304, where an admin PUT writes stale values over the sync-owned columns, should be fixed with `@Column(updatable = false)` on those columns, as it proposes, and not with `@DynamicUpdate`.
+- **A live project that already has no tags stays live.** Its next save has to add a tag or unpublish it. The list keeps Unpublish for it.
+- **Sync is unchanged.** It still writes no tags, and its drafts now save as they are.
+
 ### [YYYY-MM-DD] - [Decision title]
 
 **Context:**
