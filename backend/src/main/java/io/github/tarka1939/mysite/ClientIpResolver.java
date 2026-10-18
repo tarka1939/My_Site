@@ -243,8 +243,10 @@ public class ClientIpResolver {
      *
      * <p>Canonicalised so that two spellings of one IPv6 address cannot become two rate-limit
      * buckets. Deliberately applied only to forwarded values, not to {@code getRemoteAddr()}: the
-     * peer address is already canonical as the container reports it, and re-encoding it would
-     * change every {@code contact_message.requester_ip_hash} written before this change.
+     * peer address is already canonical as the container reports it. (This also used to say that
+     * re-encoding it would change every stored {@code contact_message.requester_ip_hash}. Nothing
+     * derived from an address is stored since #309, so a change here would now only move
+     * in-memory buckets, which a restart empties anyway.)
      */
     private static String canonicalAddressOrNull(String raw) {
         if (raw == null) {

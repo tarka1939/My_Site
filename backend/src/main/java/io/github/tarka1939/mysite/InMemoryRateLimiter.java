@@ -16,21 +16,23 @@ import org.springframework.stereotype.Component;
 /**
  * Fixed-window-ish in-memory rate limiter keyed by an arbitrary string (e.g. an IP hash).
  *
- * <p>Deliberately in-memory rather than DB-backed: unlike {@code ContactMessage} (which has a
- * natural table to query per docs/DATA_MODEL.md), password-reset-request has no per-attempt
- * table, and this project's non-goals rule out multi-instance/horizontal scaling (a single
- * VPS process - see docs/DECISIONS.md), so losing rate-limit state on restart is an acceptable
- * trade-off for not adding a table solely to count requests.
+ * <p>Deliberately in-memory rather than DB-backed: this project's non-goals rule out
+ * multi-instance/horizontal scaling (a single VPS process - see docs/DECISIONS.md), so losing
+ * rate-limit state on restart is an acceptable trade-off for not adding a table solely to count
+ * requests. It is also the only place a per-IP key is held at all. The contact form used to
+ * count its own rows instead, which meant storing every sender's unsalted - and so reversible -
+ * {@code ClientIpHasher} value with the message; it moved here in #309 and V10 dropped the
+ * column. A caller that needs a durable count should weigh that before writing a key down.
  *
  * <h2>Key contract: one window per key</h2>
  * A given key must always be passed the same {@code window}. This is not a new constraint
  * introduced by eviction - it has always held: calling one key with a short window prunes away
- * hits that a longer-window call on the same key was still counting. All four current callers
+ * hits that a longer-window call on the same key was still counting. All five current callers
  * hold to it by namespacing their keys ({@code "login:"}, {@code "password-reset:"},
- * {@code "password-reset-validate:"}, and analytics' {@code "analytics:"}, one window for both
- * event endpoints), and since every key is a prefix plus a fixed-length 64-character hex hash
- * (SHA-256 for the first three, the daily HMAC-SHA256 visitor hash for analytics), keys built
- * from different prefixes differ in length and cannot collide.
+ * {@code "password-reset-validate:"}, {@code "contact:"}, and analytics' {@code "analytics:"},
+ * one window for both event endpoints), and since every key is a prefix plus a fixed-length
+ * 64-character hex hash (SHA-256 for the first four, the daily HMAC-SHA256 visitor hash for
+ * analytics), keys built from different prefixes differ in length and cannot collide.
  *
  * <h2>Eviction (issue #78)</h2>
  * A key that is never queried again - a one-time visitor - used to sit in the map for the
@@ -71,12 +73,12 @@ public class InMemoryRateLimiter {
 
     /**
      * Entries tolerated before a write sweeps. Sized so the real callers (per-IP login,
-     * password-reset-request and password-reset-validate buckets, and analytics' per-visitor
-     * bucket, on a solo portfolio site) never reach it in normal operation; it exists to cap a
-     * flood of one-shot keys, not to tune steady-state behaviour. Analytics is the one caller
-     * every visitor reaches, and its key for a visitor changes each UTC day with the salt, so it
-     * is the caller that brings the map to this threshold over time; the sweep then removes each
-     * of its keys an hour (today's longest window) after that key's last hit.
+     * password-reset-request, password-reset-validate and contact-form buckets, and analytics'
+     * per-visitor bucket, on a solo portfolio site) never reach it in normal operation; it exists
+     * to cap a flood of one-shot keys, not to tune steady-state behaviour. Analytics is the one
+     * caller every visitor reaches, and its key for a visitor changes each UTC day with the salt,
+     * so it is the caller that brings the map to this threshold over time; the sweep then removes
+     * each of its keys an hour (today's longest window) after that key's last hit.
      */
     static final int DEFAULT_SWEEP_THRESHOLD = 1024;
 

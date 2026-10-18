@@ -10,9 +10,17 @@ import org.springframework.stereotype.Component;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Resolves the requester's IP and hashes it (SHA-256 hex) - used anywhere a requester needs
- * to be rate-limited without storing a raw IP (see docs/DATA_MODEL.md: ContactMessage's
- * requester_ip_hash, same principle applied to password-reset-request).
+ * Resolves the requester's IP and hashes it (SHA-256 hex) - the per-IP key for the login,
+ * password-reset and contact-form rate limits in {@link InMemoryRateLimiter}, so the limiter's
+ * map never holds a raw address.
+ *
+ * <p>Not anonymisation. The hash is unsalted, and there are only about 4.3 billion IPv4
+ * addresses, so anyone holding one recovers the address by hashing them all. That is fine for a
+ * key that lives only in the limiter's memory and dies with the process, and it is why the value
+ * must never be written anywhere - a table, a log line, an event. {@code
+ * contact_message.requester_ip_hash} stored it until #309, which is the case this paragraph is
+ * here to prevent a second time; V10 dropped it. Anything that has to persist a per-visitor
+ * identifier wants a secret or discarded salt, as {@code DailyVisitorHasher} uses.
  */
 @Component
 public class ClientIpHasher {
