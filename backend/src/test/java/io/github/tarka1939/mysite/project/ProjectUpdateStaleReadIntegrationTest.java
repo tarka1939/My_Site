@@ -89,6 +89,6 @@ class ProjectUpdateStaleReadIntegrationTest {
     private static ProjectWriteRequest request(List<String> tags, Boolean published) {
         return new ProjectWriteRequest(
             "Raced draft", "Unchanged by the save", List.of(), List.of(), tags,
-            null, null, published, null);
+            null, null, published, null, null);
     }
 }

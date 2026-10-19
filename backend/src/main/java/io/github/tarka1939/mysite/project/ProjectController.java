@@ -5,7 +5,6 @@ import java.util.UUID;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -48,7 +47,9 @@ public class ProjectController {
         @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
         @RequestParam(required = false) List<String> tag
     ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        // Unsorted on purpose: the public order (#88) is written into the query itself, as
+        // ProjectRepository.PUBLIC_ORDER. A Sort here would only be dropped by the service.
+        Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(projectService.listPublishedProjects(pageable, tag));
     }
 

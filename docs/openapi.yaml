@@ -1254,9 +1254,9 @@ components:
             and nothing else; the public site shows no label for it.
 
             **Omitted or null means "leave it as it is"** on PUT, for the reason `published` gives:
-            a client written before this field existed - an older admin build, the content seed
-            script, the E2E fixtures - says nothing about it, and reading that silence as `false`
-            would quietly un-feature a project on its next edit.
+            a client written before this field existed, such as an older admin build or the
+            content seed script, says nothing about it, and reading that silence as `false` would
+            quietly un-feature a project on its next edit.
 
             On create, omitted means **false**. Featuring a project takes an explicit `true`.
           example: false

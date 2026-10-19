@@ -19,9 +19,9 @@ import jakarta.validation.constraints.Size;
  * applied to title/description/links/images/tags, and spelled out in the contract so it isn't
  * discovered by accident.
  *
- * <p>{@code published} and {@code repoFullName} are the two exceptions to that rule, and both
- * are boxed so that "the client said nothing" is distinguishable from "the client said false /
- * null". The reasons are documented with each component.
+ * <p>{@code published}, {@code featured} and {@code repoFullName} are the three exceptions to
+ * that rule, and all three are boxed so that "the client said nothing" is distinguishable from
+ * "the client said false / null". The reasons are documented with each component.
  *
  * @param tags tag names, required as a key but allowed to be empty -- only while the project
  *     stays a draft (#148). That condition is deliberately not {@code @Size(min = 1)} here: it
@@ -39,6 +39,16 @@ import jakarta.validation.constraints.Size;
  *     meant to be live, which is what POST has always done, and changing that would make every
  *     existing client silently create invisible projects. Un-publishing therefore needs an
  *     explicit {@code false}. Both branches live in {@link ProjectService}.
+ * @param featured whether the project is pinned ahead of the others on the public list (#88),
+ *     or null for "leave it as it is" on PUT and "not featured" on POST.
+ *     <p>The PUT half is {@code published}'s reasoning again: the field is newer than its
+ *     clients. An admin build from before #88 and the content seed script both PUT bodies that
+ *     say nothing about it, and reading that as {@code false} would un-feature a project
+ *     whenever one of them touched it. The admin list's Publish toggle relies on the same rule:
+ *     it leaves the field out, so publishing cannot un-feature anything.
+ *     <p>The POST half differs from {@code published} on purpose. A new project is live by
+ *     default because that is what POST always did; nothing was ever featured by default, so
+ *     featuring takes an explicit {@code true}. Both branches live in {@link ProjectService}.
  * @param repoFullName {@code owner/name} of the GitHub repository this project tracks, or null
  *     for "leave it as it is" -- same reasoning as {@code published}: an older client's PUT is
  *     not a request to unlink.
@@ -60,6 +70,7 @@ public record ProjectWriteRequest(
     LocalDate startedOn,
     LocalDate completedOn,
     Boolean published,
+    Boolean featured,
     @Size(max = 255)
     @Pattern(regexp = "^[^\\s/]+/[^\\s/]+$", message = "must be a GitHub repository as owner/name")
     String repoFullName

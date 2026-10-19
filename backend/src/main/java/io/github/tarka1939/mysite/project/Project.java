@@ -87,6 +87,19 @@ public class Project {
     private boolean published;
 
     /**
+     * Whether the owner has pinned this project ahead of the others on the public list (#88).
+     * It changes the order of {@code GET /projects} and nothing else: no page shows it. The
+     * order itself is {@link ProjectRepository#PUBLIC_ORDER}.
+     *
+     * <p>False by default, here and in {@code V11}'s column default alike, and unlike
+     * {@link #published} there is no second value to confuse it with: nothing is featured until
+     * the owner says so. GitHub sync's native insert does not name the column, so a draft it
+     * creates is never featured.
+     */
+    @Column(nullable = false)
+    private boolean featured;
+
+    /**
      * The GitHub repository this project tracks, {@code owner/name}, or null for the projects
      * (most of them) that track none. Unique case-insensitively via
      * {@code ux_project_repo_full_name_lower} -- this is what an inbound delivery matches on.
@@ -215,6 +228,14 @@ public class Project {
 
     public void setPublished(boolean published) {
         this.published = published;
+    }
+
+    public boolean isFeatured() {
+        return featured;
+    }
+
+    public void setFeatured(boolean featured) {
+        this.featured = featured;
     }
 
     public String getRepoFullName() {
