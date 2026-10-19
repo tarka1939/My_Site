@@ -1,0 +1,40 @@
+-- Issue #88: a featured flag that pins the owner's chosen projects to the top of the public
+-- project list. Decided by the owner on 2026-10-14 and 2026-10-19. SPEC.md and docs/DATA_MODEL.md
+-- state the whole public order; ProjectRepository.PUBLIC_ORDER is where it is implemented.
+--
+-- V11, not V10: V10 belongs to #309's contact-message change. Flyway refuses a pending migration
+-- older than the newest applied one, so this must not reach a persistent database before V10 has.
+--
+-- One statement, and the default is right for every row it touches. Unlike V7's published, there
+-- is no backfill that differs from the going-forward default: nothing is featured until the owner
+-- says so, so every existing project reads false and the public order changes only when the
+-- admin features something. GitHub sync's draft insert (ProjectRepository.upsertFromGithub) does
+-- not name this column, so a draft takes the default too: sync never features anything.
+--
+--
+-- Rollback-safe, in the sense of docs/DEPLOYMENT.md's paragraph on the previous jar starting over
+-- a migrated schema (#309):
+--
+--   - The jar before this one does not map the column, so Hibernate's validate never looks at it.
+--   - That jar's inserts all leave the column out, and the default fills it, so none of them fails.
+--     This is the case DEPLOYMENT.md warns about, a NOT NULL column with no default; the DEFAULT
+--     is what makes it safe, so do not drop the DEFAULT without revisiting that paragraph.
+--   - That jar's updates do not name the column either, so a project featured before a rollback
+--     is still featured when the next release reads it.
+--   - Flyway's default ignore-migration-patterns (*:future) lets that jar start with V11 applied.
+--
+-- What a rollback does change is the order: the old jar lists newest-entered first again, and
+-- ignores featured, until this release is redeployed.
+--
+--
+-- No index, deliberately. CLAUDE.md's migration-completeness rule asks for one when a repository
+-- method queries by a non-primary-key column, and nothing filters on featured: it appears only in
+-- the public listing's ORDER BY. That ORDER BY leads with featured but continues through a CASE on
+-- the two date columns, so the only index that could hand rows back already in order is an
+-- expression index restating Hibernate's rendering of that CASE - which breaks silently, back to
+-- a sort step, the first time the query or Hibernate's SQL changes. And the sort runs over the
+-- published rows of a hand-curated portfolio: tens of rows, sorted in memory.
+--
+-- V7's ix_project_published_created_at stays. It still covers the WHERE published filter both
+-- public queries apply, and it is the exact order a rolled-back jar asks for.
+ALTER TABLE project ADD COLUMN featured boolean NOT NULL DEFAULT false;
