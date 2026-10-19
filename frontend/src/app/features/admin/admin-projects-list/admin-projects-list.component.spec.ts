@@ -519,4 +519,95 @@ describe('AdminProjectsListComponent', () => {
       });
     });
   });
+
+  describe('column names, in the table and in the stacked phone layout (#312)', () => {
+    // Below 40rem the SCSS sets `display` on the table's elements to stack each project into a
+    // block, and some browsers then drop a table's semantics, taking every value's column name with
+    // them. No test here can see that layout or hear a screen reader. What the DOM can show is that
+    // the semantics are stated in the markup, where a stylesheet cannot remove them, and that the
+    // labels the stacked layout draws say what the headers say.
+
+    beforeEach(() => {
+      // Every branch a cell has: live and draft, tags and none, Publish and the way to a tag.
+      listAllProjects.mockReturnValue(pageOf([DRAFT, LIVE, TAGLESS_DRAFT]));
+    });
+
+    type Fixture = ComponentFixture<AdminProjectsListComponent>;
+
+    function tableOf(fixture: Fixture): HTMLTableElement {
+      const table = (fixture.nativeElement as HTMLElement).querySelector('table');
+      if (!table) {
+        throw new Error('no table is rendered');
+      }
+      return table;
+    }
+
+    /** The column headers' words, in column order. */
+    function headerNames(fixture: Fixture): string[] {
+      const headers = [...tableOf(fixture).querySelectorAll('th')];
+      return headers.map((th) => (th.textContent ?? '').trim());
+    }
+
+    function bodyRows(fixture: Fixture): HTMLTableRowElement[] {
+      return [...tableOf(fixture).querySelectorAll<HTMLTableRowElement>('tbody tr')];
+    }
+
+    it('states every table role in the markup, where a change of display cannot', async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+      const table = tableOf(fixture);
+      const rolesOf = (selector: string) =>
+        [...table.querySelectorAll(selector)].map((element) => element.getAttribute('role'));
+
+      expect(table.getAttribute('role')).toBe('table');
+      expect(rolesOf('thead, tbody')).toEqual(['rowgroup', 'rowgroup']);
+      // The header row, then one per project.
+      expect(rolesOf('tr')).toEqual(['row', 'row', 'row', 'row']);
+      expect(rolesOf('th')).toEqual(Array(4).fill('columnheader'));
+      expect(rolesOf('td')).toEqual(Array(12).fill('cell'));
+    });
+
+    it('gives every value a column header, and never hides the header row', async () => {
+      // With the roles explicit, a cell's column header is the header at its position in the row,
+      // so each row needs exactly one cell per header. The stacked layout takes the header row off
+      // screen with CSS only; an aria-hidden or a `hidden` here would take it out of the
+      // accessibility tree in both layouts, and every value's column name with it.
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      expect(headerNames(fixture)).toEqual(['Title', 'Status', 'Tags', 'Actions']);
+      for (const row of bodyRows(fixture)) {
+        expect(row.cells).toHaveLength(headerNames(fixture).length);
+      }
+
+      const thead = tableOf(fixture).querySelector('thead')!;
+      for (const element of [thead, ...thead.querySelectorAll('*')]) {
+        expect(element.hasAttribute('aria-hidden')).toBe(false);
+        expect(element.hasAttribute('hidden')).toBe(false);
+      }
+    });
+
+    it("labels a stacked value with its header's word, hidden from a screen reader", async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+      const names = headerNames(fixture);
+
+      for (const row of bodyRows(fixture)) {
+        const labels = [...row.cells].flatMap((cell, column) => {
+          const label = cell.querySelector('.cell-label');
+          return label ? [{ column, label }] : [];
+        });
+
+        // Status and Tags, in their own columns: the title opens its block, and each action
+        // names itself.
+        expect(labels.map(({ column }) => names[column])).toEqual(['Status', 'Tags']);
+        for (const { column, label } of labels) {
+          // The word the stacked layout draws, which comes from the header's own constant.
+          expect(label.getAttribute('data-label')).toBe(names[column]);
+          // The screen reader already hears the header for this cell; a visible copy it could
+          // also reach would be read on top of it.
+          expect(label.getAttribute('aria-hidden')).toBe('true');
+          // Drawn by CSS, so the cell's text stays its value alone, as in the table.
+          expect(label.textContent).toBe('');
+        }
+      }
+    });
+  });
 });

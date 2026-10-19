@@ -113,3 +113,100 @@ td {
   flex-wrap: wrap;
   gap: 1.5rem;
 }
+
+// Phones (#312): one stacked block per project, in the table's order (title and repository,
+// status, tags, actions), below the width at which the four columns stop fitting inside main's
+// 1rem gutters. At 426px the table was 421px wide and its Actions column was clipped.
+//
+// 40rem, worked out from the columns rather than a device list. Two of them have a width the data
+// cannot change. Actions keeps Edit, the publish toggle and Delete on one line: about 200px with
+// its padding, and 230px while the toggle reads "Unpublishing…". Status is its header or the Draft
+// badge, whichever is wider, plus padding: 67px. Taking the 230, and the 32px of gutters, that is
+// 329px before Title and Tags get any, and those two are as wide as their longest unbreakable
+// word: a word of a title, a stretch of repository name, a tag. #312's 421px table would have
+// left them 124px beside the same 230 and 67. 40rem leaves them 311px, more than twice that, so
+// a longer word than today's still fits rather than reopening #312 just above the breakpoint.
+// The pixel widths are estimates from the shipped fonts' advance widths (the toggle and badge at
+// their 14px), not measurements in a browser.
+//
+// Above the breakpoint none of this applies, and the table is exactly what it was.
+@media (max-width: 40rem) {
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+  }
+
+  // Off screen but never `display: none`: the header row is where a screen reader gets each
+  // value's column name, in this layout as in the table. The technique is styles.scss's
+  // .visually-hidden, which cannot be the class here because it has to apply only below 40rem.
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  // The rule between rows moves from the cells to the block, so each project is one unit.
+  tbody tr {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+
+  // No side padding, so a block's text lines up with the heading and links above it. A word too
+  // long for the line -- an unbroken title, or a repository name, which has no spaces at all --
+  // breaks where it must instead of widening the block past the screen.
+  td {
+    padding: 0.25rem 0;
+    border-bottom: 0;
+    overflow-wrap: anywhere;
+  }
+
+  // The title leads its block in the emphasis weight: with no columns to scan down, it is what
+  // tells one project from the next. The repository under it goes back to the body weight, because
+  // only the 400 cut of the mono face ships, so a 600 would be a weight the browser fakes.
+  td:first-child {
+    font-weight: var(--weight-emphasis);
+  }
+
+  .repo {
+    font-weight: var(--weight-body);
+  }
+
+  // The column's name to the left of its value, at one width so the values line up. Muted, as a
+  // statement about the line rather than data: 5.99:1 light / 5.91:1 dark on the page ground, per
+  // the token's note in styles.scss. The word is drawn here from data-label (see the template for
+  // why it is not text, and why it is aria-hidden).
+  .labelled {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  .cell-label {
+    flex: none;
+    width: 4rem;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+
+    &::before {
+      content: attr(data-label);
+    }
+  }
+
+  // The fallback, not the layout: Edit, "Add a tag to publish" and Delete fit one line at 320px
+  // (about 224px of the 288px there), but with large system text they may not, and a control
+  // pushed past the edge is the defect this block exists to end.
+  .actions {
+    flex-wrap: wrap;
+    padding-top: 0.5rem;
+  }
+
+  // The banner names the project, so an unbroken title would widen it the same way.
+  .publish-error {
+    overflow-wrap: anywhere;
+  }
+}

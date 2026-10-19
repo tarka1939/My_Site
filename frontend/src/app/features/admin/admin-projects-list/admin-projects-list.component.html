@@ -25,20 +25,25 @@
 } @else if (projects().length === 0) {
   <p>No projects yet.</p>
 } @else {
-  <table>
+  <!-- The roles restate what the elements already are, because the phone layout (#312) sets
+       `display` on them, and some browsers (Safari notably, older Chrome too) then drop a table's
+       semantics: a screen reader would lose the header row, and with it every value's column
+       name. An explicit role survives the CSS. The header row stays in the accessibility tree in
+       that layout too, hidden off screen rather than removed; see the SCSS. -->
+  <table role="table">
     <caption class="visually-hidden">Projects, drafts included</caption>
-    <thead>
-      <tr>
-        <th scope="col">Title</th>
-        <th scope="col">Status</th>
-        <th scope="col">Tags</th>
-        <th scope="col">Actions</th>
+    <thead role="rowgroup">
+      <tr role="row">
+        <th role="columnheader" scope="col">{{ column.title }}</th>
+        <th role="columnheader" scope="col">{{ column.status }}</th>
+        <th role="columnheader" scope="col">{{ column.tags }}</th>
+        <th role="columnheader" scope="col">{{ column.actions }}</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody role="rowgroup">
       @for (project of projects(); track project.id) {
-        <tr>
-          <td>
+        <tr role="row">
+          <td role="cell">
             {{ project.title }}
             <!-- Provenance, not status: a repository name means webhook deliveries land on this
                  project, which is true of a draft and a live entry alike. Rendering it here rather
@@ -51,7 +56,19 @@
               </span>
             }
           </td>
-          <td>
+          <td role="cell" class="labelled">
+            <!-- The column's name, for the stacked layout (#312), where a sighted reader has no
+                 header row above the value. Only Status and Tags have one: the title opens its
+                 block as a heading would, and each action names itself.
+
+                 The span is empty, and the SCSS draws the word from data-label in that layout only.
+                 The label is the header's word, not the cell's content, so it stays out of the
+                 cell's text, which is the value alone as in the table, and there is nothing to hide
+                 above the breakpoint. aria-hidden, because a screen reader using table navigation
+                 should already announce this cell's column header in either layout, and a visible
+                 copy would be read on top of it ("Status, Status, Draft"). The word comes from
+                 the constant the header does, so the two cannot drift apart. -->
+            <span class="cell-label" aria-hidden="true" [attr.data-label]="column.status"></span>
             <!-- Both states carry a word of their own. "Draft" as a badge and "published" as the
                  absence of one would make a failure to render read as *live*, which is the silent
                  difference this column exists to end: a row the public cannot see must never look
@@ -62,7 +79,9 @@
               <span class="status status--draft">Draft</span>
             }
           </td>
-          <td>
+          <td role="cell" class="labelled">
+            <!-- As in the Status cell. -->
+            <span class="cell-label" aria-hidden="true" [attr.data-label]="column.tags"></span>
             <!-- A word rather than an empty cell, for the Status column's reason: blank reads as
                  "failed to render" as easily as "none". Tagless is a real state since #148 -- every
                  auto-created draft starts that way -- and it is why such a draft offers no Publish. -->
@@ -72,7 +91,7 @@
               <span class="no-tags">No tags</span>
             }
           </td>
-          <td class="actions">
+          <td role="cell" class="actions">
             <a [routerLink]="['/admin/projects', project.id, 'edit']">Edit</a>
             @if (needsTagToPublish(project)) {
               <!-- In place of Publish, which the API would refuse for a draft with no tags (#148).
