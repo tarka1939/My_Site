@@ -25,6 +25,18 @@ const PAGE_SIZE = 20;
  */
 const ADD_TAG_TO_PUBLISH = 'Add a tag to publish';
 
+/**
+ * The table's column names. One source for the header cells and for the labels the stacked phone
+ * layout shows beside a value (#312), so the word a sighted reader sees there and the header a
+ * screen reader announces for the same cell cannot drift apart.
+ */
+const COLUMN = {
+  title: 'Title',
+  status: 'Status',
+  tags: 'Tags',
+  actions: 'Actions',
+} as const;
+
 /** A publish or unpublish the server refused, and the project it was for. */
 interface PublishFailure {
   /** Which project, so the message can link straight to its edit form. */
@@ -105,6 +117,7 @@ export class AdminProjectsListComponent {
   protected readonly publishError = signal<PublishFailure | null>(null);
 
   protected readonly addTagToPublish = ADD_TAG_TO_PUBLISH;
+  protected readonly column = COLUMN;
 
   constructor() {
     this.loadProjects();
