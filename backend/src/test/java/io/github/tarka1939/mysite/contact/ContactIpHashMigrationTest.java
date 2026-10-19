@@ -28,8 +28,10 @@ import io.github.tarka1939.mysite.TestPostgres;
  * <p>Not the shared {@code @SpringBootTest} setup, for the reason {@code
  * ProjectPublicationMigrationTest} gives: a database built fresh at V10 has no rows, so it cannot
  * show what the migration does to the rows that exist when it runs. One test here migrates to V9,
- * writes the messages an owner would already have, and only then runs V10, which is the sequence
- * the next deploy performs. Each test gets its own database inside the shared container.
+ * writes the messages an owner would already have, and only then runs V10. Production is at V8,
+ * so the next deploy runs V9 and V10 in one start; V9 does not touch {@code contact_message}, so
+ * stopping between them changes nothing here. Each test gets its own database inside the shared
+ * container.
  */
 @Testcontainers
 class ContactIpHashMigrationTest {

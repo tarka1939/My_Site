@@ -51,10 +51,10 @@ public class ContactService {
         // the address in all but name. Nothing about the sender's address is stored now. The
         // accepted cost is that the limit resets when the process restarts.
         //
-        // Namespaced ("contact:" prefix) for the reason AuthService.login gives for "login:":
-        // InMemoryRateLimiter is a shared singleton, and a bare hash would share one bucket with
-        // the same IP's login and password-reset budgets, so five messages would lock that IP out
-        // of the admin login. The prefix is 8 characters, a length no other caller's prefix has,
+        // Namespaced ("contact:" prefix), like every other caller's key. A bare hash could not
+        // collide with today's keys, which are all prefixed, but it would be the one unprefixed
+        // key in a shared singleton: a later caller that also keyed on a bare hash would share its
+        // bucket and its count. The prefix is 8 characters, a length no other caller's prefix has,
         // so with every key ending in a 64-character hash no two callers' keys can be equal.
         String ipHash = clientIpHasher.hashOf(httpRequest);
         if (!rateLimiter.tryAcquire("contact:" + ipHash, MAX_MESSAGES_PER_WINDOW, RATE_LIMIT_WINDOW)) {

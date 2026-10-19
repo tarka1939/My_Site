@@ -1027,6 +1027,16 @@ mv /home/deploy/mysite-prev.jar /home/deploy/mysite.jar && sudo systemctl restar
 sudo journalctl -u mysite -n 40
 ```
 
+The previous jar starts over a schema the failed one may already have migrated, and this rollback,
+like the one `deploy/deploy.sh` runs on its own, depends on two defaults to do so. Flyway's
+`ignore-migration-patterns` is `*:future`, so an applied migration newer than any the jar carries
+logs a warning instead of failing validation; never set `spring.flyway.ignore-migration-patterns`
+without keeping `*:future`. And Hibernate's `validate` checks each mapped column's existence and
+type, not its nullability, so a migration may relax a column but must not drop or retype one the
+previous jar maps. (Nor add a `NOT NULL` column without a default: that jar would boot, and then
+fail every insert that leaves it out.) That is why #309 blanked a column in one release and #318
+drops it in the next.
+
 Under the `prod` profile the app **fails to start** on configuration that is present but wrong - a
 malformed CIDR in `TRUSTED_PROXIES`, a negative hop count, a trusted-proxy list with no header
 configured to read. That is deliberate (#168), and it is the most likely cause of a redeploy that

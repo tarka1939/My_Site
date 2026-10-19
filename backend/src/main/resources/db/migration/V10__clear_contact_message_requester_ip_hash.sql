@@ -7,12 +7,13 @@
 -- InMemoryRateLimiter under its own "contact:" key, the way login and password reset already did.
 --
 -- Step one of two (the owner's decision on #309, 2026-10-19): every stored hash is blanked here,
--- so the data is gone as soon as this runs, but the emptied column stays. That is for the
+-- so no row holds one once this has run, but the emptied column stays. That is for the
 -- release's automatic rollback. deploy/deploy.sh restarts the previous jar when the new one never
 -- turns healthy, and by then Flyway has already run this. The previous jar maps the column and
 -- validates the schema at startup, so a dropped column would stop it booting and leave the site
--- down. Over this schema it boots, and writes hashes again only for as long as it is the one
--- running. #318 drops the column, in a release after this one is live.
+-- down. Over this schema it boots, and for as long as it runs it stores hashes again, which this
+-- file will not blank a second time: Flyway runs it once. After a rollback, re-run the UPDATE
+-- below by hand, or leave them for #318, which drops the column in a release after this one.
 --
 -- Not reversible, on purpose: there is nothing to restore the hashes from, and keeping them would
 -- keep exactly the data this exists to remove. The messages themselves are untouched.
