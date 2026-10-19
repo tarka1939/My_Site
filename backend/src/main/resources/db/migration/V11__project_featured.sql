@@ -7,9 +7,11 @@
 --
 -- One statement, and the default is right for every row it touches. Unlike V7's published, there
 -- is no backfill that differs from the going-forward default: nothing is featured until the owner
--- says so, so every existing project reads false and the public order changes only when the
--- admin features something. GitHub sync's draft insert (ProjectRepository.upsertFromGithub) does
--- not name this column, so a draft takes the default too: sync never features anything.
+-- says so, so every existing project reads false and the column pins nothing until the admin
+-- features something. The release does reorder the public list on deploy, by period, but that
+-- is the query's doing, not this column's. GitHub sync's draft insert
+-- (ProjectRepository.upsertFromGithub) does not name this column, so a draft takes the default
+-- too: sync never features anything.
 --
 --
 -- Rollback-safe, in the sense of docs/DEPLOYMENT.md's paragraph on the previous jar starting over

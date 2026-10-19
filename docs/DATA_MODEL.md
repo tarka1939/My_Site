@@ -288,8 +288,9 @@ erDiagram
 - `V8__about_page.sql` (Phase 6, #213) - creates `about_page` (see AboutPage above) and inserts its one row. Additive; touches nothing existing. V5-V7 (tag index, GitHub sync record, project publication fields) landed with Phase 7a and are described by their own files.
 - `V10__clear_contact_message_requester_ip_hash.sql` (#309) - drops `ix_contact_message_ip_hash_created_at`, makes `contact_message.requester_ip_hash` nullable, and sets it to null in every row (see ContactMessage above). Destructive by design: the existing rows' hashes are gone and cannot be restored, and the messages themselves are untouched. The column is kept, with V1's type, so that the release's automatic rollback can still start a jar from before it; #318 drops it once that jar can no longer be rolled back to. V9 (`analytics_event`) is described by its own file.
 - `V11__project_featured.sql` (#88) - adds `project.featured boolean NOT NULL DEFAULT false`
-  (see Project above). Every existing row reads false, so the public order changes only once the
-  admin features something. No new index: the file says why. Rollback-safe in the sense of
+  (see Project above). Every existing row reads false, so the flag pins nothing until the admin
+  features something, though the same release reorders the public list by period. No new index:
+  the file says why. Rollback-safe in the sense of
   `docs/DEPLOYMENT.md`: the previous jar never names the column, and the default fills it on
   that jar's inserts.
 - Record schema changes here as they land, or link to migration files directly.

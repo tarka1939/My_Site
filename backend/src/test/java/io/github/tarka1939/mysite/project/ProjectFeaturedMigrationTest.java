@@ -23,7 +23,7 @@ import io.github.tarka1939.mysite.TestPostgres;
  *
  * <p>Two claims in the migration's header are about the transition, and a database built fresh at
  * V11 cannot test either. Existing projects must come out not featured, or the first deploy
- * reorders the live site without the owner having featured anything. And an insert that does not
+ * pins projects the owner never chose to the top of the list. And an insert that does not
  * name the column must still succeed, because that is every insert the previous jar makes: it is
  * the {@code DEFAULT} that makes rolling back to that jar safe, and the column's {@code NOT NULL}
  * that would make it fail without one.
