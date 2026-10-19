@@ -1,0 +1,2 @@
+The following files have been resolved:
+   org.postgresql:postgresql:jar:42.2.0:compile

@@ -548,6 +548,14 @@ export function analyseBackend({ mvnExitText, osvText }) {
   if (mvnExit !== 0) {
     return errored(area, `Maven could not resolve the dependency graph (exit ${mvnExit}). Its output is in the step's log.`);
   }
+  return analyseOsv(area, osvText);
+}
+
+/**
+ * What osv-query.mjs wrote, as an area result. The backend's audit reads it here once Maven has
+ * resolved, and so does the OSV canary (CANARIES), which has no Maven step.
+ */
+export function analyseOsv(area, osvText) {
   if (osvText == null) return errored(area, 'The OSV lookup wrote no output file.');
 
   let osv;
@@ -594,6 +602,66 @@ export function analyseBackend({ mvnExitText, osvText }) {
     }
   }
   return ok(area, [...findings.values()], osv.packages.length);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Canaries: a source that answers empty
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Every check above fails an audit whose source errors. None can fail one whose source answers
+ * with a valid, empty result, and that reads exactly like a clean week: `npm audit` did it under
+ * `npm_config_offline=true` in the review of #295, exiting 0 with no vulnerabilities. So each run
+ * also audits a canary per source (#303), something with published advisories, through the same
+ * tool, flags and code as the real audits. A canary that finds nothing, or cannot complete, marks
+ * every audit on its source as one that could not complete.
+ *
+ * At least one finding, not a fixed count: an advisory being withdrawn or merged upstream would
+ * fail a count with nothing wrong here. The canaries' findings are counted and dropped. They never
+ * reach the report, results.json or the issue.
+ *
+ * `file` is relative to this directory, and the workflow names the same two paths (tested):
+ *   - npm: the lockfile behind fixtures/npm-findings.json, whose audit listed 6 vulnerable packages
+ *     on 2026-10-19. The workflow audits a copy named package-lock.json in a directory of its own.
+ *   - OSV: canary-dependency-list.txt, one line in `mvn dependency:list`'s format naming
+ *     org.postgresql:postgresql 42.2.0, for which OSV listed 8 advisories on 2026-10-19 (7 findings,
+ *     once two that alias one CVE are kept as one).
+ */
+export const CANARIES = [
+  { source: 'npm', label: '`npm audit`', file: 'fixtures/npm-findings.lockfile.json', areas: ['frontend', 'e2e'] },
+  { source: 'osv', label: 'OSV', file: 'canary-dependency-list.txt', areas: ['backend'] },
+];
+
+/** Why a canary's result cannot vouch for its source, or null when it can. */
+export function canaryProblem(canary, result) {
+  if (!result) return `the ${canary.label} canary produced no result`;
+  if (result.status === 'errored') return `the ${canary.label} canary could not complete either: ${result.error}`;
+  if (result.findings.length === 0) {
+    return `the ${canary.label} canary, which has published advisories, came back with none`;
+  }
+  return null;
+}
+
+/**
+ * Marks every area whose source's canary failed as an audit that could not complete, findings or
+ * not: a source that answered one query empty may have answered another one short. An area that
+ * already could not complete keeps its own error, the more specific of the two.
+ *
+ * @param {object[]} areaResults  from analyseNpmAudit and analyseBackend
+ * @param {{ npm?: object, osv?: object }} canaryResults  each canary's own result, read by the same
+ *     functions as the areas it vouches for
+ */
+export function applyCanaries(areaResults, canaryResults) {
+  return areaResults.map((r) => {
+    if (r.status === 'errored') return r;
+    const canary = CANARIES.find((c) => c.areas.includes(r.area));
+    const problem = canary && canaryProblem(canary, canaryResults[canary.source]);
+    if (!problem) return r;
+    return errored(
+      r.area,
+      `Not trusted this run: ${problem}. A clean result here cannot be told apart from a source that answered empty (#303).`,
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
