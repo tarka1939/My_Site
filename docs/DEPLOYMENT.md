@@ -1028,12 +1028,13 @@ sudo journalctl -u mysite -n 40
 ```
 
 The previous jar starts over a schema the failed one may already have migrated, and this rollback,
-like the one `deploy/deploy.sh` runs on its own, depends on two defaults to do so. Flyway's
+like the one `deploy/deploy.sh` runs on its own, depends on two things to do so. Flyway's default
 `ignore-migration-patterns` is `*:future`, so an applied migration newer than any the jar carries
 logs a warning instead of failing validation; never set `spring.flyway.ignore-migration-patterns`
-without keeping `*:future`. And Hibernate's `validate` checks each mapped column's existence and
-type, not its nullability, so a migration may relax a column but must not drop or retype one the
-previous jar maps. (Nor add a `NOT NULL` column without a default: that jar would boot, and then
+without keeping `*:future`. And Hibernate's `validate` checks that each mapped table and column
+exists with a matching type, and never checks nullability (there is no setting for it), so a
+migration may relax a column but must not drop, rename or retype a table or column the previous
+jar maps. (Nor add a `NOT NULL` column without a default: that jar would boot, and then
 fail every insert that leaves it out.) That is why #309 blanked a column in one release and #318
 drops it in the next.
 

@@ -12,11 +12,14 @@
 -- turns healthy, and by then Flyway has already run this. The previous jar maps the column and
 -- validates the schema at startup, so a dropped column would stop it booting and leave the site
 -- down. Over this schema it boots, and for as long as it runs it stores hashes again, which this
--- file will not blank a second time: Flyway runs it once. After a rollback, re-run the UPDATE
--- below by hand, or leave them for #318, which drops the column in a release after this one.
+-- file will not blank a second time: Flyway runs it once. So after a rollback, once a fixed
+-- release is live again, re-run the UPDATE below by hand; run while the old jar is still up, it
+-- would only be undone. #318 drops the column, in a release after this one.
 --
 -- Not reversible, on purpose: there is nothing to restore the hashes from, and keeping them would
--- keep exactly the data this exists to remove. The messages themselves are untouched.
+-- keep exactly the data this exists to remove. The messages themselves are untouched. Blanking
+-- hides the old values rather than erasing them: they stay in the table's pages until it is
+-- rewritten, by VACUUM FULL, which cannot run inside Flyway's transaction.
 --
 -- The index goes now. The query it served is gone from the new jar, and a rolled-back jar's count
 -- still works without it, over a table this small.
