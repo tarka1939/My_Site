@@ -34,6 +34,10 @@ export interface Project {
      */
     published: boolean;
     /**
+     * Whether the project is pinned ahead of the others on GET /projects (#88) - see that operation for the full order. Ordering is all it does: the public site shows no label or marker for it. Returned by the public endpoints too, so a client can see why a project sorts where it does, but only the admin edits it. GitHub sync never sets it. 
+     */
+    featured: boolean;
+    /**
      * The GitHub repository this project tracks, as `owner/name`. Null for projects with no repository and for everything created before Phase 7a.  This is what an inbound webhook delivery matches on, case-insensitively. A delivery for a repository no project claims creates a new **unpublished** project rather than touching an existing one. 
      */
     repoFullName: string | null;

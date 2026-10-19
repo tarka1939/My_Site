@@ -32,6 +32,7 @@ export const PROJECT_FIELD_LABELS = {
   // field is called, so it is left out of the name.
   tags: 'Tags',
   published: 'Published',
+  featured: 'Featured',
   startedOn: 'Start date',
   completedOn: 'Completion date',
   links: 'Links',

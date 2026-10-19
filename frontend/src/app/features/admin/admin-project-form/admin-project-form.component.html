@@ -122,6 +122,24 @@
       </p>
     </div>
 
+    <!-- Featured (#88). Laid out like Published above, and with no message slot for the same
+         reason: a checkbox cannot be filled in wrongly. The public site shows no marker for it, so
+         the hint is the only place that says what it does. -->
+    <div class="field field--checkbox">
+      <div class="checkbox-row">
+        <input
+          id="project-featured"
+          type="checkbox"
+          formControlName="featured"
+          aria-describedby="project-featured-hint"
+        />
+        <label for="project-featured">{{ labels.featured }}</label>
+      </div>
+      <p id="project-featured-hint" class="field-hint">
+        Pins this project to the top of the public project list. Visitors see no label for it.
+      </p>
+    </div>
+
     <fieldset class="period">
       <legend>Project period</legend>
 

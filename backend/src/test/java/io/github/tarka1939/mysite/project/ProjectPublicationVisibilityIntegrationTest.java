@@ -274,8 +274,94 @@ class ProjectPublicationVisibilityIntegrationTest {
     }
 
     // -------------------------------------------------------------------------------------
+    // featured (#88), over HTTP: what a JSON body that leaves the key out actually does. The
+    // order itself is ProjectPublicOrderIntegrationTest's.
+    // -------------------------------------------------------------------------------------
+
+    @Test
+    void aCreateThatSaysNothingAboutFeatured_isNotFeatured() {
+        String id = createProject(token, "Featured: omitted on create", true, "featured-omitted");
+
+        ResponseEntity<Map> read = restTemplate.getForEntity(
+            url("/api/v1/projects/" + id), Map.class);
+
+        assertThat(read.getBody().get("featured")).isEqualTo(false);
+    }
+
+    /**
+     * The admin list's Publish toggle sends exactly this: every curated field and
+     * {@code published}, and no {@code featured} key. A featured project must stay featured.
+     */
+    @Test
+    void aPutThatSaysNothingAboutFeatured_leavesAFeaturedProjectFeatured() {
+        String id = createFeaturedProject("Featured: kept by a PUT", "featured-kept");
+
+        ResponseEntity<Map> updated = restTemplate.exchange(
+            url("/api/v1/projects/" + id), HttpMethod.PUT,
+            new HttpEntity<>(Map.of(
+                "title", "Featured: kept by a PUT",
+                "description", "Re-published by a body with no featured key",
+                "tags", List.of("featured-kept"),
+                "links", List.of(),
+                "images", List.of(),
+                "published", true), authHeaders(token)),
+            Map.class);
+
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody().get("featured")).isEqualTo(true);
+        assertThat(restTemplate.exchange(url("/api/v1/admin/projects/" + id), HttpMethod.GET,
+            authed(token), Map.class).getBody().get("featured")).isEqualTo(true);
+    }
+
+    @Test
+    void aPutThatSaysFeaturedFalse_unfeaturesTheProject() {
+        String id = createFeaturedProject("Featured: cleared", "featured-cleared");
+
+        ResponseEntity<Map> updated = restTemplate.exchange(
+            url("/api/v1/projects/" + id), HttpMethod.PUT,
+            new HttpEntity<>(Map.of(
+                "title", "Featured: cleared",
+                "description", "Explicitly un-featured",
+                "tags", List.of("featured-cleared"),
+                "featured", false), authHeaders(token)),
+            Map.class);
+
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody().get("featured")).isEqualTo(false);
+    }
+
+    /**
+     * The controller end of the order: GET /projects lists a featured project first even when it
+     * is the older entry, which the createdAt sort the controller used to pass would not.
+     */
+    @Test
+    void thePublicListingPutsAFeaturedProjectFirst_evenWhenItIsTheOlderEntry() {
+        createFeaturedProject("Order: featured, older", "order-http");
+        createProject(token, "Order: plain, newer", true, "order-http");
+
+        List<Map<String, Object>> listed = content(restTemplate.getForEntity(
+            url("/api/v1/projects?tag=order-http"), Map.class));
+
+        assertThat(titles(listed)).containsExactly("Order: featured, older", "Order: plain, newer");
+    }
+
+    // -------------------------------------------------------------------------------------
     // Helpers.
     // -------------------------------------------------------------------------------------
+
+    private String createFeaturedProject(String title, String tag) {
+        ResponseEntity<Map> created = restTemplate.postForEntity(
+            url("/api/v1/projects"),
+            new HttpEntity<>(Map.of(
+                "title", title,
+                "description", "Created by " + getClass().getSimpleName(),
+                "tags", List.of(tag),
+                "featured", true), authHeaders(token)),
+            Map.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody().get("featured")).isEqualTo(true);
+        return (String) created.getBody().get("id");
+    }
 
     private String createProject(String token, String title, boolean published, String tag) {
         return createProject(token, title, published, tag, null);

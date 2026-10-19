@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +68,9 @@ public class ProjectService {
         project.setStartedOn(request.startedOn());
         project.setCompletedOn(request.completedOn());
         project.setPublished(published);
+        // Absent means not featured: unlike published, nothing was ever featured by default, so
+        // featuring takes an explicit true (ProjectWriteRequest.featured).
+        project.setFeatured(Boolean.TRUE.equals(request.featured()));
         if (request.repoFullName() != null) {
             requireRepoFullNameUnclaimed(request.repoFullName(), null);
             project.setRepoFullName(request.repoFullName());
@@ -88,12 +92,20 @@ public class ProjectService {
      * with {@link #listAllProjects} -- see ProjectRepository's note. The site's most public
      * surface should not be one boolean away from serving the owner's drafts, which since Phase
      * 7a can be auto-created from private repositories.
+     *
+     * <p>Ordered by {@link ProjectRepository#PUBLIC_ORDER} and nothing else (#88): only the page
+     * number and size of {@code pageable} are used. A sort it carries is dropped rather than
+     * appended, since Spring Data would add it after the query's own ORDER BY, where it could
+     * only break ties the order has already broken - or, placed first by a later refactor,
+     * silently replace the order the owner decided on. {@link #toPageResponse} keeps the order
+     * the id query returned.
      */
     @Transactional(readOnly = true)
     public PageResponse<ProjectResponse> listPublishedProjects(Pageable pageable, List<String> tagNames) {
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return toPageResponse(hasTagFilter(tagNames)
-            ? projectRepository.findPublishedIdsByTagNamesIgnoreCase(lowercased(tagNames), pageable)
-            : projectRepository.findPublishedIds(pageable));
+            ? projectRepository.findPublishedIdsByTagNamesIgnoreCase(lowercased(tagNames), unsorted)
+            : projectRepository.findPublishedIds(unsorted));
     }
 
     /**
@@ -232,6 +244,12 @@ public class ProjectService {
 
         // The value worked out above: the request's, or the stored one when it said nothing.
         project.setPublished(published);
+        // NOT unconditional, for published's reason: a PUT that omits featured is not asking to
+        // un-feature the project. The seed script's re-apply and the admin list's Publish toggle
+        // both send such a PUT (ProjectWriteRequest.featured).
+        if (request.featured() != null) {
+            project.setFeatured(request.featured());
+        }
         // NOT unconditional either, for published's reason: an older client's PUT that omits
         // repoFullName is not a request to unlink.
         if (request.repoFullName() != null) {
