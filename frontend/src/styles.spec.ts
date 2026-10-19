@@ -611,8 +611,9 @@ describe('the admin projects list on a phone (#312)', () => {
     expect(structural.length).toBeGreaterThan(0);
     for (const rule of structural) {
       const decls = declarations(rule.body);
-      expect(decls.get('display'), rule.selector).not.toBe('none');
-      expect(decls.get('visibility'), rule.selector).not.toBe('hidden');
+      // Matched at the start, so `!important` cannot hide a match.
+      expect(decls.get('display') ?? '', rule.selector).not.toMatch(/^none\b/);
+      expect(decls.get('visibility') ?? '', rule.selector).not.toMatch(/^(hidden|collapse)\b/);
     }
     expect(declarations(ruleFor(stacked(), 'thead').body).get('position')).toBe('absolute');
   });
