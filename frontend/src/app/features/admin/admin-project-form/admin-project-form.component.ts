@@ -657,9 +657,9 @@ export class AdminProjectFormComponent {
       // `false` because a checkbox happened to start out unticked -- which would be issue #92's
       // blank-form PUT wearing a different hat.
       //
-      // `repoFullName` is the other omitted-means-unchanged field and is deliberately *not* sent:
-      // this form does not edit it, and omitting it is what preserves an auto-created draft's link
-      // to the repository that made it.
+      // `repoFullName` is the one omitted-means-unchanged field deliberately *not* sent (`featured`
+      // below is sent, for `published`'s reason): this form does not edit it, and omitting it is
+      // what preserves an auto-created draft's link to the repository that made it.
       published: raw.published,
       // Sent explicitly too, for `published`'s reason above: the contract reads an omitted
       // `featured` on PUT as "leave it as it is" (#88), and this form has the box on screen. The
