@@ -76,7 +76,7 @@ describe('NotificationService', () => {
       expect(service.notifications()).toEqual(before);
     });
 
-    it('leaves the replacing in place: a message dismissed so shows again when repeated', () => {
+    it('keeps the replacing: a message dismissed by level shows again when repeated', () => {
       service.error('Again.');
       service.dismissAll('error');
       service.error('Again.');
