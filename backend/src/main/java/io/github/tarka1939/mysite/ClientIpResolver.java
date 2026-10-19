@@ -293,12 +293,17 @@ public class ClientIpResolver {
      * several analytics visitors in a day, and anyone could have as many rate-limit buckets as
      * they liked without forging anything. Keyed on the {@code /64}, one home or office network is
      * one client, which is what an IPv4 NAT already makes it. A client holding a {@code /56} or a
-     * {@code /48} can still spread across 256 or 65,536 keys: the {@code /64} is the one size every
-     * subscriber gets, so it is the largest prefix that cannot merge two unrelated customers.
+     * {@code /48} can still spread across 256 or 65,536 keys: the {@code /64} is the smallest block
+     * a subscriber is normally given, so it is the largest prefix that does not usually merge
+     * unrelated customers. Hosts that hand each customer one address out of a shared {@code /64},
+     * VPN exits and public Wi-Fi are the exception: their users share a key, as behind IPv4 NAT.
      *
      * <p>An IPv4-mapped address ({@code ::ffff:192.0.2.1}) is the IPv4 client it carries, and gets
      * that client's key rather than the {@code /64} every mapped address would share.
-     * {@link InetAddress#ofLiteral} already returns an {@link java.net.Inet4Address} for one.
+     * {@link InetAddress#ofLiteral} already returns an {@link java.net.Inet4Address} for one. The
+     * other forms that embed an IPv4 address (IPv4-compatible, NAT64 {@code 64:ff9b::/96}, Teredo)
+     * are not unwrapped, so every client behind one of them shares its {@code /64}. None can reach
+     * the app on the documented chain, where Cloudflare reports the real source.
      *
      * <p>Anything that is not an address literal is returned unchanged and keys on itself, as it
      * did before: it can only be a peer string the container reports in some unexpected form, and

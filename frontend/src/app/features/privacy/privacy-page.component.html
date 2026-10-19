@@ -1,7 +1,8 @@
 <!-- The owner's copy (Phase 7c), signed off on 2026-10-18. All of the page's copy is
      here and nowhere else, so changing it is an edit to this file alone. The contact form
      paragraph was reworded and signed off on 2026-10-19, when #309 stopped storing a hash of
-     the sender's address. -->
+     the sender's address. The IPv6 sentence in "How" was added and signed off on 2026-10-19 (#314),
+     when the visitor count began reducing an IPv6 address to its /64 network before hashing it. -->
 <h1>Privacy</h1>
 
 <p>This site counts its own visits, so I can see which projects people look at. It does that without cookies and without any third-party service.</p>
@@ -15,7 +16,7 @@
 
 <h2>How</h2>
 
-<p>To count each visitor once a day, your IP address is combined with a random key that is replaced every day and never saved. Only the result is stored. Once that day's key is gone, the result cannot be traced back to your address. The counting does not store your IP address, and nothing is saved in your browser.</p>
+<p>To count each visitor once a day, your IP address is combined with a random key that is replaced every day and never saved. If your address is IPv6, only its first half is used: the part that names your network, so the devices on one home or office network count as one visitor. Only the result is stored. Once that day's key is gone, the result cannot be traced back to your address. The counting does not store your IP address, and nothing is saved in your browser.</p>
 
 <h2>What is not collected</h2>
 

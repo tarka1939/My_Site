@@ -61,11 +61,12 @@ class AnalyticsService {
     /**
      * 60 events a minute per visitor. Generous on purpose: a person clicking through the site as
      * fast as they can read manages a page every few seconds, so they never meet it. People
-     * sharing one address -- an office, a household, a carrier's NAT -- are one visitor here by
-     * the ADR's choice and share one budget, which 60 also covers for several at once. Meeting it
-     * costs only an uncounted event, since the site ignores every failure. Against abuse it bounds
-     * the work per address rather than the table, which the dedup index bounds already: one
-     * address can make at most one row per page, project, link and day however fast it sends.
+     * sharing one address, or one IPv6 {@code /64} (#314) -- an office, a household, a carrier's
+     * NAT -- are one visitor here by the ADR's choice and share one budget, which 60 also covers
+     * for several at once. Meeting it costs only an uncounted event, since the site ignores every
+     * failure. Against abuse it bounds the work per client rather than the table, which the dedup
+     * index bounds already: one client can make at most one row per page, project, link and day
+     * however fast it sends.
      */
     static final int MAX_EVENTS_PER_WINDOW = 60;
     static final Duration RATE_LIMIT_WINDOW = Duration.ofMinutes(1);
