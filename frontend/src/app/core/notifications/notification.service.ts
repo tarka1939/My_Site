@@ -28,6 +28,20 @@ export class NotificationService {
   }
 
   /**
+   * Takes every toast at one level off the screen, for a caller that knows they have all been
+   * answered (#313). Nothing here dismisses on a timer, and a success does not repeat the failure
+   * it answers, so the replacing in push() never takes the old message away. A wrong password
+   * followed by the right one opened the admin pages under a red "Invalid username or password".
+   *
+   * By level, not by message. The caller knows the failure is over, but not which sentence
+   * errorInterceptor chose for it: a 401, a 429, a 5xx and a network failure each read differently,
+   * and matching on their text would copy that choice into the caller.
+   */
+  dismissAll(level: NotificationLevel): void {
+    this.notificationsSignal.update((current) => current.filter((n) => n.level !== level));
+  }
+
+  /**
    * A message already on screen replaces its earlier copy rather than stacking beside it (#236).
    * One page load can make several requests, and when the backend is down each failure toasts on
    * its own: /projects showed the same sentence twice, and nothing here dismisses on a timer, so a
