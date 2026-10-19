@@ -22,10 +22,19 @@ Draft the ER diagram and entity definitions here before writing migrations or JP
 | images | text[], not null default `{}` | array of external image URLs |
 | started_on | date, nullable | when work on the project started; null = unspecified. Added 2026-08-08, see ADR below |
 | completed_on | date, nullable | when work finished; **null = ongoing**, a meaningful value rather than missing data. Must not precede `started_on` - enforced at the DTO layer *and* by a table `CHECK` constraint |
+| featured | boolean, not null default `false` | first on the public list; never shown (#88) |
 | created_at | timestamptz, not null default `now()` | |
 | updated_at | timestamptz, not null default `now()` | bump on every update |
 
 **On `started_on`/`completed_on` vs `created_at`/`updated_at`:** these are not duplicates. `created_at`/`updated_at` are *record* timestamps - when the row was entered and last edited. `started_on`/`completed_on` describe *the work itself*, which routinely predates the row by years. Both are `date`, not `timestamptz`: the UI renders month/year only, since the source material can't support day-level accuracy, and the convention is the 1st of the month. Sorting a portfolio by "most recent work" means ordering on these, not on `created_at`.
+
+**The public order** (#88, see `SPEC.md`), for `GET /projects` with or without a tag filter:
+`featured` (set only by the admin; GitHub sync never writes it, and the public site never
+displays it) first; then, within each half, ongoing (`started_on` set, `completed_on` null), then
+completed by latest `completed_on`, then no dates at all; ties by latest `started_on`, then newest
+`created_at`, then `id`. The last key makes the order total, so a page boundary can neither
+repeat nor skip a project. `created_at` is only a tie-breaker here; the admin list still sorts on
+it alone, newest first.
 
 Relationships: many-to-many with `Tag` via join table `project_tags` (`project_id` FK, `tag_id` FK, composite PK, `ON DELETE CASCADE` both sides). Needs pagination/filtering support from the start (Phase 2 - retrofitting later, once real data and a frontend depend on the shape, is the thing to avoid).
 
@@ -277,4 +286,9 @@ erDiagram
 - `V3__password_reset_token_hash_index.sql` (Phase 2) - adds a unique index on `password_reset_token.token_hash` (see PasswordResetToken table above), caught in cross-review after V1/V2 had already shipped without one.
 - `V4__project_dates.sql` (Phase 6) - adds nullable `project.started_on` and `project.completed_on` plus a `CHECK` enforcing that `completed_on` neither precedes `started_on` nor exists without it. Additive and non-destructive: both columns are nullable, so existing rows are untouched and no backfill is required. See the 2026-08-08 project-dates ADR in `docs/DECISIONS.md`.
 - `V8__about_page.sql` (Phase 6, #213) - creates `about_page` (see AboutPage above) and inserts its one row. Additive; touches nothing existing. V5-V7 (tag index, GitHub sync record, project publication fields) landed with Phase 7a and are described by their own files.
+- `V11__project_featured.sql` (#88) - adds `project.featured boolean NOT NULL DEFAULT false`
+  (see Project above). Every existing row reads false, so the public order changes only once the
+  admin features something. No new index: the file says why. Rollback-safe in the sense of
+  `docs/DEPLOYMENT.md`: the previous jar never names the column, and the default fills it on
+  that jar's inserts.
 - Record schema changes here as they land, or link to migration files directly.
