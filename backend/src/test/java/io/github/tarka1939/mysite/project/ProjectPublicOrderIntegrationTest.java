@@ -235,8 +235,14 @@ class ProjectPublicOrderIntegrationTest {
     }
 
     /**
-     * A caller's Sort is dropped, not appended and not obeyed. Newest entry first is the order
-     * this replaced, and the one a caller is most likely to pass by habit.
+     * A caller's Sort is not obeyed. Newest entry first is the order this replaced, and the one a
+     * caller is most likely to pass by habit.
+     *
+     * <p>This test cannot tell a dropped Sort from an appended one: PUBLIC_ORDER already ends on
+     * the unique id, so any key Spring Data appended after it would change nothing. That the
+     * service drops it is pinned by ProjectServiceTest's
+     * listPublishedProjects_dropsTheCallersSort_keepingPageAndSize, so do not delete that test on
+     * the strength of this one.
      */
     @Test
     void aSortPassedInIsIgnored() {

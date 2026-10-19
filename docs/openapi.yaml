@@ -1261,7 +1261,8 @@ components:
             content seed script, says nothing about it, and reading that silence as `false` would
             quietly un-feature a project on its next edit.
 
-            On create, omitted means **false**. Featuring a project takes an explicit `true`.
+            On create, omitted or null means **false**. Featuring a project takes an explicit
+            `true`.
           example: false
         repoFullName:
           type: string

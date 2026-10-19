@@ -38,7 +38,7 @@ class ProjectFeaturedMigrationTest {
     void aProjectThatExistedBeforeV11_isNotFeaturedAfterIt() throws Exception {
         String url = freshDatabase("v11_existing");
 
-        migrateTo(url, "9");
+        migrateTo(url, "10");
         execute(url, """
             INSERT INTO project (title, description, published)
             VALUES ('Equalizer', 'A hand-written description', true)
