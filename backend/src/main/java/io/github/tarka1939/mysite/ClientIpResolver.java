@@ -302,8 +302,8 @@ public class ClientIpResolver {
      * that client's key rather than the {@code /64} every mapped address would share.
      * {@link InetAddress#ofLiteral} already returns an {@link java.net.Inet4Address} for one. The
      * other forms that embed an IPv4 address (IPv4-compatible, NAT64 {@code 64:ff9b::/96}, Teredo)
-     * are not unwrapped, so every client behind one of them shares its {@code /64}. None can reach
-     * the app on the documented chain, where Cloudflare reports the real source.
+     * are not unwrapped, so every client behind one of them shares its {@code /64}. None is
+     * expected to reach the app on the documented chain, where Cloudflare reports the real source.
      *
      * <p>Anything that is not an address literal is returned unchanged and keys on itself, as it
      * did before: it can only be a peer string the container reports in some unexpected form, and
