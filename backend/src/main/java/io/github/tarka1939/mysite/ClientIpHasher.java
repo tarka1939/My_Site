@@ -19,7 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
  * key that lives only in the limiter's memory and dies with the process, and it is why the value
  * must never be written anywhere - a table, a log line, an event. {@code
  * contact_message.requester_ip_hash} stored it until #309, which is the case this paragraph is
- * here to prevent a second time; V10 dropped it. Anything that has to persist a per-visitor
+ * here to prevent a second time; V10 blanked it. Anything that has to persist a per-visitor
  * identifier wants a secret or discarded salt, as {@code DailyVisitorHasher} uses.
  */
 @Component

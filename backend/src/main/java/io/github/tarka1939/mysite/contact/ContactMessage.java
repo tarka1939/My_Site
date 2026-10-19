@@ -16,8 +16,10 @@ import jakarta.persistence.Table;
  *
  * <p>There is deliberately no address-derived field. {@code requester_ip_hash} used to be one,
  * kept only so the rate limit could count rows; it was an unsalted, reversible hash, and V10
- * dropped it when the limit moved into {@code InMemoryRateLimiter} (#309). A new field that
- * records anything about the requester's address needs the same scrutiny before it is added.
+ * blanked it when the limit moved into {@code InMemoryRateLimiter} (#309). The emptied column
+ * stays, unmapped here, until #318 drops it, so that a rolled-back jar, which maps it, can still
+ * boot. A new field that records anything about the requester's address needs the same scrutiny
+ * before it is added.
  */
 @Entity
 @Table(name = "contact_message")

@@ -17,8 +17,13 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import io.github.tarka1939.mysite.TestPostgres;
 
 /**
- * {@code V10__drop_contact_message_requester_ip_hash.sql} (#309), on both databases it will meet:
+ * {@code V10__clear_contact_message_requester_ip_hash.sql} (#309), on both databases it will meet:
  * a fresh one, and production's, which already holds messages and their hashes.
+ *
+ * <p>Two things are pinned. No hash survives, which is what #309 is for. And the emptied column is
+ * still there with V1's type, which is what keeps the release's automatic rollback working: the
+ * jar it restarts maps that column and validates the schema at startup. #318 drops the column in
+ * a later release, and changes these tests with it.
  *
  * <p>Not the shared {@code @SpringBootTest} setup, for the reason {@code
  * ProjectPublicationMigrationTest} gives: a database built fresh at V10 has no rows, so it cannot
@@ -29,36 +34,58 @@ import io.github.tarka1939.mysite.TestPostgres;
 @Testcontainers
 class ContactIpHashMigrationTest {
 
-    /** What contact_message holds after V10, in column order. Nothing derived from an address. */
-    private static final List<String> COLUMNS_AFTER_V10 = List.of("id", "name", "email", "message", "created_at");
+    /**
+     * contact_message after V10, as name:type:length:nullable in column order. The last entry is
+     * the column the previous jar maps, so its name and type must not change while that jar can
+     * still be rolled back to; only its nullability does.
+     */
+    private static final List<String> COLUMNS_AFTER_V10 = List.of(
+        "id:uuid::NO",
+        "name:character varying:200:NO",
+        "email:character varying:320:NO",
+        "message:text::NO",
+        "created_at:timestamp with time zone::NO",
+        "requester_ip_hash:character varying:64:YES");
 
     @Container
     static PostgreSQLContainer postgres = TestPostgres.container();
 
     @Test
-    void fromAnEmptyDatabase_contactMessageHasNoAddressColumnAndNoIndexOnOne() throws Exception {
+    void fromAnEmptyDatabase_takesInsertsFromTheNewJarAndThePreviousOne() throws Exception {
         String url = freshDatabase("v10_empty");
 
         migrateTo(url, "10");
 
         assertThat(columnsOfContactMessage(url)).containsExactlyElementsOf(COLUMNS_AFTER_V10);
         assertThat(indexesOfContactMessage(url))
-            .as("the index that served the dropped rate-limit query")
+            .as("the index that served the rate-limit query, gone from the new jar")
             .doesNotContain("ix_contact_message_ip_hash_created_at");
 
-        // The column was NOT NULL. If it survived, an insert that does not mention it would fail,
-        // which is the shape every insert ContactService makes from now on.
+        // The shape every insert ContactService makes from now on. The column was NOT NULL, so
+        // this fails if V10 did not relax it.
         execute(url, "INSERT INTO contact_message (name, email, message) VALUES ('Ada', 'ada@example.invalid', 'Hi')");
-        assertThat(queryStrings(url, "SELECT name FROM contact_message")).containsExactly("Ada");
+        // The shape the previous jar's insert and rate-limit count take, if a rollback restarts it.
+        execute(url, """
+            INSERT INTO contact_message (name, email, message, requester_ip_hash)
+            VALUES ('Bea', 'bea@example.invalid', 'Hello', repeat('c', 64))
+            """);
+        assertThat(queryStrings(url, """
+            SELECT count(*)::text FROM contact_message
+            WHERE requester_ip_hash = repeat('c', 64) AND created_at > now() - interval '1 hour'
+            """)).containsExactly("1");
+        assertThat(queryStrings(url, """
+            SELECT name || '|' || coalesce(requester_ip_hash, 'null') FROM contact_message ORDER BY name
+            """))
+            .containsExactly("Ada|null", "Bea|" + "c".repeat(64));
     }
 
     @Test
-    void overExistingMessages_keepsEveryMessageAndDropsEveryHash() throws Exception {
+    void overExistingMessages_keepsEveryMessageAndBlanksEveryHash() throws Exception {
         String url = freshDatabase("v10_rows");
 
         migrateTo(url, "9");
         // The shape V1 wrote for two senders. Neither hash is a real address's; the test is about
-        // the column going, not about what was in it.
+        // the values going, not about what they were.
         execute(url, """
             INSERT INTO contact_message (name, email, message, created_at, requester_ip_hash) VALUES
               ('Alice', 'alice@example.invalid', 'First',  '2026-10-01T10:00:00Z', repeat('a', 64)),
@@ -70,6 +97,11 @@ class ContactIpHashMigrationTest {
 
         migrateTo(url, "10");
 
+        assertThat(queryStrings(url, """
+            SELECT count(*)::text FROM contact_message WHERE requester_ip_hash IS NOT NULL
+            """))
+            .as("no stored hash survives")
+            .containsExactly("0");
         assertThat(columnsOfContactMessage(url)).containsExactlyElementsOf(COLUMNS_AFTER_V10);
         assertThat(indexesOfContactMessage(url)).doesNotContain("ix_contact_message_ip_hash_created_at");
         assertThat(queryStrings(url, """
@@ -84,7 +116,9 @@ class ContactIpHashMigrationTest {
 
     private static List<String> columnsOfContactMessage(String url) throws Exception {
         return queryStrings(url, """
-            SELECT column_name FROM information_schema.columns
+            SELECT column_name || ':' || data_type || ':' || coalesce(character_maximum_length::text, '')
+                || ':' || is_nullable
+            FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'contact_message'
             ORDER BY ordinal_position
             """);
