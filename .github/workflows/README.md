@@ -182,9 +182,9 @@ To run the whole pipeline locally without writing anything, run the workflow's s
 repository root, in bash (Git Bash on Windows). The report step writes `results.json`. `issue.mjs`
 without `--write` then reads the repository through an authenticated `gh` and prints what it would
 do. Windows PowerShell's `>` writes UTF-16LE, which the scripts reject as unreadable output.
-npm takes the nearest directory with a `package.json` or a `node_modules` as the project, so if the
-canary's audit fails with `ENOLOCK`, one of those is in a parent of its temporary directory, such
-as the home directory.
+npm takes the nearest directory with a `package.json` or a `node_modules` as the project. If the
+canary's audit fails with `ENOLOCK`, or comes back with none, one of those is in a parent of its
+temporary directory, such as the home directory, and npm used that directory instead.
 
 ```bash
 out=$(mktemp -d)
