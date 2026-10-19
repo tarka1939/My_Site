@@ -105,7 +105,7 @@ class AnalyticsServiceHeaderDropTest {
 
         service.recordPageView(new PageViewRequest("about", null), request);
 
-        verify(clientIpResolver).resolve(request);
+        verify(clientIpResolver).resolveNetwork(request);
         verify(visitorHasher).identify(null);
     }
 

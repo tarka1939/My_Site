@@ -1,7 +1,10 @@
 package io.github.tarka1939.mysite;
 
+import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.StringJoiner;
@@ -90,11 +93,11 @@ import jakarta.servlet.http.HttpServletRequest;
  * the edge); the ufw rule restricting port 8080 to the Mikrus {@code /64}s does <em>not</em> close
  * it, since a bypassing request still arrives from a Mikrus node. Recorded rather than hidden.
  *
- * <p>A second honest limit, not introduced here and not fixable here: an IPv6 visitor holds a
- * {@code /64} or larger, so rotating the low bits gives unlimited buckets with no forgery at all.
- * "Login is rate-limited at 5 per 15 minutes" has therefore never been true for IPv6 clients, on
- * this design or the one before it. Limiting by prefix rather than by address is the fix, and it
- * is deliberately out of scope for #168.
+ * <p>A second limit, left out of #168 and closed by #314: an IPv6 visitor holds a {@code /64} or
+ * larger, so rotating the low bits gave a fresh bucket per address with no forgery at all, and
+ * "login is rate-limited at 5 per 15 minutes" was never true for IPv6 clients before #314. Every
+ * limit and count now keys on {@link #resolveNetwork}, which is the {@code /64}; what is left is a
+ * client holding a larger block, which {@link #networkOf} describes.
  *
  * <h2>Why not {@code server.forward-headers-strategy}</h2>
  * Spring Boot's {@code NATIVE}/{@code FRAMEWORK} strategies rewrite {@code getRemoteAddr()} for
@@ -110,6 +113,9 @@ import jakarta.servlet.http.HttpServletRequest;
 public class ClientIpResolver {
 
     static final String X_FORWARDED_FOR = "X-Forwarded-For";
+
+    /** The bytes of an IPv6 address that name its {@code /64}; networkOf zeroes the rest. */
+    private static final int IPV6_NETWORK_BYTES = 8;
 
     private final List<IpAddressMatcher> trustedProxies;
     private final String clientIpHeader;
@@ -155,11 +161,23 @@ public class ClientIpResolver {
     }
 
     /**
-     * The address this request should be attributed to for rate limiting: the forwarded client
-     * address when the peer is a trusted proxy and a usable one was forwarded, otherwise the
-     * peer's own address.
+     * The client this request counts against, for every per-client rate limit and for the
+     * analytics visitor count: {@link #resolve}'s address, with an IPv6 address reduced to its
+     * {@code /64} (#314). Callers outside this package have only this, so none of them can key on
+     * a full IPv6 address by mistake.
      */
-    public String resolve(HttpServletRequest request) {
+    public String resolveNetwork(HttpServletRequest request) {
+        return networkOf(resolve(request));
+    }
+
+    /**
+     * The address this request should be attributed to: the forwarded client address when the
+     * peer is a trusted proxy and a usable one was forwarded, otherwise the peer's own address.
+     *
+     * <p>Package-private on purpose, since #314: nothing should key on this directly. Use
+     * {@link #resolveNetwork}.
+     */
+    String resolve(HttpServletRequest request) {
         String peerAddress = request.getRemoteAddr();
         if (!isTrustedProxy(peerAddress)) {
             // Includes the unconfigured case, and is the whole trust boundary: a request that did
@@ -242,11 +260,13 @@ public class ClientIpResolver {
      * header value into an outbound resolver request on the request thread.
      *
      * <p>Canonicalised so that two spellings of one IPv6 address cannot become two rate-limit
-     * buckets. Deliberately applied only to forwarded values, not to {@code getRemoteAddr()}: the
-     * peer address is already canonical as the container reports it. (This also used to say that
-     * re-encoding it would change every stored {@code contact_message.requester_ip_hash}. Nothing
-     * derived from an address is stored since #309, so a change here would now only move
-     * in-memory buckets, which a restart empties anyway.)
+     * buckets. Applied here only to forwarded values, not to {@code getRemoteAddr()}, which the
+     * container already reports in canonical form; {@link #networkOf} re-parses whichever one
+     * {@link #resolve} returns, so the key is canonical either way. (This also used to say that
+     * re-encoding the peer address would change every stored
+     * {@code contact_message.requester_ip_hash}. Nothing derived from an address is stored since
+     * #309, so a change here would now only move in-memory buckets, which a restart empties
+     * anyway.)
      */
     private static String canonicalAddressOrNull(String raw) {
         if (raw == null) {
@@ -260,6 +280,51 @@ public class ClientIpResolver {
             return InetAddress.ofLiteral(trimmed).getHostAddress();
         } catch (IllegalArgumentException e) {
             return null;
+        }
+    }
+
+    /**
+     * One client, as the rate limits and the analytics visitor count see it (#314): an IPv4
+     * address as it is, and an IPv6 address reduced to its {@code /64}.
+     *
+     * <p>An IPv6 subscriber is given a {@code /64} or more, not one address, and the device picks
+     * the low 64 bits itself. RFC 4941 temporary addresses are on by default on most desktop and
+     * phone systems and change on their own, so keyed on the full address one ordinary visitor was
+     * several analytics visitors in a day, and anyone could have as many rate-limit buckets as
+     * they liked without forging anything. Keyed on the {@code /64}, one home or office network is
+     * one client, which is what an IPv4 NAT already makes it. A client holding a {@code /56} or a
+     * {@code /48} can still spread across 256 or 65,536 keys: the {@code /64} is the one size every
+     * subscriber gets, so it is the largest prefix that cannot merge two unrelated customers.
+     *
+     * <p>An IPv4-mapped address ({@code ::ffff:192.0.2.1}) is the IPv4 client it carries, and gets
+     * that client's key rather than the {@code /64} every mapped address would share.
+     * {@link InetAddress#ofLiteral} already returns an {@link java.net.Inet4Address} for one.
+     *
+     * <p>Anything that is not an address literal is returned unchanged and keys on itself, as it
+     * did before: it can only be a peer string the container reports in some unexpected form, and
+     * merging such peers into one key is not this method's call to make.
+     */
+    static String networkOf(String address) {
+        if (address == null) {
+            return null;
+        }
+        InetAddress parsed;
+        try {
+            parsed = InetAddress.ofLiteral(address);
+        } catch (IllegalArgumentException e) {
+            return address;
+        }
+        if (!(parsed instanceof Inet6Address)) {
+            return parsed.getHostAddress();
+        }
+        byte[] bytes = parsed.getAddress();
+        Arrays.fill(bytes, IPV6_NETWORK_BYTES, bytes.length, (byte) 0);
+        try {
+            // The suffix keeps a network key from reading as the address of one host.
+            return InetAddress.getByAddress(bytes).getHostAddress() + "/64";
+        } catch (UnknownHostException e) {
+            // Thrown only for a length other than 4 or 16 bytes, and these are 16.
+            throw new IllegalStateException("unreachable: an IPv6 address is 16 bytes", e);
         }
     }
 

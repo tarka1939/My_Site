@@ -139,8 +139,11 @@ class AnalyticsService {
         }
 
         // 2. The visitor, and the day: read once, here, and used for both the salt and
-        //    occurred_on. Never logged, at any level -- neither the address nor the hash.
-        Optional<VisitorDay> visitor = visitorHasher.identify(clientIpResolver.resolve(request));
+        //    occurred_on. Never logged, at any level -- neither the address nor the hash. An IPv6
+        //    visitor is their /64 (#314, the owner's decision of 2026-10-18), the key the rate
+        //    limits use, so a device rotating its temporary addresses is still one visitor.
+        Optional<VisitorDay> visitor =
+            visitorHasher.identify(clientIpResolver.resolveNetwork(request));
         if (visitor.isEmpty()) {
             return;
         }
