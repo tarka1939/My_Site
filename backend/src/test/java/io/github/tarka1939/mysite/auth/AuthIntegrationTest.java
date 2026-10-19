@@ -156,6 +156,29 @@ class AuthIntegrationTest {
     }
 
     @Test
+    void loginRateLimit_overIpv6_bucketsPerSlash64NotPerAddress() {
+        // Issue #314. Each attempt comes from a different address in one /64, which any IPv6
+        // client can do without forging anything. Keyed on the full address, every attempt had a
+        // fresh budget and the sixth was just another wrong password.
+        createAdminUser("ipv6-admin", "ipv6-admin@example.com", "correct-password");
+
+        for (int i = 1; i <= 5; i++) {
+            HttpServletRequest rotated = requestFrom("2001:db8:1:2:0:0:0:" + i);
+            assertThatThrownBy(() -> authService.login(
+                new LoginRequest("ipv6-admin", "wrong-password"), rotated))
+                .isInstanceOf(InvalidCredentialsException.class);
+        }
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("ipv6-admin", "wrong-password"), requestFrom("2001:db8:1:2:0:0:0:6")))
+            .isInstanceOf(RateLimitExceededException.class);
+
+        // The next /64 is another client, with its own budget.
+        assertThatThrownBy(() -> authService.login(
+            new LoginRequest("ipv6-admin", "wrong-password"), requestFrom("2001:db8:1:3:0:0:0:1")))
+            .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
     void requestReset_forKnownEmail_createsHashedTokenNotRawToken() {
         var adminUser = createAdminUser("reset-admin", "reset-admin@example.com", "irrelevant");
         HttpServletRequest httpRequest = requestFrom("203.0.113.9");

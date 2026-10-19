@@ -16,9 +16,11 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
 
 /**
- * Who a visitor is, for one UTC day: hex {@code HMAC-SHA256(salt, ip)} under a salt of 32 random
- * bytes that exists only in this object and is replaced on the first use in each new UTC day
- * (docs/DECISIONS.md, 2026-10-18 analytics ADR, decision 2).
+ * Who a visitor is, for one UTC day: hex {@code HMAC-SHA256(salt, client)} under a salt of 32
+ * random bytes that exists only in this object and is replaced on the first use in each new UTC
+ * day (docs/DECISIONS.md, 2026-10-18 analytics ADR, decision 2). The client is
+ * {@code ClientIpResolver.resolveNetwork}'s key: an IPv4 address, or an IPv6 address reduced to
+ * its {@code /64} (#314).
  *
  * <h2>Why a salt that is thrown away</h2>
  * There are only about four billion IPv4 addresses, so an unsalted hash of one, or one under a
@@ -86,16 +88,16 @@ class DailyVisitorHasher {
     }
 
     /**
-     * The UTC day, read once, and this address's hash for that day. The caller must use the
+     * The UTC day, read once, and this client's hash for that day. The caller must use the
      * returned day for {@code occurred_on}: it is the day the salt belongs to, and reading the
      * clock a second time could disagree with it across midnight.
      *
      * @return empty when today's salt can no longer be had for the day the clock just gave -- see
      *     the class javadoc -- in which case the event is dropped
      */
-    Optional<VisitorDay> identify(String ipAddress) {
+    Optional<VisitorDay> identify(String client) {
         LocalDate day = LocalDate.now(clock);
-        return saltFor(day).map(salt -> new VisitorDay(day, salt.hmacHex(ipAddress)));
+        return saltFor(day).map(salt -> new VisitorDay(day, salt.hmacHex(client)));
     }
 
     private Optional<DailySalt> saltFor(LocalDate day) {

@@ -248,6 +248,20 @@ class AnalyticsIngestionIntegrationTest {
     }
 
     /**
+     * #314, the owner's decision of 2026-10-18: an IPv6 visitor is their /64, so a device whose
+     * temporary address changes mid-day is one visitor, and a second network is a second visitor.
+     */
+    @Test
+    void ipv6_oneSlash64IsOneVisitor_andTwoAreTwo() throws Exception {
+        send(pageView("2001:db8:314:1:0:0:0:a", "{\"page\":\"about\"}"));
+        send(pageView("2001:db8:314:1:aaaa:bbbb:cccc:dddd", "{\"page\":\"about\"}"));
+        assertThat(rows()).as("two addresses in one /64").hasSize(1);
+
+        send(pageView("2001:db8:314:2:0:0:0:a", "{\"page\":\"about\"}"));
+        assertThat(rows()).as("a second /64").hasSize(2);
+    }
+
+    /**
      * The dedup decided by the database, not by a pre-check: every thread is released into the
      * insert at once, and the index lets exactly one of them write.
      */
