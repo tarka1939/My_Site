@@ -628,14 +628,21 @@ export function analyseOsv(area, osvText) {
  *     once two that alias one CVE are kept as one).
  */
 export const CANARIES = [
-  { source: 'npm', label: '`npm audit`', file: 'fixtures/npm-findings.lockfile.json', areas: ['frontend', 'e2e'] },
+  { source: 'npm', label: 'npm audit', file: 'fixtures/npm-findings.lockfile.json', areas: ['frontend', 'e2e'] },
   { source: 'osv', label: 'OSV', file: 'canary-dependency-list.txt', areas: ['backend'] },
 ];
 
-/** Why a canary's result cannot vouch for its source, or null when it can. */
+/**
+ * Why a canary's result cannot vouch for its source, or null when it can. The label is plain text,
+ * not Markdown: this reaches `::error` annotations, which show backticks as they are. An errored
+ * canary's own error can point at "the step's log", so the text names the canary's step as the
+ * one to read, not the area's.
+ */
 export function canaryProblem(canary, result) {
   if (!result) return `the ${canary.label} canary produced no result`;
-  if (result.status === 'errored') return `the ${canary.label} canary could not complete either: ${result.error}`;
+  if (result.status === 'errored') {
+    return `the ${canary.label} canary's own step could not complete: ${result.error.replace(/[.\s]+$/, '')}`;
+  }
   if (result.findings.length === 0) {
     return `the ${canary.label} canary, which has published advisories, came back with none`;
   }
@@ -659,7 +666,7 @@ export function applyCanaries(areaResults, canaryResults) {
     if (!problem) return r;
     return errored(
       r.area,
-      `Not trusted this run: ${problem}. A clean result here cannot be told apart from a source that answered empty (#303).`,
+      `Not trusted this run: ${problem}. Without a canary that finds something, this area's result cannot be told apart from a source that answered empty (#303).`,
     );
   });
 }

@@ -162,7 +162,8 @@ jobs:
       # published advisories, through the same tool and the same flags, and the report step marks
       # every audit on a source whose canary found nothing as one that could not complete. The
       # canaries' findings never reach the report or the issue. Both paths are in CANARIES in
-      # lib.mjs, and a test fails if this file stops naming them.
+      # lib.mjs. Tests fail if this file stops naming them outside a comment, or if the three npm
+      # audits' arguments stop matching, here or in the README's local run.
       #
       # npm's runs in a directory of its own, outside the checkout, because the lockfile has to be
       # named package-lock.json there, and a file of that name in the repository would raise

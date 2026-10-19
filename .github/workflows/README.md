@@ -84,7 +84,10 @@ tool, flags and code as the real audits:
 
 A canary that finds nothing, or cannot complete, marks every audit on its source as one that could
 not complete. The check is "at least one finding" rather than a count, so an advisory withdrawn
-upstream cannot fail it. The canaries' findings never reach the report or the issue.
+upstream cannot fail it. The canaries' findings never reach the report or the issue. A canary
+sends its own query, so it catches a source or a setting that answers every query empty, not one
+that answers the canary correctly and the real query short. Tests fail if the canary's `npm audit`
+arguments stop matching the real audits', in the workflow or in the local run below.
 
 **What "ships" means.** Every scope is audited, dev and test included, and each finding says whether
 it ships:
@@ -179,6 +182,9 @@ To run the whole pipeline locally without writing anything, run the workflow's s
 repository root, in bash (Git Bash on Windows). The report step writes `results.json`. `issue.mjs`
 without `--write` then reads the repository through an authenticated `gh` and prints what it would
 do. Windows PowerShell's `>` writes UTF-16LE, which the scripts reject as unreadable output.
+npm takes the nearest directory with a `package.json` or a `node_modules` as the project, so if the
+canary's audit fails with `ENOLOCK`, one of those is in a parent of its temporary directory, such
+as the home directory.
 
 ```bash
 out=$(mktemp -d)
