@@ -269,20 +269,12 @@ async function collectPages<T>(fetchPage: (page: number) => Promise<PageResponse
  * Deletes every contact message this suite created, matched by the reserved `.invalid` email
  * domain in `support/env.ts` - never anything a developer submitted by hand.
  *
- * **This frees the contact form's rate-limit window only partially, and the distinction
- * matters.** `ContactService` does derive the limit from a `count(*)` over `contact_message`
- * rather than from in-memory state, so deleting rows does move the counter - but it counts by
- * `requester_ip_hash`, not by email:
- *
- * ```java
- * countByRequesterIpHashAndCreatedAtAfter(ipHash, Instant.now().minus(RATE_LIMIT_WINDOW))
- * ```
- *
- * So this reclaims the slots *this suite* used, and nothing else. A message a developer
- * submitted by hand from the same machine inside the trailing hour still occupies a slot, and
- * no purge that stays inside the suite's own namespace can reclaim it. Widening the match would
- * mean deleting a developer's real data, which is not a trade this suite gets to make - so the
- * rate-limit journey asserts the precondition explicitly instead (see `tests/contact.spec.ts`).
+ * **Cleanup only: it gives none of the contact form's rate-limit budget back.** Since #309 that
+ * limit is counted in the backend's memory (`InMemoryRateLimiter`), from submissions rather than
+ * from stored rows, so deleting rows moves nothing; only a backend restart resets it (see
+ * `tests/contact.spec.ts`). It has two callers, both for cleanup: {@link purgeE2eData}, so that
+ * setup and teardown leave none of this suite's messages behind, and the contact journeys'
+ * `beforeEach`, so that the rate-limit journey's stored count starts from zero on every attempt.
  *
  * Deliberately narrower than {@link purgeE2eData}: the contact journeys call this between
  * tests, and must not take the seeded fixture projects with them.

@@ -342,7 +342,10 @@ paths:
     post:
       operationId: submitContactMessage
       summary: Submit a contact form message
-      description: Public. Rate-limited per requester IP hash -- see docs/DATA_MODEL.md ContactMessage notes.
+      description: |
+        Public. Rate-limited per requester IP under its own bucket, held in memory only; nothing
+        about the sender's address is stored with the message -- see docs/DATA_MODEL.md
+        ContactMessage notes.
       tags: [Contact]
       security: []
       requestBody:

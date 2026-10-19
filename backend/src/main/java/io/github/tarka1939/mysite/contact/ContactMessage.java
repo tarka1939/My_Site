@@ -12,8 +12,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * Phase 1 scope: schema + entity mapping only. The submission endpoint and rate limiting
- * are Phase 2 work - see PROJECT_TODO.md.
+ * What a visitor sent through the contact form, and nothing about where they sent it from.
+ *
+ * <p>There is deliberately no address-derived field. {@code requester_ip_hash} used to be one,
+ * kept only so the rate limit could count rows; it was an unsalted, reversible hash, and V10
+ * blanked it when the limit moved into {@code InMemoryRateLimiter} (#309). The emptied column
+ * stays, unmapped here, until #318 drops it, so that a rolled-back jar, which maps it, can still
+ * boot. A new field that records anything about the requester's address needs the same scrutiny
+ * before it is added.
  */
 @Entity
 @Table(name = "contact_message")
@@ -36,18 +42,14 @@ public class ContactMessage {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(name = "requester_ip_hash", nullable = false, length = 64)
-    private String requesterIpHash;
-
     protected ContactMessage() {
         // JPA
     }
 
-    public ContactMessage(String name, String email, String message, String requesterIpHash) {
+    public ContactMessage(String name, String email, String message) {
         this.name = name;
         this.email = email;
         this.message = message;
-        this.requesterIpHash = requesterIpHash;
     }
 
     public UUID getId() {
@@ -68,9 +70,5 @@ public class ContactMessage {
 
     public Instant getCreatedAt() {
         return createdAt;
-    }
-
-    public String getRequesterIpHash() {
-        return requesterIpHash;
     }
 }

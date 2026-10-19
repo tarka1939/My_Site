@@ -949,7 +949,7 @@ The endpoints are `POST /api/v1/analytics/page-views`, `POST /api/v1/analytics/l
 - The ingestion endpoints are public and unauthenticated, like the contact form. They are rate limited per visitor through the shared `InMemoryRateLimiter`, under their own `analytics:` key prefix (see the limiter's key contract).
 - Someone sending events from many addresses can still inflate the numbers. Nothing depends on them but the owner's curiosity, and each address is still held to one row per page and day.
 - The CSP does not change: `connect-src` already names the API, and no new script is loaded.
-- The draft `AnalyticsEvent` in `docs/DATA_MODEL.md` becomes the real table. Its note that the contact form's `requester_ip_hash` has "the same privacy stance" stops being true: that hash is unsalted and kept, so it can be reversed. That is a separate issue, not changed here.
+- The draft `AnalyticsEvent` in `docs/DATA_MODEL.md` becomes the real table. Its note that the contact form's `requester_ip_hash` has "the same privacy stance" stops being true: that hash is unsalted and kept, so it can be reversed. That is a separate issue, not changed here. (Since fixed: #309 blanked the stored hashes, and #318 drops the column.)
 
 ### [YYYY-MM-DD] - [Decision title]
 

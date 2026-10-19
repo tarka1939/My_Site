@@ -1027,6 +1027,17 @@ mv /home/deploy/mysite-prev.jar /home/deploy/mysite.jar && sudo systemctl restar
 sudo journalctl -u mysite -n 40
 ```
 
+The previous jar starts over a schema the failed one may already have migrated, and this rollback,
+like the one `deploy/deploy.sh` runs on its own, depends on two things to do so. Flyway's default
+`ignore-migration-patterns` is `*:future`, so an applied migration newer than any the jar carries
+logs a warning instead of failing validation; never set `spring.flyway.ignore-migration-patterns`
+without keeping `*:future`. And Hibernate's `validate` checks that each mapped table and column
+exists with a matching type, and never checks nullability (there is no setting for it), so a
+migration may relax a column but must not drop, rename or retype a table or column the previous
+jar maps. (Nor add a `NOT NULL` column without a default: that jar would boot, and then
+fail every insert that leaves it out.) That is why #309 blanked a column in one release and #318
+drops it in the next.
+
 Under the `prod` profile the app **fails to start** on configuration that is present but wrong - a
 malformed CIDR in `TRUSTED_PROXIES`, a negative hop count, a trusted-proxy list with no header
 configured to read. That is deliberate (#168), and it is the most likely cause of a redeploy that
@@ -1185,9 +1196,9 @@ and should be fine regardless.
 
 Both test messages are real rows. Delete them from `/admin/messages` once you are satisfied.
 
-One quirk worth knowing before you do: the contact form's rate limit counts rows in the database, so
-deleting messages refunds the quota. Harmless here, and the reason you can send a second test
-immediately after the first.
+Deleting them does not refund the contact form's rate limit: since #309 it is held in memory, 5
+messages per hour per client IP, and counts submissions rather than stored rows. Two test messages
+are well inside it, and restarting the backend resets it if you ever need more.
 
 ---
 

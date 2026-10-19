@@ -158,7 +158,7 @@ application under test.
 |---|---|
 | `tests/projects.spec.ts` | Land on the About page at `/` → follow the nav to the project list at `/projects` → filter by tag → open a project's detail page. Asserts the filter both keeps one fixture and drops the other, then that the detail page renders the stored title, description, tags, and link. Also carries the content-rendering assertions of issue #99: the card summarises a long description, the line clamp holds it to three rendered lines, the gallery's alt text names the image's position, and no alt text claims to know what an image contains. |
 | `tests/contact.spec.ts` | Submit the contact form. Asserts an actual `201`, that an empty form never reaches the API, and reads the message back through the admin API rather than trusting the confirmation banner. |
-| `tests/contact.spec.ts` | Fill the contact rate-limit window and get rejected. Asserts an actual `429` with the RFC 7807 body, that the user-visible error appears, and that exactly the allowed number of messages was stored. |
+| `tests/contact.spec.ts` | Submit until the contact rate limit refuses one, at most six times. Asserts an actual `429` with the RFC 7807 body, that no more than the limit got through first, that the user-visible error appears, and that exactly the accepted messages were stored. |
 | `tests/admin.spec.ts` | Admin logs in → creates a project through the UI → it appears on the public (unauthenticated) list → logs out → `authGuard` redirects a protected route back to login with `returnUrl` intact. |
 
 ## How state is kept clean
@@ -178,15 +178,11 @@ Reruns must not depend on how the previous run ended, so:
 - Tag names are fixed rather than unique-per-run. Tags are upserted implicitly by project writes
   and there is no `DELETE /tags`, so per-run tag names would leave an ever-growing pile of orphan
   rows in the tag filter UI.
-- The contact journeys purge their own messages between tests, which reclaims the rate-limit
-  slots the suite spent: `ContactService` derives its limit from a `count(*)` over
-  `contact_message` rather than from in-memory state, so deleting rows really does move the
-  counter. It does **not** free the whole window, though - the count is keyed on requester IP
-  hash, not on email, so a message you submitted by hand from this machine within the last hour
-  still costs a slot, and cleanup here will never touch it (it only ever matches `@e2e.invalid`;
-  deleting your real messages is not this suite's call). The rate-limit journey needs all five
-  slots, so it asserts that precondition up front and tells you how to clear it, instead of
-  failing mid-loop on a 429 that looks like an application bug.
+- The contact journeys purge their own messages before each test, so the rate-limit journey's
+  count of stored messages starts from zero on every attempt. That gives **no** rate-limit budget
+  back: since #309 the contact form's limit is counted in the backend's memory, from submissions
+  rather than rows, so deleting messages moves nothing. What that means for reruns is under
+  "Things worth knowing" below.
 
 ## Things worth knowing before you extend this
 
@@ -199,7 +195,7 @@ Reruns must not depend on how the previous run ended, so:
   backend never re-checks a token's subject. One extra login per run is the price of that.
 
   Whether the budget ever bites depends on who owns the backend. That limiter is in-memory
-  (`InMemoryRateLimiter`), unlike the contact form's, so it dies with the process:
+  (`InMemoryRateLimiter`), so it dies with the process:
 
   - **Playwright started the backend** (nothing was on :8080, or `CI` is set) - it also stops it
     at the end, so every run gets a fresh limiter and the budget effectively resets. You will not
@@ -209,6 +205,17 @@ Reruns must not depend on how the previous run ended, so:
 
   Either way the escape hatch is the same: **restart the backend**. `acquireToken` says so in the
   error rather than surfacing a bare status code.
+- **The contact form allows 5 messages per hour per IP, and every run spends all of it.** Since
+  #309 that limit lives in the same `InMemoryRateLimiter`, and every browser submission reaches
+  the backend from one loopback address (the dev server's proxy), so the two contact journeys
+  share one budget and nothing the suite does gives any of it back. Journey 2 needs one slot.
+  Journey 3 submits until the first refusal, however many tries that takes - four on a fresh
+  backend in a full run, none on a spent one - and asserts on the refusal, so it passes either
+  way. Who owns the backend decides whether this bites, exactly as for login: one Playwright
+  started (and CI's) is fresh every run, while one you started and Playwright reuses begins the
+  next run inside the hour with nothing left, and journey 2 then fails on a `429` with a message
+  saying so. A message you send by hand through the dev server costs a slot too. The escape hatch
+  is again to **restart the backend**, or to wait out the hour.
 - **Run serially.** `workers: 1` / `fullyParallel: false` is not laziness: the journeys share one
   seeded dataset and one per-IP rate-limit window on the server. Parallel workers would race on
   both.

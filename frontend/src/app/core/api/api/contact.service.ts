@@ -257,7 +257,7 @@ export class ContactService extends BaseService implements ContactServiceInterfa
 
     /**
      * Submit a contact form message
-     * Public. Rate-limited per requester IP hash -- see docs/DATA_MODEL.md ContactMessage notes.
+     * Public. Rate-limited per requester IP under its own bucket, held in memory only; nothing about the sender\&#39;s address is stored with the message -- see docs/DATA_MODEL.md ContactMessage notes. 
      * @endpoint post /contact
      * @param requestParameters
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
