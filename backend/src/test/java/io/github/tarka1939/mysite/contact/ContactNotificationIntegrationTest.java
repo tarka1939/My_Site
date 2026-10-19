@@ -1,8 +1,12 @@
 package io.github.tarka1939.mysite.contact;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
@@ -42,6 +46,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import io.github.tarka1939.mysite.InMemoryRateLimiter;
 import io.github.tarka1939.mysite.ResendEmailClient;
 
 /**
@@ -50,8 +55,16 @@ import io.github.tarka1939.mysite.ResendEmailClient;
  *
  * <p><strong>Deliberately not {@code @Transactional}.</strong> The listener is bound to
  * {@code AFTER_COMMIT}, so a test that rolls back would never fire it and would pass while
- * asserting nothing. Rows therefore survive each test, which is also why {@link #reset()} empties
- * the table - the contact rate limiter counts rows, so leftovers from one test would 429 the next.
+ * asserting nothing. Rows therefore survive each test, which is why {@link #reset()} empties
+ * the table before the row counts below are asserted.
+ *
+ * <p><strong>The contact rate limit is switched off here, and only here.</strong> Every request
+ * in this class comes from 127.0.0.1 over real HTTP, and the limit is now held in memory (#309)
+ * rather than counted from rows, so emptying the table no longer refunds it: five submissions
+ * across the whole class would 429 the sixth, and the saturation test needs seventy. This class
+ * is about what happens after a message is accepted, so {@link #reset()} admits every
+ * {@code "contact:"} key through a spy on the limiter, and every other key still reaches the real
+ * one. The limit itself is {@code ContactRateLimitIntegrationTest}'s.
  *
  * <p>{@link MockitoSpyBean} rather than a mock: the spy calls THROUGH to the real client, so the
  * genuine warn-and-skip path runs and the unconfigured-key degrade is a real assertion here rather
@@ -73,9 +86,6 @@ class ContactNotificationIntegrationTest {
 
     private static final String OWNER = "owner@example.invalid";
 
-    /** Mirrors ContactService's MAX_MESSAGES_PER_WINDOW. */
-    private static final int MAX_MESSAGES_PER_IP_PER_HOUR = 5;
-
     @Container
     @ServiceConnection
     static PostgreSQLContainer postgres = TestPostgres.container();
@@ -88,6 +98,10 @@ class ContactNotificationIntegrationTest {
 
     @MockitoSpyBean
     private ResendEmailClient resendEmailClient;
+
+    /** See the class javadoc: admits contact keys, calls through for everything else. */
+    @MockitoSpyBean
+    private InMemoryRateLimiter rateLimiter;
 
     @Autowired
     private Environment environment;
@@ -109,6 +123,8 @@ class ContactNotificationIntegrationTest {
     @BeforeEach
     void reset() {
         contactMessageRepository.deleteAll();
+        // Re-stubbed per test: a @MockitoSpyBean is reset after each one.
+        doReturn(true).when(rateLimiter).tryAcquire(startsWith("contact:"), anyInt(), any());
         emailClientLogger = (Logger) LoggerFactory.getLogger(ResendEmailClient.class);
         appender = new ListAppender<>();
         appender.start();
@@ -238,15 +254,8 @@ class ContactNotificationIntegrationTest {
         try {
             // 8 max threads + a 50-slot queue = 58 tasks absorbed, so submissions from the 59th on
             // are the ones that can be rejected. 70 leaves margin without being slow.
+            // All from 127.0.0.1, so seventy only get through because reset() admits contact keys.
             for (int i = 0; i < 70; i++) {
-                if (i % MAX_MESSAGES_PER_IP_PER_HOUR == 0) {
-                    // ContactService's rate limiter counts rows, so emptying the table refunds the
-                    // quota. Relied on deliberately here: the limiter caps a single IP at five an
-                    // hour, and every request in this test comes from 127.0.0.1, so there is no
-                    // other way to reach saturation over real HTTP. (That the refund exists at all
-                    // is a known, accepted weakness -- see this PR's description.)
-                    contactMessageRepository.deleteAll();
-                }
                 ResponseEntity<String> response =
                     submit("Visitor " + i, "visitor" + i + "@example.invalid", "Message " + i);
                 assertThat(response.getStatusCode())

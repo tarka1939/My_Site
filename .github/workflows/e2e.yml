@@ -156,9 +156,8 @@ jobs:
       # at all: its JWT secret has a dev-only default, and an absent RESEND_API_KEY or
       # CONTACT_NOTIFICATION_EMAIL is a designed no-op. That is why the job needs no secrets.
       #
-      # Both rate limits the suite spends start empty: the login limiter lives in the memory of a
-      # backend started for this run, and the contact form's limit counts rows in a database
-      # created for it.
+      # Both rate limits the suite spends start empty: since #309 the login limiter and the contact
+      # form's both live in the memory of a backend started for this run.
       #
       # The step's limit: the config's webServer timeouts (300 s for the backend, which allows for
       # a cold Maven cache, then 180 s for `ng serve`) bound server start at 8 minutes. Eight

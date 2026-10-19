@@ -1,7 +1,6 @@
 package io.github.tarka1939.mysite.contact;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -11,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.github.tarka1939.mysite.ClientIpHasher;
+import io.github.tarka1939.mysite.InMemoryRateLimiter;
 import io.github.tarka1939.mysite.PageResponse;
 import io.github.tarka1939.mysite.RateLimitExceededException;
 import io.github.tarka1939.mysite.ResourceNotFoundException;
@@ -20,36 +20,48 @@ import jakarta.servlet.http.HttpServletRequest;
 @Service
 public class ContactService {
 
-    // Basic abuse guard per docs/DATA_MODEL.md's ContactMessage notes ("revisit only if this
-    // endpoint sees enough volume for the query to matter") -- 5 messages/hour/IP is a
-    // deliberately generous default for a low-traffic portfolio contact form.
+    // Basic abuse guard -- 5 messages/hour/IP is a deliberately generous default for a
+    // low-traffic portfolio contact form. The window is the same hour password-reset-request
+    // uses, so this caller does not widen InMemoryRateLimiter's observed longest window.
     private static final int MAX_MESSAGES_PER_WINDOW = 5;
     private static final Duration RATE_LIMIT_WINDOW = Duration.ofHours(1);
 
     private final ContactMessageRepository contactMessageRepository;
     private final ClientIpHasher clientIpHasher;
+    private final InMemoryRateLimiter rateLimiter;
     private final ApplicationEventPublisher eventPublisher;
 
     public ContactService(
         ContactMessageRepository contactMessageRepository,
         ClientIpHasher clientIpHasher,
+        InMemoryRateLimiter rateLimiter,
         ApplicationEventPublisher eventPublisher
     ) {
         this.contactMessageRepository = contactMessageRepository;
         this.clientIpHasher = clientIpHasher;
+        this.rateLimiter = rateLimiter;
         this.eventPublisher = eventPublisher;
     }
 
     @Transactional
     public ContactMessageAck submit(ContactMessageWriteRequest request, HttpServletRequest httpRequest) {
+        // In memory, not counted from contact_message rows (#309). Counting rows meant storing
+        // the sender's ClientIpHasher value with every message, and that hash is unsalted: with
+        // only ~4.3 billion IPv4 addresses it is reversed by hashing them all, so the column held
+        // the address in all but name. Nothing about the sender's address is stored now. The
+        // accepted cost is that the limit resets when the process restarts.
+        //
+        // Namespaced ("contact:" prefix), like every other caller's key. A bare hash could not
+        // collide with today's keys, which are all prefixed, but it would be the one unprefixed
+        // key in a shared singleton: a later caller that also keyed on a bare hash would share its
+        // bucket and its count. The prefix is 8 characters, a length no other caller's prefix has,
+        // so with every key ending in a 64-character hash no two callers' keys can be equal.
         String ipHash = clientIpHasher.hashOf(httpRequest);
-        long recentCount = contactMessageRepository.countByRequesterIpHashAndCreatedAtAfter(
-            ipHash, Instant.now().minus(RATE_LIMIT_WINDOW));
-        if (recentCount >= MAX_MESSAGES_PER_WINDOW) {
+        if (!rateLimiter.tryAcquire("contact:" + ipHash, MAX_MESSAGES_PER_WINDOW, RATE_LIMIT_WINDOW)) {
             throw new RateLimitExceededException("Too many contact messages from this requester");
         }
 
-        ContactMessage message = new ContactMessage(request.name(), request.email(), request.message(), ipHash);
+        ContactMessage message = new ContactMessage(request.name(), request.email(), request.message());
         // saveAndFlush: same @CreationTimestamp flush-timing reason as ProjectService - the
         // ack DTO needs createdAt populated before it's built, not deferred to commit.
         ContactMessage saved = contactMessageRepository.saveAndFlush(message);
