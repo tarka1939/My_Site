@@ -324,7 +324,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 **Decided by the owner, 2026-10-17.**
 - [x] #301 - typographic dashes. **Decided:** the keyboard `-` everywhere, because em and en dashes read as an AI giveaway, with a rule in `CLAUDE.md` against new ones. PR #302, merged to `dev` 2026-10-18, swept 1,967 of them from 85 files, 5 of them HTML entities, the site's title and project periods included. The card excerpt still matches both, as escapes, because live descriptions contain them. Left for the owner: the 12 in `.claude/hooks/`, and the live descriptions, which change only by re-seeding or the admin.
 
-**Filed 2026-10-18** while building and checking Phase 7c (PR #311). The owner decided all four the same day.
+**Filed 2026-10-18** while building and checking Phase 7c (PR #311). The owner decided #309, #312 and #314 the same day; #313 is a plain bug fix.
 - [ ] #309 - the contact form stores an unsalted SHA-256 of the sender's IP, which anyone with the table can reverse by hashing every IPv4 address. **Decided:** rate-limit the form in memory, as login and password reset are, and drop the column. A restart then resets the limit.
 - [ ] #312 - the admin projects list is wider than a phone, so the Actions column is clipped. **Decided:** below a breakpoint each project shows as a stacked block, and a screen reader still hears each value's column name.
 - [x] #313 - a failed login's error toast stayed on screen after the next attempt succeeded. PR #316: a successful login takes every error toast down before it navigates. The session-expiry notice still survives the redirect to the login page.

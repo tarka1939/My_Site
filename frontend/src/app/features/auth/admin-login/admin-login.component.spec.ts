@@ -159,8 +159,8 @@ describe('AdminLoginComponent, and the toasts on screen when a login succeeds', 
   const accepted = (request: TestRequest) =>
     request.flush({ token: 'jwt', expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
 
-  // Every way a login can fail and leave a toast. Each is stale once a later attempt succeeds, so
-  // the fix takes down errors by level rather than the 401's sentence alone.
+  // One case per way errorInterceptor words a login failure. Each is stale once a later attempt
+  // succeeds, so the fix takes down errors by level rather than the 401's sentence alone.
   it.each<[string, (request: TestRequest) => void]>([
     ['a wrong password', rejected],
     [
@@ -202,6 +202,21 @@ describe('AdminLoginComponent, and the toasts on screen when a login succeeds', 
 
     expect(errorsShown()).toEqual([]);
     expect(errorsAtNavigation).toEqual([[]]);
+  });
+
+  // The other half of #313: the notice must still be there when the page it sent the admin to
+  // opens, or the redirect arrives with no reason given. So only a success may take it down, and
+  // a dismissal when the page is created or first rendered fails here. Raised before this test's
+  // own page is created, as the interceptor raises it before redirecting.
+  it('keeps the session-expiry notice while the login page opens', async () => {
+    fixture.destroy();
+    notifications.error(SESSION_EXPIRED);
+
+    fixture = TestBed.createComponent(AdminLoginComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(errorsShown()).toEqual([SESSION_EXPIRED]);
   });
 
   it('leaves every toast in place when an attempt fails, and stays on the page', () => {
