@@ -72,6 +72,20 @@ happen reads exactly like a clean one. The Markdown report goes to the run summa
 that reaches the report step, including one where an audit failed. A run that is cancelled, or
 stopped by the job's 20-minute timeout, writes no report.
 
+**A source that answers empty fails the run too (#303).** None of those checks can catch a source
+that returns a valid but empty result, which reads exactly like a clean week. `npm audit` did that
+under `npm_config_offline=true`. So every run also audits one canary per source, using the same
+tool, flags and code as the real audits:
+
+- npm: `fixtures/npm-findings.lockfile.json`, whose audit lists 6 vulnerable packages. It is copied
+  to `package-lock.json` in a directory outside the checkout, because a file of that name in the
+  repository would raise Dependabot alerts.
+- OSV: `canary-dependency-list.txt`, which names `org.postgresql:postgresql` 42.2.0.
+
+A canary that finds nothing, or cannot complete, marks every audit on its source as one that could
+not complete. The check is "at least one finding" rather than a count, so an advisory withdrawn
+upstream cannot fail it. The canaries' findings never reach the report or the issue.
+
 **What "ships" means.** Every scope is audited, dev and test included, and each finding says whether
 it ships:
 
@@ -172,6 +186,9 @@ out=$(mktemp -d)
 (cd e2e && npm audit --json --package-lock-only --offline=false --include=dev --include=optional --include=peer > "$out/e2e.npm-audit.json"; echo $? > "$out/e2e.npm-audit.exit")
 (cd backend && mvn -B -ntp dependency:list -Dsort=true -DoutputFile="$out/backend.deps.txt"; echo $? > "$out/backend.mvn.exit")
 node .github/scripts/dependency-audit/osv-query.mjs "$out/backend.deps.txt" "$out/backend.osv.json"
+canary=$(mktemp -d) && cp .github/scripts/dependency-audit/fixtures/npm-findings.lockfile.json "$canary/package-lock.json"
+(cd "$canary" && npm audit --json --package-lock-only --offline=false --include=dev --include=optional --include=peer > "$out/canary.npm-audit.json"; echo $? > "$out/canary.npm-audit.exit")
+node .github/scripts/dependency-audit/osv-query.mjs .github/scripts/dependency-audit/canary-dependency-list.txt "$out/canary.osv.json"
 node .github/scripts/dependency-audit/report.mjs --dir "$out" --root . --results "$out/results.json"
 node .github/scripts/dependency-audit/issue.mjs --results "$out/results.json" --repo tarka1939/My_Site
 ```
