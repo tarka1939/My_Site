@@ -26,6 +26,7 @@ const EXISTING_PROJECT = {
   startedOn: '2024-03-01',
   completedOn: '2025-06-01',
   published: true,
+  featured: false,
   repoFullName: null,
   lastPushedAt: null,
   defaultBranch: null,
@@ -52,6 +53,7 @@ const OTHER_PROJECT = {
   startedOn: '2025-01-01',
   completedOn: null,
   published: true,
+  featured: false,
   repoFullName: null,
   lastPushedAt: null,
   defaultBranch: null,
@@ -165,6 +167,17 @@ function publishedBox(fixture: ComponentFixture<AdminProjectFormComponent>): HTM
   );
   if (!box) {
     throw new Error('the publication checkbox is not rendered');
+  }
+  return box;
+}
+
+/** The rendered "Featured" checkbox (#88). */
+function featuredBox(fixture: ComponentFixture<AdminProjectFormComponent>): HTMLInputElement {
+  const box = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+    '#project-featured',
+  );
+  if (!box) {
+    throw new Error('the featured checkbox is not rendered');
   }
   return box;
 }
@@ -317,6 +330,7 @@ describe('AdminProjectFormComponent', () => {
     expect(textOf('label[for="project-description"]')).toBe(PROJECT_FIELD_LABELS.description);
     expect(textOf('label[for="project-tags"]')).toBe(`${PROJECT_FIELD_LABELS.tags} (comma-separated)`);
     expect(textOf('label[for="project-published"]')).toBe(PROJECT_FIELD_LABELS.published);
+    expect(textOf('label[for="project-featured"]')).toBe(PROJECT_FIELD_LABELS.featured);
     expect(textOf('label[for="project-started-on"]')).toBe(PROJECT_FIELD_LABELS.startedOn);
     expect(textOf('label[for="project-completed-on"]')).toBe(PROJECT_FIELD_LABELS.completedOn);
     expect(textOf('fieldset[formarrayname="links"] > legend')).toBe(PROJECT_FIELD_LABELS.links);
@@ -601,6 +615,121 @@ describe('AdminProjectFormComponent', () => {
       const hint = host.querySelector('#' + describedBy)?.textContent ?? '';
       expect(hint).toContain('draft');
       expect(hint).toContain('not found');
+    });
+  });
+
+  describe('featured (#88)', () => {
+    const FEATURED = { ...EXISTING_PROJECT, featured: true };
+
+    /** The body of the only write this form has sent, whichever verb it used. */
+    function sentBody() {
+      const call = updateProject.mock.calls[0] ?? createProject.mock.calls[0];
+      expect(call).toBeDefined();
+      return call[0].projectWriteRequest;
+    }
+
+    it('keeps a featured project featured through an edit that never touches the box', async () => {
+      // The round trip: the box is ticked from the loaded project, and submit() sends it back.
+      // A box that started unticked would un-feature the project on its first edit, silently.
+      getAnyProject.mockReturnValue(of(FEATURED));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      expect(featuredBox(fixture).checked).toBe(true);
+
+      await type(fixture, '#project-title', 'Equalizer v2');
+      await save(fixture);
+
+      expect(sentBody().title).toBe('Equalizer v2');
+      expect(sentBody().featured).toBe(true);
+    });
+
+    it('keeps an unfeatured project unfeatured through an edit, saying so out loud', async () => {
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      expect(featuredBox(fixture).checked).toBe(false);
+
+      await type(fixture, '#project-description', 'Reworded.');
+      await save(fixture);
+
+      // Explicitly false rather than omitted: the box is on screen, so what it shows is sent.
+      expect(Object.keys(sentBody())).toContain('featured');
+      expect(sentBody().featured).toBe(false);
+    });
+
+    it('features a project when the admin ticks the box', async () => {
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await toggleCheckbox(fixture, '#project-featured');
+      await save(fixture);
+
+      expect(sentBody().featured).toBe(true);
+    });
+
+    it('un-features a project when the admin unticks the box', async () => {
+      getAnyProject.mockReturnValue(of(FEATURED));
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      await toggleCheckbox(fixture, '#project-featured');
+      await save(fixture);
+
+      expect(sentBody().featured).toBe(false);
+    });
+
+    it('creates a project unfeatured by default', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      expect(featuredBox(fixture).checked).toBe(false);
+
+      fillRequiredFields(fixture);
+      await save(fixture);
+
+      expect(createProject).toHaveBeenCalledTimes(1);
+      expect(sentBody().featured).toBe(false);
+    });
+
+    it('creates a featured project when the box is ticked before saving', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+
+      fillRequiredFields(fixture);
+      await toggleCheckbox(fixture, '#project-featured');
+      await save(fixture);
+
+      expect(sentBody().featured).toBe(true);
+    });
+
+    it('shows the state of the project it moved to, not the one it moved from', async () => {
+      // A params-only navigation reuses this component, and form.reset() puts the default back
+      // before the next load patches it. A featured project's tick must not carry over.
+      getAnyProject.mockImplementation(({ id }: { id: string }) =>
+        of(id === 'p1' ? FEATURED : OTHER_PROJECT),
+      );
+      editExistingProject();
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      expect(featuredBox(fixture).checked).toBe(true);
+
+      await navigateToProject(fixture, 'p2');
+
+      expect(featuredBox(fixture).checked).toBe(false);
+    });
+
+    it('labels the checkbox and says what it does', async () => {
+      const fixture = await renderComponent(AdminProjectFormComponent);
+      const host = fixture.nativeElement as HTMLElement;
+      const box = featuredBox(fixture);
+
+      const label = host.querySelector<HTMLLabelElement>('label[for="project-featured"]');
+      expect(label?.textContent?.trim()).toBe('Featured');
+
+      // The public site shows no marker for it, so the hint is the only place that says what
+      // ticking it does.
+      const describedBy = box.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      const hint = host.querySelector('#' + describedBy)?.textContent ?? '';
+      expect(hint).toContain('top of the public project list');
     });
   });
 

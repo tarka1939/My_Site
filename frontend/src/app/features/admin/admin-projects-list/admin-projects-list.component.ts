@@ -54,11 +54,14 @@ interface PublishFailure {
  * the list is already holding -- that is what makes this a publication change rather than issue
  * #92's blank-form PUT arriving through a different button.
  *
- * `repoFullName` is the one field deliberately *not* sent. Omitted means "leave it as it is" (see
- * ProjectWriteRequest in docs/openapi.yaml), which is exactly right here: publishing is not a
- * statement about which repository a project tracks, and re-sending a value the list happens to
- * hold is one more thing that can be stale. The GitHub-authoritative fields -- `lastPushedAt`,
- * `defaultBranch`, `archived` -- are not on the write request at all, so a PUT cannot touch them.
+ * `repoFullName` and `featured` (#88) are deliberately *not* sent. Omitted means "leave it as it
+ * is" for both (see ProjectWriteRequest in docs/openapi.yaml), which is exactly right here:
+ * publishing is not a statement about which repository a project tracks or where it sits on the
+ * public list, and re-sending a value the list happens to hold is one more thing that can be
+ * stale. Leaving `featured` out is what keeps a click on Publish from un-featuring a project, even
+ * one featured in another tab since this list loaded. The GitHub-authoritative fields --
+ * `lastPushedAt`, `defaultBranch`, `archived` -- are not on the write request at all, so a PUT
+ * cannot touch them.
  *
  * The staleness that remains: this copies the row as the last list load saw it, so a project
  * edited elsewhere between that load and this click would have the older copy written back. One

@@ -23,6 +23,7 @@ const DRAFT: Project = {
   startedOn: '2024-03-01',
   completedOn: null,
   published: false,
+  featured: false,
   repoFullName: 'tarka1939/Equalizer',
   lastPushedAt: '2026-08-20T09:00:00Z',
   defaultBranch: 'main',
@@ -31,7 +32,10 @@ const DRAFT: Project = {
   updatedAt: '2026-08-20T09:00:00Z',
 };
 
-/** A live, hand-written project: no repository, both dates set, on the public site. */
+/**
+ * A live, hand-written project: no repository, both dates set, on the public site, and featured
+ * (#88), so that taking it down is also the case where a careless body would un-feature it.
+ */
 const LIVE: Project = {
   id: 'p-live',
   title: 'Reverb',
@@ -42,6 +46,7 @@ const LIVE: Project = {
   startedOn: '2025-01-01',
   completedOn: '2025-06-01',
   published: true,
+  featured: true,
   repoFullName: null,
   lastPushedAt: null,
   defaultBranch: null,
@@ -250,6 +255,19 @@ describe('AdminProjectsListComponent', () => {
     expect(sentBody().published).toBe(false);
     expect(deleteProject).not.toHaveBeenCalled();
     expect(statusOf(fixture, 'Reverb')).toBe('Draft');
+  });
+
+  it('leaves featured out of the body, so a featured project stays featured (#88)', async () => {
+    updateProject.mockReturnValue(of({ ...LIVE, published: false }));
+    const fixture = await renderComponent(AdminProjectsListComponent);
+
+    await clickPublish(fixture, 'Reverb');
+
+    // The contract reads an omitted `featured` on PUT as "leave it as it is", which is what a
+    // publication change means. Asserted on the keys, for repoFullName's reason above: a body
+    // carrying `featured: false` would un-feature the project, and `featured: true` would write
+    // back a copy that can be stale.
+    expect(Object.keys(sentBody())).not.toContain('featured');
   });
 
   it('repaints the row from what the server stored, not from what was asked for', async () => {
