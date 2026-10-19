@@ -64,10 +64,10 @@
                  The span is empty, and the SCSS draws the word from data-label in that layout only.
                  The label is the header's word, not the cell's content, so it stays out of the
                  cell's text, which is the value alone as in the table, and there is nothing to hide
-                 above the breakpoint. aria-hidden, because a screen reader moving through the table
-                 already hears this cell's column header in either layout, and a visible copy would
-                 be read on top of it ("Status, Status, Draft"). The word comes from the constant
-                 the header does, so the two cannot drift apart. -->
+                 above the breakpoint. aria-hidden, because a screen reader using table navigation
+                 should already announce this cell's column header in either layout, and a visible
+                 copy would be read on top of it ("Status, Status, Draft"). The word comes from
+                 the constant the header does, so the two cannot drift apart. -->
             <span class="cell-label" aria-hidden="true" [attr.data-label]="column.status"></span>
             <!-- Both states carry a word of their own. "Draft" as a badge and "published" as the
                  absence of one would make a failure to render read as *live*, which is the silent

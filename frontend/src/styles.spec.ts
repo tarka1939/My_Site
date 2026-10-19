@@ -593,6 +593,41 @@ describe('the tag chips', () => {
   });
 });
 
+describe('the admin projects list on a phone (#312)', () => {
+  const ADMIN_LIST = join(COMPONENT_ROOT, 'features', 'admin', 'admin-projects-list');
+  const stacked = () =>
+    ruleFor(
+      stripComments(readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.scss'), 'utf8')),
+      '@media (max-width: 40rem)',
+    ).body;
+
+  it('keeps the header row in the accessibility tree, off screen rather than removed', () => {
+    // In the stacked layout a screen reader gets each value's column name from the header row
+    // alone, since the visible labels are aria-hidden. `display: none` or `visibility: hidden` on
+    // any part of the table's structure would take every name away, and the DOM would not change.
+    const structural = rules(stacked()).filter((rule) =>
+      rule.selector.split(',').some((part) => /^(table|thead|tbody|tr|th)\b/.test(part.trim())),
+    );
+    expect(structural.length).toBeGreaterThan(0);
+    for (const rule of structural) {
+      const decls = declarations(rule.body);
+      expect(decls.get('display'), rule.selector).not.toBe('none');
+      expect(decls.get('visibility'), rule.selector).not.toBe('hidden');
+    }
+    expect(declarations(ruleFor(stacked(), 'thead').body).get('position')).toBe('absolute');
+  });
+
+  it('draws each visible label from the attribute the template binds', () => {
+    // Renaming one side and not the other blanks every label, with nothing in the DOM to show it.
+    const label = /&::before\s*\{([^}]*)\}/.exec(ruleFor(stacked(), '.cell-label').body);
+    const content = declarations(label?.[1] ?? '').get('content') ?? '';
+    const attribute = /^attr\(([\w-]+)\)$/.exec(content);
+    expect(attribute, 'the label is not drawn from an attribute').not.toBeNull();
+    const html = readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.html'), 'utf8');
+    expect(html).toContain(`[attr.${attribute![1]}]=`);
+  });
+});
+
 // -------------------------------------------------------------------------------------------
 // Fonts
 // -------------------------------------------------------------------------------------------

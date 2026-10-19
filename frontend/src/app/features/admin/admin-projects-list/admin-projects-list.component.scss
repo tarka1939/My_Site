@@ -121,12 +121,13 @@ td {
 // 40rem, worked out from the columns rather than a device list. Two of them have a width the data
 // cannot change. Actions keeps Edit, the publish toggle and Delete on one line: about 200px with
 // its padding, and 230px while the toggle reads "Unpublishing…". Status is its header or the Draft
-// badge, whichever is wider, plus padding: 67px. With the 32px of gutters that is 329px before
-// Title and Tags get any, and those two are as wide as their longest unbreakable word: a word of a
-// title, a stretch of repository name, a tag. In #312's 421px they took 154px. 40rem leaves them
-// 311px, about twice that, so a longer word than today's still fits rather than reopening #312
-// just above the breakpoint. The pixel widths are estimates from the shipped fonts' advance
-// widths at 16px, not measurements in a browser.
+// badge, whichever is wider, plus padding: 67px. Taking the 230, and the 32px of gutters, that is
+// 329px before Title and Tags get any, and those two are as wide as their longest unbreakable
+// word: a word of a title, a stretch of repository name, a tag. In #312's 421px table they had
+// 124px beside the same 230 and 67. 40rem leaves them 311px, more than twice that, so a longer
+// word than today's still fits rather than reopening #312 just above the breakpoint. The pixel
+// widths are estimates from the shipped fonts' advance widths (the toggle and badge at their
+// 14px), not measurements in a browser.
 //
 // Above the breakpoint none of this applies, and the table is exactly what it was.
 @media (max-width: 40rem) {
