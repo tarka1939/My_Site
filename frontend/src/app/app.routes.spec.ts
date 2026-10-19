@@ -27,6 +27,7 @@ const PROJECT: Project = {
   startedOn: null,
   completedOn: null,
   published: true,
+  featured: false,
   repoFullName: null,
   lastPushedAt: null,
   defaultBranch: null,

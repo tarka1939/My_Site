@@ -9,6 +9,15 @@ Personal portfolio site (Angular + Spring Boot) that hosts your project portfoli
 ## In scope
 
 - [x] Portfolio: browse projects, view project detail (title, description, tags, links, images, dates), with pagination/filtering built in from the start
+  - Public project order (#88, owner decisions 2026-10-14 and 2026-10-19). The admin can mark a
+    project **featured**, and featured projects list first. Within featured and within the rest:
+    ongoing projects (started, no completion date), then completed ones with the latest
+    completion date first, then projects with no dates at all. Ties go to the latest start date,
+    then the newest entry, then the id, so the order is total and pages never overlap. The order
+    is the same with or without a tag filter.
+  - Featured only moves a project up the list: the public site shows no label or marker for it.
+    The admin projects list is not reordered: it stays newest-entered first, as a queue in which
+    a draft that GitHub sync has just created is at the top.
 - [x] Tag/category system (many-to-many with Project)
 - [x] Contact form, with basic rate limiting
 - [x] Editable About page (singleton, Markdown) - added 2026-09-20 with #213; recorded here after it was built, not before. See `docs/DECISIONS.md`, 2026-09-20

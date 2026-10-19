@@ -275,8 +275,9 @@ Two conventions:
   renders as a space.
 
 The record order matches the draft's section order (§1.1, §1.2, §1.3, §2.1, §2.2) so the two can be
-read side by side. It carries no meaning to the API - there is no ordering field on the model
-(issue #88).
+read side by side. It carries no meaning to the API. The public list orders itself by the
+`featured` flag and each project's dates (#88), and the script never sets `featured`: which
+projects to pin is the owner's choice in the admin, after seeding.
 
 ## Troubleshooting
 

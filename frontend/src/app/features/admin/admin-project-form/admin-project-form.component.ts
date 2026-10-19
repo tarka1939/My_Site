@@ -202,6 +202,10 @@ export class AdminProjectFormComponent {
     links: new FormArray<LinkGroup>([]),
     images: new FormArray<FormControl<string>>([]),
     published: this.publishedControl,
+    // Whether the project is pinned to the top of the public list (#88). False by default, which
+    // is what POST does with the field omitted, so a new project is never featured by accident.
+    // An edit overwrites it from the loaded project, as it does `published`.
+    featured: [false],
   });
 
   /**
@@ -489,6 +493,10 @@ export class AdminProjectFormComponent {
             // back whatever is in this box -- meaning an edit that never touches the checkbox saves
             // the project exactly as publication found it.
             published: project.published,
+            // Required on every Project too (#88), and round-tripped for the same reason: submit()
+            // sends this box back, so an edit that never touches it leaves the project featured or
+            // not exactly as it was.
+            featured: project.featured,
           });
           // The arrays are empty here because resetForm() ran above, for every load rather than
           // only for a second one -- push without a clear gives a successful reload two of every
@@ -649,10 +657,15 @@ export class AdminProjectFormComponent {
       // `false` because a checkbox happened to start out unticked -- which would be issue #92's
       // blank-form PUT wearing a different hat.
       //
-      // `repoFullName` is the other omitted-means-unchanged field and is deliberately *not* sent:
-      // this form does not edit it, and omitting it is what preserves an auto-created draft's link
-      // to the repository that made it.
+      // `repoFullName` is the one omitted-means-unchanged field deliberately *not* sent (`featured`
+      // below is sent, for `published`'s reason): this form does not edit it, and omitting it is
+      // what preserves an auto-created draft's link to the repository that made it.
       published: raw.published,
+      // Sent explicitly too, for `published`'s reason above: the contract reads an omitted
+      // `featured` on PUT as "leave it as it is" (#88), and this form has the box on screen. The
+      // box starts false on the create route and from the loaded project on the edit route, so an
+      // untouched box sends back exactly what was stored.
+      featured: raw.featured,
     };
 
     this.submitting.set(true);

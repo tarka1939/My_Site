@@ -115,8 +115,10 @@ class GithubProjectSyncIntegrationTest {
         assertThat(after.completedOn()).isEqualTo(before.completedOn());
         assertThat(after.createdAt()).isEqualTo(before.createdAt());
 
-        // ...and the project stays where the owner put it: on the site.
+        // ...and the project stays where the owner put it: on the site, and pinned (#88).
         assertThat(after.published()).isTrue();
+        assertThat(before.featured()).isTrue();
+        assertThat(after.featured()).isTrue();
     }
 
     /** Rule 2: the three fields GitHub is authoritative for, and those are written. */
@@ -164,6 +166,7 @@ class GithubProjectSyncIntegrationTest {
         ProjectResponse draft = all.get(0);
 
         assertThat(draft.published()).as("an auto-created project is never live").isFalse();
+        assertThat(draft.featured()).as("nor featured: the upsert leaves V11's default").isFalse();
         // Tagless, and allowed to be: #148 requires a tag to publish, not to exist. The upsert
         // does not go through createProject, so the rule never sees this row.
         assertThat(draft.tags()).as("sync writes no tags").isEmpty();
@@ -325,6 +328,8 @@ class GithubProjectSyncIntegrationTest {
             LocalDate.of(2024, 3, 1),
             LocalDate.of(2025, 6, 1),
             null,
+            // Featured, so that a delivery leaving it alone is something a test can see (#88).
+            true,
             repoFullName));
     }
 
@@ -332,7 +337,7 @@ class GithubProjectSyncIntegrationTest {
     private static ProjectWriteRequest ownerEdit(List<String> tags, Boolean published) {
         return new ProjectWriteRequest(
             "Equalizer", "The owner's description, replacing the placeholder.",
-            List.of(), List.of(), tags, null, null, published, null);
+            List.of(), List.of(), tags, null, null, published, null, null);
     }
 
     private List<ProjectResponse> allProjects() {

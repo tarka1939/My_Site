@@ -108,6 +108,6 @@ class ProjectUpdateConcurrentSyncIntegrationTest {
         return new ProjectWriteRequest(
             "The raced project", "The owner's description, written during a push.", List.of(),
             List.of(),
-            List.of(), null, null, null, null);
+            List.of(), null, null, null, null, null);
     }
 }

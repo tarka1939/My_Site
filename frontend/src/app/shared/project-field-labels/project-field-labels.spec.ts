@@ -12,6 +12,7 @@ describe('projectFieldName', () => {
     ['description', 'Description'],
     ['tags', 'Tags'],
     ['published', 'Published'],
+    ['featured', 'Featured'],
     ['startedOn', 'Start date'],
     ['completedOn', 'Completion date'],
     ['links', 'Links'],

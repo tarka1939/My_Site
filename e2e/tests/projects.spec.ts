@@ -36,8 +36,10 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
   // Each card is an <a> wrapping the project's <h2>, so its accessible name is the title.
-  // The seeded fixtures are the newest projects (the list sorts by createdAt DESC), so they
-  // land on the first page even if the developer's database already has content of its own.
+  // Both fixtures land on the first page of CI's fresh database. The list no longer sorts by
+  // entry date (#88: featured, then ongoing, then latest completion, then undated), so on a
+  // developer's database with a page's worth of published projects that sort ahead of them,
+  // they can be pushed off it.
   const alphaCard = page.getByRole('link', { name: FIXTURE_ALPHA.title, exact: true });
   const betaCard = page.getByRole('link', { name: FIXTURE_BETA.title, exact: true });
   await expect(alphaCard).toBeVisible();

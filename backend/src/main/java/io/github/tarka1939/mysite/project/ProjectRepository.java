@@ -48,16 +48,55 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
     // whatever repositories get pushed, can include private ones. The duplication is three
     // lines and it is the cheap half of the trade.
     //
-    // Supported by ix_project_published_created_at (V7), a partial index on created_at DESC
-    // WHERE published -- the filter and the listing's sort in one object.
+    // Both are ordered by PUBLIC_ORDER, written into the query rather than passed as a Sort.
+    // ix_project_published_created_at (V7) still serves their published filter; it no longer
+    // serves their sort, and V11's header says why no index replaces it.
     // ---------------------------------------------------------------------------------------
 
-    @Query("SELECT p.id FROM Project p WHERE p.published = true")
+    /**
+     * The public listing's order (#88; SPEC.md, docs/openapi.yaml's GET /projects), appended to
+     * both public queries so the filtered and unfiltered lists cannot drift apart:
+     *
+     * <ol>
+     *   <li>featured first ({@code true} sorts above {@code false} under DESC);
+     *   <li>then, within each half, a rank by period: ongoing (started, no completion date) is 0,
+     *       completed is 1, no dates at all is 2. V4's CHECK makes a completion date imply a
+     *       start date, so these three are every state a row can be in;
+     *   <li>latest completion first, which orders the completed rank and is constant in the
+     *       other two;
+     *   <li>then latest start, newest entry and finally the id, which make the order total.
+     *       Without a unique last key, rows that tie on every other key may come back in a
+     *       different order for each LIMIT/OFFSET, and a page boundary between them would show
+     *       one project twice and another never.
+     * </ol>
+     *
+     * <p>A CASE rank rather than the date columns alone because Postgres puts NULLs first under
+     * DESC: {@code completedOn DESC} on its own would list the ongoing projects first only by
+     * accident of that default, and the undated ones along with them. The rank says which group
+     * comes where. {@code NULLS LAST} on the two date keys is therefore not load-bearing - inside
+     * any one rank each date column is either always null or never null - and is kept so that
+     * each key reads correctly on its own.
+     *
+     * <p>Not a {@code Pageable} Sort: the CASE is not a property, and passing it as one would take
+     * {@code JpaSort.unsafe}, a raw expression string handed in by every caller. Written into the
+     * query, the order lives in one place and both public queries run exactly it. The service
+     * strips any Sort a caller passes, so nothing is appended after it either.
+     */
+    String PUBLIC_ORDER = " ORDER BY p.featured DESC,"
+        + " CASE WHEN p.completedOn IS NOT NULL THEN 1"
+        + " WHEN p.startedOn IS NOT NULL THEN 0 ELSE 2 END,"
+        + " p.completedOn DESC NULLS LAST,"
+        + " p.startedOn DESC NULLS LAST,"
+        + " p.createdAt DESC,"
+        + " p.id";
+
+    @Query("SELECT p.id FROM Project p WHERE p.published = true" + PUBLIC_ORDER)
     Page<UUID> findPublishedIds(Pageable pageable);
 
     /** The published-only counterpart of {@link #findIdsByTagNamesIgnoreCase}; see its note. */
     @Query("SELECT p.id FROM Project p WHERE p.published = true AND p.id IN "
-        + "(SELECT p2.id FROM Project p2 JOIN p2.tags t WHERE LOWER(t.name) IN :tagNames)")
+        + "(SELECT p2.id FROM Project p2 JOIN p2.tags t WHERE LOWER(t.name) IN :tagNames)"
+        + PUBLIC_ORDER)
     Page<UUID> findPublishedIdsByTagNamesIgnoreCase(
         @Param("tagNames") List<String> tagNames, Pageable pageable);
 
@@ -96,6 +135,8 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
      * {@code DO UPDATE SET} clause, so no argument to this method can reach them. They appear in
      * the {@code INSERT} half -- a NOT NULL column needs something on the way in -- and that half
      * runs only when no project claims the repository yet, so there is no content to destroy.
+     * {@code featured} (#88) is in neither half: an insert takes V11's default, false, so sync
+     * never features a draft, and an update never un-features a project the owner featured.
      *
      * <p><b>Why an upsert rather than find-then-write.</b> Asking "does a project claim this
      * repository?" and then inserting is the check-then-act shape CLAUDE.md's checklist lists as

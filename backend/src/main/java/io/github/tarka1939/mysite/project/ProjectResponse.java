@@ -22,6 +22,7 @@ public record ProjectResponse(
     LocalDate startedOn,
     LocalDate completedOn,
     boolean published,
+    boolean featured,
     String repoFullName,
     Instant lastPushedAt,
     String defaultBranch,
@@ -43,6 +44,9 @@ public record ProjectResponse(
             // else. Serialised regardless, because GET /admin/projects is where it carries
             // information: the admin list has to be able to mark a draft as one.
             project.isPublished(),
+            // Serialised on the public endpoints too, though nothing there displays it (#88): it
+            // is the one input to the public order a client cannot otherwise see.
+            project.isFeatured(),
             project.getRepoFullName(),
             project.getLastPushedAt(),
             project.getDefaultBranch(),
