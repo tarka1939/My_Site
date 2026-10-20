@@ -331,6 +331,10 @@ Opened as the home for work that is neither a new feature nor a bug in something
 - [x] #313 - a failed login's error toast stayed on screen after the next attempt succeeded. PR #316: a successful login takes every error toast down before it navigates. The session-expiry notice still survives the redirect to the login page.
 - [x] #314 - rate limits and the analytics visitor count treat each IPv6 address as its own client, while a visitor holds a whole /64. **Decided:** key on the /64, for the analytics visitor hash too, and say so on the privacy page and in the ADR. PR #321: `ClientIpResolver.resolveNetwork` is the one key, and the full address is no longer reachable from outside the root package. On 2026-10-19 the owner signed off the privacy page's sentence and left the contact paragraph's "per address" as it is.
 
+**Filed 2026-10-20 by the tech-debt pass (#68).** The pass also corrected eleven stale passages in docs and comments, in PR #324. Its record, checks and baseline for the next pass are on #68.
+- [ ] #323 - `ProjectCreatedEvent`, the Phase 1 reference event, has never had a real subscriber. Neither shipped Phase 7 extension uses it, its one listener only logs, and a draft that GitHub sync creates does not publish it, while `CLAUDE.md` still cites it as the pattern. For the owner: delete it, or publish it from sync too and say nothing consumes it yet
+- [ ] #325 - Mockito attaches its agent at runtime on every backend test run, which the JDK warns about and JEP 451 plans to refuse by default. PR #326, in review: surefire loads it with `-javaagent`, both warnings go, and the 488 tests still pass
+
 ## Ongoing / meta
 
 - [ ] Treat `SPEC.md` and the OpenAPI contract as source of truth - update them **before** changing code, not after the fact
