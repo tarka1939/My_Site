@@ -2,8 +2,8 @@
 
 ## `ci.yml` - tests on every pull request
 
-Runs the backend suite, the frontend suite, and a check that the committed API client still matches
-`docs/openapi.yaml`. Issue #193.
+Runs the backend suite, the frontend suite, the frontend lint (#210), and a check that the committed
+API client still matches `docs/openapi.yaml`. Issue #193. Pushes to `dev` and `main` run it too.
 
 Deliberately deploys nothing. It needs no secrets and has no deploy target, so it cannot break
 production - which is why it was separated out of #38 and #45 and shipped first. Before it existed,
