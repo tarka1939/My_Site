@@ -212,6 +212,14 @@ erDiagram
         text_array images
         timestamptz created_at
         timestamptz updated_at
+        date started_on "nullable"
+        date completed_on "nullable, null = ongoing"
+        boolean published
+        string repo_full_name "nullable, unique ignoring case"
+        timestamptz last_pushed_at "nullable"
+        string default_branch "nullable"
+        boolean archived
+        boolean featured
     }
     TAG {
         uuid id PK
