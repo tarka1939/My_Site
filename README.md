@@ -95,8 +95,8 @@ See `docs/DECISIONS.md` for full reasoning.
   /about          Editable About page (singleton)
   /analytics      Phase 7c - page views and link clicks, no cookies (behind a flag)
   /githubsync     Phase 7a - GitHub webhook auto-sync
-  /agentlog       Phase 7b - rendered agent build-log page
-  /dspdemo        Phase 7d - live DSP/audio demo (built last)
+  /agentlog       Phase 7b, planned (no package yet) - rendered agent build-log page
+  /dspdemo        Phase 7d, planned (no package yet) - live DSP/audio demo (built last)
 /frontend         Angular app (standalone components, signals, generated API client, admin CRUD)
 /e2e              Playwright end-to-end suite - its own package, deliberately not inside /frontend
 /content-seed     Portfolio content as data, plus a script that applies it through the real API
