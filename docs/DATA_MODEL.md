@@ -112,7 +112,7 @@ _Added 2026-07-24 - see `docs/DECISIONS.md` → Password reset flow ADR. Support
 
 ### GithubSyncRecord (7a - GitHub webhook auto-sync)
 
-**Built in Phase 7a (`V6__github_sync_record.sql`, issues #53/#55).** This table is the webhook receiver's *delivery ledger*: it records that a signed delivery arrived and was accepted, and nothing more. It does not yet track "synced repo metadata linked back to a `Project`", which is what the original draft described - that is issue #54, still unbuilt. **What a sync may write is no longer open**: the Phase 7a ADR in `docs/DECISIONS.md` settles it, because the portfolio's prose is hand-curated (#49, `content-seed/projects.json`) and copying a repo description over `Project.description` would destroy it.
+**Built in Phase 7a (`V6__github_sync_record.sql`, issues #53/#55).** This table is the webhook receiver's *delivery ledger*: it records that a signed delivery arrived and was accepted, and nothing more. It does not track "synced repo metadata linked back to a `Project`", which is what the original draft described: #54 (2026-08-21) put the link on the project instead, as `project.repo_full_name`, and a delivery is matched to its project by that name. **What a sync may write is no longer open**: the Phase 7a ADR in `docs/DECISIONS.md` settles it, because the portfolio's prose is hand-curated (#49, `content-seed/projects.json`) and copying a repo description over `Project.description` would destroy it.
 
 **The sync boundary, confirmed 2026-08-18** (Phase 7a ADR): the ledger below and the GitHub-authoritative `Project` columns listed further down are the *only* things an inbound webhook may ever write. `Project.title`, `description`, `tags`, `links`, `images`, `startedOn` and `completedOn` are curated by the owner and never touched by sync.
 
@@ -127,16 +127,16 @@ _Added 2026-07-24 - see `docs/DECISIONS.md` → Password reset flow ADR. Support
 | received_at | timestamptz, not null default `now()` | When the delivery was verified and accepted - a fact this phase knows, unlike `last_synced_at` |
 | raw_payload | jsonb, nullable | The delivery body, for debugging a delivery that can't easily be replayed. Content-equal to what arrived but **not byte-equal** - `jsonb` parses rather than stores text, so whitespace goes, keys are reordered and escapes are resolved. It therefore can't be used to re-verify a signature after the fact; nothing needs that, since verification happens once on the wire bytes. The other accepted trade is that a payload containing an escaped NUL can't be stored at all and would fail the insert (see the migration comment) |
 
-Deliberately **not** created yet, both deferred to #54 rather than added speculatively:
+Deliberately **not** created. Phase 7a deferred both to #54, and #54 shipped without either:
 
-| Field | Type | Why not yet |
+| Field | Type | Why not |
 |---|---|---|
-| project_id | uuid, FK → Project, nullable | Which `Project` a delivery belongs to - and whether the link is even by repo name - is part of the open #54 decision. Note that a DB FK here is fine under Spring Modulith (it checks Java package dependencies, not schema), but a JPA `@ManyToOne Project` would not be; store the bare UUID |
-| last_synced_at | timestamptz | Phase 7a performs no sync, so every value would be a lie |
+| project_id | uuid, FK → Project, nullable | #54 linked a delivery to its `Project` by repository name, through `project.repo_full_name` below, so the ledger needs no key of its own. Were one ever added, note that a DB FK here is fine under Spring Modulith (it checks Java package dependencies, not schema), but a JPA `@ManyToOne Project` would not be; store the bare UUID |
+| last_synced_at | timestamptz | Phase 7a performed no sync, so every value would have been a lie. Since #54 nothing reads a sync time: a failed sync is logged at ERROR with the delivery id, and the payload stays here for a manual replay |
 
 #### `project` additions - decided in the 7a ADR, built in #54
 
-Not in `V6`. Listed here so the decision and its schema live together; the migration that adds them is the one that must default existing rows to `published = true`, or a deploy blanks the live site.
+Not in `V6`: `V7__project_publication_and_github_fields.sql` adds them. Listed here so the decision and its schema live together. `V7` is the migration that defaults existing rows to `published = true`, without which a deploy would have blanked the live site.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -242,7 +242,7 @@ erDiagram
     }
 ```
 
-Phase 7 entities relate back to `PROJECT` as follows. `GITHUB_SYNC_RECORD` is built (Phase 7a) and shown as implemented - note it has **no** `PROJECT` relationship yet, because the link is issue #54's open decision. `ANALYTICS_EVENT` is decided (Phase 7c), and its line to `PROJECT` is dotted because it is an id with no foreign key. The rest are still speculative - see the caveat above each table - and are not implemented until their sub-phase starts:
+Phase 7 entities relate back to `PROJECT` as follows. `GITHUB_SYNC_RECORD` is built (Phase 7a) and shown as implemented - note it has **no** `PROJECT` relationship: #54 matched a delivery to its project by `repo_full_name` instead of a key. `ANALYTICS_EVENT` is decided (Phase 7c), and its line to `PROJECT` is dotted because it is an id with no foreign key. The rest are still speculative - see the caveat above each table - and are not implemented until their sub-phase starts:
 
 ```mermaid
 erDiagram
