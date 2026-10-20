@@ -42,7 +42,10 @@ import {
   ACCEPT_RULE,
   analyseBackend,
   analyseNpmAudit,
+  analyseOsv,
+  applyCanaries,
   buildResults,
+  CANARIES,
   compareMavenVersions,
   compareSemver,
   encodeState,
@@ -522,6 +525,125 @@ describe('the OSV client', () => {
 
 // -------------------------------------------------------------------------------------------------
 
+describe('canaries: a source that answers empty (#303)', () => {
+  const npmCanary = (overrides = {}) => npm({ area: 'canary', ships: 'never', ...overrides });
+  const osvCanary = (name = 'osv-findings.json') => analyseOsv('canary', fixture(name));
+  const healthy = () => ({ npm: npmCanary(), osv: osvCanary() });
+  // Three completed audits that found nothing: exactly what a source answering empty looks like.
+  const cleanAreas = () => [
+    backend({ osvText: fixture('osv-clean.json') }),
+    npm({ stdout: fixture('npm-clean.json'), exitCodeText: '0', lockfileText: '{"packages":{}}' }),
+    npm({ area: 'e2e', ships: 'never', stdout: fixture('npm-clean.json'), exitCodeText: '0', lockfileText: '{"packages":{}}' }),
+  ];
+  const byArea = (results) => Object.fromEntries(results.map((r) => [r.area, r]));
+
+  test('canaries that find something leave every audit as it was', () => {
+    assert.deepEqual(applyCanaries(cleanAreas(), healthy()), cleanAreas());
+  });
+
+  test("an npm canary answering empty, as offline mode made it, fails both npm audits and not the backend's", () => {
+    // npm-clean.json exiting 0 is the exact shape npm_config_offline=true produced in #295's review.
+    const r = byArea(applyCanaries(cleanAreas(), { ...healthy(), npm: npmCanary({ stdout: fixture('npm-clean.json'), exitCodeText: '0' }) }));
+    for (const area of ['frontend', 'e2e']) {
+      assert.equal(r[area].status, 'errored');
+      assert.match(r[area].error, /npm audit canary, which has published advisories, came back with none.*#303/);
+    }
+    assert.equal(r.backend.status, 'ok');
+  });
+
+  test("an OSV canary answering empty fails the backend audit and not npm's", () => {
+    const r = byArea(applyCanaries(cleanAreas(), { ...healthy(), osv: osvCanary('osv-clean.json') }));
+    assert.equal(r.backend.status, 'errored');
+    assert.match(r.backend.error, /OSV canary, which has published advisories, came back with none/);
+    assert.equal(r.frontend.status, 'ok');
+    assert.equal(r.e2e.status, 'ok');
+  });
+
+  test('a canary that could not complete fails its areas, and says why', () => {
+    const r = byArea(applyCanaries(cleanAreas(), { ...healthy(), npm: npmCanary({ stdout: fixture('npm-error.json'), exitCodeText: '1' }) }));
+    assert.equal(r.frontend.status, 'errored');
+    assert.match(r.frontend.error, /npm audit canary's own step could not complete: npm audit could not complete \(exit 1\).*ECONNREFUSED/);
+  });
+
+  test('a canary with no result fails its areas', () => {
+    const r = byArea(applyCanaries(cleanAreas(), { osv: osvCanary() }));
+    assert.match(r.frontend.error, /npm audit canary produced no result/);
+    assert.match(r.e2e.error, /npm audit canary produced no result/);
+    assert.equal(r.backend.status, 'ok');
+  });
+
+  test('one finding is enough for a canary to vouch for its source', () => {
+    // At least one, not a count (see CANARIES): an advisory withdrawn upstream must not fail the run.
+    const one = (result) => ({ ...result, findings: result.findings.slice(0, 1) });
+    const canaries = { npm: one(npmCanary()), osv: one(osvCanary()) };
+    assert.equal(canaries.npm.findings.length, 1);
+    assert.equal(canaries.osv.findings.length, 1);
+    assert.deepEqual(applyCanaries(cleanAreas(), canaries), cleanAreas());
+  });
+
+  test('every canary message is plain text with one period between sentences', () => {
+    // These reach `::error` annotations, which show Markdown as it is, and the OSV error used here
+    // ends with a period of its own.
+    const failed = [
+      { ...healthy(), osv: analyseOsv('canary', null) },
+      { ...healthy(), osv: osvCanary('osv-clean.json') },
+      { npm: npmCanary() },
+    ];
+    for (const canaries of failed) {
+      const { error } = byArea(applyCanaries(cleanAreas(), canaries)).backend;
+      assert.match(error, /^Not trusted this run: the OSV canary/);
+      assert.doesNotMatch(error, /`|\.\./);
+    }
+  });
+
+  test('a failed canary fails an audit that found something too, and its findings are dropped', () => {
+    const r = byArea(applyCanaries([npm()], { ...healthy(), npm: npmCanary({ stdout: fixture('npm-clean.json'), exitCodeText: '0' }) }));
+    assert.equal(r.frontend.status, 'errored');
+    assert.deepEqual(r.frontend.findings, []);
+  });
+
+  test('an audit that already could not complete keeps its own error', () => {
+    const r = byArea(applyCanaries([backend({ mvnExitText: '1' })], { ...healthy(), osv: osvCanary('osv-clean.json') }));
+    assert.match(r.backend.error, /^Maven could not resolve the dependency graph/);
+  });
+
+  test('the OSV canary list is one dependency, in the format Maven writes', () => {
+    const deps = parseMavenDependencyList(readFileSync(new URL('./canary-dependency-list.txt', import.meta.url), 'utf8'));
+    assert.deepEqual(
+      deps.map((d) => `${d.group}:${d.artifact}@${d.version}`),
+      ['org.postgresql:postgresql@42.2.0'],
+    );
+  });
+
+  const repoFile = (name) => readFileSync(new URL(`../../${name}`, import.meta.url), 'utf8');
+  // What runs, not what is said about it: a comment naming a path must not pass these tests.
+  const withoutComments = (yaml) => yaml.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+
+  test('the workflow audits the files CANARIES names', () => {
+    const workflow = withoutComments(repoFile('workflows/dependency-audit.yml'));
+    for (const canary of CANARIES) {
+      assert.ok(workflow.includes(`.github/scripts/dependency-audit/${canary.file}`), `${canary.file} is not in the workflow`);
+    }
+    assert.ok(workflow.includes('"$AUDIT_OUT/canary.npm-audit.json"'));
+    assert.ok(workflow.includes('"$AUDIT_OUT/canary.npm-audit.exit"'));
+    assert.ok(workflow.includes('"$AUDIT_OUT/canary.osv.json"'));
+  });
+
+  test('the canary and the real npm audits run with the same arguments, in the workflow and the README', () => {
+    // The canary vouches for the real audits only if it runs the way they do. Drop --offline=false
+    // from one real step and offline mode empties that audit, while the canary still finds 6.
+    const npmAuditArgs = (text) => [...text.matchAll(/npm audit (--[^>\n]*?)[ \t]*>/g)].map((m) => m[1]);
+    const inWorkflow = npmAuditArgs(withoutComments(repoFile('workflows/dependency-audit.yml')));
+    const inReadme = npmAuditArgs((repoFile('workflows/README.md').match(/```bash\n[\s\S]*?```/g) ?? []).join('\n'));
+    assert.equal(inWorkflow.length, 3, 'the workflow should run npm audit three times: frontend, e2e, canary');
+    assert.equal(inReadme.length, 3, "the README's local run should run npm audit three times: frontend, e2e, canary");
+    const all = [...inWorkflow, ...inReadme];
+    assert.deepEqual(all, all.map(() => inWorkflow[0]));
+  });
+});
+
+// -------------------------------------------------------------------------------------------------
+
 describe('the floor', () => {
   const at = (severity, ships) => meetsFloor({ severity, ships });
   test('high or worse counts anywhere', () => {
@@ -973,8 +1095,18 @@ describe('the tracking issue', () => {
 describe('report.mjs, run as the workflow runs it', () => {
   const script = fileURLToPath(new URL('./report.mjs', import.meta.url));
 
-  /** A directory laid out as the workflow's collect steps leave it, plus a repo root with lockfiles. */
-  function layout({ frontend = ['npm-findings.json', '1'], e2e = ['npm-clean.json', '0'], mvnExit = '0', osv = 'osv-findings.json' } = {}) {
+  /**
+   * A directory laid out as the workflow's collect steps leave it, plus a repo root with lockfiles.
+   * The canaries find something unless a test says otherwise, as they do on a healthy run.
+   */
+  function layout({
+    frontend = ['npm-findings.json', '1'],
+    e2e = ['npm-clean.json', '0'],
+    mvnExit = '0',
+    osv = 'osv-findings.json',
+    canaryNpm = ['npm-findings.json', '1'],
+    canaryOsv = 'osv-findings.json',
+  } = {}) {
     const base = mkdtempSync(path.join(tmpdir(), 'dependency-audit-test-'));
     const dir = path.join(base, 'out');
     const root = path.join(base, 'repo');
@@ -987,6 +1119,8 @@ describe('report.mjs, run as the workflow runs it', () => {
     if (e2e) put('e2e', e2e);
     if (mvnExit !== null) writeFileSync(path.join(dir, 'backend.mvn.exit'), `${mvnExit}\n`);
     if (osv) copyFileSync(new URL(`./fixtures/${osv}`, import.meta.url), path.join(dir, 'backend.osv.json'));
+    if (canaryNpm) put('canary', canaryNpm);
+    if (canaryOsv) copyFileSync(new URL(`./fixtures/${canaryOsv}`, import.meta.url), path.join(dir, 'canary.osv.json'));
     writeFileSync(path.join(root, 'frontend', 'package-lock.json'), FRONTEND_LOCK);
     writeFileSync(path.join(root, 'e2e', 'package-lock.json'), '{"lockfileVersion":3,"packages":{}}');
     return { base, dir, root };
@@ -1065,6 +1199,50 @@ describe('report.mjs, run as the workflow runs it', () => {
       const r = run(paths);
       assert.equal(r.status, 0);
       assert.deepEqual(r.results.actionableKeys, []);
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+
+  test("the canaries' findings reach neither the report nor the results", () => {
+    // Every real audit is clean and both canaries found plenty: anything of theirs that leaked
+    // would show up as a finding.
+    const paths = layout({ frontend: ['npm-clean.json', '0'], osv: 'osv-clean.json' });
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 0, r.stdout);
+      assert.deepEqual(r.results.findings, []);
+      assert.ok(r.results.areas.every((a) => a.findingCount === 0));
+      for (const fromACanary of ['lodash', 'minimist', 'GHSA-24rp-q3w6-vc56', 'org.postgresql']) {
+        assert.ok(!r.summary.includes(fromACanary), `${fromACanary} leaked into the summary`);
+        assert.ok(!JSON.stringify(r.results).includes(fromACanary), `${fromACanary} leaked into results.json`);
+      }
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+
+  test('an npm canary that answered empty: exit 1, both npm areas annotated, the backend still reported', () => {
+    const paths = layout({ canaryNpm: ['npm-clean.json', '0'] });
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 1);
+      assert.match(r.stdout, /::error title=Frontend audit could not complete::Not trusted this run: the npm audit canary/);
+      assert.match(r.stdout, /::error title=E2E audit could not complete::Not trusted this run: the npm audit canary/);
+      assert.doesNotMatch(r.stdout, /::error title=Backend/);
+      assert.match(r.summary, /\*\*Frontend: the audit could not complete\.\*\*/);
+      assert.equal(r.results.areas.find((a) => a.area === 'backend').status, 'ok');
+    } finally {
+      rmSync(paths.base, { recursive: true, force: true });
+    }
+  });
+
+  test('no canary output at all: exit 1, never a clean report', () => {
+    const paths = layout({ frontend: ['npm-clean.json', '0'], osv: 'osv-clean.json', canaryNpm: null, canaryOsv: null });
+    try {
+      const r = run(paths);
+      assert.equal(r.status, 1);
+      assert.equal(r.results.areas.filter((a) => a.status === 'errored').length, 3);
     } finally {
       rmSync(paths.base, { recursive: true, force: true });
     }

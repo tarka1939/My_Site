@@ -17,7 +17,8 @@
 # is published, with no change in this repository (#273, option 2). Here a FINDING never fails the
 # run; the issue is the signal. What does fail the run is an audit that could not COMPLETE -- a
 # registry or network error, output the script cannot read, a Maven failure -- because an audit
-# that silently did not happen reads exactly like a clean one.
+# that silently did not happen reads exactly like a clean one. So does a source that answers with a
+# valid but empty result, which is what the canary steps below are for (#303).
 #
 # The logic, and its tests on recorded real output, are in .github/scripts/dependency-audit/.
 
@@ -155,6 +156,31 @@ jobs:
       # that and fails the run, after writing the summary.
       - name: Look the backend graph up in OSV
         run: node .github/scripts/dependency-audit/osv-query.mjs "$AUDIT_OUT/backend.deps.txt" "$AUDIT_OUT/backend.osv.json" || true
+
+      # The canaries (#303). A source can answer with a valid, empty result, which reads exactly
+      # like a clean week, and nothing above can tell. So each source also audits something with
+      # published advisories, through the same tool and the same flags, and the report step marks
+      # every audit on a source whose canary found nothing as one that could not complete. The
+      # canaries' findings never reach the report or the issue. Both paths are in CANARIES in
+      # lib.mjs. Tests fail if this file stops naming them outside a comment, or if the three npm
+      # audits' arguments stop matching, here or in the README's local run.
+      #
+      # npm's runs in a directory of its own, outside the checkout, because the lockfile has to be
+      # named package-lock.json there, and a file of that name in the repository would raise
+      # Dependabot alerts. The repository has no .npmrc, so this sees the same npm config as the two
+      # audits above. If one is ever added to frontend/ or e2e/, copy it here too.
+      - name: Canary - npm audit of a lockfile with published advisories
+        run: |
+          set +e
+          canary="$RUNNER_TEMP/npm-canary"
+          mkdir -p "$canary"
+          cp .github/scripts/dependency-audit/fixtures/npm-findings.lockfile.json "$canary/package-lock.json"
+          cd "$canary"
+          npm audit --json --package-lock-only --offline=false --include=dev --include=optional --include=peer > "$AUDIT_OUT/canary.npm-audit.json"
+          echo $? > "$AUDIT_OUT/canary.npm-audit.exit"
+
+      - name: Canary - look a version with published advisories up in OSV
+        run: node .github/scripts/dependency-audit/osv-query.mjs .github/scripts/dependency-audit/canary-dependency-list.txt "$AUDIT_OUT/canary.osv.json" || true
 
       # The one step that judges. Exits 0 whatever was found, and 1 when any audit could not
       # complete, with an annotation naming it. The summary is written first either way.

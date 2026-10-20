@@ -11,9 +11,12 @@
  *   e2e.npm-audit.json, e2e.npm-audit.exit
  *   backend.mvn.exit                                    mvn dependency:list's exit code
  *   backend.osv.json                                    what osv-query.mjs wrote
+ *   canary.npm-audit.json, canary.npm-audit.exit        npm audit of the canary lockfile (#303)
+ *   canary.osv.json                                     osv-query.mjs on the canary list
  *
- * and reads the audited lockfiles from --root. A missing file is not an error here: the area it
- * belongs to is reported as an audit that could not complete.
+ * and reads the audited lockfiles from --root, and the canary lockfile from beside this script. A
+ * missing file is not an error here: the area it belongs to is reported as an audit that could not
+ * complete, and a missing canary output does the same to every area on that canary's source.
  *
  * Exit code: 0 when every audit completed, whatever they found, because a finding is reported
  * through the issue, not by failing the run. 1 when any audit could not complete, after writing the
@@ -22,8 +25,9 @@
 
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { analyseBackend, analyseNpmAudit, areaDef, buildResults, isMain, renderReport } from './lib.mjs';
+import { analyseBackend, analyseNpmAudit, analyseOsv, applyCanaries, areaDef, buildResults, CANARIES, isMain, renderReport } from './lib.mjs';
 
 function read(file) {
   try {
@@ -50,12 +54,28 @@ export function collect({ dir, root, env = process.env, ref, sha }) {
     env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY && env.GITHUB_RUN_ID
       ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}`
       : null;
+  // Read with the same functions as the areas they vouch for, so a canary is judged exactly as a
+  // real audit would be. Their findings go no further than applyCanaries.
+  const canaryFile = (source) => fileURLToPath(new URL(CANARIES.find((c) => c.source === source).file, import.meta.url));
+  const canaries = {
+    npm: analyseNpmAudit({
+      area: 'canary',
+      stdout: read(path.join(dir, 'canary.npm-audit.json')),
+      exitCodeText: read(path.join(dir, 'canary.npm-audit.exit')),
+      lockfileText: read(canaryFile('npm')),
+      ships: 'never',
+    }),
+    osv: analyseOsv('canary', read(path.join(dir, 'canary.osv.json'))),
+  };
   return buildResults(
-    [
-      analyseBackend({ mvnExitText: read(path.join(dir, 'backend.mvn.exit')), osvText: read(path.join(dir, 'backend.osv.json')) }),
-      npmArea('frontend'),
-      npmArea('e2e'),
-    ],
+    applyCanaries(
+      [
+        analyseBackend({ mvnExitText: read(path.join(dir, 'backend.mvn.exit')), osvText: read(path.join(dir, 'backend.osv.json')) }),
+        npmArea('frontend'),
+        npmArea('e2e'),
+      ],
+      canaries,
+    ),
     { ref: ref ?? env.AUDIT_REF ?? env.GITHUB_REF_NAME ?? null, sha: sha ?? env.GITHUB_SHA ?? null, runUrl },
   );
 }
