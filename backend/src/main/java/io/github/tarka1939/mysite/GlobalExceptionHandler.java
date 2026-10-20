@@ -212,9 +212,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * The body of every validation failure, whichever of the three handlers above raised it. One
-     * builder, so Bean Validation's two failures and the tag rule's cannot drift apart: the client
-     * branches on this shape without knowing which one it got.
+     * The body of every validation failure, whichever of the four handlers above raised it. One
+     * builder, so Bean Validation's two failures, the tag rule's (#148) and the analytics query
+     * parameters' (#59) cannot drift apart: the client branches on this shape without knowing
+     * which one it got.
      */
     private static ProblemDetail validationProblem(HttpStatusCode status, List<FieldErrorDetail> errors) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Request failed validation");
