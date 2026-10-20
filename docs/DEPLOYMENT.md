@@ -62,7 +62,7 @@ yourself - it changes only Part 2, step 3.
 | Prod API base URL | `https://tarka1939.bieda.it/api/v1` - was a `TBD` placeholder until 2026-09-03. **A host change is six edits, plus a seventh decision** (#181, #122): the row once named only the first, and the 2026-09-03 rename (67cdaf1) edited only the fourth, leaving 1-3 on the retired host until #175 | 1. `frontend/src/environments/environment.ts` - `apiBaseUrl`, the value the app actually calls; 2. `frontend/src/index.html` - `<link rel="preconnect">`; 3. `frontend/src/index.html` - `<link rel="dns-prefetch">`; 4. `docs/openapi.yaml` - the production `servers:` entry; 5. `.github/workflows/deploy-backend.yml` - the "Verify from the public internet" health check, which otherwise fails after the next deploy and blames the proxy; 6. `frontend/public/_headers` - `connect-src` in the Content-Security-Policy, which otherwise blocks every API call the deployed site makes. `frontend/src/api-origin-hints.spec.ts` fails if 4 or 5 disagrees with 1, if 6 does not allow 1's origin, or if 2 or 3 has no hint to 1's origin (a leftover hint to the old host *beside* the right one still passes). Editing 4 is a contract edit, so run `npm run generate:api` as for any other; it should produce no diff, since the client takes its default base path from the *first*, local, entry. 7. `content-seed/locality.mjs` - `APPROVED_DEPLOYMENT_HOSTS`: not an edit to make in step, but a separate decision whether the seed may write to the new host; nothing checks it, on purpose |
 | CORS config | **exists** since PR #172 - exact origins, no patterns | `SecurityConfig.java`; issue #44, deployed and verified live 2026-09-03 |
 | Dockerfile | **does not exist** | issue #41 |
-| CI workflows | `ci.yml` (both suites and the API-client staleness check, on every PR and every push to `dev` or `main`), `deploy-frontend.yml` and `deploy-backend.yml` (on every push to `main`, or dispatched by hand) - this row said **none** until 2026-09-30, long after #193, #38 and #45 had landed | `.github/workflows/`; `docs/CI_PLAN.md`, `docs/DEPLOY_PIPELINE_SETUP.md` |
+| CI workflows | `ci.yml` (both suites, the frontend lint and the API-client staleness check, on every PR and every push to `dev` or `main`), `deploy-frontend.yml` and `deploy-backend.yml` (on every push to `main`, or dispatched by hand) - this row said **none** until 2026-09-30, long after #193, #38 and #45 had landed | `.github/workflows/`; `docs/CI_PLAN.md`, `docs/DEPLOY_PIPELINE_SETUP.md` |
 
 ### Resolved during the deployment
 
@@ -84,7 +84,7 @@ start without them.**
 | **`DB_URL`** | none | Full JDBC URL, e.g. `jdbc:postgresql://localhost:5432/mysite` |
 | **`DB_USERNAME`** | none | |
 | **`DB_PASSWORD`** | none | |
-| **`SPRING_PROFILES_ACTIVE`** | none | Must be `prod`. Without it none of the four below is read at all - they exist only in `application-prod.yml` - and the failure is a confusing one about a missing datasource rather than a missing variable |
+| **`SPRING_PROFILES_ACTIVE`** | none | Must be `prod`. Without it the other four in bold are never read, nor is `STRUCTURED_LOGS`: outside local dev, only `application-prod.yml` names them. The failure is then a confusing one about a missing datasource rather than a missing variable |
 | **`JWT_SECRET`** | none | Must be ≥32 bytes. Deliberately has no default - the app refuses to boot rather than run on a guessable key |
 | `FRONTEND_URL` | `http://localhost:4200` | Used to build password-reset links. Set it to the Netlify URL or reset emails will point at localhost |
 | `RESEND_API_KEY` | empty | Empty is a *designed* no-op: emails are skipped with a warning rather than failing. Fine to leave unset at first, but note it is no longer only about password reset - since #186 it also gates contact-form notification, which is an operational need rather than a demo |
@@ -95,11 +95,11 @@ start without them.**
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
 | `ANALYTICS_ENABLED` | `false` | Phase 7c. `true` starts counting page views and project link clicks; the value is compared ignoring case, and anything else is off. While off, the event endpoints answer 404, the tracker's failed requests show nothing, and the admin dashboard says counting is off. Nothing else goes with it: the daily salt lives only in memory, by design |
 | `TLS_TERMINATED_UPSTREAM` | `true` in `prod`, `false` otherwise | #260. Tells Tomcat that TLS ended before the request arrived, so the app sees `https` and sends HSTS. Leave it alone unless the app is ever served without a TLS-terminating proxy in front - see "Certificates" in 4.8 |
-| `CORS_ALLOWED_ORIGINS` | `https://krzysztof-tarka.netlify.app` | #44. The origins the browser may call the API from: exact `scheme://host[:port]` values, comma-separated. A wildcard, a path or a trailing slash fails startup. This is the one backend change a custom frontend domain needs: list both origins during the switchover. Netlify deploy previews are deliberately not in it |
-| `TRUSTED_PROXIES` | the provider's two proxy `/64`s in `prod`, empty otherwise | #168. Only a peer in these CIDRs may tell the app the client's address. Set them only if the provider moves its proxy nodes - see "What this means for #168" in 4.8. A stale list is not a security hole, but it puts every visitor in one rate-limit bucket and makes every visitor count as one |
-| `CLIENT_IP_HEADER` | `CF-Connecting-IP` in `prod`, empty otherwise | #168. The header a trusted proxy names the client in |
-| `TRUSTED_HOP_COUNT` | `2` in `prod`, `0` otherwise | #168. Which `X-Forwarded-For` entry, counted from the right, is the client, when the header above is missing |
-| `STRUCTURED_LOGS` | empty | `ecs`, `logstash` or `gelf` switches the console log to JSON, for a log shipper. Empty keeps the plain pattern - see "Structured (JSON) logs" in 7b |
+| `CORS_ALLOWED_ORIGINS` | `https://krzysztof-tarka.netlify.app` | #44. The origins the browser may call the API from: exact `scheme://host[:port]` values, comma-separated. A wildcard, a path or a trailing slash fails startup. With `FRONTEND_URL`, this is one of the two backend changes a custom frontend domain needs: list both origins here during the switchover. Netlify deploy previews are deliberately not in it |
+| `TRUSTED_PROXIES` | the provider's two proxy `/64`s in `prod`, empty in the base config | #168. Only a peer in these CIDRs may tell the app the client's address. Set them only if the provider moves its proxy nodes - see "What this means for #168" in 4.8. A stale list is not a security hole, but it puts every visitor in one rate-limit bucket and makes every visitor count as one |
+| `CLIENT_IP_HEADER` | `CF-Connecting-IP` in `prod`, empty in the base config | #168. The header a trusted proxy names the client in |
+| `TRUSTED_HOP_COUNT` | `2` in `prod`, `0` in the base config | #168. Which `X-Forwarded-For` entry, counted from the right, is the client, when the header above is missing |
+| `STRUCTURED_LOGS` | empty; read only in `prod` | `ecs`, `logstash` or `gelf` switches the console log to JSON, for a log shipper. Empty keeps the plain pattern - see "Structured (JSON) logs" in 7b |
 
 > **Note a naming trap.** The **dev** profile reads `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD`, and
 > their defaults match the Docker Compose database, so local development sets none of them
@@ -790,8 +790,9 @@ on the public IPv6, bypassing the provider's TLS entirely.
 
 With two proxies in the path, `request.getRemoteAddr()` is one address for the entire internet, so
 every per-IP rate limiter collapses into a single bucket - any stranger can lock the owner out of
-the admin panel and silence the contact form, and since Phase 7c every visitor counts as one. That is no longer a consequence to handle later; the site is
-broken in a way nobody will notice until it bites.
+the admin panel and silence the contact form, and since Phase 7c every visitor counts as one. That
+is no longer a consequence to handle later; the site is broken in a way nobody will notice until it
+bites.
 
 **Status: the code half is done** (#168, `ClientIpResolver`). The `prod` profile already defaults to this measured chain - the two provider `/64`s as trusted proxies, `CF-Connecting-IP` as the client-ip header, and a hop count of 2 - so nothing extra goes in `/etc/mysite/env`. Override with `TRUSTED_PROXIES`, `CLIENT_IP_HEADER` and `TRUSTED_HOP_COUNT` only if the provider moves its proxy nodes; a stale list is not a security hole (an untrusted peer keeps its own address) but it does silently restore the collapsed bucket.
 
@@ -837,18 +838,19 @@ this document claimed it did.
 These are repo changes, not server steps. They are the delegatable part, and none can be written
 until Parts 1 and 2 have produced real names.
 
-1. **CORS (#44)** - allowlist the exact Netlify origin in the backend. Not a wildcard: the site
-   sends an `Authorization` header, so a permissive config is both a real exposure and, with
-   credentials, one browsers reject anyway.
-2. **Trust `X-Forwarded-For`, conditionally (#168)** - required by 4.8, which otherwise collapses
-   both rate limiters into a single `127.0.0.1` bucket. The conditional matters: trust the header
-   only for requests arriving from the proxy. **There is no Caddy here and neither proxy is ours to
-   configure**, so "have the proxy overwrite rather than append" is not an available move - whatever
-   `X-Forwarded-For` arrives is what Cloudflare and the provider's nginx chose to send, and a client
-   can prepend to it. The fix therefore has to know *which* element is the real client: prefer
-   Cloudflare's `CF-Connecting-IP`, which it overwrites and is single-valued, and otherwise count
-   **from the right**, since a caller can only prepend. Unconditional trust is worse than the bug,
-   because a forged header defeats rate limiting entirely instead of merely globalising it.
+1. ~~**CORS (#44)**~~ **Done 2026-09-03.** Allowlist the exact Netlify origin in the backend. Not
+   a wildcard: the site sends an `Authorization` header, so a permissive config is both a real
+   exposure and, with credentials, one browsers reject anyway.
+2. ~~**Trust `X-Forwarded-For`, conditionally (#168)**~~ **Done 2026-09-03, as `ClientIpResolver`.**
+   Required by 4.8, which otherwise collapses every per-IP rate limiter into a single bucket. The
+   conditional matters: trust the header only for requests arriving from the proxy. **There is no
+   Caddy here and neither proxy is ours to configure**, so "have the proxy overwrite rather than
+   append" is not an available move - whatever `X-Forwarded-For` arrives is what Cloudflare and the
+   provider's nginx chose to send, and a client can prepend to it. The fix therefore has to know
+   *which* element is the real client: prefer Cloudflare's `CF-Connecting-IP`, which it overwrites
+   and is single-valued, and otherwise count **from the right**, since a caller can only prepend.
+   Unconditional trust is worse than the bug, because a forged header defeats rate limiting
+   entirely instead of merely globalising it.
 3. ~~**`environment.ts`** - replace the placeholder host.~~ **Done 2026-09-03.**
 4. ~~**`docs/openapi.yaml`** - the production server entry.~~ **Done 2026-09-03.** The regenerate
    produced no client change, and that is a *property* rather than luck: the typescript-angular
