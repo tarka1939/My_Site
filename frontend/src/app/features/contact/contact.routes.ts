@@ -11,9 +11,10 @@ export const CONTACT_ROUTES: Routes = [
     component: ContactFormComponent,
     title: 'Krzysztof Tarka - Contact',
     data: {
-      // Says nothing about what happens to a message after it is sent: the contact endpoint stores
-      // it for the admin view, and nothing emails or forwards it, so "goes straight to my inbox"
-      // would be a claim the system does not implement.
+      // Says nothing about what happens to a message after it is sent. The contact endpoint stores
+      // it for the admin view, and since #186 the backend can also email the owner a notice - but
+      // only when a notification address is configured, and best-effort even then, so "goes
+      // straight to my inbox" would promise more than the system guarantees.
       description: 'Get in touch - questions about a project, work enquiries, or anything else.',
       // Counted as a page view (core/analytics/analytics-tracker.ts).
       analyticsPage: AnalyticsPage.Contact,
