@@ -11,7 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Resolves the requester's IP and hashes it (SHA-256 hex) - the per-client key for the login,
- * both password-reset and the contact-form rate limits in {@link InMemoryRateLimiter}, so the
+ * both password-reset and contact-form rate limits in {@link InMemoryRateLimiter}, so the
  * limiter's map never holds a raw address. An IPv6 client is its {@code /64}
  * ({@link ClientIpResolver#resolveNetwork}, #314), so rotating addresses inside it does not reset
  * the limit.

@@ -856,8 +856,10 @@ until Parts 1 and 2 have produced real names.
    produced no client change, and that is a *property* rather than luck: the typescript-angular
    client embeds no server URL at all - `basePath` is injected at runtime by `provideApi()`. Note
    the check is `git diff --numstat`, not `git status --porcelain`; see `CLAUDE.md`.
-5. **`<link rel="preconnect">` (#89)** - small, real, and only possible once the origin is known.
-6. **`README.md`** - the "Live URL: (once deployed - Phase 5)" placeholder.
+5. ~~**`<link rel="preconnect">` (#89)** - small, real, and only possible once the origin is
+   known.~~ **Done 2026-09-03.**
+6. ~~**`README.md`** - the "Live URL: (once deployed - Phase 5)" placeholder.~~
+   **Done 2026-09-24.**
 
 ## 6. Part 4 - the one thing that will not work
 
