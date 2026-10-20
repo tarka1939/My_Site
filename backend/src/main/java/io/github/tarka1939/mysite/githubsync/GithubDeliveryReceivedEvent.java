@@ -16,17 +16,17 @@ import java.util.UUID;
  * {@code ApplicationEventPublisher} as how features talk to each other here, and routing
  * through it is what keeps the ledger code from depending on what consumes it.
  *
- * <p>Carries the record id rather than the payload, so a future listener reads what it needs
- * from the ledger instead of this record growing a field per consumer. Note it is a
- * <i>mutable-state-free</i> summary on purpose: no {@code byte[]}, which would need defensive
- * copying to be safe to hand around.
+ * <p>Carries the record id rather than the payload, so a listener reads what it needs from the
+ * ledger, as {@link GithubProjectSyncListener} does, instead of this record growing a field per
+ * consumer. Note it is a <i>mutable-state-free</i> summary on purpose: no {@code byte[]}, which
+ * would need defensive copying to be safe to hand around.
  *
  * <p>Known limitation: the insert commits before this is published, so a crash in between
  * records a delivery that is never processed -- and the redelivery would be dropped as a
- * duplicate. That is at-most-once. Since #54 it costs a project update, which stays bounded to
- * staleness until the repository's next push; {@link GithubProjectSyncListener} explains why,
- * and why the durable fix, {@code spring-modulith-events}, is still an undecided ADR rather than
- * code here.
+ * duplicate. That is at-most-once. Since #54 it costs a project update, or the draft a new
+ * repository would have become, and either stays bounded to staleness until the repository's
+ * next push; {@link GithubProjectSyncListener} explains why, and why the durable fix,
+ * {@code spring-modulith-events}, is still an undecided ADR rather than code here.
  *
  * @param recordId the {@code GithubSyncRecord} just written
  * @param deliveryId GitHub's {@code X-GitHub-Delivery} value
