@@ -1,6 +1,6 @@
 # /.github/workflows
 
-## `ci.yml` - tests on every pull request
+## `ci.yml` - tests and lint on every pull request
 
 Runs the backend suite, the frontend suite, the frontend lint (#210), and a check that the committed
 API client still matches `docs/openapi.yaml`. Issue #193. Pushes to `dev` and `main` run it too.
