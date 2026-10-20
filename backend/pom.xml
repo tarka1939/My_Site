@@ -131,9 +131,28 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
             <plugin>
+                <!-- Sets ${org.mockito:mockito-core:jar} to the jar's path, for surefire's argLine
+                     below. Version from the Spring Boot parent. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!-- Mockito's inline mock maker needs an agent. Left to itself it attaches one
+                         at runtime, which the JDK warns about and, per JEP 451, will refuse by
+                         default in a future release; Mockito's own docs ask for this instead.
+                         No @{argLine} prefix: nothing here sets argLine, and an unset one would
+                         reach the JVM as that literal text. -->
+                    <argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
                     <systemPropertyVariables>
                         <!-- For DependencyOverridesTest: the versions the parent would manage
                              without this file's overrides. Maven resolved this pom to build the
