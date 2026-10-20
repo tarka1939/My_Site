@@ -38,7 +38,7 @@ deferred to Phase 5. **Two of the three are now settled** - see the strikethroug
 |---|---|---|
 | **VPS provider, region, size** | Every command in Part 2 assumes a host | 1 vCPU / 2 GB is enough for one Spring Boot app plus Postgres. 1 GB is not - with no swap on this class of host the JVM plus Postgres does not thrash, it gets killed (§4.7a). Pick a region near you, not near nothing. |
 | **Hostname for the backend** | The frontend hard-codes it, and TLS is issued against it | ~~If you do not own a domain, buy one before starting.~~ **Resolved 2026-09-02, and the advice was wrong for this host:** the provider offers subdomains on its own domains with TLS already terminated, which is sufficient and free. Settled that day on `tarka1939.tojest.dev`, and **moved to `tarka1939.bieda.it` on 2026-09-03** - both provider domains, and the change cost only a redeploy, which is why `AGENT_LOG.md`'s 2026-09-02 entry names the older one. Check what your provider gives you *before* buying a domain - and if you do buy one, spend it on the frontend, where the URL is actually visible. |
-| **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** - the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. |
+| **Netlify site name** | Becomes the CORS origin and the canonical URL | **Settled as `krzysztof-tarka`** - the name is fixed and already baked into the backend's CORS allowlist and `FRONTEND_URL`, but **the site itself is not created yet**, which is why Part 1 is still outstanding. A custom domain can come later without redoing anything. **(Superseded: the Netlify site is live - owner confirmed 2026-09-24.)** |
 
 There is a fourth that is not really open: **Postgres runs on the same VPS**, not as a managed
 service, because the whole point of the self-managed choice in `docs/DECISIONS.md` was to avoid a
@@ -95,6 +95,11 @@ start without them.**
 | `GITHUB_SYNC_REPOSITORIES` | empty | Same |
 | `ANALYTICS_ENABLED` | `false` | Phase 7c. `true` starts counting page views and project link clicks; the value is compared ignoring case, and anything else is off. While off, the event endpoints answer 404, the tracker's failed requests show nothing, and the admin dashboard says counting is off. Nothing else goes with it: the daily salt lives only in memory, by design |
 | `TLS_TERMINATED_UPSTREAM` | `true` in `prod`, `false` otherwise | #260. Tells Tomcat that TLS ended before the request arrived, so the app sees `https` and sends HSTS. Leave it alone unless the app is ever served without a TLS-terminating proxy in front - see "Certificates" in 4.8 |
+| `CORS_ALLOWED_ORIGINS` | `https://krzysztof-tarka.netlify.app` | #44. The origins the browser may call the API from: exact `scheme://host[:port]` values, comma-separated. A wildcard, a path or a trailing slash fails startup. This is the one backend change a custom frontend domain needs: list both origins during the switchover. Netlify deploy previews are deliberately not in it |
+| `TRUSTED_PROXIES` | the provider's two proxy `/64`s in `prod`, empty otherwise | #168. Only a peer in these CIDRs may tell the app the client's address. Set them only if the provider moves its proxy nodes - see "What this means for #168" in 4.8. A stale list is not a security hole, but it puts every visitor in one rate-limit bucket and makes every visitor count as one |
+| `CLIENT_IP_HEADER` | `CF-Connecting-IP` in `prod`, empty otherwise | #168. The header a trusted proxy names the client in |
+| `TRUSTED_HOP_COUNT` | `2` in `prod`, `0` otherwise | #168. Which `X-Forwarded-For` entry, counted from the right, is the client, when the header above is missing |
+| `STRUCTURED_LOGS` | empty | `ecs`, `logstash` or `gelf` switches the console log to JSON, for a log shipper. Empty keeps the plain pattern - see "Structured (JSON) logs" in 7b |
 
 > **Note a naming trap.** The **dev** profile reads `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD`, and
 > their defaults match the Docker Compose database, so local development sets none of them
@@ -784,8 +789,8 @@ on the public IPv6, bypassing the provider's TLS entirely.
 #### What this means for #168, which is now mandatory
 
 With two proxies in the path, `request.getRemoteAddr()` is one address for the entire internet, so
-both rate limiters collapse into a single bucket - any stranger can lock the owner out of the admin
-panel and silence the contact form. That is no longer a consequence to handle later; the site is
+every per-IP rate limiter collapses into a single bucket - any stranger can lock the owner out of
+the admin panel and silence the contact form, and since Phase 7c every visitor counts as one. That is no longer a consequence to handle later; the site is
 broken in a way nobody will notice until it bites.
 
 **Status: the code half is done** (#168, `ClientIpResolver`). The `prod` profile already defaults to this measured chain - the two provider `/64`s as trusted proxies, `CF-Connecting-IP` as the client-ip header, and a hop count of 2 - so nothing extra goes in `/etc/mysite/env`. Override with `TRUSTED_PROXIES`, `CLIENT_IP_HEADER` and `TRUSTED_HOP_COUNT` only if the provider moves its proxy nodes; a stale list is not a security hole (an untrusted peer keeps its own address) but it does silently restore the collapsed bucket.
