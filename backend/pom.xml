@@ -27,6 +27,13 @@
              makes it unnecessary, saying to delete it. -->
         <tomcat.version>11.0.26</tomcat.version>
         <jackson-bom.version>3.1.7</jackson-bom.version>
+
+        <!-- Empty on purpose. Surefire's argLine below starts with @{argLine}, which it fills in
+             at test time from this property, after any plugin has set it: a coverage agent added
+             later would then run beside Mockito's instead of being dropped. Unset, @{argLine}
+             would reach the JVM as that literal text. This does not make a -DargLine on the
+             command line reach the JVM: surefire fills @{argLine} with the empty value here. -->
+        <argLine></argLine>
     </properties>
 
     <dependencyManagement>
@@ -131,9 +138,27 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
             <plugin>
+                <!-- Sets ${org.mockito:mockito-core:jar} to the jar's path, for surefire's argLine
+                     below. Version from the Spring Boot parent. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!-- Mockito's inline mock maker needs an agent. Left to itself it attaches one
+                         at runtime, which the JDK warns about and, per JEP 451, will refuse by
+                         default in a future release; Mockito's own docs ask for this instead.
+                         @{argLine} is the empty property above; see there. -->
+                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
                     <systemPropertyVariables>
                         <!-- For DependencyOverridesTest: the versions the parent would manage
                              without this file's overrides. Maven resolved this pom to build the
