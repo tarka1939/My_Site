@@ -23,11 +23,11 @@ import jakarta.servlet.http.HttpServletRequest;
  * <h2>Why this exists</h2>
  * {@code getRemoteAddr()} is the address of whatever opened the TCP connection. Direct from the
  * internet that is the visitor; behind a proxy it is the <em>proxy</em>, identically for every
- * request on the internet, which collapses all three per-IP limiters -- {@code AuthService}'s 5
- * logins/15min, {@code ContactService}'s 5 messages/hour, and
- * {@code PasswordResetService.requestReset}'s 5 requests/hour -- into a single global bucket. Any
- * stranger could then lock the owner out of the admin panel, silence the contact form, or block
- * the password-reset path that is the way back in from the first.
+ * request on the internet. That collapses every per-IP limiter into a single global bucket --
+ * there are five, listed on {@link InMemoryRateLimiter}, among them {@code AuthService}'s 5
+ * logins/15min -- and makes every visitor one in the analytics count. Any stranger could then
+ * lock the owner out of the admin panel, silence the contact form, or block the password-reset
+ * path that is the way back in from the first.
  *
  * <h2>Why it is conditional, and fails to {@code getRemoteAddr()}</h2>
  * Forwarded headers are caller-controlled: anyone can put {@code X-Forwarded-For: 1.2.3.4} on a
@@ -102,9 +102,9 @@ import jakarta.servlet.http.HttpServletRequest;
  * <h2>Why not {@code server.forward-headers-strategy}</h2>
  * Spring Boot's {@code NATIVE}/{@code FRAMEWORK} strategies rewrite {@code getRemoteAddr()} for
  * every request, and with it the scheme and host used to build URLs -- a much wider blast radius
- * than the two rate limiters that actually need this. They also cannot express either rule above:
- * {@code RemoteIpValve}'s {@code internalProxies} is a regex over the entries it walks from the
- * right, so it stops at the Cloudflare edge address, and it has no notion of
+ * than the rate limits and the visitor count that actually need this. They also cannot express
+ * either rule above: {@code RemoteIpValve}'s {@code internalProxies} is a regex over the entries
+ * it walks from the right, so it stops at the Cloudflare edge address, and it has no notion of
  * {@code CF-Connecting-IP}. The strategy is deliberately left at its default ({@code NONE}); do
  * not enable it alongside this class, or the peer check below starts comparing against an
  * already-rewritten address and stops meaning what it says.
@@ -143,8 +143,9 @@ public class ClientIpResolver {
             throw new IllegalStateException(
                 "app.forwarded-headers.client-ip-header/trusted-hop-count are set but "
                     + "app.forwarded-headers.trusted-proxies is empty: no peer would ever be trusted, so "
-                    + "the forwarded headers would be silently ignored and both rate limiters would stay "
-                    + "collapsed onto one bucket. Set trusted-proxies, or clear the other two.");
+                    + "the forwarded headers would be silently ignored and every per-IP rate "
+                    + "limiter would stay collapsed onto one bucket. Set trusted-proxies, or clear "
+                    + "the other two.");
         }
         if (!hasSource && !cidrs.isEmpty()) {
             throw new IllegalStateException(

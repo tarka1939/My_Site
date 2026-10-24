@@ -102,9 +102,10 @@ public class GithubWebhookController {
         GithubWebhookAck ack = githubSyncService.accept(deliveryId, eventType, rawBody);
 
         // 202 rather than 201: what has happened is that the delivery was accepted and
-        // announced. Whether anything acts on it is issue #54's question and, right now, the
-        // answer is no -- see GithubDeliveryReceivedEvent. Claiming 201 Created would be
-        // describing the ledger row as if it were the point.
+        // announced. What it changes is GithubProjectSyncListener's business (#54): before this
+        // returns, a push or release may update a project, or create one as an unpublished
+        // draft, and any other event changes nothing. Claiming 201 Created would be describing
+        // the ledger row as if it were the point.
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ack);
     }
 

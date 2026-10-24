@@ -208,7 +208,7 @@ class ClientIpResolverTest {
     @Test
     void malformedTrustedProxyEntry_failsFastAtConstruction() {
         // Present but wrong, so it must not boot: a typo'd CIDR would otherwise mean the proxy is
-        // never trusted and both limiters stay silently collapsed onto one bucket.
+        // never trusted and every per-IP limiter stays silently collapsed onto one bucket.
         assertThatThrownBy(() -> new ClientIpResolver("198.51.100.0/24, not-an-address", CF_HEADER, 0))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("not-an-address");
