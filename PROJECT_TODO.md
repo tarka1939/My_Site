@@ -333,7 +333,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 
 **Filed 2026-10-20 by the tech-debt pass (#68).** The pass also corrected eleven stale passages in docs and comments, in PR #324. Its record, checks and baseline for the next pass are on #68.
 - [ ] #323 - `ProjectCreatedEvent`, the Phase 1 reference event, has never had a real subscriber. Neither shipped Phase 7 extension uses it, its one listener only logs, and a draft that GitHub sync creates does not publish it, while `CLAUDE.md` still cites it as the pattern. For the owner: delete it, or publish it from sync too and say nothing consumes it yet
-- [ ] #325 - Mockito attaches its agent at runtime on every backend test run, which the JDK warns about and JEP 451 plans to refuse by default. PR #326, in review: surefire loads it with `-javaagent`, both warnings go, and the 488 tests still pass
+- [x] #325 - Mockito attached its agent at runtime on every backend test run, which the JDK warns about and JEP 451 plans to refuse by default. PR #326, merged to `dev` 2026-10-24: surefire loads it with `-javaagent`, both warnings are gone, and the 488 tests still pass
 
 ## Ongoing / meta
 
