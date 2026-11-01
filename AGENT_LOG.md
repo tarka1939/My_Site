@@ -311,9 +311,9 @@ Copy this block per entry:
 
 ## 2026-11-01 - Senior Dev: a review premise that a test disproved, a nit fix that made its sentence worse, and a reviewer no new session could resume (#68, #325, PRs #324, #326)
 
-**Task given:** The 2026-10-20 tech-debt pass on #68: run the baseline's checks again, read what changed since, fix what was stale, file what needs the owner. Session 3f70a7d1 ran it and handed it off through `HANDOFF.md` with both PRs open, after the session limit stopped its agents. Session 1b56373f took it over on 2026-10-23 and finished it on 2026-11-01, with the owner approving each step.
+**Task given:** The 2026-10-20 tech-debt pass on #68: run the baseline's checks again, read what changed since, fix what was stale, file what needs the owner. Session 3f70a7d1 ran it and handed it off through `HANDOFF.md` with both PRs open, after the session limit stopped its #326 re-review. Session 1b56373f took it over on 2026-10-23 and finished it on 2026-11-01, with the owner approving each step.
 
-**Agent(s) used:** The Senior Dev (Opus) ran the checks and wrote PRs #324 and #326. Fresh Opus agents gave each PR a cold review, #326 a re-review of a6cd092, and #324 a final look at ec5cdb0 and 98f6735.
+**Agent(s) used:** The Senior Dev (Opus) ran the checks and wrote PRs #324 and #326. Fresh Opus agents gave each PR a cold review, #326 a re-review of a6cd092, and #324 a re-review of its fix commits, a final look at ec5cdb0 and 98f6735, and a re-review of 380b074.
 
 **What went right:**
 - **The cold review reproduced the warnings before judging the fix.** It built a baseline from `dev`'s pom and saw both Mockito's and the JDK's warnings, then saw them gone on #326.
@@ -321,13 +321,13 @@ Copy this block per entry:
 - **The takeover re-checked the claims in `HANDOFF.md` before acting on them,** and ran its commands again rather than trusting the recorded results.
 
 **What went wrong (be specific):**
-1. **The cold review's second nit on #326 rested on a premise nobody had tested.** It expected the `@{argLine}` form to keep an `argLine` given with `-DargLine` on the command line. A run with `-X` showed it does not: surefire logs `(s) argLine = @{argLine} -javaagent:...`, and the fork gets the agent but not the flag. Taken as written, the pom comment would have promised behaviour the build does not have.
+1. **The cold review's first nit on #326 rested partly on a premise nobody had tested.** It expected the `@{argLine}` form to keep an `argLine` given with `-DargLine` on the command line. A run with `-X` showed it does not: surefire logs `(s) argLine = @{argLine} -javaagent:...`, and the fork gets the agent but not the flag. Taken as written, the pom comment would have promised behaviour the build does not have.
 2. **ec5cdb0's nit fix made its own sentence worse.** Rewording `ClientIpHasher`'s list of limits dropped a "the", so the Javadoc read as three limits where there are four.
 3. **The re-review agent of #326 died on the session limit, and the new session could not resume it.** `SendMessage` to its ID failed with "No transcript found for agent ID". `docs/AUTONOMOUS_WORKFLOW.md` had said only that this was untested.
 4. **PR #326's description had two faults.** A line meant as a paragraph rendered inside the bullet above it, and the description cited the pass record on #68 before that record was posted.
 5. **Two tooling slips.** `gh api graphql -F o=98236657` failed with "Could not coerce value", because `-F` reads an all-digit option ID as a number. Piping `gh ... --jq '.body'` through `Out-String` added CRLF line endings to text meant for a PR description.
 
-**How it was caught:** 1 by testing the nit before writing it into the pom. 2 by the Opus final look at ec5cdb0. 3 by the failed `SendMessage`. 4 by reading the rendered description. 5 by the errors themselves, and, for 5's board update, by finding that the board's automation had already set Done.
+**How it was caught:** 1 by testing the nit before writing it into the pom. 2 by the Opus final look at ec5cdb0. 3 by the failed `SendMessage`. 4 by the fresh re-review of a6cd092, which rendered the description and read #68's comments. 5: the `-F` call by its error, after which the board turned out to have set Done by automation already; the CRLF by a check of the body before it was posted.
 
 **Fix applied:**
 - The pom comment says a command-line `-DargLine` does not reach the fork, and the PR says why the nit was not taken as written.
@@ -340,7 +340,7 @@ Copy this block per entry:
 - **Test a reviewer's premise before writing it into code or a comment.** A review can be right about the goal and wrong about how the tool behaves.
 - **After a nit fix, re-read the whole sentence, not just the words changed.**
 - **A resume does not cross a session boundary.** Let agents finish before a session ends; if one dies, its brief is in `subagents/agent-<id>.jsonl` under the old session's directory.
-- **A branch checked out in another worktree can still take a commit:** detach this session's worktree at its tip, commit, and push `HEAD:refs/heads/<branch>`.
+- **A branch checked out in another worktree, which the harness will not let this session write to, can still be pushed to:** detach this session's worktree at its tip, commit, and push `HEAD:refs/heads/<branch>`. That is how 98f6735 reached #324. The other worktree's local branch is then behind its upstream.
 
 ## 2026-10-18 - Senior Dev: three agents sharing one scratchpad, a preview started from the wrong checkout, and a change applied before its review (#58-#61, #72, #304, #306, PRs #310, #311)
 
