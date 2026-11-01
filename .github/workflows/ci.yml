@@ -1,4 +1,5 @@
-# Runs both test suites on every pull request. Issue #193, item 1 of docs/CI_PLAN.md.
+# Runs both test suites, the frontend lint (#210) and the API-client staleness check on every pull
+# request and every push to dev or main. Issue #193, item 1 of docs/CI_PLAN.md.
 #
 # Deliberately does not deploy anything. Deploying is #45 and #38, and separating them is the
 # point: this workflow needs no secrets and has no deploy target, so it cannot break production

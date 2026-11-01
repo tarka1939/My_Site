@@ -4,7 +4,7 @@ _Personal portfolio site (Angular + Spring Boot), doubling as a practice ground 
 
 ## Status
 
-**Phases 0-4 complete.** Spec and OpenAPI contract; backend foundation; core domain features (project CRUD, tags, contact form, JWT auth, password reset); frontend foundation (Angular app, routing, generated API client, auth, admin CRUD pages); and a Playwright end-to-end suite covering four critical journeys.
+**Phases 0-4 complete.** Spec and OpenAPI contract; backend foundation; core domain features (project CRUD, tags, contact form, JWT auth, password reset); frontend foundation (Angular app, routing, generated API client, auth, admin CRUD pages); and a Playwright end-to-end suite covering five critical journeys.
 
 **Phase 6 (content & polish) is in progress** - a performance pass, a project date period, the content-rendering work real portfolio copy depends on, and a substantial hardening pass across both forms have landed. Two defects found by using the deployed site were fixed on 2026-09-04: a spent password-reset link rendered a working form and then silently swallowed the refusal (#185, #187). September added the things a reader actually sees: project descriptions are Markdown with a live admin preview (#206), the card thumbnails and detail-page gallery were resized after measuring that every image on the site painted at under a fifth of its natural size (#205, #211), and there is an editable About page (#213), which is now the site's landing page at `/`, with the project list at `/projects`. Three fixes merged to `dev` on 2026-09-30 were released on 2026-10-03. An admin session that runs out no longer breaks public pages: it used to log the visitor out and send them to the login page from a page that needs no login. A lapsed session also no longer gets into the admin editors (#151). The reset page no longer raises a red error toast beside its own calmer notice (#191). A property test that timed out under load now runs in milliseconds (#209). A separate CI-only flake (#203) has not recurred since a precondition fix on 2026-09-06 (#204). It was closed after 41 green runs, though its cause was never confirmed. The owner approved the five projects' copy on 2026-08-17, confirmed it as published on 2026-10-14 (#49), and that day settled what else was waiting on decisions. To build next: per-image alt text (#97). On `dev` and not yet released: a featured flag that pins the owner's chosen projects to the top of the public list, with the rest ordered by period, ongoing work first and undated projects last (#88), and a GitHub link on the contact page, which does not depend on the contact endpoint (#118). An email on the contact page waits until the owner has a domain. The Markdown XSS boundary, guarded by comments alone until now, has lint rules that fail CI on the calls that would open it, in code and in templates. They were released on 2026-10-03 (#210).
 
@@ -80,7 +80,7 @@ See `docs/AGENT_WORKFLOW.md` for the mechanics and `docs/AUTONOMOUS_WORKFLOW.md`
 | Auth | JWT admin login (1 hour expiry) + password reset via Resend - **confirmed in scope**, gates write endpoints (see `SPEC.md` → Auth scope decision) |
 | Cross-origin | CORS on Spring Boot, allowlisting the exact Netlify origin `https://krzysztof-tarka.netlify.app` (`CORS_ALLOWED_ORIGINS` to override). Exact origins rather than patterns, so a fork's deploy preview cannot become a trusted origin |
 | CI/CD | GitHub Actions - `ci.yml` runs backend tests, frontend tests, a frontend lint and an API-client staleness check on every PR, and `e2e.yml` runs the Playwright suite on PRs that touch `frontend/`, `backend/`, `e2e/` or the contract; separate deploy workflows for Netlify (frontend) and a jar shipped over a restricted SSH key (backend), live on `main` - any push or merge to `main` deploys |
-| Testing | JUnit 5 + Mockito unit tests, Testcontainers integration tests against real Postgres, Vitest component tests, and a deliberately thin Playwright E2E suite (4 journeys - see `PROJECT_TODO.md`'s testing-strategy note on why it stays small) |
+| Testing | JUnit 5 + Mockito unit tests, Testcontainers integration tests against real Postgres, Vitest component tests, and a deliberately thin Playwright E2E suite (5 journeys - see `PROJECT_TODO.md`'s testing-strategy note on why it stays small) |
 | Task tracking | GitHub Projects board (Backlog → Ready → In Progress → In Review → Done) |
 
 See `docs/DECISIONS.md` for full reasoning.
@@ -95,8 +95,8 @@ See `docs/DECISIONS.md` for full reasoning.
   /about          Editable About page (singleton)
   /analytics      Phase 7c - page views and link clicks, no cookies (behind a flag)
   /githubsync     Phase 7a - GitHub webhook auto-sync
-  /agentlog       Phase 7b - rendered agent build-log page
-  /dspdemo        Phase 7d - live DSP/audio demo (built last)
+  /agentlog       Phase 7b, planned (no package yet) - rendered agent build-log page
+  /dspdemo        Phase 7d, planned (no package yet) - live DSP/audio demo (built last)
 /frontend         Angular app (standalone components, signals, generated API client, admin CRUD)
 /e2e              Playwright end-to-end suite - its own package, deliberately not inside /frontend
 /content-seed     Portfolio content as data, plus a script that applies it through the real API
@@ -152,7 +152,7 @@ cd e2e && npm test
 
 Playwright starts the backend and frontend itself (and reuses them if already running), so only
 Postgres needs to be up first. JDK 25 and Maven must be on `PATH` - the runner shells out to
-`mvn spring-boot:run`. Full prerequisites, the four covered journeys, and why the suite provisions
+`mvn spring-boot:run`. Full prerequisites, the five covered journeys, and why the suite provisions
 its own throwaway admin account are in `e2e/README.md`.
 
 ## Documentation

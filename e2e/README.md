@@ -1,10 +1,11 @@
 # End-to-end tests (Playwright)
 
-Four critical user journeys, driven through a real browser against a real backend and a real
+Five critical user journeys, driven through a real browser against a real backend and a real
 Postgres. This is the top of the testing pyramid described in `PROJECT_TODO.md`, and it is
 capped on purpose: **3-5 journeys, deliberately thin.** Breadth belongs in the frontend's Vitest
 component tests and the backend's Testcontainers integration tests, which are faster and far
-less brittle. Resist adding a fifth journey unless it covers a path nothing else can.
+less brittle. Five is the cap: resist adding a sixth journey unless it covers a path nothing else
+can.
 
 ## Why this lives in `/e2e` and not in `/frontend`
 
@@ -160,6 +161,7 @@ application under test.
 | `tests/contact.spec.ts` | Submit the contact form. Asserts an actual `201`, that an empty form never reaches the API, and reads the message back through the admin API rather than trusting the confirmation banner. |
 | `tests/contact.spec.ts` | Submit until the contact rate limit refuses one, at most six times. Asserts an actual `429` with the RFC 7807 body, that no more than the limit got through first, that the user-visible error appears, and that exactly the accepted messages were stored. |
 | `tests/admin.spec.ts` | Admin logs in → creates a project through the UI → it appears on the public (unauthenticated) list → logs out → `authGuard` redirects a protected route back to login with `returnUrl` intact. |
+| `tests/admin.spec.ts` | #246. Put a token the server no longer accepts in session storage, signed with a key the backend never saw, then log in. Asserts the login request carries no `Authorization` header, is answered `200`, and lands on the admin project list: a stale token cannot lock the admin out. |
 
 ## How state is kept clean
 

@@ -400,8 +400,8 @@ describe('colour tokens', () => {
     expect(value, '--color-surface-muted is not declared in :root').toBeDefined();
 
     for (const scheme of ['light', 'dark'] as const) {
-      // Parsed per scheme, not once from the light value: a dark-only alpha is a likely answer to
-      // #165's open question, and reading :root's value for both would let it through unmeasured.
+      // Parsed per scheme, not once from the light value: a dark-only alpha is the obvious way to
+      // move the dark ratios, and reading :root's value for both would let it through unmeasured.
       const match = /rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)%\s*\)/.exec(value![scheme]);
       expect(
         match,
@@ -434,7 +434,8 @@ describe('colour tokens', () => {
 
       // Accent lands on it as code inside a Markdown link, which only ever renders on the page
       // ground. Over a card it is 4.27:1 light and 4.41:1 dark, under AA -- recorded in styles.scss
-      // and left to #165 rather than asserted here, since nothing paints that pairing today.
+      // and not asserted here: nothing paints that pairing, and the owner accepted it as it is
+      // (#165, decided 2026-10-14).
       atLeast(
         hexToken('--color-accent')[scheme],
         over(pageGround),

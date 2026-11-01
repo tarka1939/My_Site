@@ -242,9 +242,10 @@
   // AA there outright, so it is recorded and deliberately not asserted. Muted text clears AA by
   // 0.0025 -- 4.5025, on the 8-bit composite a browser actually paints, not on the float -- so a
   // small nudge to the dark --color-surface, or to this alpha in either scheme, takes it under,
-  // and the spec fails when it does. Text on a card thumbnail would need one of these settled
-  // first (#165). The light composite's blue channel is an exact tie (230.5), so a renderer may
-  // paint #e6e5e6; that moves ink to 14.83:1 and nothing else.
+  // and the spec fails when it does. Both weak pairings were accepted as they are on 2026-10-14
+  // (#165), with text kept off card thumbnails. Text on one would first need the dark
+  // --color-surface or this alpha moved. The light composite's blue channel is an exact tie
+  // (230.5), so a renderer may paint #e6e5e6; that moves ink to 14.83:1 and nothing else.
   --color-surface-muted: rgb(128 128 128 / 18%);
 
   // -- Type -------------------------------------------------------------------------------------

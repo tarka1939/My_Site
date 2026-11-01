@@ -67,11 +67,11 @@ See `docs/DATA_MODEL.md` for the full data model. Core:
 - `ContactMessage`
 - `AdminUser`
 
-Phase 7 extensions add entities of their own (analytics events, GitHub sync records, agent log entries, DSP job records) - see `docs/DATA_MODEL.md`, marked there as inferred and not yet confirmed against actual implementation needs.
+Phase 7 extensions add entities of their own (analytics events, GitHub sync records, agent log entries, DSP job records) - see `docs/DATA_MODEL.md`. GitHub sync records (7a) and analytics events (7c) are built; the other two are marked there as inferred and not yet confirmed against actual implementation needs.
 
 ## API contract
 
-The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (written 2026-07-24, validated against `openapi-spec-validator`). Covers the core endpoints (Project, Tag, Contact, Auth), the About page (#213), and Phase 7a's GitHub webhook (`/webhooks/github`). Endpoints for the remaining Phase 7 extensions are deliberately excluded until each sub-phase starts, since those entities are still draft/unconfirmed (see `docs/DATA_MODEL.md`).
+The full OpenAPI 3.0 spec lives at `docs/openapi.yaml` (written 2026-07-24, validated against `openapi-spec-validator`). Covers the core endpoints (Project, Tag, Contact, Auth), the About page (#213), Phase 7a's GitHub webhook (`/webhooks/github`), and Phase 7c's analytics (`/analytics/page-views`, `/analytics/link-clicks`, `/admin/analytics`; #58, #59). Endpoints for the remaining Phase 7 extensions, 7b and 7d, are deliberately excluded until each sub-phase starts, since those entities are still draft/unconfirmed (see `docs/DATA_MODEL.md`).
 
 - `docs/openapi.yaml`
 
