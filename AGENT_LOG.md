@@ -313,7 +313,7 @@ Copy this block per entry:
 
 **Task given:** The 2026-10-20 tech-debt pass on #68: run the baseline's checks again, read what changed since, fix what was stale, file what needs the owner. Session 3f70a7d1 ran it and handed it off through `HANDOFF.md` with both PRs open, after the session limit stopped its #326 re-review. Session 1b56373f took it over on 2026-10-23 and finished it on 2026-11-01, with the owner approving each step.
 
-**Agent(s) used:** The Senior Dev (Opus) ran the checks and wrote PRs #324 and #326. Fresh Opus agents gave each PR a cold review, #326 a re-review of a6cd092, and #324 a re-review of its fix commits, a final look at ec5cdb0 and 98f6735, and a re-review of 380b074.
+**Agent(s) used:** The Senior Dev (Opus) ran the checks and wrote PRs #324 and #326. Fresh Opus agents gave each PR a cold review, #326 a re-review of a6cd092, and #324 a final look at ec5cdb0 and 98f6735 and a re-review of 380b074. #324's cold reviewer, resumed, re-reviewed its fix commits.
 
 **What went right:**
 - **The cold review reproduced the warnings before judging the fix.** It built a baseline from `dev`'s pom and saw both Mockito's and the JDK's warnings, then saw them gone on #326.
@@ -340,7 +340,7 @@ Copy this block per entry:
 - **Test a reviewer's premise before writing it into code or a comment.** A review can be right about the goal and wrong about how the tool behaves.
 - **After a nit fix, re-read the whole sentence, not just the words changed.**
 - **A resume does not cross a session boundary.** Let agents finish before a session ends; if one dies, its brief is in `subagents/agent-<id>.jsonl` under the old session's directory.
-- **A branch checked out in another worktree, which the harness will not let this session write to, can still be pushed to:** detach this session's worktree at its tip, commit, and push `HEAD:refs/heads/<branch>`. That is how 98f6735 reached #324. The other worktree's local branch is then behind its upstream.
+- **A branch checked out in another worktree, whose files the harness will not let this session write, can still be pushed to:** detach this session's worktree at its tip, commit, and push `HEAD:refs/heads/<branch>`. That is how 98f6735 reached #324. The other worktree's local branch is then behind its upstream.
 
 ## 2026-10-18 - Senior Dev: three agents sharing one scratchpad, a preview started from the wrong checkout, and a change applied before its review (#58-#61, #72, #304, #306, PRs #310, #311)
 
