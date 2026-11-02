@@ -155,6 +155,18 @@ That ordering was deliberate - the runbook argues a first deploy should introduc
 
 ### Fixed
 
+- **The frontend moves past the weekly audit's findings** (2026-11-02, #327, PR #331, frontend).
+  - **What audit flagged:** 17 findings at or above the floor, in seven packages, on the audit's issue as of its 2026-11-02 run.
+    - One package ships: `markdown-it` 15.0.1. It has two high quadratic-time advisories, one for a multi-line link reference definition (GHSA-gfr2-rv44-r23c) and one for smartquotes (GHSA-r7fv-28h4-cvq7), plus a low one in inline HTML (GHSA-vfgh-jcmw-g37q).
+    - The rest are tooling: the MCP SDK, with the `body-parser` and `zod` under it, under Angular CLI; `vite` and `undici` 7 under `@angular/build`; `undici` 6 under the CLI's node-gyp; and `follow-redirects` under the API generator's axios.
+  - **Exposure here:** small. `markdown-it` runs with `html`, `linkify` and `typographer` off, so the smartquotes and inline-HTML code never runs. The link-reference case runs with any options. But only the admin writes descriptions, since GitHub sync never copies one, and a slow render would cost the visitor's own tab, not the server.
+  - **The fix:** lockfile only, from `npm audit fix` without `--force`, and `package.json` is unchanged.
+    - `markdown-it` moves to 15.0.3, with `argparse` 3.0.4.
+    - `@angular/cli` and `@angular/build` move from 21.2.26 to 21.2.29. They bring the MCP SDK 1.32.1, `vite` 7.3.7 and `undici` 7.30.1. The framework stays at 21.2.25.
+    - Also moving: `follow-redirects` 1.16.2, `body-parser` 2.4.0, `zod` 4.6.6 and node-gyp's `undici` 6.29.1. Vitest 4.1.12, `fast-uri`, `ip-address` and `qs` clear advisories below the floor on the way.
+  - **What is left:** two moderate advisories in dev tooling, `glob` under rimraf (GHSA-3g3m-2fjr-6pw4) and `minimatch` under typescript-eslint (GHSA-g3hv-75wg-m249). npm can clear them only with a semver-major change. Both are below the floor, so they open no issue. `npm audit --omit=dev` is at 0.
+  - **Checks.** The 681 tests pass, `dependency-overrides.spec.ts` among them, so the `basic-ftp` override is still needed. Lint is clean. The initial bundle is unchanged at 304.10 kB raw. The lazy chunk that carries `markdown-it` grows 928 B, the only size change in the build.
+
 - **The runbook's environment table left out five variables the backend reads** (2026-11-01, #68, PR #324, documentation). `docs/DEPLOYMENT.md` did not list `CORS_ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `CLIENT_IP_HEADER`, `TRUSTED_HOP_COUNT` or `STRUCTURED_LOGS`, and still listed the Netlify site and four finished repo changes as to do. The same PR corrects ten other stale passages in docs and comments, each checked against the code first. The PR lists all eleven, and the 2026-10-20 tech-debt pass's record on #68 summarises them.
 
 - **The dependency audit fails when a source answers empty** (2026-10-19, #303, PR #322, infra). The weekly audit failed a run whose audit could not complete, but a source that answered with a valid, empty result read exactly like a clean week: `npm audit` did that in offline mode. Each run now also audits one canary per source, something with published advisories, through the same tool, flags and code: the npm fixture lockfile, and `postgresql` 42.2.0 in OSV. A canary that finds nothing, or cannot complete, marks every audit on its source as one that could not complete, so the run fails. The check is at least one finding, not a count, so an advisory withdrawn upstream cannot fail it, and a test fails if the canary's `npm audit` arguments stop matching the real audits'. The canaries' findings never reach the report or the issue. The audit's unit tests go from 148 to 163.
