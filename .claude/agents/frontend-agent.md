@@ -1,7 +1,7 @@
 ---
 name: frontend-agent
 description: Works exclusively on /frontend (Angular). Use for Phase 3, the frontend half of Phase 5, and Phase 4's frontend side. Must not read or reference /backend's implementation.
-tools: Read, Write, Edit, Bash, Grep, Glob
+tools: Read, Write, Edit, Bash, PowerShell, Grep, Glob
 model: sonnet
 ---
 

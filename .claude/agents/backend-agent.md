@@ -1,7 +1,7 @@
 ---
 name: backend-agent
 description: Works exclusively on /backend (Spring Boot). Use for Phase 1, 2, the backend half of Phase 5, and Phase 4's backend side. Must not read or reference /frontend's implementation.
-tools: Read, Write, Edit, Bash, Grep, Glob
+tools: Read, Write, Edit, Bash, PowerShell, Grep, Glob
 model: opus
 ---
 

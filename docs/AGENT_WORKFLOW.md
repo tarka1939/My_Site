@@ -24,6 +24,8 @@ Claude Code has three ways to run multiple agents:
 
 `.claude/agents/backend-agent.md` and `.claude/agents/frontend-agent.md` define each side's scope and constraints. They double as plain documentation of what each side owns, and as literal subagent definitions if you use the Task tool for smaller in-phase delegation.
 
+Three more define the Senior Dev's routine dispatches by task rather than by half of the codebase (#329). `cold-reviewer.md` reviews a PR or commit range on Opus, without Edit or Write. `gate-runner.md` runs gates and reports their real output on Sonnet, also without Edit or Write. `fix-applier.md` applies a fix list that names each file and change, on Sonnet. Each sets its model in frontmatter, so picking the type picks the model, as long as the dispatch passes no `model` argument to override it. `docs/AUTONOMOUS_WORKFLOW.md`'s "Dispatch constraints" says why they exist.
+
 ## Checkout inventory - a snapshot, expected to go stale (2026-08-09)
 
 `CLAUDE.md`'s "Never quote a working tree without naming its branch" states the durable rule. These are the specific conditions that prompted it, recorded here rather than there because they expire. **Re-derive before relying on any of it** - `git worktree list`, `git rev-list --left-right --count <branch>...<remote>/<branch>`.
