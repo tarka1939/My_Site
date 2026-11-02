@@ -336,7 +336,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 - [x] #325 - Mockito attached its agent at runtime on every backend test run, which the JDK warns about and JEP 451 plans to refuse by default. PR #326, merged to `dev` 2026-10-24: surefire loads it with `-javaagent`, both warnings are gone, and the 488 tests still pass
 
 **Filed 2026-11-02** after the owner asked why so little dispatched work runs on Sonnet.
-- [ ] #329 - gate runs and fix lists had no agent type of their own. In the session that ended 2026-10-20, every dispatch named its model, and 77 of 80 named Opus, all of them reviews or code changes. The next session ran its gates and fix lists inline, on Opus. In review: `cold-reviewer` (Opus), `gate-runner` and `fix-applier` (Sonnet), to be dispatched without a `model` argument, and PowerShell for every type. Left for the owner: a Sonnet default for dispatches that name no model, `CLAUDE.md`'s table and its pointer to the agent files, and whether a docs-only PR's cold review may run on Sonnet
+- [ ] #329 - gate runs and fix lists had no agent type of their own. In the session that ended 2026-10-20, all 82 dispatches named their model, and 79 named Opus, all of them reviews or code changes. The next session ran its gates and fix lists inline, on Opus. In review: `cold-reviewer` (Opus), `gate-runner` and `fix-applier` (Sonnet), to be dispatched without a `model` argument, and PowerShell for every type. Left for the owner: a Sonnet default for dispatches that name no model, `CLAUDE.md`'s table and its pointer to the agent files, and whether a docs-only PR's cold review may run on Sonnet
 
 ## Ongoing / meta
 
