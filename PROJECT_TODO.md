@@ -335,6 +335,9 @@ Opened as the home for work that is neither a new feature nor a bug in something
 - [ ] #323 - `ProjectCreatedEvent`, the Phase 1 reference event, has never had a real subscriber. Neither shipped Phase 7 extension uses it, its one listener only logs, and a draft that GitHub sync creates does not publish it, while `CLAUDE.md` still cites it as the pattern. For the owner: delete it, or publish it from sync too and say nothing consumes it yet
 - [x] #325 - Mockito attached its agent at runtime on every backend test run, which the JDK warns about and JEP 451 plans to refuse by default. PR #326, merged to `dev` 2026-10-24: surefire loads it with `-javaagent`, both warnings are gone, and the 488 tests still pass
 
+**Filed 2026-11-02** after the owner asked why so little dispatched work runs on Sonnet.
+- [ ] #329 - gate runs and fix lists had no agent type, so they ran on `general-purpose`, which inherits Opus. 77 of one session's 80 dispatches were Opus. In review: `cold-reviewer` (Opus), `gate-runner` and `fix-applier` (Sonnet), and PowerShell for every type, so a failed Bash hook no longer leaves only `general-purpose`. Left for the owner: a Sonnet default for dispatches that name no model, `CLAUDE.md`'s table and its pointer to the agent files, and whether a docs-only PR's cold review may run on Sonnet
+
 ## Ongoing / meta
 
 - [ ] Treat `SPEC.md` and the OpenAPI contract as source of truth - update them **before** changing code, not after the fact
