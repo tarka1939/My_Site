@@ -26,7 +26,13 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   forbidOnly: !!process.env.CI,
 
-  reporter: [['list'], ['html', { open: 'never' }]],
+  // In CI, `github` adds annotations to the run. A test that fails and then passes on its retry
+  // exits 0, so without them the only trace of it is a "1 flaky" line in a log nobody opens. The
+  // reporter annotates a flaky test's failed attempt exactly as it does a failure (checked in
+  // Playwright 1.62.1's source), so a retry absorbs the noise without hiding that it happened.
+  reporter: process.env.CI
+    ? [['list'], ['html', { open: 'never' }], ['github']]
+    : [['list'], ['html', { open: 'never' }]],
 
   use: {
     baseURL: FRONTEND_URL,
@@ -55,11 +61,11 @@ export default defineConfig({
   ],
 
   /**
-   * Postgres is deliberately NOT managed here. There is no `docker-compose.yml` until Phase 5,
-   * so the database is a `docker run` the developer owns (see e2e/README.md); wiring a
-   * container's lifecycle into the test runner would mean the suite could drop a developer's
-   * database on exit. The two application servers are fair game -- they are stateless
-   * processes.
+   * Postgres is deliberately NOT managed here. Locally it is the developer's own database, from
+   * `docker compose up -d` (see e2e/README.md), and in CI it is the job's service container.
+   * Wiring a container's lifecycle into the test runner would mean the suite could drop a
+   * developer's database on exit. The two application servers are fair game -- they are
+   * stateless processes.
    *
    * `reuseExistingServer` is on outside CI, so an already-running `mvn spring-boot:run` /
    * `npm start` is used as-is instead of failing on a port clash.

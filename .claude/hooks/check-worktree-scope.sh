@@ -48,7 +48,9 @@ if [ -z "$CLAUDE_WORKTREE_ROOT" ]; then
   exit 0
 fi
 
-for PY in python python3; do
+# `py` last, for the reason given above the same loop in
+# block-protected-branch-ops.sh (#282).
+for PY in python python3 py; do
   command -v "$PY" >/dev/null 2>&1 || continue
 
   if OUTPUT=$(printf '%s' "$INPUT" | "$PY" -c '
@@ -120,10 +122,14 @@ emit("Blocked: " + path + " is outside this session assigned worktree (" + root 
      "session on the shared repo. See docs/AGENT_WORKFLOW.md.")
 sys.exit(0)
 ' 2>/dev/null); then
-    printf '%s' "$OUTPUT"
-    exit 0
+    # Only nothing, or this script's own JSON, counts as an answer. Anything
+    # else would reach Claude Code as plain text, which is an allow; see the
+    # same check in block-protected-branch-ops.sh.
+    case "$OUTPUT" in
+      '' | '{"hookSpecificOutput"'*) printf '%s' "$OUTPUT"; exit 0 ;;
+    esac
   fi
 done
 
 # Opted in, but no interpreter ran. Fail closed.
-printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"check-worktree-scope.sh could not run an interpreter to inspect this call, so it cannot tell whether the file is inside the session assigned worktree. Denying rather than guessing. Check that python is on PATH and actually runs, or unset CLAUDE_WORKTREE_ROOT if this session does not need worktree scoping."}}'
+printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"check-worktree-scope.sh could not run an interpreter to inspect this call, so it cannot tell whether the file is inside the session assigned worktree. Denying rather than guessing. Check that python, python3 or py is on PATH and actually runs (see #282), or unset CLAUDE_WORKTREE_ROOT if this session does not need worktree scoping."}}'

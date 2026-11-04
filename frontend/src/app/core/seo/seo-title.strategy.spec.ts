@@ -81,6 +81,10 @@ describe('SeoTitleStrategy', () => {
     expect(count('meta[name="twitter:description"]')).toBe(1);
     expect(count('meta[property="og:title"]')).toBe(1);
     expect(content('meta[name="description"]')).toBe('A plain page.');
+    // og:url has no static tag to rewrite (#251): the first navigation creates it, and every later
+    // one must find that one. The value is the page now shown, not /admin/login before it.
+    expect(count('meta[property="og:url"]')).toBe(1);
+    expect(content('meta[property="og:url"]')).toBe(`${location.origin}/plain`);
   });
 
   it('falls back to the site description on a route that declares none', async () => {

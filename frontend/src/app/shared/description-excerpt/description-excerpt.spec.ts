@@ -47,6 +47,15 @@ describe('toCardExcerpt', () => {
     expect(excerpt.endsWith('tail…')).toBe(true);
   });
 
+  it('drops a trailing en or em dash as well, which admin-authored prose can still contain', () => {
+    for (const dash of ['\u2013', '\u2014']) {
+      const excerpt = toCardExcerpt(`${'padding '.repeat(29)}tail ${dash} and more text beyond the cap`);
+
+      expect(excerpt.endsWith(`${dash}…`)).toBe(false);
+      expect(excerpt.endsWith('tail…')).toBe(true);
+    }
+  });
+
   it('renders nothing at all when the cut leaves only punctuation', () => {
     // An opening paragraph that starts with an ASCII rule strips to nothing once the trailing
     // punctuation goes, and the ellipsis used to be appended anyway -- so the card rendered a

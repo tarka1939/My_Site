@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
@@ -26,10 +29,14 @@ import io.github.tarka1939.mysite.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Rate limiting depends on a real timestamp comparison against Postgres (count(*) where
- * created_at > now() - interval) -- worth verifying against real Postgres rather than only
- * mocking the repository count, per the Phase 1 AGENT_LOG.md lesson about infra-dependent
- * behavior mocks can't catch.
+ * The contact service against real Postgres and the real beans behind its rate limit: the
+ * {@code ClientIpResolver} the test profile configures for a proxy, and the shared
+ * {@code InMemoryRateLimiter} (#309 moved the limit there from a count of stored rows).
+ *
+ * <p><strong>Every test uses addresses no other test here uses.</strong> {@code @Transactional}
+ * rolls each test's rows back, but the limiter is a singleton in the cached context and keeps its
+ * buckets, so a test that reused another's address would start with part of its budget spent and
+ * pass or fail by execution order.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
@@ -47,21 +54,36 @@ class ContactRepositoryIntegrationTest {
     @Autowired
     private ContactMessageRepository contactMessageRepository;
 
+    @Autowired
+    private JdbcClient jdbc;
+
     @Test
-    void submit_underLimit_persistsMessageWithHashedIpNotRawIp() {
+    void submit_underLimit_persistsTheMessageAndNothingDerivedFromTheAddress() {
         HttpServletRequest httpRequest = requestFrom("203.0.113.5");
 
         ContactMessageAck ack = contactService.submit(
             new ContactMessageWriteRequest("Alice", "alice@example.com", "Hello there"), httpRequest);
 
         ContactMessage saved = contactMessageRepository.findById(ack.id()).orElseThrow();
-        assertThat(saved.getRequesterIpHash()).isNotEqualTo("203.0.113.5");
-        assertThat(saved.getRequesterIpHash()).hasSize(64); // sha-256 hex digest length
+        assertThat(saved.getName()).isEqualTo("Alice");
+        assertThat(saved.getMessage()).isEqualTo("Hello there");
+
+        // Read back as the raw row rather than through the entity, so a column the entity does not
+        // map is still seen. Neither the address nor ClientIpHasher's unsalted -- and so reversible
+        // -- hash of it may appear anywhere in it (#309).
+        Map<String, Object> row = jdbc.sql("SELECT * FROM contact_message WHERE id = ?")
+            .param(ack.id())
+            .query()
+            .singleRow();
+        List<String> values = row.values().stream().map(String::valueOf).toList();
+        assertThat(values)
+            .noneMatch(value -> value.contains("203.0.113.5"))
+            .noneMatch(value -> value.contains(sha256Hex("203.0.113.5")));
     }
 
     @Test
     void submit_pastLimit_throwsRateLimitExceededAndDoesNotPersist() {
-        HttpServletRequest httpRequest = requestFrom("203.0.113.5");
+        HttpServletRequest httpRequest = requestFrom("203.0.113.10");
         for (int i = 0; i < 5; i++) {
             contactService.submit(
                 new ContactMessageWriteRequest("Alice", "alice@example.com", "Message " + i), httpRequest);
@@ -76,18 +98,17 @@ class ContactRepositoryIntegrationTest {
 
     @Test
     void submit_fromDifferentIp_isNotAffectedByAnotherIpsRateLimit() {
-        HttpServletRequest httpRequest = requestFrom("203.0.113.5");
+        HttpServletRequest httpRequest = requestFrom("203.0.113.20");
         for (int i = 0; i < 5; i++) {
             contactService.submit(
                 new ContactMessageWriteRequest("Alice", "alice@example.com", "Message " + i), httpRequest);
         }
 
-        // 203.0.113.6, not the 198.51.100.7 this used to use: the test profile now names
-        // 198.51.100.0/24 as the trusted-proxy block (issue #168), and a plain "some other
-        // visitor" case should not sit inside it. Behaviour is identical either way -- this
-        // request carries no forwarded header, so it resolves to its own address regardless --
-        // but a reader should not have to work that out.
-        HttpServletRequest otherRequest = requestFrom("203.0.113.6");
+        // Not in 198.51.100.0/24, the test profile's trusted-proxy block (issue #168): a plain
+        // "some other visitor" case should not sit inside it. Behaviour would be identical either
+        // way -- this request carries no forwarded header, so it resolves to its own address
+        // regardless -- but a reader should not have to work that out.
+        HttpServletRequest otherRequest = requestFrom("203.0.113.21");
         ContactMessageAck ack = contactService.submit(
             new ContactMessageWriteRequest("Bob", "bob@example.com", "Hi from a different IP"), otherRequest);
 
@@ -111,24 +132,29 @@ class ContactRepositoryIntegrationTest {
         // Two trusted proxies in front, each appending the peer it saw, so the visitor is the 2nd
         // entry FROM THE RIGHT -- app.forwarded-headers.trusted-hop-count. From the right, because
         // a caller can only prepend.
+        //
+        // Nothing about the address is stored since #309, so which bucket a message was charged
+        // to is found the only way left: spend a whole budget through the proxy, then ask each
+        // candidate address directly. Exactly one of them must find its budget gone.
         HttpServletRequest viaProxy = requestViaProxy("198.51.100.7", "203.0.113.99, 203.0.113.7, 192.0.2.10");
+        for (int i = 0; i < 5; i++) {
+            contactService.submit(
+                new ContactMessageWriteRequest("Carol", "carol@example.com", "Message " + i), viaProxy);
+        }
 
-        ContactMessageAck ack = contactService.submit(
-            new ContactMessageWriteRequest("Carol", "carol@example.com", "Hello from behind a proxy"), viaProxy);
-
-        ContactMessage saved = contactMessageRepository.findById(ack.id()).orElseThrow();
-        assertThat(saved.getRequesterIpHash())
+        assertThatThrownBy(() -> contactService.submit(
+            new ContactMessageWriteRequest("Carol", "carol@example.com", "Direct"), requestFrom("203.0.113.7")))
             .as("the visitor, counted from the right")
-            .isEqualTo(sha256Hex("203.0.113.7"));
-        assertThat(saved.getRequesterIpHash())
+            .isInstanceOf(RateLimitExceededException.class);
+        assertThat(submitDirectlyFrom("198.51.100.7"))
             .as("not the proxy's own address -- that is the collapsed bucket #168 is about")
-            .isNotEqualTo(sha256Hex("198.51.100.7"));
-        assertThat(saved.getRequesterIpHash())
+            .isNotNull();
+        assertThat(submitDirectlyFrom("203.0.113.99"))
             .as("not the leftmost entry -- the caller controls it")
-            .isNotEqualTo(sha256Hex("203.0.113.99"));
-        assertThat(saved.getRequesterIpHash())
+            .isNotNull();
+        assertThat(submitDirectlyFrom("192.0.2.10"))
             .as("not the rightmost entry -- that is the Cloudflare edge node")
-            .isNotEqualTo(sha256Hex("192.0.2.10"));
+            .isNotNull();
     }
 
     @Test
@@ -168,15 +194,18 @@ class ContactRepositoryIntegrationTest {
             new ContactMessageWriteRequest("Frank", "frank@example.com", "One too many"), forged))
             .isInstanceOf(RateLimitExceededException.class);
 
-        ContactMessage saved = contactMessageRepository.findAll().get(0);
-        assertThat(saved.getRequesterIpHash())
+        assertThatThrownBy(() -> contactService.submit(
+            new ContactMessageWriteRequest("Frank", "frank@example.com", "Plain"), requestFrom("203.0.113.60")))
             .as("attributed to the peer's own address, not to anything it claimed")
-            .isEqualTo(sha256Hex("203.0.113.60"));
+            .isInstanceOf(RateLimitExceededException.class);
+        assertThat(submitDirectlyFrom("192.0.2.20"))
+            .as("and an address it claimed was never charged")
+            .isNotNull();
     }
 
     @Test
     void listMessages_returnsPaginatedAdminView() {
-        HttpServletRequest httpRequest = requestFrom("203.0.113.5");
+        HttpServletRequest httpRequest = requestFrom("203.0.113.30");
         for (int i = 0; i < 3; i++) {
             contactService.submit(new ContactMessageWriteRequest("Name " + i, "n" + i + "@example.com", "Msg"), httpRequest);
         }
@@ -191,6 +220,11 @@ class ContactRepositoryIntegrationTest {
     void deleteMessage_whenMissing_throwsResourceNotFoundException() {
         assertThatThrownBy(() -> contactService.deleteMessage(UUID.randomUUID()))
             .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    private ContactMessageAck submitDirectlyFrom(String remoteAddr) {
+        return contactService.submit(
+            new ContactMessageWriteRequest("Probe", "probe@example.com", "Which bucket?"), requestFrom(remoteAddr));
     }
 
     private HttpServletRequest requestFrom(String remoteAddr) {

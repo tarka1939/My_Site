@@ -3,8 +3,10 @@
 // be a second change riding on the first. The preview frame and rendered body are global
 // (.markdown-preview and .markdown-body in src/styles.scss) for the reason given there.
 //
-// Wider than the project form's 36rem because this is the one long-form editor on the site, and a
-// preview of prose is judged at something near the width it will be read at.
+// Wider than the project form's 36rem because this is the one long-form editor on the site. The
+// width was first chosen for the preview too, so prose was judged near the width it is read at;
+// since #297 the rendered body carries that measure itself (.markdown-body's cap), and what the
+// extra width buys now is a roomier textarea.
 form {
   display: flex;
   flex-direction: column;

@@ -63,7 +63,7 @@ export class ProjectsListComponent {
    *
    * Deliberately not `$first` in the template: that indexes over projects, not over projects that
    * have images. `images` is optional content with no upload pipeline, so one imageless project at
-   * the top of a createdAt-DESC list would otherwise leave every image on the page lazy.
+   * the top of the list would otherwise leave every image on the page lazy.
    *
    * Equally deliberately, this does *not* read `failedImages`, and the consequence of that is
    * larger than the in-place case it was first written for, so it is set out here in full rather

@@ -4,11 +4,11 @@
  * Run with:  node --test content-seed/
  *
  * Uses `node:test` and `node:assert` from the standard library, so this directory stays
- * dependency-free — there is no `package.json` here and nothing to install. No network, no
+ * dependency-free - there is no `package.json` here and nothing to install. No network, no
  * filesystem, no database: every case below is a function call on a literal.
  *
  * These exist because `content-seed/` had no test coverage at all, and two defects that local
- * validation should have caught reached the API instead — an impossible date (`2026-02-30`) and a
+ * validation should have caught reached the API instead - an impossible date (`2026-02-30`) and a
  * whitespace-only description. Both are pinned below. The point of the validator is that it fails
  * *before* the first socket, so a regression here is a regression in the only thing standing
  * between a bad edit and a half-applied run.
@@ -43,7 +43,7 @@ function rejects(records, expected) {
   );
 }
 
-describe('validate — the happy path', () => {
+describe('validate - the happy path', () => {
   test('accepts a well-formed record', () => {
     assert.doesNotThrow(() => validate([valid()]));
   });
@@ -60,7 +60,7 @@ describe('validate — the happy path', () => {
   });
 });
 
-describe('validate — blank but non-empty (@NotBlank)', () => {
+describe('validate - blank but non-empty (@NotBlank)', () => {
   // The regression that prompted these tests: a whitespace-only description passed local
   // validation, reached the API, and failed server-side with "must not be blank" *mid-apply*,
   // after earlier records had already been written.
@@ -78,6 +78,10 @@ describe('validate — blank but non-empty (@NotBlank)', () => {
 
   test('rejects a blank tag', () => {
     rejects([valid({ tags: ['python', '  '] })], /tags\[1\] is blank/);
+  });
+
+  test('rejects an empty tags list, which the API refuses to publish', () => {
+    rejects([valid({ tags: [] })], /tags is empty/);
   });
 
   test('rejects a blank link label', () => {
@@ -100,7 +104,7 @@ describe('validate — blank but non-empty (@NotBlank)', () => {
   });
 });
 
-describe('validate — dates', () => {
+describe('validate - dates', () => {
   test('rejects impossible calendar dates that match the YYYY-MM-DD shape', () => {
     for (const bad of ['2026-02-30', '2026-13-01', '0000-00-00', '2026-06-31', '2025-02-29']) {
       rejects([valid({ startedOn: bad })], /must be null or a real YYYY-MM-DD date/);
@@ -124,18 +128,18 @@ describe('validate — dates', () => {
     );
   });
 
-  test('accepts equal dates — a single-month period is legal', () => {
+  test('accepts equal dates - a single-month period is legal', () => {
     assert.doesNotThrow(() =>
       validate([valid({ startedOn: '2026-06-01', completedOn: '2026-06-01' })]),
     );
   });
 
-  test('accepts both null — no period asserted', () => {
+  test('accepts both null - no period asserted', () => {
     assert.doesNotThrow(() => validate([valid({ startedOn: null, completedOn: null })]));
   });
 });
 
-describe('validate — contract limits', () => {
+describe('validate - contract limits', () => {
   test('rejects an over-length description', () => {
     rejects([valid({ description: ['x'.repeat(5001)] })], /max 5000/);
   });
@@ -161,7 +165,7 @@ describe('validate — contract limits', () => {
   });
 });
 
-describe('validate — structure', () => {
+describe('validate - structure', () => {
   test('rejects an unknown field, but allows "_" provenance notes', () => {
     rejects([valid({ sortOrder: 3 })], /unknown field "sortOrder"/);
     assert.doesNotThrow(() => validate([valid({ _dates: 'a note for humans' })]));
@@ -206,7 +210,7 @@ describe('locality guard', () => {
 
   test('the refusal message advertises only hosts it will actually accept', () => {
     // The bug this pins: the message used to list `::1` and `0:0:0:0:0:0:0:1`, neither of which
-    // `URL.hostname` can ever return — so copying one out of the error got you refused by the
+    // `URL.hostname` can ever return - so copying one out of the error got you refused by the
     // list that had just offered it.
     let message = '';
     try {

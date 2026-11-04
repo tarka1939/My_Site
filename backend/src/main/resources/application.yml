@@ -41,6 +41,18 @@ app:
     # never match a delivery and would silently mean a repository the owner believes is synced
     # is not. Fail fast on wrong, degrade on unused.
     synced-repositories: ${GITHUB_SYNC_REPOSITORIES:}
+  analytics:
+    # Phase 7c's own analytics (#58, #59): the two public event endpoints and the admin summary,
+    # under the same flag pattern as github-sync above. Off here, in the base config, so every
+    # profile -- including no profile at all -- inherits the closed default; turn it on per
+    # environment with ANALYTICS_ENABLED. While off, none of the analytics beans exists (see
+    # ConditionalOnAnalyticsEnabled), all three endpoints 404 (the admin one after the security
+    # filter, so a request with no token gets its 401 first), no request's address is hashed, and
+    # no daily salt is ever made. The V9 table exists either way, empty.
+    #
+    # No other setting goes with it. The salt is generated in memory and never configured, on
+    # purpose (the 2026-10-18 ADR): a configured salt would be a stored one.
+    enabled: ${ANALYTICS_ENABLED:false}
   cors:
     # Issue #44. Exact origins, comma-separated -- no wildcards, and a wildcard entry fails
     # startup rather than being quietly honoured (SecurityConfig#parseAllowedOrigins). The

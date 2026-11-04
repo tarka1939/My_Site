@@ -24,9 +24,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
  * this way there is one predicate, and the classes that share it say so.
  *
  * <p>{@code matchIfMissing} is left at its default of false, so an absent property is off, and
- * {@code havingValue = "true"} is an equality test rather than a truthiness one, so there is
- * exactly one string that turns this on. Both are asserted in
- * {@code GithubSyncEnablementTest}.
+ * {@code havingValue = "true"} is compared ignoring case rather than being a truthiness test, so
+ * {@code true} in any case turns this on and nothing else does. The absent and the non-boolean
+ * cases are asserted in {@code GithubSyncEnablementTest}.
  *
  * <p>Off means the annotated beans do not exist: no controller, so no handler mapped at
  * {@code /api/v1/webhooks/github}, so a 404 from the dispatcher. That is stronger than a flag

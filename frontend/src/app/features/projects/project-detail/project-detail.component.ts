@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EMPTY, Observable, catchError, filter, map, switchMap, tap } from 'rxjs';
+import { AnalyticsTracker } from '../../../core/analytics/analytics-tracker';
 import { ProjectsService } from '../../../core/api/api/projects.service';
 import { Project } from '../../../core/api/model/project';
 import { SeoService } from '../../../core/seo/seo.service';
@@ -22,6 +23,7 @@ export class ProjectDetailComponent {
   private readonly projectsApi = inject(ProjectsService);
   private readonly route = inject(ActivatedRoute);
   private readonly seo = inject(SeoService);
+  private readonly analytics = inject(AnalyticsTracker);
 
   protected readonly project = signal<Project | null>(null);
   protected readonly loading = signal(true);
@@ -64,6 +66,29 @@ export class ProjectDetailComponent {
    */
   protected imageAlt(project: Project, index: number): string {
     return projectImageAlt(project.title, index, project.images.length);
+  }
+
+  /**
+   * A visitor followed one of the project's own links (Phase 7c). The id and the URL are sent
+   * exactly as the API gave them: the server counts the click only if the URL is one of this
+   * project's links as they are now. The tracker decides whether anything is sent at all.
+   *
+   * `click` covers a left click, Ctrl or Shift with it, and Enter on the focused link. A plain
+   * request is enough: the link opens in a new tab, so this page stays and the request completes.
+   */
+  protected linkFollowed(project: Project, url: string): void {
+    this.analytics.recordLinkClick(project.id, url);
+  }
+
+  /**
+   * A middle click opens the link in a new tab without firing `click`, only `auxclick` with
+   * button 1. A right click is button 2 and opens a menu, which may come to nothing, so it is not
+   * counted.
+   */
+  protected linkAuxClicked(event: MouseEvent, project: Project, url: string): void {
+    if (event.button === 1) {
+      this.linkFollowed(project, url);
+    }
   }
 
   /**

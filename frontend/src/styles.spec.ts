@@ -400,8 +400,8 @@ describe('colour tokens', () => {
     expect(value, '--color-surface-muted is not declared in :root').toBeDefined();
 
     for (const scheme of ['light', 'dark'] as const) {
-      // Parsed per scheme, not once from the light value: a dark-only alpha is a likely answer to
-      // #165's open question, and reading :root's value for both would let it through unmeasured.
+      // Parsed per scheme, not once from the light value: a dark-only alpha is the obvious way to
+      // move the dark ratios, and reading :root's value for both would let it through unmeasured.
       const match = /rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)%\s*\)/.exec(value![scheme]);
       expect(
         match,
@@ -434,7 +434,8 @@ describe('colour tokens', () => {
 
       // Accent lands on it as code inside a Markdown link, which only ever renders on the page
       // ground. Over a card it is 4.27:1 light and 4.41:1 dark, under AA -- recorded in styles.scss
-      // and left to #165 rather than asserted here, since nothing paints that pairing today.
+      // and not asserted here: nothing paints that pairing, and the owner accepted it as it is
+      // (#165, decided 2026-10-14).
       atLeast(
         hexToken('--color-accent')[scheme],
         over(pageGround),
@@ -590,6 +591,42 @@ describe('the tag chips', () => {
     // a card edge and wrong for this.
     const chip = ruleFor(ruleFor(chipCss(), '.tag-filter').body, 'button');
     expect(declarations(chip.body).get('border')).toBe('1px solid var(--color-text-muted)');
+  });
+});
+
+describe('the admin projects list on a phone (#312)', () => {
+  const ADMIN_LIST = join(COMPONENT_ROOT, 'features', 'admin', 'admin-projects-list');
+  const stacked = () =>
+    ruleFor(
+      stripComments(readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.scss'), 'utf8')),
+      '@media (max-width: 40rem)',
+    ).body;
+
+  it('keeps the header row in the accessibility tree, off screen rather than removed', () => {
+    // In the stacked layout a screen reader gets each value's column name from the header row
+    // alone, since the visible labels are aria-hidden. `display: none` or `visibility: hidden` on
+    // any part of the table's structure would take every name away, and the DOM would not change.
+    const structural = rules(stacked()).filter((rule) =>
+      rule.selector.split(',').some((part) => /^(table|thead|tbody|tr|th)\b/.test(part.trim())),
+    );
+    expect(structural.length).toBeGreaterThan(0);
+    for (const rule of structural) {
+      const decls = declarations(rule.body);
+      // Matched at the start, so `!important` cannot hide a match.
+      expect(decls.get('display') ?? '', rule.selector).not.toMatch(/^none\b/);
+      expect(decls.get('visibility') ?? '', rule.selector).not.toMatch(/^(hidden|collapse)\b/);
+    }
+    expect(declarations(ruleFor(stacked(), 'thead').body).get('position')).toBe('absolute');
+  });
+
+  it('draws each visible label from the attribute the template binds', () => {
+    // Renaming one side and not the other blanks every label, with nothing in the DOM to show it.
+    const label = /&::before\s*\{([^}]*)\}/.exec(ruleFor(stacked(), '.cell-label').body);
+    const content = declarations(label?.[1] ?? '').get('content') ?? '';
+    const attribute = /^attr\(([\w-]+)\)$/.exec(content);
+    expect(attribute, 'the label is not drawn from an attribute').not.toBeNull();
+    const html = readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.html'), 'utf8');
+    expect(html).toContain(`[attr.${attribute![1]}]=`);
   });
 });
 

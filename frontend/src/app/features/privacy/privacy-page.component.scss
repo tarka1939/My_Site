@@ -1,0 +1,7 @@
+// The prose measure the site already uses for running text (.markdown-body in src/styles.scss,
+// #297): `main` is 60rem wide, which would run these paragraphs at about 120 characters a line.
+// The headings and the list keep the global styles; only the width is capped here.
+:host {
+  display: block;
+  max-width: 33rem;
+}

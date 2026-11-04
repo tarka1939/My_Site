@@ -10,9 +10,19 @@ import org.springframework.stereotype.Component;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Resolves the requester's IP and hashes it (SHA-256 hex) — used anywhere a requester needs
- * to be rate-limited without storing a raw IP (see docs/DATA_MODEL.md: ContactMessage's
- * requester_ip_hash, same principle applied to password-reset-request).
+ * Resolves the requester's IP and hashes it (SHA-256 hex) - the per-client key for the login
+ * limit, both password-reset limits and the contact-form limit in {@link InMemoryRateLimiter},
+ * so the limiter's map never holds a raw address. An IPv6 client is its {@code /64}
+ * ({@link ClientIpResolver#resolveNetwork}, #314), so rotating addresses inside it does not reset
+ * the limit.
+ *
+ * <p>Not anonymisation. The hash is unsalted, and there are only about 4.3 billion IPv4
+ * addresses, so anyone holding one recovers the address by hashing them all. That is fine for a
+ * key that lives only in the limiter's memory and dies with the process, and it is why the value
+ * must never be written anywhere - a table, a log line, an event. {@code
+ * contact_message.requester_ip_hash} stored it until #309, which is the case this paragraph is
+ * here to prevent a second time; V10 blanked it. Anything that has to persist a per-visitor
+ * identifier wants a secret or discarded salt, as {@code DailyVisitorHasher} uses.
  */
 @Component
 public class ClientIpHasher {
@@ -29,9 +39,10 @@ public class ClientIpHasher {
         // (issue #168): getRemoteAddr() is now the innermost proxy, identically for the whole
         // internet. ClientIpResolver owns that decision and the trust boundary it turns on; this
         // class stays responsible only for never storing a raw address. With no proxy configured
-        // the resolver returns getRemoteAddr(), which is exactly what this method used to do --
-        // the header is read on a deployment that says it has a proxy, and nowhere else.
-        return sha256Hex(clientIpResolver.resolve(request));
+        // the resolver uses getRemoteAddr(), which is exactly what this method used to do -- the
+        // header is read on a deployment that says it has a proxy, and nowhere else. Since #314
+        // an IPv6 address is reduced to its /64 before it gets here.
+        return sha256Hex(clientIpResolver.resolveNetwork(request));
     }
 
     private String sha256Hex(String value) {

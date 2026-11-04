@@ -33,7 +33,7 @@ import ch.qos.logback.core.read.ListAppender;
  *
  * <p>Nothing here reaches {@code api.resend.com}. The timeout tests at the bottom use the
  * package-private constructor's base-URL seam to point a fully configured client at a local socket
- * that accepts connections and then says nothing — the shape of a blackholing upstream, which is
+ * that accepts connections and then says nothing - the shape of a blackholing upstream, which is
  * the failure an absent read timeout turns into a permanent one.
  */
 class ResendEmailClientTest {
@@ -156,7 +156,7 @@ class ResendEmailClientTest {
     }
 
     /**
-     * Accepts TCP connections and then does nothing at all with them — no read, no write, no
+     * Accepts TCP connections and then does nothing at all with them - no read, no write, no
      * close. Holds each accepted socket open so the OS does not tear it down and hand the client
      * an EOF, which would look like a different failure entirely.
      */

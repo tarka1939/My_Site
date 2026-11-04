@@ -43,6 +43,12 @@ class ProjectQueryParamValidationTest {
     void oversizedPageSizeProducesHandlerPrefixedFieldPath() throws Exception {
         mockMvc.perform(get("/api/v1/projects").param("size", "101"))
             .andExpect(status().isBadRequest())
+            // The whole body, not only the field: this is the one web test that reaches
+            // handleConstraintViolation, so it is what pins that handler's share of the shared
+            // validation body (GlobalExceptionHandler#validationProblem).
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.title").value("Validation Failed"))
+            .andExpect(jsonPath("$.detail").value("Request failed validation"))
             .andExpect(jsonPath("$.errors[0].field").value("listProjects.size"));
     }
 }

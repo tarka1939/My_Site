@@ -20,7 +20,7 @@ import io.github.tarka1939.mysite.PageResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
-/** Admin only, per docs/openapi.yaml — all endpoints here require a valid admin JWT. */
+/** Admin only, per docs/openapi.yaml - all endpoints here require a valid admin JWT. */
 @RestController
 @RequestMapping("/api/v1/contact-messages")
 @Validated

@@ -246,6 +246,18 @@ public class SecurityConfig {
                 // GithubSyncConfiguration's feature flag, which is off by default. Permitting
                 // a path that no handler serves yields a 404, not a hole.
                 .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/github").permitAll()
+                // Phase 7c's two analytics event endpoints (#58), which every visitor's browser
+                // calls. Named exactly for the same reason as the webhook above: POST only, these
+                // two paths only, so neither a GET nor anything later added under
+                // /api/v1/analytics is public by accident, and /api/v1/admin/analytics stays
+                // behind anyRequest().authenticated() and its controller's role check.
+                //
+                // A request that does carry a bearer token still has it checked here, and an
+                // invalid one is a 401 rather than an anonymous event; a valid one is the admin,
+                // whose events AnalyticsService drops. The paths are mapped only while
+                // app.analytics.enabled is true, so with the flag off this permit, like the
+                // webhook's, yields a 404.
+                .requestMatchers(HttpMethod.POST, "/api/v1/analytics/page-views", "/api/v1/analytics/link-clicks").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))

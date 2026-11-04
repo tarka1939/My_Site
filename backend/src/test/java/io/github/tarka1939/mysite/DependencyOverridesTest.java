@@ -39,8 +39,8 @@ import org.w3c.dom.NodeList;
  * values in the effective model, so nothing on the test classpath remembers them.
  *
  * <p>A literal {@code <version>} on a dependency, a plugin or a BOM import pins just as a property
- * does, out of this list's sight -- the explicit {@code testcontainers-bom} import #272 removed was
- * one. So pom.xml is held to the versions this class knows about, too.
+ * does, but out of this list's sight. So pom.xml is held to the versions this class knows about,
+ * too.
  */
 class DependencyOverridesTest {
 

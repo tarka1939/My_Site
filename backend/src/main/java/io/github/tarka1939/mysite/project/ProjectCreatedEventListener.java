@@ -6,7 +6,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * No-op reference listener for {@link ProjectCreatedEvent} — proves the publish/subscribe
+ * No-op reference listener for {@link ProjectCreatedEvent} - proves the publish/subscribe
  * pattern works before any Phase 7 extension needs to hook into it for real.
  */
 @Component

@@ -4,7 +4,7 @@
 // cross-origin URL -- the backend has no CORS configuration yet (that's Phase 5, and only
 // covers the deployed Netlify origin, not local dev), so an absolute localhost:8080 URL here
 // would have the browser block every response. Requires the backend running locally, per
-// CLAUDE.md's backend dev instructions.
+// backend/CLAUDE.md.
 export const environment = {
   production: false,
   apiBaseUrl: '/api/v1',

@@ -27,6 +27,7 @@ const PROJECT: Project = {
   startedOn: null,
   completedOn: null,
   published: true,
+  featured: false,
   repoFullName: null,
   lastPushedAt: null,
   defaultBranch: null,
@@ -100,6 +101,15 @@ describe('application routes', () => {
     await harness.navigateByUrl('/projects/p1');
 
     expect(renderedPage(harness)).toBe('app-project-detail');
+  });
+
+  it('renders the privacy page at /privacy', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/privacy');
+
+    expect(TestBed.inject(Router).url).toBe('/privacy');
+    expect(renderedPage(harness)).toBe('app-privacy-page');
+    expect(document.title).toBe('Krzysztof Tarka - Privacy');
   });
 
   it('renders not-found for an unknown URL rather than a page', async () => {

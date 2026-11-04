@@ -25,6 +25,7 @@ import io.github.tarka1939.mysite.TestPostgres;
 
 import io.github.tarka1939.mysite.PageResponse;
 import io.github.tarka1939.mysite.ResourceNotFoundException;
+import io.github.tarka1939.mysite.TagRequiredToPublishException;
 import io.github.tarka1939.mysite.project.LinkDto;
 import io.github.tarka1939.mysite.project.ProjectResponse;
 import io.github.tarka1939.mysite.project.ProjectService;
@@ -114,8 +115,10 @@ class GithubProjectSyncIntegrationTest {
         assertThat(after.completedOn()).isEqualTo(before.completedOn());
         assertThat(after.createdAt()).isEqualTo(before.createdAt());
 
-        // ...and the project stays where the owner put it: on the site.
+        // ...and the project stays where the owner put it: on the site, and pinned (#88).
         assertThat(after.published()).isTrue();
+        assertThat(before.featured()).isTrue();
+        assertThat(after.featured()).isTrue();
     }
 
     /** Rule 2: the three fields GitHub is authoritative for, and those are written. */
@@ -163,6 +166,10 @@ class GithubProjectSyncIntegrationTest {
         ProjectResponse draft = all.get(0);
 
         assertThat(draft.published()).as("an auto-created project is never live").isFalse();
+        assertThat(draft.featured()).as("nor featured: the upsert leaves V11's default").isFalse();
+        // Tagless, and allowed to be: #148 requires a tag to publish, not to exist. The upsert
+        // does not go through createProject, so the rule never sees this row.
+        assertThat(draft.tags()).as("sync writes no tags").isEmpty();
         assertThat(draft.repoFullName()).isEqualTo(repo);
         assertThat(draft.lastPushedAt()).isEqualTo(Instant.ofEpochSecond(1755777600L));
         assertThat(draft.description())
@@ -192,6 +199,30 @@ class GithubProjectSyncIntegrationTest {
         assertThat(all).hasSize(1);
         assertThat(all.get(0).published()).isFalse();
         assertThat(all.get(0).lastPushedAt()).isEqualTo(Instant.ofEpochSecond(1755864000L));
+    }
+
+    /**
+     * #148 end to end: the workflow the issue found blocked. A draft sync created arrives with no
+     * tags; the owner can save it as it is, and needs a tag only to publish it.
+     */
+    @Test
+    void anAutoCreatedDraft_canBeSavedWithNoTags_andNeedsATagOnlyToBePublished() {
+        githubSyncService.accept(UUID.randomUUID().toString(), "push",
+            pushPayload(repo, 1755777600L, "main", false, "x"));
+        ProjectResponse draft = allProjects().get(0);
+
+        ProjectResponse saved = projectService.updateProject(draft.id(),
+            ownerEdit(List.of(), null));
+        assertThat(saved.published()).isFalse();
+        assertThat(saved.tags()).isEmpty();
+
+        assertThatThrownBy(() -> projectService.updateProject(draft.id(), ownerEdit(List.of(), true)))
+            .isInstanceOf(TagRequiredToPublishException.class);
+        assertThat(projectService.getProject(draft.id()).published()).isFalse();
+
+        ProjectResponse published = projectService.updateProject(draft.id(),
+            ownerEdit(List.of("dsp"), true));
+        assertThat(published.published()).isTrue();
     }
 
     // -------------------------------------------------------------------------------------
@@ -297,7 +328,16 @@ class GithubProjectSyncIntegrationTest {
             LocalDate.of(2024, 3, 1),
             LocalDate.of(2025, 6, 1),
             null,
+            // Featured, so that a delivery leaving it alone is something a test can see (#88).
+            true,
             repoFullName));
+    }
+
+    /** The owner's edit of a synced draft: their own prose replacing the placeholder. */
+    private static ProjectWriteRequest ownerEdit(List<String> tags, Boolean published) {
+        return new ProjectWriteRequest(
+            "Equalizer", "The owner's description, replacing the placeholder.",
+            List.of(), List.of(), tags, null, null, published, null, null);
     }
 
     private List<ProjectResponse> allProjects() {

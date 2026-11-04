@@ -42,7 +42,7 @@ describe('ProjectPeriodComponent', () => {
   it('renders a completed period as a month/year range', () => {
     const { host } = renderPeriod('2024-03-01', '2025-06-01');
 
-    expect(visibleText(host)).toBe('March 2024 – June 2025');
+    expect(visibleText(host)).toBe('March 2024 - June 2025');
 
     const times = host.querySelectorAll('time');
     expect(times.length).toBe(2);
@@ -55,7 +55,7 @@ describe('ProjectPeriodComponent', () => {
     // cannot support day-level accuracy -- rendering one would assert something untrue.
     const { host } = renderPeriod('2024-03-17', '2025-06-29');
 
-    expect(visibleText(host)).toBe('March 2024 – June 2025');
+    expect(visibleText(host)).toBe('March 2024 - June 2025');
     const datetimes = [...host.querySelectorAll('time')].map((t) => t.getAttribute('datetime'));
     expect(datetimes).toEqual(['2024-03', '2025-06']);
   });
@@ -63,7 +63,7 @@ describe('ProjectPeriodComponent', () => {
   it('renders an ongoing project as ongoing rather than as an empty end', () => {
     const { host } = renderPeriod('2024-03-01', null);
 
-    expect(visibleText(host)).toBe('March 2024 – ongoing');
+    expect(visibleText(host)).toBe('March 2024 - ongoing');
     expect(host.querySelector('.is-ongoing')).not.toBeNull();
     // One date, not two: there is no second <time> with an empty datetime.
     expect(host.querySelectorAll('time').length).toBe(1);

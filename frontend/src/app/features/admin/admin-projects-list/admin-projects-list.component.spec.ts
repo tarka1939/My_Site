@@ -23,6 +23,7 @@ const DRAFT: Project = {
   startedOn: '2024-03-01',
   completedOn: null,
   published: false,
+  featured: false,
   repoFullName: 'tarka1939/Equalizer',
   lastPushedAt: '2026-08-20T09:00:00Z',
   defaultBranch: 'main',
@@ -31,7 +32,10 @@ const DRAFT: Project = {
   updatedAt: '2026-08-20T09:00:00Z',
 };
 
-/** A live, hand-written project: no repository, both dates set, on the public site. */
+/**
+ * A live, hand-written project: no repository, both dates set, on the public site, and featured
+ * (#88), so that taking it down is also the case where a careless body would un-feature it.
+ */
 const LIVE: Project = {
   id: 'p-live',
   title: 'Reverb',
@@ -42,6 +46,7 @@ const LIVE: Project = {
   startedOn: '2025-01-01',
   completedOn: '2025-06-01',
   published: true,
+  featured: true,
   repoFullName: null,
   lastPushedAt: null,
   defaultBranch: null,
@@ -50,17 +55,49 @@ const LIVE: Project = {
   updatedAt: '2026-02-01T00:00:00Z',
 };
 
+/**
+ * What a GitHub push actually creates (#148): a draft with no tags at all. The API refuses to
+ * publish it until it has one.
+ */
+const TAGLESS_DRAFT: Project = {
+  ...DRAFT,
+  id: 'p-tagless',
+  title: 'Compressor',
+  tags: [],
+  repoFullName: 'tarka1939/Compressor',
+};
+
+/**
+ * A live project with no tags. The rule is checked on write, not applied to existing rows, so one
+ * published from this list before #148 can still be live without a tag.
+ */
+const LIVE_TAGLESS: Project = { ...LIVE, id: 'p-live-tagless', title: 'Delay', tags: [] };
+
 function pageOf(content: Project[]) {
   return of({ content, page: 0, size: 20, totalElements: content.length, totalPages: 1 });
 }
 
 function validationProblem(field: string, message: string): ApiProblem {
+  return problemWith([{ field, message }]);
+}
+
+/** A 400 carrying several violations at once, which is what the API sends -- it does not dedup. */
+function problemWith(fieldErrors: { field: string; message: string }[]): ApiProblem {
   return {
     status: 400,
     title: 'Bad Request',
-    fieldErrors: [{ field, message }],
+    fieldErrors,
     rateLimited: false,
   };
+}
+
+/** The publish banner's text, as the admin reads it -- link text included. */
+function bannerText(fixture: ComponentFixture<AdminProjectsListComponent>): string {
+  const banner = (fixture.nativeElement as HTMLElement).querySelector('.publish-error');
+  if (!banner) {
+    throw new Error('no publish error banner is rendered');
+  }
+  return banner.textContent ?? '';
 }
 
 /** The row for `title`, found the way a reader finds it -- by the title in its first cell. */
@@ -137,6 +174,18 @@ describe('AdminProjectsListComponent', () => {
     expect(listProjects).not.toHaveBeenCalled();
   });
 
+  it('links to the other admin pages, the analytics dashboard included', async () => {
+    // The admin area has no navigation of its own, so this row is the only way to these pages.
+    const fixture = await renderComponent(AdminProjectsListComponent);
+
+    const links = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.admin-actions a')];
+    expect(links.map((link) => [link.textContent?.trim(), link.getAttribute('href')])).toEqual([
+      ['+ New project', '/admin/projects/new'],
+      ['Edit the About page', '/admin/about'],
+      ['View analytics', '/admin/analytics'],
+    ]);
+  });
+
   it('says in words which rows the public cannot see', async () => {
     const fixture = await renderComponent(AdminProjectsListComponent);
 
@@ -206,6 +255,19 @@ describe('AdminProjectsListComponent', () => {
     expect(sentBody().published).toBe(false);
     expect(deleteProject).not.toHaveBeenCalled();
     expect(statusOf(fixture, 'Reverb')).toBe('Draft');
+  });
+
+  it('leaves featured out of the body, so a featured project stays featured (#88)', async () => {
+    updateProject.mockReturnValue(of({ ...LIVE, published: false }));
+    const fixture = await renderComponent(AdminProjectsListComponent);
+
+    await clickPublish(fixture, 'Reverb');
+
+    // The contract reads an omitted `featured` on PUT as "leave it as it is", which is what a
+    // publication change means. Asserted on the keys, for repoFullName's reason above: a body
+    // carrying `featured: false` would un-feature the project, and `featured: true` would write
+    // back a copy that can be stale.
+    expect(Object.keys(sentBody())).not.toContain('featured');
   });
 
   it('repaints the row from what the server stored, not from what was asked for', async () => {
@@ -280,8 +342,12 @@ describe('AdminProjectsListComponent', () => {
     // errorInterceptor stays quiet for a 400 that carries field errors, on the assumption that a
     // form renders them inline. This page has no form, so without a destination here the button
     // would go back to saying "Publish" and nothing anywhere would say why.
+    //
+    // Equalizer has a tag on this page, so the list offers Publish -- and the server refuses it all
+    // the same, which is what a row gone stale looks like: the tag removed in another tab since
+    // this list loaded. The row is not the authority on the rule; the server is.
     updateProject.mockReturnValue(
-      throwError(() => validationProblem('tags', 'At least one tag is required')),
+      throwError(() => validationProblem('tags', 'At least one tag is required to publish')),
     );
     const fixture = await renderComponent(AdminProjectsListComponent);
 
@@ -290,9 +356,276 @@ describe('AdminProjectsListComponent', () => {
     const alert = (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]');
     const message = alert?.textContent ?? '';
     expect(message).toContain('Equalizer');
-    expect(message).toContain('tags');
-    expect(message).toContain('At least one tag is required');
+    expect(message).toContain('Tags: At least one tag is required to publish');
     // And the row still reports the truth: the publish did not happen.
     expect(statusOf(fixture, 'Equalizer')).toBe('Draft');
+  });
+
+  it('names each field the way the form labels it, never by the API key (#308)', async () => {
+    // The banner links to the form, so its word for a field is the one the admin will find there.
+    // It used to print the key: "tags: At least one tag is required to publish". The exact sentence
+    // is asserted, so the wording around the reasons is pinned along with how each is named.
+    updateProject.mockReturnValue(
+      throwError(() =>
+        problemWith([
+          { field: 'tags', message: 'At least one tag is required to publish' },
+          { field: 'links[0].url', message: 'must not be blank' },
+          { field: 'images[0]', message: 'size must be between 0 and 500' },
+          // A key with no label on the form: the message goes out alone rather than with the key.
+          { field: 'repoFullName', message: 'size must be between 0 and 255' },
+        ]),
+      ),
+    );
+    const fixture = await renderComponent(AdminProjectsListComponent);
+
+    await clickPublish(fixture, 'Equalizer');
+
+    const text = bannerText(fixture);
+    expect(text).toContain(
+      'Could not publish "Equalizer". The server rejected it -- ' +
+        'Tags: At least one tag is required to publish; ' +
+        "Link 1's URL: must not be blank; " +
+        "Image 1's URL: size must be between 0 and 500; " +
+        'size must be between 0 and 255.',
+    );
+    // The sentence above has no key in it; this covers the rest of the banner, the link included.
+    for (const key of ['tags:', 'links[0]', 'images[0]', 'repoFullName']) {
+      expect(text).not.toContain(key);
+    }
+  });
+
+  it('links a rejected publish to the form where it can be fixed', async () => {
+    // The message sits above the table, which can be a page of rows away from this project's own
+    // Edit link. A tag can only be added in the form, so the message goes there.
+    updateProject.mockReturnValue(
+      throwError(() => validationProblem('tags', 'At least one tag is required to publish')),
+    );
+    const fixture = await renderComponent(AdminProjectsListComponent);
+
+    await clickPublish(fixture, 'Equalizer');
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector('[role="alert"] a');
+    expect(link?.getAttribute('href')).toBe('/admin/projects/p-draft/edit');
+    expect(link?.textContent).toContain('Equalizer');
+  });
+
+  describe('a draft with no tags (#148)', () => {
+    beforeEach(() => {
+      listAllProjects.mockReturnValue(pageOf([TAGLESS_DRAFT, DRAFT, LIVE_TAGLESS]));
+    });
+
+    /** The control standing where Publish would, on a row that cannot be published as it is. */
+    function addTagLink(
+      fixture: ComponentFixture<AdminProjectsListComponent>,
+      title: string,
+    ): HTMLAnchorElement | null {
+      return rowFor(fixture, title).querySelector<HTMLAnchorElement>('.publish-blocked');
+    }
+
+    it('offers the way to a tag in place of a Publish the server would refuse', async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      // The positive half first: the link is there, says the reason in visible text, and goes to
+      // the one place a tag can be added. Without it, the absent button below would pass against a
+      // row that rendered no actions at all.
+      const link = addTagLink(fixture, 'Compressor');
+      expect(link?.textContent?.trim()).toBe('Add a tag to publish');
+      expect(link?.getAttribute('href')).toBe('/admin/projects/p-tagless/edit');
+
+      // No Publish control in that row -- a button, disabled or not, that is known to fail.
+      expect(rowFor(fixture, 'Compressor').querySelector('.publish-toggle')).toBeNull();
+
+      // A draft with a tag is untouched by any of this.
+      expect(publishButton(fixture, 'Equalizer').textContent?.trim()).toBe('Publish');
+      expect(addTagLink(fixture, 'Equalizer')).toBeNull();
+    });
+
+    it('gives the reason to a screen reader as a focusable control, named for its row', async () => {
+      // The failure a disabled button plus a tooltip would have: unfocusable, so tabbing never
+      // reaches it, and a reason that only a hovering mouse can see. A link with an href is in the
+      // tab order, and its name carries the reason itself.
+      const fixture = await renderComponent(AdminProjectsListComponent);
+      const link = addTagLink(fixture, 'Compressor')!;
+
+      expect(link.hasAttribute('href')).toBe(true);
+      expect(link.getAttribute('aria-label')).toBe('Add a tag to publish Compressor');
+      // WCAG 2.5.3: the name has to contain the visible label, or speech control cannot act on it.
+      expect(link.getAttribute('aria-label')).toContain(link.textContent!.trim());
+    });
+
+    it('says "No tags" rather than leaving the cell blank', async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      const tagsOf = (title: string) =>
+        ((rowFor(fixture, title) as HTMLTableRowElement).cells[2].textContent ?? '').trim();
+      expect(tagsOf('Compressor')).toBe('No tags');
+      expect(tagsOf('Equalizer')).toBe('dsp');
+    });
+
+    it('still lets a live project with no tags be taken down, and then shows why it cannot go back up', async () => {
+      // A draft may be tagless, so unpublishing one is allowed. The server's answer then makes it a
+      // tagless draft, and the row follows what the server stored rather than what was asked.
+      updateProject.mockReturnValue(of({ ...LIVE_TAGLESS, published: false }));
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      expect(publishButton(fixture, 'Delay').textContent?.trim()).toBe('Unpublish');
+
+      await clickPublish(fixture, 'Delay');
+
+      expect(sentBody().tags).toEqual([]);
+      expect(sentBody().published).toBe(false);
+      expect(statusOf(fixture, 'Delay')).toBe('Draft');
+      expect(rowFor(fixture, 'Delay').querySelector('.publish-toggle')).toBeNull();
+      expect(addTagLink(fixture, 'Delay')?.textContent?.trim()).toBe('Add a tag to publish');
+    });
+
+    describe('focus, when Unpublish turns into the way to a tag', () => {
+      // The pressed button is destroyed by the answer, because that row no longer offers Publish.
+      // A control that disappears while focused leaves focus on the page, so where a keyboard
+      // user's next Tab goes is up to the browser and a screen reader has nothing to say. The link
+      // standing where the button was is where they should be.
+
+      it('moves a keyboard user to the link that replaced the button', async () => {
+        updateProject.mockReturnValue(of({ ...LIVE_TAGLESS, published: false }));
+        const fixture = await renderComponent(AdminProjectsListComponent);
+        const toggle = publishButton(fixture, 'Delay');
+
+        toggle.focus();
+        expect(document.activeElement).toBe(toggle);
+        // Enter or Space on a focused button arrives as a click.
+        toggle.click();
+        await fixture.whenStable();
+
+        const link = addTagLink(fixture, 'Delay');
+        expect(link).not.toBeNull();
+        expect(document.activeElement).toBe(link);
+      });
+
+      it('moves nobody who was not on the button when it was pressed', async () => {
+        // A mouse click that does not focus the button, as in Safari. Focus was never in this row,
+        // so there is no place in it to keep.
+        updateProject.mockReturnValue(of({ ...LIVE_TAGLESS, published: false }));
+        const fixture = await renderComponent(AdminProjectsListComponent);
+
+        publishButton(fixture, 'Delay').click();
+        await fixture.whenStable();
+
+        // The link is there, so focus being elsewhere is a decision, not a missing link.
+        expect(addTagLink(fixture, 'Delay')).not.toBeNull();
+        expect(document.activeElement).not.toBe(addTagLink(fixture, 'Delay'));
+      });
+
+      it('does not pull back an admin who moved to another control while it ran', async () => {
+        const pending = new Subject<Project>();
+        updateProject.mockReturnValue(pending);
+        const fixture = await renderComponent(AdminProjectsListComponent);
+        const toggle = publishButton(fixture, 'Delay');
+
+        toggle.focus();
+        toggle.click();
+        await fixture.whenStable();
+        // On to the next row while Delay's request is still out.
+        const elsewhere = publishButton(fixture, 'Equalizer');
+        elsewhere.focus();
+
+        pending.next({ ...LIVE_TAGLESS, published: false });
+        pending.complete();
+        await fixture.whenStable();
+
+        expect(addTagLink(fixture, 'Delay')).not.toBeNull();
+        expect(document.activeElement).toBe(elsewhere);
+      });
+    });
+  });
+
+  describe('column names, in the table and in the stacked phone layout (#312)', () => {
+    // Below 40rem the SCSS sets `display` on the table's elements to stack each project into a
+    // block, and some browsers then drop a table's semantics, taking every value's column name with
+    // them. No test here can see that layout or hear a screen reader. What the DOM can show is that
+    // the semantics are stated in the markup, where a stylesheet cannot remove them, and that the
+    // labels the stacked layout draws say what the headers say.
+
+    beforeEach(() => {
+      // Every branch a cell has: live and draft, tags and none, Publish and the way to a tag.
+      listAllProjects.mockReturnValue(pageOf([DRAFT, LIVE, TAGLESS_DRAFT]));
+    });
+
+    type Fixture = ComponentFixture<AdminProjectsListComponent>;
+
+    function tableOf(fixture: Fixture): HTMLTableElement {
+      const table = (fixture.nativeElement as HTMLElement).querySelector('table');
+      if (!table) {
+        throw new Error('no table is rendered');
+      }
+      return table;
+    }
+
+    /** The column headers' words, in column order. */
+    function headerNames(fixture: Fixture): string[] {
+      const headers = [...tableOf(fixture).querySelectorAll('th')];
+      return headers.map((th) => (th.textContent ?? '').trim());
+    }
+
+    function bodyRows(fixture: Fixture): HTMLTableRowElement[] {
+      return [...tableOf(fixture).querySelectorAll<HTMLTableRowElement>('tbody tr')];
+    }
+
+    it('states every table role in the markup, where a change of display cannot', async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+      const table = tableOf(fixture);
+      const rolesOf = (selector: string) =>
+        [...table.querySelectorAll(selector)].map((element) => element.getAttribute('role'));
+
+      expect(table.getAttribute('role')).toBe('table');
+      expect(rolesOf('thead, tbody')).toEqual(['rowgroup', 'rowgroup']);
+      // The header row, then one per project.
+      expect(rolesOf('tr')).toEqual(['row', 'row', 'row', 'row']);
+      expect(rolesOf('th')).toEqual(Array(4).fill('columnheader'));
+      expect(rolesOf('td')).toEqual(Array(12).fill('cell'));
+    });
+
+    it('gives every value a column header, and never hides the header row', async () => {
+      // With the roles explicit, a cell's column header is the header at its position in the row,
+      // so each row needs exactly one cell per header. The stacked layout takes the header row off
+      // screen with CSS only; an aria-hidden or a `hidden` here would take it out of the
+      // accessibility tree in both layouts, and every value's column name with it.
+      const fixture = await renderComponent(AdminProjectsListComponent);
+
+      expect(headerNames(fixture)).toEqual(['Title', 'Status', 'Tags', 'Actions']);
+      for (const row of bodyRows(fixture)) {
+        expect(row.cells).toHaveLength(headerNames(fixture).length);
+      }
+
+      const thead = tableOf(fixture).querySelector('thead')!;
+      for (const element of [thead, ...thead.querySelectorAll('*')]) {
+        expect(element.hasAttribute('aria-hidden')).toBe(false);
+        expect(element.hasAttribute('hidden')).toBe(false);
+      }
+    });
+
+    it("labels a stacked value with its header's word, hidden from a screen reader", async () => {
+      const fixture = await renderComponent(AdminProjectsListComponent);
+      const names = headerNames(fixture);
+
+      for (const row of bodyRows(fixture)) {
+        const labels = [...row.cells].flatMap((cell, column) => {
+          const label = cell.querySelector('.cell-label');
+          return label ? [{ column, label }] : [];
+        });
+
+        // Status and Tags, in their own columns: the title opens its block, and each action
+        // names itself.
+        expect(labels.map(({ column }) => names[column])).toEqual(['Status', 'Tags']);
+        for (const { column, label } of labels) {
+          // The word the stacked layout draws, which comes from the header's own constant.
+          expect(label.getAttribute('data-label')).toBe(names[column]);
+          // The screen reader already hears the header for this cell; a visible copy it could
+          // also reach would be read on top of it.
+          expect(label.getAttribute('aria-hidden')).toBe('true');
+          // Drawn by CSS, so the cell's text stays its value alone, as in the table.
+          expect(label.textContent).toBe('');
+        }
+      }
+    });
   });
 });

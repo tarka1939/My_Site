@@ -137,6 +137,7 @@ class ProjectDatesWebValidationTest {
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.status").value(400))
             .andExpect(jsonPath("$.title").value("Validation Failed"))
+            .andExpect(jsonPath("$.detail").value("Request failed validation"))
             .andExpect(jsonPath("$.errors[0].field").value("completedOn"))
             .andExpect(jsonPath("$.errors[0].message").value(ProjectDatePeriodValidator.COMPLETED_BEFORE_START));
 
@@ -151,6 +152,8 @@ class ProjectDatesWebValidationTest {
                 """))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.title").value("Validation Failed"))
+            .andExpect(jsonPath("$.detail").value("Request failed validation"))
             .andExpect(jsonPath("$.errors[0].field").value("completedOn"))
             .andExpect(jsonPath("$.errors[0].message").value(ProjectDatePeriodValidator.COMPLETED_WITHOUT_START));
 
@@ -251,7 +254,7 @@ class ProjectDatesWebValidationTest {
         return new ProjectResponse(
             PROJECT_ID, "Title", "Description", List.of(), List.of(), List.of(),
             startedOn, completedOn,
-            true, null, null, null, false,
+            true, false, null, null, null, false,
             Instant.parse("2026-08-08T10:00:00Z"), Instant.parse("2026-08-08T10:00:00Z"));
     }
 }

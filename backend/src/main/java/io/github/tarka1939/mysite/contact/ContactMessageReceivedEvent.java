@@ -15,7 +15,7 @@ import java.util.UUID;
  * <p>Consequently this record holds visitor PII (name, email, message body). That is fine while
  * events are in-memory only. If {@code spring-modulith-events} durable publication is ever
  * adopted (docs/DECISIONS.md lists it as undecided), this event would start being serialized into
- * a database table, and that is a decision to take deliberately rather than inherit — at which
+ * a database table, and that is a decision to take deliberately rather than inherit - at which
  * point carrying only {@link #messageId()} becomes the better trade.
  */
 public record ContactMessageReceivedEvent(

@@ -36,8 +36,10 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
   // Each card is an <a> wrapping the project's <h2>, so its accessible name is the title.
-  // The seeded fixtures are the newest projects (the list sorts by createdAt DESC), so they
-  // land on the first page even if the developer's database already has content of its own.
+  // Both fixtures land on the first page of CI's fresh database. The list no longer sorts by
+  // entry date (#88: featured, then ongoing, then latest completion, then undated), so on a
+  // developer's database with a page's worth of published projects that sort ahead of them,
+  // they can be pushed off it.
   const alphaCard = page.getByRole('link', { name: FIXTURE_ALPHA.title, exact: true });
   const betaCard = page.getByRole('link', { name: FIXTURE_BETA.title, exact: true });
   await expect(alphaCard).toBeVisible();
@@ -266,6 +268,21 @@ test('a visitor can browse projects, filter by tag, and open a project detail pa
         ),
     )
     .toBe(true);
+
+  // --- The description's measure (issue #297) ---------------------------------------------------
+  //
+  // The cap is on the text, not on the page: the description stops at a reading measure while the
+  // gallery above it keeps the full width (#211). Dropping the cap, or moving it onto the article,
+  // brings the two widths together and fails this. So does raising it past about 603px, 0.65 of
+  // 928px (70ch's 672px would fail), so a change to the measure needs this threshold moved too.
+  // Desktop Chrome's 1280px viewport is wide enough for the cap to apply (528px of 928px).
+  const widthOf = (el: Element) => el.getBoundingClientRect().width;
+  const descriptionWidth = await detailDescription.evaluate(widthOf);
+  const galleryWidth = await gallery.evaluate(widthOf);
+  expect(
+    descriptionWidth,
+    `the description (${descriptionWidth}px) must be capped well inside the gallery (${galleryWidth}px)`,
+  ).toBeLessThan(0.65 * galleryWidth);
 
   // The detail page renders the period from its own endpoint (GET /projects/{id}), not from the
   // list payload, so it is a genuinely separate path rather than a repeat of the assertion above.

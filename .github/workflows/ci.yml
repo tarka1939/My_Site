@@ -1,4 +1,5 @@
-# Runs both test suites on every pull request. Issue #193, item 1 of docs/CI_PLAN.md.
+# Runs both test suites, the frontend lint (#210) and the API-client staleness check on every pull
+# request and every push to dev or main. Issue #193, item 1 of docs/CI_PLAN.md.
 #
 # Deliberately does not deploy anything. Deploying is #45 and #38, and separating them is the
 # point: this workflow needs no secrets and has no deploy target, so it cannot break production
@@ -38,20 +39,36 @@ jobs:
           java-version: '25'
           cache: maven
 
-      # Thirteen test files use Testcontainers against postgres:17-alpine. `@Testcontainers` here
-      # is NOT set to disabledWithoutDocker, so a runner without Docker fails the suite rather
-      # than skipping it -- which is the behaviour we want, because a silently skipped
-      # integration suite is indistinguishable from a passing one. This step proves Docker is
-      # present before the tests need it, so that failure mode is named rather than inferred from
-      # a confusing container error.
+      # The integration tests start a Postgres container through Testcontainers, on the image
+      # named in TestPostgres.java. `@Testcontainers` here is NOT set to disabledWithoutDocker, so
+      # a runner without Docker fails the suite rather than skipping it -- which is the behaviour
+      # we want, because a silently skipped integration suite is indistinguishable from a passing
+      # one. This step proves Docker is present before the tests need it, so that failure mode is
+      # named rather than inferred from a confusing container error.
       - name: Confirm Docker is available for Testcontainers
         run: docker info > /dev/null
+
+      # The same idea for the image (#285). A refused Docker Hub pull fails here, at a step named
+      # for it, rather than as Testcontainers errors after a long run of retries (about 45 minutes in
+      # #285). The script says why and how. deploy-backend.yml runs the same script before it builds a release (#287),
+      # so a change to it is checked here, on the pull request, before any release runs it.
+      - name: Pull the Postgres test image
+        timeout-minutes: 5
+        run: bash .github/scripts/pull-test-image.sh
 
       # -B for non-interactive batch output. NOT -q: that suppresses the "Tests run:" summary
       # line, which is the record. A count derived from target/surefire-reports instead of read
       # from Maven has already been wrong in this project once, by 22 tests.
+      #
+      # Ryuk is off here (#285). It is Testcontainers' cleanup container, and its image was the
+      # job's only other Docker Hub pull. A refusal there fails every Testcontainers class within
+      # a few minutes, which reads as broken tests again. Ryuk removes containers a dead JVM
+      # leaves behind, and a GitHub-hosted runner is discarded after the job anyway. Local runs
+      # keep it. The "Ryuk has been disabled" warning banner in the log is expected.
       - name: Run backend tests
         working-directory: backend
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
         run: mvn -B test
 
   frontend:

@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { AboutService } from '../../core/api/api/about.service';
+import { AnalyticsService } from '../../core/api/api/analytics.service';
 import { ProjectsService } from '../../core/api/api/projects.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ADMIN_ROUTES } from './admin.routes';
@@ -31,6 +32,8 @@ describe('admin routes', () => {
         provideRouter([{ path: 'admin', children: ADMIN_ROUTES }]),
         { provide: AboutService, useValue: { getAboutPage } },
         { provide: ProjectsService, useValue: { listAllProjects: () => of(EMPTY_PAGE) } },
+        // The dashboard's request never answers: these tests are about reaching the page.
+        { provide: AnalyticsService, useValue: { getAnalyticsSummary: () => NEVER } },
       ],
     });
   });
@@ -57,7 +60,7 @@ describe('admin routes', () => {
     expect(TestBed.inject(Router).url).toBe('/admin/login?returnUrl=%2Fadmin%2Fprojects');
   });
 
-  it.each(['/admin/about', '/admin/projects/new'])(
+  it.each(['/admin/about', '/admin/projects/new', '/admin/analytics'])(
     'sends an admin whose session expired on one admin page to the login page on the way to %s',
     async (next) => {
       const auth = logInFor(60_000);
@@ -83,5 +86,15 @@ describe('admin routes', () => {
 
     expect(TestBed.inject(Router).url).toBe('/admin/about');
     expect(getAboutPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves the analytics dashboard at /admin/analytics to a live session', async () => {
+    logInFor(60_000);
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/admin/analytics');
+
+    expect(TestBed.inject(Router).url).toBe('/admin/analytics');
+    expect(harness.routeNativeElement?.tagName.toLowerCase()).toBe('app-admin-analytics');
+    expect(document.title).toBe('Krzysztof Tarka - Admin - Analytics');
   });
 });

@@ -227,7 +227,7 @@ describe('ProjectsListComponent', () => {
 
   it('keeps the eager treatment on the first rendered image when earlier projects have none', () => {
     // The regression this guards: `$first` indexes over projects, not over rendered images, so
-    // keying off it means one imageless project at the top of a createdAt-DESC list silently
+    // keying off it means one imageless project at the top of the list silently
     // demotes every image on the page to loading="lazy" with no fetchpriority.
     listProjects.mockReturnValue(
       pageOf([PROJECT, PROJECT_WITH_IMAGE, OTHER_PROJECT_WITH_IMAGE]),

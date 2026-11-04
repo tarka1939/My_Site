@@ -7,9 +7,9 @@ import { hasDateValue, toProjectMonth } from './project-period';
  * 2026-08-08 ADR for why the stored day is a storage artefact that must not reach the page.
  *
  * Four states, and each has to be distinguishable:
- *   - start + end        -> "March 2024 – June 2025"
- *   - start + no end     -> "March 2024 – ongoing"   (null completedOn *means* ongoing)
- *   - start = end month  -> "March 2024"             (no "March 2024 – March 2024": with the day
+ *   - start + end        -> "March 2024 - June 2025"
+ *   - start + no end     -> "March 2024 - ongoing"   (null completedOn *means* ongoing)
+ *   - start = end month  -> "March 2024"             (no "March 2024 - March 2024": with the day
  *                                                     dropped, a one-month project is one month)
  *   - neither            -> nothing at all, no empty label and no stray dash
  *
@@ -34,10 +34,10 @@ import { hasDateValue, toProjectMonth } from './project-period';
         <span class="visually-hidden">Project period: </span>
         <time [attr.datetime]="start">{{ start | date: 'LLLL y' }}</time>
         @if (ongoing()) {
-          <span aria-hidden="true"> &ndash; </span><span class="visually-hidden">, </span>
+          <span aria-hidden="true"> - </span><span class="visually-hidden">, </span>
           <span class="is-ongoing">ongoing</span>
         } @else if (rangeEnd(); as end) {
-          <span aria-hidden="true"> &ndash; </span><span class="visually-hidden"> to </span>
+          <span aria-hidden="true"> - </span><span class="visually-hidden"> to </span>
           <time [attr.datetime]="end">{{ end | date: 'LLLL y' }}</time>
         }
       </p>
@@ -93,7 +93,7 @@ export class ProjectPeriodComponent {
    * The end month, but only when it is worth rendering as the far side of a range -- so null both
    * when there is nothing renderable and when the period starts and ends in the same month, which
    * is indistinguishable from a single month once the day is dropped ("March 2024", never
-   * "March 2024 – March 2024").
+   * "March 2024 - March 2024").
    */
   protected readonly rangeEnd = computed(() =>
     this.end() !== null && this.end() !== this.start() ? this.end() : null,

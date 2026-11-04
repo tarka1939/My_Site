@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { AnalyticsPage } from '../../core/api/model/analyticsPage';
 import { AboutPageComponent } from './about-page.component';
 
 /** Mounted at '' (full match) in app.routes.ts: the About page is the site's landing page. */
@@ -23,6 +24,8 @@ export const ABOUT_ROUTES: Routes = [
       // referring back to a projects list the reader has not seen.
       description:
         'Krzysztof Tarka: background and interests, the software and audio/DSP projects in this portfolio, and how to get in touch.',
+      // Counted as a page view (core/analytics/analytics-tracker.ts). `about` is the site root.
+      analyticsPage: AnalyticsPage.About,
     },
   },
 ];

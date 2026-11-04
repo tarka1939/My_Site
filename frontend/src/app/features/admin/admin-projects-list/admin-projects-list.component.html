@@ -2,17 +2,22 @@
 
 <!-- The admin area has no navigation of its own; this page is where a logged-in admin lands, so
      it carries the links. (Messages has never had one from here and is reached by URL -- a gap
-     worth its own fix, not folded into #213.) -->
+     worth its own fix, not folded into #213.) Analytics joined them in Phase 7c. -->
 <p class="admin-actions">
   <a routerLink="/admin/projects/new">+ New project</a>
   <a routerLink="/admin/about">Edit the About page</a>
+  <a routerLink="/admin/analytics">View analytics</a>
 </p>
 
 <!-- A publish that was rejected with field errors, which errorInterceptor deliberately does not
      toast. Outside the table so it cannot be scrolled past horizontally, and above it so it is
-     read before the row it is about. -->
-@if (publishError(); as message) {
-  <p class="publish-error" role="alert">{{ message }}</p>
+     read before the row it is about. The link is the way to fix it: from up here, the row's own
+     Edit link can be a full page of rows away. -->
+@if (publishError(); as failure) {
+  <p class="publish-error" role="alert">
+    {{ failure.message }}
+    <a [routerLink]="['/admin/projects', failure.projectId, 'edit']">Edit "{{ failure.title }}"</a>
+  </p>
 }
 
 @if (loading()) {
@@ -20,20 +25,25 @@
 } @else if (projects().length === 0) {
   <p>No projects yet.</p>
 } @else {
-  <table>
+  <!-- The roles restate what the elements already are, because the phone layout (#312) sets
+       `display` on them, and some browsers (Safari notably, older Chrome too) then drop a table's
+       semantics: a screen reader would lose the header row, and with it every value's column
+       name. An explicit role survives the CSS. The header row stays in the accessibility tree in
+       that layout too, hidden off screen rather than removed; see the SCSS. -->
+  <table role="table">
     <caption class="visually-hidden">Projects, drafts included</caption>
-    <thead>
-      <tr>
-        <th scope="col">Title</th>
-        <th scope="col">Status</th>
-        <th scope="col">Tags</th>
-        <th scope="col">Actions</th>
+    <thead role="rowgroup">
+      <tr role="row">
+        <th role="columnheader" scope="col">{{ column.title }}</th>
+        <th role="columnheader" scope="col">{{ column.status }}</th>
+        <th role="columnheader" scope="col">{{ column.tags }}</th>
+        <th role="columnheader" scope="col">{{ column.actions }}</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody role="rowgroup">
       @for (project of projects(); track project.id) {
-        <tr>
-          <td>
+        <tr role="row">
+          <td role="cell">
             {{ project.title }}
             <!-- Provenance, not status: a repository name means webhook deliveries land on this
                  project, which is true of a draft and a live entry alike. Rendering it here rather
@@ -46,7 +56,19 @@
               </span>
             }
           </td>
-          <td>
+          <td role="cell" class="labelled">
+            <!-- The column's name, for the stacked layout (#312), where a sighted reader has no
+                 header row above the value. Only Status and Tags have one: the title opens its
+                 block as a heading would, and each action names itself.
+
+                 The span is empty, and the SCSS draws the word from data-label in that layout only.
+                 The label is the header's word, not the cell's content, so it stays out of the
+                 cell's text, which is the value alone as in the table, and there is nothing to hide
+                 above the breakpoint. aria-hidden, because a screen reader using table navigation
+                 should already announce this cell's column header in either layout, and a visible
+                 copy would be read on top of it ("Status, Status, Draft"). The word comes from
+                 the constant the header does, so the two cannot drift apart. -->
+            <span class="cell-label" aria-hidden="true" [attr.data-label]="column.status"></span>
             <!-- Both states carry a word of their own. "Draft" as a badge and "published" as the
                  absence of one would make a failure to render read as *live*, which is the silent
                  difference this column exists to end: a row the public cannot see must never look
@@ -57,27 +79,59 @@
               <span class="status status--draft">Draft</span>
             }
           </td>
-          <td>{{ project.tags.map((t) => t.name).join(', ') }}</td>
-          <td class="actions">
+          <td role="cell" class="labelled">
+            <!-- As in the Status cell. -->
+            <span class="cell-label" aria-hidden="true" [attr.data-label]="column.tags"></span>
+            <!-- A word rather than an empty cell, for the Status column's reason: blank reads as
+                 "failed to render" as easily as "none". Tagless is a real state since #148 -- every
+                 auto-created draft starts that way -- and it is why such a draft offers no Publish. -->
+            @if (project.tags.length > 0) {
+              {{ project.tags.map((t) => t.name).join(', ') }}
+            } @else {
+              <span class="no-tags">No tags</span>
+            }
+          </td>
+          <td role="cell" class="actions">
             <a [routerLink]="['/admin/projects', project.id, 'edit']">Edit</a>
-            <!-- An action label ("Publish"/"Unpublish") rather than a state label plus
-                 aria-pressed. The two are alternatives, not a pair: a toggle button announces as
-                 "<name>, pressed", so a button that renames itself to the action would be read out
-                 as "Unpublish, pressed" -- which says the opposite of what is true. State is the
-                 Status column's job here; this button says what pressing it does.
+            @if (needsTagToPublish(project)) {
+              <!-- In place of Publish, which the API would refuse for a draft with no tags (#148).
+                   A link that states the reason rather than a disabled button beside one: a disabled
+                   button takes no focus, so tabbing never reaches it or its explanation, and a
+                   tooltip reaches only a mouse. See needsTagToPublish().
 
-                 The accessible name is built from the same expression as the visible text so the
-                 two can never disagree (WCAG 2.5.3), and carries the title because a screen reader
-                 moving button to button through a table hears "Publish" with no idea which row. -->
-            <button
-              type="button"
-              class="publish-toggle"
-              (click)="setPublished(project, !project.published)"
-              [disabled]="publishingId() === project.id"
-              [attr.aria-label]="publishAction(project) + ' ' + project.title"
-            >
-              {{ publishAction(project) }}
-            </button>
+                   The accessible name carries the title, as the buttons' names do, and starts with
+                   the visible text, so the name contains the label (WCAG 2.5.3).
+
+                   The project id is what keepFocusInRow() finds this row's link by, when an
+                   Unpublish puts this link where the focused button was. -->
+              <a
+                #addTagLink
+                class="publish-blocked"
+                [routerLink]="['/admin/projects', project.id, 'edit']"
+                [attr.aria-label]="addTagToPublish + ' ' + project.title"
+                [attr.data-project-id]="project.id"
+              >{{ addTagToPublish }}</a>
+            } @else {
+              <!-- An action label ("Publish"/"Unpublish") rather than a state label plus
+                   aria-pressed. The two are alternatives, not a pair: a toggle button announces as
+                   "<name>, pressed", so a button that renames itself to the action would be read out
+                   as "Unpublish, pressed" -- which says the opposite of what is true. State is the
+                   Status column's job here; this button says what pressing it does.
+
+                   The accessible name is built from the same expression as the visible text so the
+                   two can never disagree (WCAG 2.5.3), and carries the title because a screen reader
+                   moving button to button through a table hears "Publish" with no idea which row. -->
+              <button
+                #publishToggle
+                type="button"
+                class="publish-toggle"
+                (click)="setPublished(project, !project.published, publishToggle)"
+                [disabled]="publishingId() === project.id"
+                [attr.aria-label]="publishAction(project) + ' ' + project.title"
+              >
+                {{ publishAction(project) }}
+              </button>
+            }
             <button
               type="button"
               class="delete"

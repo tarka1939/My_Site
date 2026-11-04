@@ -29,8 +29,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * a full queue makes that submit throw {@code TaskRejectedException}.
  *
  * <p><b>Measured, that does not reach the visitor on Spring Framework 7.0.8.</b> A review
- * predicted it would — escaping {@code commit()} and returning a 500 for a message already durable
- * in the database — and the trace was wrong about the phase.
+ * predicted it would - escaping {@code commit()} and returning a 500 for a message already durable
+ * in the database - and the trace was wrong about the phase.
  * {@code TransactionalApplicationListenerSynchronization$PlatformSynchronization} declares no
  * {@code afterCommit()} at all; it dispatches {@code AFTER_COMMIT} from {@code afterCompletion(int)},
  * and {@code TransactionSynchronizationUtils#invokeAfterCompletion} catches {@code Throwable} where
@@ -40,7 +40,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *
  * <p><b>The handler stays anyway, for three reasons that survive that correction.</b> A saturated
  * queue is a capacity condition, not an error, and should not page anyone by logging as one. The
- * swallow is an incidental implementation detail — one overridden hook away from the prediction
+ * swallow is an incidental implementation detail - one overridden hook away from the prediction
  * being exactly right. And {@code taskExecutor} is shared: the Phase 7d DSP demo is its other
  * planned consumer, and a caller invoked from a request thread with no transaction machinery
  * between it and the response would take the throw with nothing catching it.
@@ -51,7 +51,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *
  * <p><strong>Deliberately not {@link ThreadPoolExecutor.CallerRunsPolicy}.</strong> That would run
  * the send on the caller's thread, which under {@code AFTER_COMMIT} is the visitor's request
- * thread — reintroducing exactly the hang that
+ * thread - reintroducing exactly the hang that
  * {@code ContactNotificationIntegrationTest#slowResend_doesNotHoldTheVisitorsResponseOpen} exists
  * to forbid. Back-pressure is the right answer for a work queue and the wrong one for a request
  * path.
@@ -65,7 +65,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *   <li>{@link ThreadPoolTaskExecutor} grows past the core size only when the queue is <em>full</em>,
  *       so in practice this is 2 sender threads with 50 waiting, not 8. That is ample for a
  *       portfolio contact form whose own rate limiter caps a single IP at 5 messages an hour.</li>
- *   <li>Each queued task now has a bounded duration — {@code ResendEmailClient} has explicit
+ *   <li>Each queued task now has a bounded duration - {@code ResendEmailClient} has explicit
  *       connect and read timeouts, so the worst case is ~10s per send rather than forever. Before
  *       that fix no pool size would have helped: hung threads never return and the queue never
  *       drains.</li>

@@ -6,19 +6,21 @@
 # 2606 to never resolve, and got nothing. The runtime canonical in SeoService was fine the
 # whole time -- it uses document.location.origin -- but a sitemap has no runtime.
 #
-# No custom domain is planned (docs/DECISIONS.md, 2026-07-25). If one is ever added, the
-# origin changes here, in sitemap.xml, in index.html's og:url, and in the two test fixtures
-# that pin it -- and that is a site move, not an edit: 301 from the old host and a change of
-# address in Search Console, or the accumulated indexing starts over.
+# A custom domain is planned (docs/DECISIONS.md, 2026-10-14). When it arrives, the origin
+# changes here and in sitemap.xml, and a git grep for the old origin finds the rest. index.html
+# names it in no tag since its static og:url was dropped for #251; only its Search Console
+# comment mentions it, and a new domain is a new property there. That is a site move, not an
+# edit: 301 from the old host and a change of address in Search Console, or the accumulated
+# indexing starts over.
 
 User-agent: *
 
 # The admin area is behind a JWT guard and has nothing useful to index.
-# This is a crawling hint, not a security control — the guard is what protects it.
+# This is a crawling hint, not a security control - the guard is what protects it.
 #
 # Both paths also set <meta name="robots"> at runtime, and the two do NOT stack: a crawler
 # that obeys the Disallow never fetches the page, so it never reads that tag. The Disallow
-# is what does the work here, and it is also the only half a non-JS crawler can act on —
+# is what does the work here, and it is also the only half a non-JS crawler can act on -
 # this app is client-rendered, so every path returns the same index.html. The runtime tag
 # covers what this cannot: a JS-executing crawler arriving on a direct link that ignores
 # robots.txt. See the NOINDEX comment in frontend/src/app/core/seo/site-meta.ts.
