@@ -82,7 +82,8 @@ const TRAILING_PUNCTUATION = /[\s.,;:!?\u2013\u2014-]+$/;
  *
  * **The widest card is still not the widest viewport**, which is what an earlier version of this
  * comment got wrong and is worth keeping. `.project-grid` sits inside a `main` of
- * `min(100vw, 60rem)` less 2rem of padding, with a 1.5rem gap, so two 20rem columns now need
+ * `min(100vw, 60rem)` less 2rem of padding (it grows from a viewport of about 1326px, #333, and
+ * the grid's floor is 26rem from a 60rem viewport), with a 1.5rem gap, so two 20rem columns now need
  * 664 px of content width instead of 536 px: the grid collapses to one full-width column at a
  * wider viewport than before, and there a single card spans the whole container. Whoever
  * re-measures should measure *that* card, not the widest screen.
