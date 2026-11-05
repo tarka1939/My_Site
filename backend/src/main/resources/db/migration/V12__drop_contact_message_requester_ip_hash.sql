@@ -1,0 +1,22 @@
+-- Issue #318: step two of #309. The contact form's emptied IP-hash column goes.
+--
+-- V10 set every contact_message.requester_ip_hash to null, and the jar it shipped with stopped
+-- mapping the column. The column stayed for one reason: when a release's new jar never turns
+-- healthy, deploy/deploy.sh restarts the previous jar after Flyway has already migrated, and in
+-- V10's own release that previous jar still mapped the column and validated the schema at startup.
+--
+-- That reason has expired. V10's release went live on 2026-11-04 (PR #332), and every jar since
+-- ignores the column, so the jar a rollback of this release restarts boots over this schema. This
+-- must never ship in the same release as V10, and it does not: main already held V10's release
+-- when this was merged into dev.
+--
+-- Not reversible, on purpose: the column holds nothing worth restoring. The messages themselves are
+-- untouched.
+--
+-- Dropping hides the bytes rather than erasing them. Postgres keeps a dropped column's values in
+-- the existing rows until the table is rewritten, and contact rows are never updated, so nothing
+-- else would clear them. The same goes for the old values V10 blanked. VACUUM FULL rewrites the
+-- table, and it cannot run inside Flyway's transaction, so it is one manual step after this
+-- release: docs/DEPLOYMENT.md, section 7a.
+
+ALTER TABLE contact_message DROP COLUMN requester_ip_hash;
