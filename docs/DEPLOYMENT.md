@@ -1053,11 +1053,10 @@ dropped it in a later one.
 sudo -u postgres psql -d mysite -c 'VACUUM FULL contact_message;'
 ```
 
-It answers `VACUUM`. `DROP COLUMN` only hides a column: Postgres keeps its bytes in the existing rows
-until the table is rewritten, and contact rows are never updated, so nothing else would clear them.
-`V10`'s blanking left the old hashes behind too, as dead row versions, which a plain vacuum may have
-cleared only in part; this clears whatever is left. It locks the table while it runs, which on a
-table this small is a moment. Doing it by hand is a choice: Flyway could run it, in a migration of
+It answers `VACUUM`. `V10`'s blanking left the old hashes behind as dead row versions, which a plain
+vacuum may have cleared only in part, and `DROP COLUMN` does not touch those. This rewrites the table
+and clears whatever is left, including any hash a rollback wrote after `V10`, whose bytes `DROP
+COLUMN` only hides. It locks the table while it runs, which on a table this small is a moment. Doing it by hand is a choice: Flyway could run it, in a migration of
 its own and outside a transaction, but a one-off table rewrite is not worth adding to the path the
 deploy's health check is timing. It does not reach copies made earlier: a `pg_dump` taken before
 `V10` still holds the hashes.

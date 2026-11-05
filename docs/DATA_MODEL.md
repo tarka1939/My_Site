@@ -304,6 +304,7 @@ erDiagram
 - `V12__drop_contact_message_requester_ip_hash.sql` (#318) - drops the column `V10` emptied (see
   ContactMessage above). Not reversible, and the messages themselves are untouched. Rollback-safe in
   the sense of `docs/DEPLOYMENT.md`, because it ships in a later release than `V10`: the jar a
-  rollback restarts already ignores the column. `DROP COLUMN` leaves the old bytes in the table's
-  pages, so the release is followed by one manual `VACUUM FULL` (`docs/DEPLOYMENT.md`, section 7a).
+  rollback restarts already ignores the column. `V10` left the old hashes behind as dead row
+  versions, which this does not touch, so the release is followed by one manual `VACUUM FULL`
+  (`docs/DEPLOYMENT.md`, section 7a).
 - Record schema changes here as they land, or link to migration files directly.

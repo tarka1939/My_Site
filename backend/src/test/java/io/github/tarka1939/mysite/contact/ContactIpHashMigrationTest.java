@@ -130,7 +130,7 @@ class ContactIpHashMigrationTest {
     }
 
     @Test
-    void v12FromAnEmptyDatabase_dropsTheColumnAndTakesTheJarsInsert() throws Exception {
+    void v12FromAnEmptyDatabase_dropsTheColumnAndStillTakesAMessage() throws Exception {
         String url = freshDatabase("v12_empty");
 
         migrateTo(url, "12");

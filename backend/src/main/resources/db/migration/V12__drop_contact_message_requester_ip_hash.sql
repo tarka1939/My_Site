@@ -13,12 +13,13 @@
 -- Not reversible, on purpose: the column holds nothing worth restoring. The messages themselves are
 -- untouched.
 --
--- Dropping hides the bytes rather than erasing them. Postgres keeps a dropped column's values in
--- the existing rows until the table is rewritten, and contact rows are never updated, so nothing
--- else would clear them. V10's UPDATE left the old hashes behind too, as dead row versions, which a
--- plain vacuum may have cleared only in part. VACUUM FULL rewrites the table and clears both. It
--- is deliberately not a migration: Flyway could run it, in a file of its own and outside a
--- transaction, but a one-off table rewrite is not worth adding to the path a deploy's health check
--- is timing. So it is one manual step after this release: docs/DEPLOYMENT.md, section 7a.
+-- This does not erase what is left of the old values. V10's UPDATE left them behind as dead row
+-- versions, which a plain vacuum may have cleared only in part, and dropping a column does not
+-- touch those. A hash a rollback wrote after V10 would only be hidden too: Postgres keeps a dropped
+-- column's bytes in the existing rows until the table is rewritten. VACUUM FULL rewrites it and
+-- clears both. It is deliberately not a migration: Flyway could run it, in a file of its own and
+-- outside a transaction, but a one-off table rewrite is not worth adding to the path a deploy's
+-- health check is timing. So it is one manual step after this release: docs/DEPLOYMENT.md,
+-- section 7a.
 
 ALTER TABLE contact_message DROP COLUMN requester_ip_hash;

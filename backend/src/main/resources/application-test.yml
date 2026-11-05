@@ -2,8 +2,9 @@ spring:
   jpa:
     hibernate:
       # What dev and prod run with, and what a rollback's restarted jar depends on (docs/DEPLOYMENT.md,
-      # section 7a). Spring's default for a non-embedded database is none, so without this an entity
-      # mapping a column no migration creates passes the whole suite and fails only in the deploy.
+      # section 7a). Spring's default for a non-embedded database is none, so without this a context
+      # boots with an entity mapping a column no migration creates, and only a test that happens to
+      # query that table notices.
       ddl-auto: validate
 
 app:

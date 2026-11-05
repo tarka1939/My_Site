@@ -318,16 +318,18 @@ Copy this block per entry:
 **What went right:** The rollback holds, on evidence rather than argument. The cold reviewer booted a real jar built from #335's source, on the `prod` profile, over a database at V12: `UP`, and a contact POST answered 201.
 
 **What went wrong (be specific):** Two statements in the PR were false, and both read as settled facts.
-- The test's Javadoc said every `@SpringBootTest` validates the entities against the migrated schema. The `test` profile set no `ddl-auto`, and Spring's default for a non-embedded database is `none`, so none did. An entity mapping a column no migration creates passed the whole suite. A comment in `GithubWebhookDisabledIntegrationTest` already assumed the same thing, so the belief predates this PR.
-- V12's header and `docs/DEPLOYMENT.md` said `VACUUM FULL` has to be manual because it cannot run inside Flyway's transaction. That inference came from V10's header and the issue. Flyway runs such a statement outside a transaction, in a file of its own. The manual step is a choice, and the text gave a false reason for it.
+- The test's Javadoc said every `@SpringBootTest` validates the entities against the migrated schema. The `test` profile set no `ddl-auto`, and Spring's default for a non-embedded database is `none`, so none did. With the dropped column mapped back in, a context still booted. A comment in `GithubWebhookDisabledIntegrationTest` already assumed validation ran, so the belief predates this PR.
+- V12's header and `docs/DEPLOYMENT.md` said `VACUUM FULL` has to be manual because it cannot run inside Flyway's transaction. That inference came from V10's header. Flyway runs such a statement outside a transaction, in a file of its own. The manual step is a choice, and the text gave a false reason for it.
+
+The fix then repeated the first mistake. Told that one class passed under that mutation, the Senior Dev wrote that such a mapping "passes the whole suite" and "fails only in the deploy", in a comment, the CHANGELOG, this entry and the PR. Neither held. The contact and security classes fail on SQL errors under the same mutation, and E2E boots `dev`, which validates. The same text also said `DROP COLUMN` was why the bytes survive, when production's live rows hold nulls and the hashes survive only as V10's dead row versions.
 
 Separately, a first search for stale release wording was case-sensitive and missed "Not yet released", so a stamp briefly contradicted its own sentence. Rereading that line caught it before the commit.
 
-**How it was caught:** The cold reviewer tested both. It mapped the dropped column in the entity and watched a Spring test pass, then ran a scratch V13 holding only the `VACUUM FULL`.
+**How it was caught:** The cold reviewer tested the first two. It mapped the dropped column in the entity and watched a Spring test pass, then ran a scratch V13 holding only the `VACUUM FULL`. The re-reviewer ran more classes under the same mutation, and read `e2e` and the rows.
 
-**Fix applied:** The `test` profile now sets `ddl-auto: validate`, as dev and prod do, which makes the claim true. With the column mapped back in, one Spring test now fails with `Schema validation: missing column [requester_ip_hash] in table [contact_message]`, and the full suite passes without it. V12 and the runbook now call the manual step a choice, and give the reason. Only V12's text had to change before anything applied it: Flyway checksums the file once it runs.
+**Fix applied:** The `test` profile now sets `ddl-auto: validate`, as dev and prod do, which makes the claim true. With the column mapped back in, the Spring context now refuses to boot, with `Schema validation: missing column [requester_ip_hash] in table [contact_message]`, and the full suite passes without it. V12 and the runbook now call the manual step a choice, and give the reason. Only V12's text had to change before anything applied it: Flyway checksums the file once it runs.
 
-**Takeaway for next time:** A reason copied from an earlier file is still a claim, and it is the kind least likely to get checked. "The suite covers this" can be tested in a minute by breaking the thing. Do that before writing the sentence.
+**Takeaway for next time:** A reason copied from an earlier file is still a claim, and it is the kind least likely to get checked. "The suite covers this" can be tested in a minute by breaking the thing, and one class's result says nothing about the rest. Run what the sentence names before writing it.
 
 ## 2026-11-01 - Senior Dev: a review premise that a test disproved, a nit fix that made its sentence worse, and a reviewer no new session could resume (#68, #325, PRs #324, #326)
 
