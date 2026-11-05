@@ -1045,7 +1045,22 @@ exists with a matching type, and never checks nullability (there is no setting f
 migration may relax a column but must not drop, rename or retype a table or column the previous
 jar maps. (Nor add a `NOT NULL` column without a default: that jar would boot, and then
 fail every insert that leaves it out.) That is why #309 blanked a column in one release and #318
-drops it in the next.
+dropped it in a later one.
+
+**Once, after the release that carries `V12` (#318):**
+
+```bash
+sudo -u postgres psql -d mysite -c 'VACUUM FULL contact_message;'
+```
+
+It answers `VACUUM`. `V10`'s blanking left the old hashes behind as dead row versions, which a plain
+vacuum may have cleared only in part, and `DROP COLUMN` does not touch those. This rewrites the table
+and clears whatever is left, including any hash a rollback wrote after `V10`, which `DROP COLUMN`
+would only have hidden. It locks the table while it runs, which on a table this small is a moment.
+Doing it by hand is a choice: Flyway could run it, in a migration of its own and outside a
+transaction, but a one-off table rewrite is not worth adding to the path the deploy's health check
+is timing. It does not reach copies made earlier: a `pg_dump` taken before `V10` still holds the
+hashes.
 
 Under the `prod` profile the app **fails to start** on configuration that is present but wrong - a
 malformed CIDR in `TRUSTED_PROXIES`, a negative hop count, a trusted-proxy list with no header

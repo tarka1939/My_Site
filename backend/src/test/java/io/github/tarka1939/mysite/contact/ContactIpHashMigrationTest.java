@@ -17,29 +17,34 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import io.github.tarka1939.mysite.TestPostgres;
 
 /**
- * {@code V10__clear_contact_message_requester_ip_hash.sql} (#309), on both databases it will meet:
- * a fresh one, and production's, which already holds messages and their hashes.
+ * The two migrations that removed the contact form's stored IP hash, each on both databases it
+ * meets: a fresh one, and production's, which already holds messages.
  *
- * <p>Two things are pinned. No hash survives, which is what #309 is for. And the emptied column is
- * still there with V1's type, which is what keeps the release's automatic rollback working: the
- * jar it restarts maps that column and validates the schema at startup. #318 drops the column in
- * a later release, and changes these tests with it.
+ * <p>{@code V10__clear_contact_message_requester_ip_hash.sql} (#309). No hash survives, which is
+ * what #309 is for. And the emptied column is still there with V1's type, which is what kept that
+ * release's automatic rollback working: the jar it would have restarted mapped that column and
+ * validated the schema at startup.
+ *
+ * <p>{@code V12__drop_contact_message_requester_ip_hash.sql} (#318). The column is gone, and every
+ * message is exactly as it was. That the jar still boots over this schema is not pinned here: every
+ * {@code @SpringBootTest} validates the entities against the fully migrated schema, because the
+ * test profile sets {@code ddl-auto: validate}, as dev and prod do.
  *
  * <p>Not the shared {@code @SpringBootTest} setup, for the reason {@code
  * ProjectPublicationMigrationTest} gives: a database built fresh at V10 has no rows, so it cannot
- * show what the migration does to the rows that exist when it runs. One test here migrates to V9,
- * writes the messages an owner would already have, and only then runs V10. When #309 was written
- * production was at V8, so its release runs V9 and V10 in one start; V9 does not touch
- * {@code contact_message}, so stopping between them changes nothing here. Each test gets its own
- * database inside the shared container.
+ * show what the migration does to the rows that exist when it runs. The tests over existing
+ * messages migrate to the version before, write the rows an owner would already have, and only
+ * then run the migration. When #309 was written production was at V8, so its release ran V9 and V10
+ * in one start; V9 does not touch {@code contact_message}, so stopping between them changes nothing
+ * here. Each test gets its own database inside the shared container.
  */
 @Testcontainers
 class ContactIpHashMigrationTest {
 
     /**
      * contact_message after V10, as name:type:length:nullable in column order. The last entry is
-     * the column the previous jar maps, so its name and type must not change while that jar can
-     * still be rolled back to; only its nullability does.
+     * the column a jar from before #309 mapped, so its name and type could not change while that
+     * jar could be rolled back to; only its nullability did.
      */
     private static final List<String> COLUMNS_AFTER_V10 = List.of(
         "id:uuid::NO",
@@ -48,6 +53,14 @@ class ContactIpHashMigrationTest {
         "message:text::NO",
         "created_at:timestamp with time zone::NO",
         "requester_ip_hash:character varying:64:YES");
+
+    /** contact_message after V12: nothing about the sender's address, in any column. */
+    private static final List<String> COLUMNS_AFTER_V12 = List.of(
+        "id:uuid::NO",
+        "name:character varying:200:NO",
+        "email:character varying:320:NO",
+        "message:text::NO",
+        "created_at:timestamp with time zone::NO");
 
     @Container
     static PostgreSQLContainer postgres = TestPostgres.container();
@@ -114,6 +127,49 @@ class ContactIpHashMigrationTest {
             .containsExactly(
                 "Alice|alice@example.invalid|First|2026-10-01 10:00",
                 "Bob|bob@example.invalid|Second|2026-10-02 11:30");
+    }
+
+    @Test
+    void v12FromAnEmptyDatabase_dropsTheColumnAndStillTakesAMessage() throws Exception {
+        String url = freshDatabase("v12_empty");
+
+        migrateTo(url, "12");
+
+        assertThat(columnsOfContactMessage(url)).containsExactlyElementsOf(COLUMNS_AFTER_V12);
+
+        // Nothing left in the table needs a value the form does not supply: id and created_at have
+        // defaults.
+        execute(url, "INSERT INTO contact_message (name, email, message) VALUES ('Ada', 'ada@example.invalid', 'Hi')");
+        assertThat(queryStrings(url, "SELECT name FROM contact_message")).containsExactly("Ada");
+    }
+
+    @Test
+    void v12OverExistingMessages_dropsTheColumnAndKeepsEveryMessageAsItWas() throws Exception {
+        String url = freshDatabase("v12_rows");
+        String everyMessage = """
+            SELECT id || '|' || name || '|' || email || '|' || message || '|' || created_at::text
+            FROM contact_message ORDER BY created_at
+            """;
+
+        migrateTo(url, "11");
+        // The first two rows are what production holds: V10 blanked the hash, and nothing has
+        // written one since. The third is what a rollback to a jar from before #309 would have left
+        // behind, which V10 does not blank a second time. None of the hashes is a real address's.
+        execute(url, """
+            INSERT INTO contact_message (name, email, message, created_at, requester_ip_hash) VALUES
+              ('Alice', 'alice@example.invalid', 'First',  '2026-10-01T10:00:00Z', NULL),
+              ('Bob',   'bob@example.invalid',   'Second', '2026-10-02T11:30:00Z', NULL),
+              ('Cara',  'cara@example.invalid',  'Third',  '2026-10-03T12:45:00Z', repeat('c', 64))
+            """);
+        List<String> before = queryStrings(url, everyMessage);
+        assertThat(before).as("precondition: the three rows above").hasSize(3);
+
+        migrateTo(url, "12");
+
+        assertThat(columnsOfContactMessage(url)).containsExactlyElementsOf(COLUMNS_AFTER_V12);
+        assertThat(queryStrings(url, everyMessage))
+            .as("the messages themselves are untouched, whatever the dropped column held")
+            .containsExactlyElementsOf(before);
     }
 
     private static List<String> columnsOfContactMessage(String url) throws Exception {
