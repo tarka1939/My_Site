@@ -27,7 +27,8 @@ import io.github.tarka1939.mysite.TestPostgres;
  *
  * <p>{@code V12__drop_contact_message_requester_ip_hash.sql} (#318). The column is gone, and every
  * message is exactly as it was. That the jar still boots over this schema is not pinned here: every
- * {@code @SpringBootTest} validates the entities against the fully migrated schema.
+ * {@code @SpringBootTest} validates the entities against the fully migrated schema, because the
+ * test profile sets {@code ddl-auto: validate}, as dev and prod do.
  *
  * <p>Not the shared {@code @SpringBootTest} setup, for the reason {@code
  * ProjectPublicationMigrationTest} gives: a database built fresh at V10 has no rows, so it cannot
@@ -136,7 +137,8 @@ class ContactIpHashMigrationTest {
 
         assertThat(columnsOfContactMessage(url)).containsExactlyElementsOf(COLUMNS_AFTER_V12);
 
-        // The shape of every insert ContactService makes.
+        // Nothing left in the table needs a value the form does not supply: id and created_at have
+        // defaults.
         execute(url, "INSERT INTO contact_message (name, email, message) VALUES ('Ada', 'ada@example.invalid', 'Hi')");
         assertThat(queryStrings(url, "SELECT name FROM contact_message")).containsExactly("Ada");
     }

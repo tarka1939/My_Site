@@ -15,8 +15,10 @@
 --
 -- Dropping hides the bytes rather than erasing them. Postgres keeps a dropped column's values in
 -- the existing rows until the table is rewritten, and contact rows are never updated, so nothing
--- else would clear them. The same goes for the old values V10 blanked. VACUUM FULL rewrites the
--- table, and it cannot run inside Flyway's transaction, so it is one manual step after this
--- release: docs/DEPLOYMENT.md, section 7a.
+-- else would clear them. V10's UPDATE left the old hashes behind too, as dead row versions, which a
+-- plain vacuum may have cleared only in part. VACUUM FULL rewrites the table and clears both. It
+-- is deliberately not a migration: Flyway could run it, in a file of its own and outside a
+-- transaction, but a one-off table rewrite is not worth adding to the path a deploy's health check
+-- is timing. So it is one manual step after this release: docs/DEPLOYMENT.md, section 7a.
 
 ALTER TABLE contact_message DROP COLUMN requester_ip_hash;

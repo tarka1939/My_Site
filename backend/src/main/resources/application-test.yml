@@ -1,3 +1,11 @@
+spring:
+  jpa:
+    hibernate:
+      # What dev and prod run with, and what a rollback's restarted jar depends on (docs/DEPLOYMENT.md,
+      # section 7a). Spring's default for a non-embedded database is none, so without this an entity
+      # mapping a column no migration creates passes the whole suite and fails only in the deploy.
+      ddl-auto: validate
+
 app:
   # Every entry below pins a value the base application.yml reads from an environment variable.
   # The test profile is not isolated from the developer's shell -- ${FOO:default} resolves FOO if

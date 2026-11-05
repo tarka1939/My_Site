@@ -1055,10 +1055,12 @@ sudo -u postgres psql -d mysite -c 'VACUUM FULL contact_message;'
 
 It answers `VACUUM`. `DROP COLUMN` only hides a column: Postgres keeps its bytes in the existing rows
 until the table is rewritten, and contact rows are never updated, so nothing else would clear them.
-This also clears the old hashes `V10` blanked, which stayed in the table's pages for the same reason.
-It has to be done by hand because it cannot run inside Flyway's transaction. It locks the table while
-it runs, which on a table this small is a moment. It does not reach copies made earlier: a `pg_dump`
-taken before `V10` still holds the hashes.
+`V10`'s blanking left the old hashes behind too, as dead row versions, which a plain vacuum may have
+cleared only in part; this clears whatever is left. It locks the table while it runs, which on a
+table this small is a moment. Doing it by hand is a choice: Flyway could run it, in a migration of
+its own and outside a transaction, but a one-off table rewrite is not worth adding to the path the
+deploy's health check is timing. It does not reach copies made earlier: a `pg_dump` taken before
+`V10` still holds the hashes.
 
 Under the `prod` profile the app **fails to start** on configuration that is present but wrong - a
 malformed CIDR in `TRUSTED_PROXIES`, a negative hop count, a trusted-proxy list with no header
