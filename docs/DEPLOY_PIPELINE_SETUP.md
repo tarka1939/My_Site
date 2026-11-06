@@ -181,6 +181,11 @@ Recorded because it is the argument for the shape above, not decoration.
   attacker with it can replace the application. That is bounded by GitHub's control of the secret
   and by the workflow being the only caller.
 - **`NETLIFY_AUTH_TOKEN`** - Netlify account-wide, not site-scoped. Rotate it in Netlify's UI if it
-  is ever exposed.
+  is ever exposed. It can also stop working with nothing else having changed. The token set on
+  2026-09-23 was refused on 2026-11-04, when PR #332's frontend deploy failed at "Publish to
+  Netlify" with `Unauthorized: could not retrieve project`, while the backend shipped normally.
+  Whether it had expired or been revoked was not established. The fix is a new personal access
+  token in this secret, then a re-run of the failed job, which needs no new commit. A site's "deploy
+  key" on Netlify is a different thing and does not go here.
 - **`DEPLOY_HOST` / `DEPLOY_PORT` / `DEPLOY_KNOWN_HOSTS`** - not secrets in any real sense; they are
   secrets here only to keep the host out of a public workflow file and its logs.

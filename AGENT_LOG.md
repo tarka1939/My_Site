@@ -309,6 +309,30 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-11-05 - Senior Dev: two reasons nobody had run, one of them a gap in the suite (#318, PR #336)
+
+**Task given:** Drop the emptied `contact_message.requester_ip_hash` column, step two of #309, and record the last two releases in the same PR, on the owner's choice.
+
+**Agent(s) used:** The Senior Dev (Opus) wrote it. A fresh Opus agent gave it a cold review, and another re-reviewed the fix commit.
+
+**What went right:** The rollback holds, on evidence rather than argument. The cold reviewer booted a real jar built from #335's source, on the `prod` profile, over a database at V12: `UP`, and a contact POST answered 201.
+
+**What went wrong (be specific):** Two statements in the PR were false, and both read as settled facts.
+- The test's Javadoc said every `@SpringBootTest` validates the entities against the migrated schema. The `test` profile set no `ddl-auto`, and Spring's default for a non-embedded database is `none`, so none did. With the dropped column mapped back in, a context still booted. A comment in `GithubWebhookDisabledIntegrationTest` already assumed validation ran, so the belief predates this PR.
+- V12's header and `docs/DEPLOYMENT.md` said `VACUUM FULL` has to be manual because it cannot run inside Flyway's transaction. That inference came from V10's header. Flyway runs such a statement outside a transaction, in a file of its own. The manual step is a choice, and the text gave a false reason for it.
+
+The fix then repeated the first mistake. Told that a Spring test passed under that mutation, the Senior Dev wrote that such a mapping "passes the whole suite", in a comment, the CHANGELOG, this entry and the PR, and "fails only in the deploy", in the comment and the CHANGELOG. Neither held: other test classes failed under the same mutation, and E2E boots `dev`, which validates. The same text also said `DROP COLUMN` was why the bytes survive. Production's live rows should hold nulls (V10, and no recorded rollback), so any surviving hash is one of V10's dead row versions. No check of those rows is recorded.
+
+The next two corrections overstated again, in smaller ways: two more Opus passes each found wording firmer than its evidence, mostly sentences about what had been run or read. The Senior Dev stopped the rounds there and asked, and the owner chose to have the last seven findings fixed without another re-review, an exception to the rule for fix commits. The messages of 89d5c54, 7ed076b and 46458cc keep their wording, since commits are not amended here, and this entry is the correction.
+
+Separately, a first search for stale release wording was case-sensitive and missed "Not yet released", so a stamp briefly contradicted its own sentence. Rereading that line caught it before the commit.
+
+**How it was caught:** The cold reviewer tested the first two. It mapped the dropped column in the entity and watched a Spring test pass, then ran a scratch V13 holding only the `VACUUM FULL`. The re-reviewer ran more classes under the same mutation and read how `e2e` boots. Its later passes caught the overstatements in those corrections.
+
+**Fix applied:** The `test` profile now sets `ddl-auto: validate`, as dev and prod do, which makes the claim true. With the column mapped back in, the Spring context now refuses to boot, with `Schema validation: missing column [requester_ip_hash] in table [contact_message]`, and the full suite passes without it. V12 and the runbook now call the manual step a choice, and give the reason. Only V12's text had to change before anything applied it: Flyway checksums the file once it runs.
+
+**Takeaway for next time:** A reason copied from an earlier file is still a claim, and it is the kind least likely to get checked. "The suite covers this" can be tested in a minute by breaking the thing, and one class's result says nothing about the rest. Run what the sentence names before writing it. And when review keeps catching sentences about what was run or read, cut them instead of refining them: each rewording is a new claim.
+
 ## 2026-11-01 - Senior Dev: a review premise that a test disproved, a nit fix that made its sentence worse, and a reviewer no new session could resume (#68, #325, PRs #324, #326)
 
 **Task given:** The 2026-10-20 tech-debt pass on #68: run the baseline's checks again, read what changed since, fix what was stale, file what needs the owner. Session 3f70a7d1 ran it and handed it off through `HANDOFF.md` with both PRs open, after the session limit stopped its #326 re-review. Session 1b56373f took it over on 2026-10-23 and finished it on 2026-11-01, with the owner approving each step.

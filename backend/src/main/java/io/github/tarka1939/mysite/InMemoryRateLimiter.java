@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
  * requests. It is also the only place a per-IP key is held at all. The contact form used to
  * count its own rows instead, which meant storing every sender's unsalted - and so reversible -
  * {@code ClientIpHasher} value with the message; it moved here in #309, V10 blanked the stored
- * hashes, and #318 drops the column. A caller that needs a durable count should weigh that
+ * hashes, and #318 dropped the column. A caller that needs a durable count should weigh that
  * before writing a key down.
  *
  * <h2>Key contract: one window per key</h2>

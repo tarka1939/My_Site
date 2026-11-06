@@ -65,7 +65,7 @@ Was floated in the original data-model draft; confirmed out of scope in `SPEC.md
 | message | text, not null | |
 | created_at | timestamptz, not null default `now()` | |
 
-**Nothing about the sender's address is stored** (#309). The table used to have a `requester_ip_hash` column, an unsalted SHA-256 of the sender's IP kept for as long as the message, which could be reversed by hashing every IPv4 address; it existed only so the rate limit could count rows. `V10` dropped its index and set every row's value to null, taking the existing hashes with it. The emptied column is still in the table, nullable and unmapped, so that a jar from before #309, which maps it and validates the schema, can still boot if a release is rolled back; #318 drops it in a later release.
+**Nothing about the sender's address is stored** (#309). The table used to have a `requester_ip_hash` column, an unsalted SHA-256 of the sender's IP kept for as long as the message, which could be reversed by hashing every IPv4 address; it existed only so the rate limit could count rows. `V10` dropped its index and set every row's value to null, `V12` dropped the emptied column in a later release (#318), and one manual `VACUUM FULL` after that release clears any old hashes still in the table's pages (`docs/DEPLOYMENT.md`, section 7a). It took two releases so that a jar from before #309, which mapped the column and validated the schema, could still boot if `V10`'s release rolled back.
 
 Rate limiting: in memory, through `InMemoryRateLimiter` under the key `"contact:" + ClientIpHasher hash`, 5 messages per trailing hour per client IP, as login and password reset are limited. No table and no column. The budget resets when the backend restarts, which is accepted, and deleting messages does not refund it.
 
@@ -294,11 +294,17 @@ erDiagram
 - `V3__password_reset_token_hash_index.sql` (Phase 2) - adds a unique index on `password_reset_token.token_hash` (see PasswordResetToken table above), caught in cross-review after V1/V2 had already shipped without one.
 - `V4__project_dates.sql` (Phase 6) - adds nullable `project.started_on` and `project.completed_on` plus a `CHECK` enforcing that `completed_on` neither precedes `started_on` nor exists without it. Additive and non-destructive: both columns are nullable, so existing rows are untouched and no backfill is required. See the 2026-08-08 project-dates ADR in `docs/DECISIONS.md`.
 - `V8__about_page.sql` (Phase 6, #213) - creates `about_page` (see AboutPage above) and inserts its one row. Additive; touches nothing existing. V5-V7 (tag index, GitHub sync record, project publication fields) landed with Phase 7a and are described by their own files.
-- `V10__clear_contact_message_requester_ip_hash.sql` (#309) - drops `ix_contact_message_ip_hash_created_at`, makes `contact_message.requester_ip_hash` nullable, and sets it to null in every row (see ContactMessage above). Destructive by design: the existing rows' hashes are gone and cannot be restored, and the messages themselves are untouched. The column is kept, with V1's type, so that the release's automatic rollback can still start a jar from before it; #318 drops it once that jar can no longer be rolled back to. V9 (`analytics_event`) is described by its own file.
+- `V10__clear_contact_message_requester_ip_hash.sql` (#309) - drops `ix_contact_message_ip_hash_created_at`, makes `contact_message.requester_ip_hash` nullable, and sets it to null in every row (see ContactMessage above). Destructive by design: the rows no longer hold their hashes and no migration restores them. The old values can stay in the table's pages as dead row versions, which a plain vacuum may clear only in part and `VACUUM FULL` clears (see `V12` below). The messages themselves are untouched. The column is kept, with V1's type, so that the release's automatic rollback could still start a jar from before it; `V12` drops it, once that jar can no longer be rolled back to. V9 (`analytics_event`) is described by its own file.
 - `V11__project_featured.sql` (#88) - adds `project.featured boolean NOT NULL DEFAULT false`
   (see Project above). Every existing row reads false, so the flag pins nothing until the admin
   features something, though the same release reorders the public list by period. No new index:
   the file says why. Rollback-safe in the sense of
   `docs/DEPLOYMENT.md`: the previous jar never names the column, and the default fills it on
   that jar's inserts.
+- `V12__drop_contact_message_requester_ip_hash.sql` (#318) - drops the column `V10` emptied (see
+  ContactMessage above). Not reversible, and the messages themselves are untouched. Rollback-safe in
+  the sense of `docs/DEPLOYMENT.md`, because it ships in a later release than `V10`: the jar a
+  rollback restarts already ignores the column. `V10` left the old hashes behind as dead row
+  versions, which this does not touch, so the release is followed by one manual `VACUUM FULL`
+  (`docs/DEPLOYMENT.md`, section 7a).
 - Record schema changes here as they land, or link to migration files directly.
