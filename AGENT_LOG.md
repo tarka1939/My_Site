@@ -309,6 +309,20 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-11-25 - Dispatched session: a comparison run only where nothing could differ (#339, PR #341)
+
+**Task given:** Make the admin messages list fit a phone, on the model of #312's stacked project list.
+
+**Agent(s) used:** A session started by the Senior Dev (Opus) wrote the fix and checked it in a browser. A fresh Opus agent gave it a cold review.
+
+**What went wrong (be specific):** The CHANGELOG and a stylesheet comment said a sender that fitted before is laid out as before. It had been compared at 1280px only, with short senders, where every row fits on one line with or without the change. Just above the breakpoint it was false: the date stopped wrapping, so a 53-character address that had fitted beside a two-line date now breaks. Separately, the new spec said `styles.spec.ts` covered the stacked layout, and deleting the `display: block` rule, which is the whole fix, passed every test. The #312 tests it was copied from had that gap too. The six mutations run before the PR were each aimed at something a test already checked.
+
+**How it was caught:** By the cold review, which added up the columns from the fonts' advance widths and ran the stylesheet test's assertions against mutated copies. A browser then confirmed the first, at 744px.
+
+**Fix applied:** The behaviour stays and the claims say what it costs. The stylesheet test now pins the stacking, for both lists, and the rules that let the sender and the date wrap. Ten mutations, the review's seven among them, each fail it or the component spec.
+
+**Takeaway for next time:** "Unchanged" needs checking where the change bites, not where it has room. And delete the line that is the fix before any other mutation.
+
 ## 2026-11-25 - Senior Dev: a gap written down and never filed (#338, PR #340)
 
 **Task given:** The owner checked the contact form on production after release #337, and reported that nothing in the admin panel links to the messages page.
