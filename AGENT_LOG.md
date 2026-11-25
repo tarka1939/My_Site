@@ -319,7 +319,7 @@ Copy this block per entry:
 
 **How it was caught:** By the cold review, which added up the columns from the fonts' advance widths and ran the stylesheet test's assertions against mutated copies. A browser then confirmed the first, at 744px.
 
-**Fix applied:** The behaviour stays and the claims say what it costs. The stylesheet test now pins the stacking, for both lists, and the rules that let the sender and the date wrap. Ten mutations, the review's seven among them, each fail it or the component spec. The re-review found four more that passed, and a `PROJECT_TODO.md` line left behind; both are corrected.
+**Fix applied:** The behaviour stays and the claims say what it costs. The stylesheet test now pins the stacking, for both lists, and the rules that let the sender and the date wrap. Ten mutations, the review's seven among them, each fail it or the component spec. The re-review found six more that passed, and a `PROJECT_TODO.md` line left behind; both are corrected.
 
 **Takeaway for next time:** "Unchanged" needs checking where the change bites, not where it has room. And delete the rule the fix rests on before any other mutation.
 
