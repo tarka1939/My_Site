@@ -309,13 +309,13 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
-## 2026-11-25 - Senior Dev: a gap written down twice and never filed (#338, PR #340)
+## 2026-11-25 - Senior Dev: a gap written down and never filed (#338, PR #340)
 
 **Task given:** The owner checked the contact form on production after release #337, and reported that nothing in the admin panel links to the messages page.
 
 **Agent(s) used:** The Senior Dev (Opus) wrote the fix. A fresh Opus agent gave it a cold review.
 
-**What went wrong (be specific):** #213 noticed the missing link on 2026-09-20. It said so in the template's comment and in the CHANGELOG, called it "a gap worth its own fix", and filed no issue. #60 edited the same comment when it added the analytics link, and left the gap in place.
+**What went wrong (be specific):** #213 noticed the missing link on 2026-09-20. It said so in the template's comment and in the CHANGELOG, called it "a gap worth its own fix", and filed no issue. #60 edited the same comment when it added the analytics link, and left the gap in place. The fix itself made a stylesheet comment stale, and described #339 more firmly than its measurements; the cold review caught both.
 
 **How it was caught:** By the owner, using the site.
 

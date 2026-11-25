@@ -340,12 +340,12 @@ Opened as the home for work that is neither a new feature nor a bug in something
 **Filed 2026-10-26 by the weekly dependency audit (#273).**
 - [x] #327 - by its 2026-11-02 run, the audit's issue listed 17 frontend findings at or above its floor, in seven packages. One package ships: `markdown-it`, with two high quadratic-time advisories. PR #331, released 2026-11-04 in PR #332: a lockfile-only `npm audit fix`, without `--force`, with `package.json` unchanged. `markdown-it` moves to 15.0.3, and Angular's CLI and build tooling to 21.2.29, which carry the MCP SDK, vite and undici fixes. The framework stays at 21.2.25. Of the shipped advisories, only the link-reference one runs with this app's options, on Markdown that is the admin's own or sync's fixed draft placeholder. `npm audit` is at 0 with `--omit=dev`. Two moderate dev-tooling advisories are left, `glob` and `minimatch`, whose fixes are a major version past every parent's range, and both are below the floor. The initial bundle is unchanged, and the lazy chunk that carries `markdown-it` grows 928 B
 
-**Filed 2026-11-25** after the owner checked the contact form on production.
-- [x] #338 - the admin area had no link to the contact messages, so `/admin/messages` was reached by typing its URL. #213 named the gap and nobody filed it. PR #340: the row of links on the project list gains "View messages". Not yet released.
-- [ ] #339 - the admin messages list is wider than a phone, so a message's View link sits off screen. Found while checking #338, and older than it.
-
 **Filed 2026-11-02** after the owner asked why so little dispatched work runs on Sonnet.
 - [x] #329 - gate runs and fix lists had no agent type of their own. In the session that ended 2026-10-20, all 82 dispatches named their model, and 79 named Opus, all of them reviews or code changes. The next session ran its gates and fix lists inline, on Opus. PR #330, merged to `dev` 2026-11-02, released 2026-11-04 in PR #332: `cold-reviewer` (Opus), `gate-runner` and `fix-applier` (Sonnet), to be dispatched without a `model` argument, and PowerShell for every type. Left for the owner: a Sonnet default for dispatches that name no model, `CLAUDE.md`'s table and its pointer to the agent files, and whether a docs-only PR's cold review may run on Sonnet
+
+**Filed 2026-11-25** after the owner checked the contact form on production.
+- [x] #338 - the admin area had no link to the contact messages, so `/admin/messages` was reached by typing its URL. #213 named the gap and nobody filed it. PR #340: the row of links on the project list gains "View messages". Not yet released.
+- [ ] #339 - the admin messages list can be wider than a phone. Found while checking #338, and older than it.
 
 ## Ongoing / meta
 
