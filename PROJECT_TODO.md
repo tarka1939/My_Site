@@ -345,7 +345,7 @@ Opened as the home for work that is neither a new feature nor a bug in something
 
 **Filed 2026-11-25** after the owner checked the contact form on production.
 - [x] #338 - the admin area had no link to the contact messages, so `/admin/messages` was reached by typing its URL. #213 named the gap and nobody filed it. PR #340: the row of links on the project list gains "View messages". Not yet released.
-- [ ] #339 - the admin messages list can be wider than a phone. Found while checking #338, and older than it.
+- [x] #339 - the admin messages list can be wider than a phone. Found while checking #338, and older than it. PR #341: up to 40rem each message is a block of sender, date and View, the layout #312 gave the project list, and a name or address that does not fit breaks at every width. The message page overflowed too, from the sender's name, the address and the body, and breaks them the same way. Above 40rem this departs from what the owner chose for the project list in #312, where a long unbroken word may widen the table; the cost is that a long sender wraps sooner than before, since the date no longer does. Review fixes: the claims narrowed to say so, and the stacked layout's rules pinned for both lists. Not heard: a phone screen reader in the stacked layout, as with #312. Seen and not changed, for the owner: at 200% text on a 320px screen this page's heading, "Contact messages", is wider than the screen. Not yet released.
 
 ## Ongoing / meta
 

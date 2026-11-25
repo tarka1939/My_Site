@@ -158,6 +158,8 @@ That ordering was deliberate - the runbook argues a first deploy should introduc
 
 ### Fixed
 
+- **The admin messages list fits a phone** (2026-11-25, #339, PR #341, frontend). A visitor's address has no space to wrap at, so it set the width of the list's From column, and on a phone the View link could sit past the right edge. Up to 40rem (640px) each message now shows as a stacked block, as projects have since #312: the sender, the date beside its column name, then View. A name or address that does not fit breaks, in the block and in the table above 40rem, where a long enough one pushed View off a 1280px screen. The table's roles are stated in the markup and the header row stays in the accessibility tree, as checked in Chrome's; the View column's header, which was empty, is named for a screen reader. The message page had the same overflow from the sender's name, the address and the body, and has the same fix. Above 40rem the date now stays on one line, so a long sender wraps sooner than it did: at 744px an address of 53 characters breaks where the date used to wrap instead. A table whose senders all fit on one line beside the date is laid out as before. Visitors see no change.
+
 - **The admin area links to the contact messages** (2026-11-25, #338, PR #340, frontend). `/admin/messages` could only be reached by typing its URL. The row of links on the project list, where a logged-in admin lands, gains "View messages". The row wraps to two lines on a phone, and fits at 320px. The gap was named in #213's entry and never filed. Visitors see no change.
 
 - **The frontend moves past the weekly audit's findings** (2026-11-02, #327, PR #331, frontend).

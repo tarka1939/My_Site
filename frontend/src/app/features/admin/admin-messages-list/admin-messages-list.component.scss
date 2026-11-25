@@ -10,9 +10,95 @@ td {
   border-bottom: 1px solid var(--color-hairline);
 }
 
+// The sender's name and address, which visitors type and which can be up to 200 and 320
+// characters with no space in them. A word that does not fit breaks where it must, at every width:
+// before #339 it set the column's width instead, and pushed View past the edge of the screen. A
+// table whose senders all fit on one line beside the date is laid out as before.
+td:first-child {
+  overflow-wrap: anywhere;
+}
+
+// Breaking anywhere makes the sender's column as narrow as the table asks, so without this a long
+// sender would squeeze the date onto several lines before it wrapped itself. The cost is that a
+// long sender wraps sooner than it did, when the date gave way: at 744px an address of 53
+// characters breaks in two where it used to fit on one line.
+time {
+  white-space: nowrap;
+}
+
 .pagination {
   display: flex;
   align-items: center;
   gap: 1rem;
   margin-top: 1.5rem;
+}
+
+// Phones (#339): one stacked block per message, in the table's order (sender, date, View). The
+// layout is the project list's, at the same breakpoint (#312): see
+// admin-projects-list.component.scss for the reasoning behind each rule here. At 40rem the date and
+// View take 264px of the 608px inside main's gutters, and the sender has the rest.
+//
+// Above the breakpoint none of this applies.
+@media (max-width: 40rem) {
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+  }
+
+  // Off screen but never `display: none`: the header row is where a screen reader gets each
+  // value's column name, in this layout as in the table.
+  thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  // The rule between rows moves from the cells to the block, so each message is one unit.
+  tbody tr {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+
+  // No side padding, so a block's text lines up with the heading above it.
+  td {
+    padding: 0.25rem 0;
+    border-bottom: 0;
+  }
+
+  // The sender leads its block, as the title does on the project list.
+  td:first-child {
+    font-weight: var(--weight-emphasis);
+  }
+
+  // Label and date fit one line at 320px (about 262px of the 288px there). With large system text
+  // they may not, so the date can drop under its label, and wrap there too, rather than run past
+  // the edge.
+  .labelled {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.5rem;
+  }
+
+  time {
+    white-space: normal;
+  }
+
+  // No fixed width, unlike the project list's: this is the only label, so there is nothing to
+  // line up with. Muted: 5.99:1 light / 5.91:1 dark on the page ground, per the token's note in
+  // styles.scss.
+  .cell-label {
+    flex: none;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+
+    &::before {
+      content: attr(data-label);
+    }
+  }
 }

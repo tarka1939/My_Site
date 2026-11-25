@@ -594,19 +594,33 @@ describe('the tag chips', () => {
   });
 });
 
-describe('the admin projects list on a phone (#312)', () => {
-  const ADMIN_LIST = join(COMPONENT_ROOT, 'features', 'admin', 'admin-projects-list');
-  const stacked = () =>
-    ruleFor(
-      stripComments(readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.scss'), 'utf8')),
-      '@media (max-width: 40rem)',
-    ).body;
+describe.each([
+  { list: 'admin-projects-list', issue: '#312' },
+  { list: 'admin-messages-list', issue: '#339' },
+])('the $list on a phone ($issue)', ({ list }) => {
+  const ADMIN_LIST = join(COMPONENT_ROOT, 'features', 'admin', list);
+  const styles = () =>
+    stripComments(readFileSync(join(ADMIN_LIST, `${list}.component.scss`), 'utf8'));
+  const stacked = () => ruleFor(styles(), '@media (max-width: 40rem)').body;
+
+  it('stacks the rows and cells', () => {
+    const decls = declarations(ruleFor(stacked(), 'table, tbody, tr, td').body);
+    expect(decls.get('display')).toBe('block');
+
+    // And no later rule on the same elements puts a table back together.
+    for (const rule of rules(stacked())) {
+      if (rule.selector.split(',').some((part) => /^(table|tbody|tr|td)\b|\s(tr|td)\b/.test(part.trim()))) {
+        expect(declarations(rule.body).get('display') ?? 'block', rule.selector).toBe('block');
+      }
+    }
+  });
 
   it('keeps the header row in the accessibility tree, off screen rather than removed', () => {
     // In the stacked layout a screen reader gets each value's column name from the header row
     // alone, since the visible labels are aria-hidden. `display: none` or `visibility: hidden` on
     // any part of the table's structure would take every name away, and the DOM would not change.
-    const structural = rules(stacked()).filter((rule) =>
+    // The rules outside the media block apply in that layout too.
+    const structural = [...rules(styles()), ...rules(stacked())].filter((rule) =>
       rule.selector.split(',').some((part) => /^(table|thead|tbody|tr|th)\b/.test(part.trim())),
     );
     expect(structural.length).toBeGreaterThan(0);
@@ -616,7 +630,11 @@ describe('the admin projects list on a phone (#312)', () => {
       expect(decls.get('display') ?? '', rule.selector).not.toMatch(/^none\b/);
       expect(decls.get('visibility') ?? '', rule.selector).not.toMatch(/^(hidden|collapse)\b/);
     }
-    expect(declarations(ruleFor(stacked(), 'thead').body).get('position')).toBe('absolute');
+    // Off screen: without the clip, the headers are drawn over the first block.
+    const thead = declarations(ruleFor(stacked(), 'thead').body);
+    expect(thead.get('position')).toBe('absolute');
+    expect(thead.get('overflow')).toBe('hidden');
+    expect(thead.get('clip')).toBe('rect(0, 0, 0, 0)');
   });
 
   it('draws each visible label from the attribute the template binds', () => {
@@ -625,8 +643,56 @@ describe('the admin projects list on a phone (#312)', () => {
     const content = declarations(label?.[1] ?? '').get('content') ?? '';
     const attribute = /^attr\(([\w-]+)\)$/.exec(content);
     expect(attribute, 'the label is not drawn from an attribute').not.toBeNull();
-    const html = readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.html'), 'utf8');
+    const html = readFileSync(join(ADMIN_LIST, `${list}.component.html`), 'utf8');
     expect(html).toContain(`[attr.${attribute![1]}]=`);
+  });
+});
+
+describe('what a visitor typed, on the admin message pages (#339)', () => {
+  // A name, an address or a pasted link can have no space to wrap at. Without this it set the width
+  // of its column and pushed View past the edge of a phone, or ran out of its panel, and no DOM
+  // test can see either. The list's rule is outside its media block on purpose: a long enough
+  // address did the same to the table on a desktop.
+  const styles = (component: string) =>
+    stripComments(
+      readFileSync(
+        join(COMPONENT_ROOT, 'features', 'admin', component, `${component}.component.scss`),
+        'utf8',
+      ),
+    );
+
+  it.each([
+    { component: 'admin-messages-list', selector: 'td:first-child' },
+    { component: 'admin-message-detail', selector: 'article' },
+  ])('breaks a word that does not fit in $component', ({ component, selector }) => {
+    const decls = declarations(ruleFor(styles(component), selector).body);
+    expect(decls.get('overflow-wrap')).toBe('anywhere');
+    // `nowrap` would leave it nowhere to break, and the declaration above in place.
+    expect(decls.has('white-space')).toBe(false);
+  });
+
+  it('is still broken in the stacked list, where the date may wrap too', () => {
+    const list = styles('admin-messages-list');
+    const stacked = ruleFor(list, '@media (max-width: 40rem)').body;
+
+    expect(declarations(ruleFor(stacked, 'td:first-child').body).has('overflow-wrap')).toBe(false);
+    // `nowrap` on any rule that reaches the cell would undo it as well.
+    for (const rule of [...rules(list), ...rules(stacked)]) {
+      if (rule.selector.split(',').some((part) => /(^|\s)td\b/.test(part.trim()))) {
+        expect(declarations(rule.body).has('white-space'), rule.selector).toBe(false);
+      }
+    }
+
+    // One line in the table, so that the sender is what wraps. With large text on a phone the date
+    // has to wrap instead, and drop under its label first.
+    expect(declarations(ruleFor(list, 'time').body).get('white-space')).toBe('nowrap');
+    expect(declarations(ruleFor(stacked, 'time').body).get('white-space')).toBe('normal');
+    expect(declarations(ruleFor(stacked, '.labelled').body).get('flex-wrap')).toBe('wrap');
+  });
+
+  it('keeps its line breaks in the message body, and still wraps there', () => {
+    const body = declarations(ruleFor(styles('admin-message-detail'), '.message-body').body);
+    expect(body.get('white-space')).toBe('pre-wrap');
   });
 });
 
