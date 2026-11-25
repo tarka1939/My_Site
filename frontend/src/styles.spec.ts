@@ -594,11 +594,14 @@ describe('the tag chips', () => {
   });
 });
 
-describe('the admin projects list on a phone (#312)', () => {
-  const ADMIN_LIST = join(COMPONENT_ROOT, 'features', 'admin', 'admin-projects-list');
+describe.each([
+  { list: 'admin-projects-list', issue: '#312' },
+  { list: 'admin-messages-list', issue: '#339' },
+])('the $list on a phone ($issue)', ({ list }) => {
+  const ADMIN_LIST = join(COMPONENT_ROOT, 'features', 'admin', list);
   const stacked = () =>
     ruleFor(
-      stripComments(readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.scss'), 'utf8')),
+      stripComments(readFileSync(join(ADMIN_LIST, `${list}.component.scss`), 'utf8')),
       '@media (max-width: 40rem)',
     ).body;
 
@@ -625,8 +628,30 @@ describe('the admin projects list on a phone (#312)', () => {
     const content = declarations(label?.[1] ?? '').get('content') ?? '';
     const attribute = /^attr\(([\w-]+)\)$/.exec(content);
     expect(attribute, 'the label is not drawn from an attribute').not.toBeNull();
-    const html = readFileSync(join(ADMIN_LIST, 'admin-projects-list.component.html'), 'utf8');
+    const html = readFileSync(join(ADMIN_LIST, `${list}.component.html`), 'utf8');
     expect(html).toContain(`[attr.${attribute![1]}]=`);
+  });
+});
+
+describe('what a visitor typed, on the admin message pages (#339)', () => {
+  // A name, an address or a pasted link can have no space to wrap at. Without this it set the width
+  // of its column and pushed View past the edge of a phone, or ran out of its panel, and no DOM
+  // test can see either. The list's rule is outside its media block on purpose: a long enough
+  // address did the same to the table on a desktop.
+  const styles = (component: string) =>
+    stripComments(
+      readFileSync(
+        join(COMPONENT_ROOT, 'features', 'admin', component, `${component}.component.scss`),
+        'utf8',
+      ),
+    );
+
+  it.each([
+    { component: 'admin-messages-list', selector: 'td:first-child' },
+    { component: 'admin-message-detail', selector: 'article' },
+  ])('breaks a word that does not fit in $component', ({ component, selector }) => {
+    const decls = declarations(ruleFor(styles(component), selector).body);
+    expect(decls.get('overflow-wrap')).toBe('anywhere');
   });
 });
 
