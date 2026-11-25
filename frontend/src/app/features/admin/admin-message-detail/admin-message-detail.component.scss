@@ -1,3 +1,11 @@
+// Everything in here is what a visitor typed: the name in the heading, the address and the body.
+// Any of the three can hold a word wider than a phone, such as a pasted link, and without this it
+// ran past the edge of the screen and of the panel below (#339). It breaks only a word that does
+// not fit.
+article {
+  overflow-wrap: anywhere;
+}
+
 // A panel, so it takes the surface for the same reason a card does: the hairline is quiet enough
 // (1.57:1 / 1.66:1) that an edge alone would leave the message floating in nothing, and a lifted
 // plane is what actually says "this block is the message, and that block is the page".
