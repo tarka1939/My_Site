@@ -158,6 +158,8 @@ That ordering was deliberate - the runbook argues a first deploy should introduc
 
 ### Fixed
 
+- **The admin area links to the contact messages** (2026-11-25, #338, PR #340, frontend). `/admin/messages` could only be reached by typing its URL. The row of links on the project list, where a logged-in admin lands, gains "View messages". The row wraps to two lines on a phone, and fits at 320px. The gap was named in #213's entry and never filed. Visitors see no change.
+
 - **The frontend moves past the weekly audit's findings** (2026-11-02, #327, PR #331, frontend).
   - **What audit flagged:** 17 findings at or above the floor, in seven packages, on the audit's issue as of its 2026-11-02 run.
     - One package ships: `markdown-it` 15.0.1. It has two high quadratic-time advisories, one for a multi-line link reference definition (GHSA-gfr2-rv44-r23c) and one for smartquotes (GHSA-r7fv-28h4-cvq7), plus a low one in inline HTML (GHSA-vfgh-jcmw-g37q).

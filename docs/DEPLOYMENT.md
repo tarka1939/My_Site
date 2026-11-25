@@ -1067,7 +1067,8 @@ malformed CIDR in `TRUSTED_PROXIES`, a negative hop count, a trusted-proxy list 
 configured to read. That is deliberate (#168), and it is the most likely cause of a redeploy that
 boots fine one build and not the next. The journal names the property.
 
-The frontend needs nothing - Netlify rebuilds on every push to `main`.
+The frontend needs nothing: `deploy-frontend.yml` builds it in GitHub Actions on every push to `main`
+and publishes it to Netlify.
 
 ---
 
