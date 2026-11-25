@@ -60,7 +60,7 @@ describe('admin routes', () => {
     expect(TestBed.inject(Router).url).toBe('/admin/login?returnUrl=%2Fadmin%2Fprojects');
   });
 
-  it.each(['/admin/about', '/admin/projects/new', '/admin/analytics'])(
+  it.each(['/admin/about', '/admin/projects/new', '/admin/messages', '/admin/analytics'])(
     'sends an admin whose session expired on one admin page to the login page on the way to %s',
     async (next) => {
       const auth = logInFor(60_000);
