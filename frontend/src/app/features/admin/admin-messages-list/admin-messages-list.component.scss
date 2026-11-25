@@ -13,13 +13,15 @@ td {
 // The sender's name and address, which visitors type and which can be up to 200 and 320
 // characters with no space in them. A word that does not fit breaks where it must, at every width:
 // before #339 it set the column's width instead, and pushed View past the edge of the screen. A
-// sender that does fit is laid out as before.
+// table whose senders all fit on one line beside the date is laid out as before.
 td:first-child {
   overflow-wrap: anywhere;
 }
 
 // Breaking anywhere makes the sender's column as narrow as the table asks, so without this a long
-// sender would squeeze the date onto several lines before it wrapped itself.
+// sender would squeeze the date onto several lines before it wrapped itself. The cost is that a
+// long sender wraps sooner than it did, when the date gave way: at 744px an address of 53
+// characters breaks in two where it used to fit on one line.
 time {
   white-space: nowrap;
 }

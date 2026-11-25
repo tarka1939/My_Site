@@ -25,8 +25,8 @@
           <td role="cell">{{ message.name }} &lt;{{ message.email }}&gt;</td>
           <td role="cell" class="labelled">
             <!-- The column's name, drawn by the SCSS in the stacked layout only, and aria-hidden
-                 because the header row still gives it to a screen reader there. The sender opens
-                 its block as a heading would, and View names itself, so this is the one label. -->
+                 because the header row should still give it to a screen reader there. The sender
+                 opens its block as a heading would, and View needs none, so this is the one label. -->
             <span class="cell-label" aria-hidden="true" [attr.data-label]="column.received"></span>
             <time [attr.datetime]="message.createdAt">{{ message.createdAt | date: 'medium' }}</time>
           </td>

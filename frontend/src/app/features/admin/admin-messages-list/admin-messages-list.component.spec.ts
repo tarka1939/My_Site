@@ -45,7 +45,8 @@ describe('AdminMessagesListComponent', () => {
   });
 
   // The project list has the same tests of the same layout, and says what they can and cannot show
-  // (admin-projects-list.component.spec.ts, #312). The stylesheet's half is in styles.spec.ts.
+  // (admin-projects-list.component.spec.ts, #312). styles.spec.ts pins the rules the layout rests
+  // on. Neither can see the layout itself.
   describe('column names, in the table and in the stacked phone layout (#339)', () => {
     type Fixture = ComponentFixture<AdminMessagesListComponent>;
 
@@ -91,10 +92,18 @@ describe('AdminMessagesListComponent', () => {
       }
 
       const thead = tableOf(fixture).querySelector('thead')!;
-      for (const element of [thead, ...thead.querySelectorAll('*')]) {
+      for (const element of [tableOf(fixture), thead, ...thead.querySelectorAll('*')]) {
         expect(element.hasAttribute('aria-hidden')).toBe(false);
         expect(element.hasAttribute('hidden')).toBe(false);
       }
+    });
+
+    it("names View's column for a screen reader only", async () => {
+      const fixture = await renderComponent(AdminMessagesListComponent);
+      const actions = tableOf(fixture).querySelector('th:last-child > span');
+
+      expect(actions?.textContent).toBe('Actions');
+      expect(actions?.classList).toContain('visually-hidden');
     });
 
     it("labels the stacked date with its header's word, hidden from a screen reader", async () => {
@@ -108,7 +117,7 @@ describe('AdminMessagesListComponent', () => {
           return label ? [{ column, label }] : [];
         });
 
-        // Only the date's: the sender opens its block, and View names itself.
+        // Only the date's: the sender opens its block, and View needs none.
         expect(labels.map(({ column }) => names[column])).toEqual(['Received']);
         for (const { column, label } of labels) {
           expect(label.getAttribute('data-label')).toBe(names[column]);

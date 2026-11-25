@@ -599,17 +599,21 @@ describe.each([
   { list: 'admin-messages-list', issue: '#339' },
 ])('the $list on a phone ($issue)', ({ list }) => {
   const ADMIN_LIST = join(COMPONENT_ROOT, 'features', 'admin', list);
-  const stacked = () =>
-    ruleFor(
-      stripComments(readFileSync(join(ADMIN_LIST, `${list}.component.scss`), 'utf8')),
-      '@media (max-width: 40rem)',
-    ).body;
+  const styles = () =>
+    stripComments(readFileSync(join(ADMIN_LIST, `${list}.component.scss`), 'utf8'));
+  const stacked = () => ruleFor(styles(), '@media (max-width: 40rem)').body;
+
+  it('stacks the rows and cells, which is the whole of the fix', () => {
+    const decls = declarations(ruleFor(stacked(), 'table, tbody, tr, td').body);
+    expect(decls.get('display')).toBe('block');
+  });
 
   it('keeps the header row in the accessibility tree, off screen rather than removed', () => {
     // In the stacked layout a screen reader gets each value's column name from the header row
     // alone, since the visible labels are aria-hidden. `display: none` or `visibility: hidden` on
     // any part of the table's structure would take every name away, and the DOM would not change.
-    const structural = rules(stacked()).filter((rule) =>
+    // The rules outside the media block apply in that layout too.
+    const structural = [...rules(styles()), ...rules(stacked())].filter((rule) =>
       rule.selector.split(',').some((part) => /^(table|thead|tbody|tr|th)\b/.test(part.trim())),
     );
     expect(structural.length).toBeGreaterThan(0);
@@ -652,6 +656,23 @@ describe('what a visitor typed, on the admin message pages (#339)', () => {
   ])('breaks a word that does not fit in $component', ({ component, selector }) => {
     const decls = declarations(ruleFor(styles(component), selector).body);
     expect(decls.get('overflow-wrap')).toBe('anywhere');
+    // `nowrap` would leave it nowhere to break, and the declaration above in place.
+    expect(decls.has('white-space')).toBe(false);
+  });
+
+  it('is still broken in the stacked list, where the date may wrap too', () => {
+    const list = styles('admin-messages-list');
+    const stacked = ruleFor(list, '@media (max-width: 40rem)').body;
+
+    const sender = declarations(ruleFor(stacked, 'td:first-child').body);
+    expect(sender.has('overflow-wrap')).toBe(false);
+    expect(sender.has('white-space')).toBe(false);
+
+    // One line in the table, so that the sender is what wraps. With large text on a phone the date
+    // has to wrap instead, and drop under its label first.
+    expect(declarations(ruleFor(list, 'time').body).get('white-space')).toBe('nowrap');
+    expect(declarations(ruleFor(stacked, 'time').body).get('white-space')).toBe('normal');
+    expect(declarations(ruleFor(stacked, '.labelled').body).get('flex-wrap')).toBe('wrap');
   });
 });
 

@@ -1,7 +1,6 @@
-// Everything in here is what a visitor typed: the name in the heading, the address and the body.
-// Any of the three can hold a word wider than a phone, such as a pasted link, and without this it
-// ran past the edge of the screen and of the panel below (#339). It breaks only a word that does
-// not fit.
+// The name in the heading, the address and the body are what a visitor typed, and any of the three
+// can hold a word wider than a phone, such as a pasted link. Without this it ran past the edge of
+// the screen, and the body's past the panel below (#339). It breaks only a word that does not fit.
 article {
   overflow-wrap: anywhere;
 }
