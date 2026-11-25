@@ -603,9 +603,16 @@ describe.each([
     stripComments(readFileSync(join(ADMIN_LIST, `${list}.component.scss`), 'utf8'));
   const stacked = () => ruleFor(styles(), '@media (max-width: 40rem)').body;
 
-  it('stacks the rows and cells, which is the whole of the fix', () => {
+  it('stacks the rows and cells', () => {
     const decls = declarations(ruleFor(stacked(), 'table, tbody, tr, td').body);
     expect(decls.get('display')).toBe('block');
+
+    // And no later rule on the same elements puts a table back together.
+    for (const rule of rules(stacked())) {
+      if (rule.selector.split(',').some((part) => /^(table|tbody|tr|td)\b|\s(tr|td)\b/.test(part.trim()))) {
+        expect(declarations(rule.body).get('display') ?? 'block', rule.selector).toBe('block');
+      }
+    }
   });
 
   it('keeps the header row in the accessibility tree, off screen rather than removed', () => {
@@ -623,7 +630,11 @@ describe.each([
       expect(decls.get('display') ?? '', rule.selector).not.toMatch(/^none\b/);
       expect(decls.get('visibility') ?? '', rule.selector).not.toMatch(/^(hidden|collapse)\b/);
     }
-    expect(declarations(ruleFor(stacked(), 'thead').body).get('position')).toBe('absolute');
+    // Off screen: without the clip, the headers are drawn over the first block.
+    const thead = declarations(ruleFor(stacked(), 'thead').body);
+    expect(thead.get('position')).toBe('absolute');
+    expect(thead.get('overflow')).toBe('hidden');
+    expect(thead.get('clip')).toBe('rect(0, 0, 0, 0)');
   });
 
   it('draws each visible label from the attribute the template binds', () => {
@@ -664,15 +675,24 @@ describe('what a visitor typed, on the admin message pages (#339)', () => {
     const list = styles('admin-messages-list');
     const stacked = ruleFor(list, '@media (max-width: 40rem)').body;
 
-    const sender = declarations(ruleFor(stacked, 'td:first-child').body);
-    expect(sender.has('overflow-wrap')).toBe(false);
-    expect(sender.has('white-space')).toBe(false);
+    expect(declarations(ruleFor(stacked, 'td:first-child').body).has('overflow-wrap')).toBe(false);
+    // `nowrap` on any rule that reaches the cell would undo it as well.
+    for (const rule of [...rules(list), ...rules(stacked)]) {
+      if (rule.selector.split(',').some((part) => /(^|\s)td\b/.test(part.trim()))) {
+        expect(declarations(rule.body).has('white-space'), rule.selector).toBe(false);
+      }
+    }
 
     // One line in the table, so that the sender is what wraps. With large text on a phone the date
     // has to wrap instead, and drop under its label first.
     expect(declarations(ruleFor(list, 'time').body).get('white-space')).toBe('nowrap');
     expect(declarations(ruleFor(stacked, 'time').body).get('white-space')).toBe('normal');
     expect(declarations(ruleFor(stacked, '.labelled').body).get('flex-wrap')).toBe('wrap');
+  });
+
+  it('keeps its line breaks in the message body, and still wraps there', () => {
+    const body = declarations(ruleFor(styles('admin-message-detail'), '.message-body').body);
+    expect(body.get('white-space')).toBe('pre-wrap');
   });
 });
 
