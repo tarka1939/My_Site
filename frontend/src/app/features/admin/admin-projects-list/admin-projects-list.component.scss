@@ -106,8 +106,8 @@ td {
   margin-top: 1.5rem;
 }
 
-// The admin entry links (#213 added the second, Phase 7c the third). Inline with a gap rather than
-// separate paragraphs, so they read as one row of actions above the table instead of a list.
+// The admin entry links. Inline with a gap rather than separate paragraphs, so they read as one
+// row of actions above the table instead of a list.
 .admin-actions {
   display: flex;
   flex-wrap: wrap;

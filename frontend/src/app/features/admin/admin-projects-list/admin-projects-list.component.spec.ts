@@ -174,7 +174,7 @@ describe('AdminProjectsListComponent', () => {
     expect(listProjects).not.toHaveBeenCalled();
   });
 
-  it('links to the other admin pages, the analytics dashboard included', async () => {
+  it('links to the other admin pages, messages and analytics included', async () => {
     // The admin area has no navigation of its own, so this row is the only way to these pages.
     const fixture = await renderComponent(AdminProjectsListComponent);
 
@@ -182,6 +182,7 @@ describe('AdminProjectsListComponent', () => {
     expect(links.map((link) => [link.textContent?.trim(), link.getAttribute('href')])).toEqual([
       ['+ New project', '/admin/projects/new'],
       ['Edit the About page', '/admin/about'],
+      ['View messages', '/admin/messages'],
       ['View analytics', '/admin/analytics'],
     ]);
   });
