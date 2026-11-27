@@ -309,6 +309,34 @@ Copy this block per entry:
 
 <!-- Add entries below, most recent first -->
 
+## 2026-11-25 - Dispatched session: a comparison run only where nothing could differ (#339, PR #341)
+
+**Task given:** Make the admin messages list fit a phone, on the model of #312's stacked project list.
+
+**Agent(s) used:** A session started by the Senior Dev (Opus) wrote the fix and checked it in a browser. A fresh Opus agent gave it a cold review.
+
+**What went wrong (be specific):** The CHANGELOG and a stylesheet comment said a sender that fitted before is laid out as before. It had been compared at 1280px only, with short senders, where every row fits on one line with or without the change. Just above the breakpoint it was false: the date stopped wrapping, so a 53-character address that had fitted beside a two-line date now breaks. Separately, the new spec said `styles.spec.ts` covered the stacked layout, and deleting the `display: block` rule, without which nothing stacks, passed every test. The #312 tests it was copied from had that gap too. The six mutations run before the PR were each aimed at something a test already checked.
+
+**How it was caught:** By the cold review, which added up the columns from the fonts' advance widths and ran the stylesheet test's assertions against mutated copies. A browser then confirmed the first, at 744px.
+
+**Fix applied:** The behaviour stays and the claims say what it costs. The stylesheet test now pins the stacking, for both lists, and the rules that let the sender and the date wrap. Ten mutations, the review's seven among them, each fail it or the component spec. The re-review found six more that passed, and a `PROJECT_TODO.md` line left behind; both are corrected.
+
+**Takeaway for next time:** "Unchanged" needs checking where the change bites, not where it has room. And delete the rule the fix rests on before any other mutation.
+
+## 2026-11-25 - Senior Dev: a gap written down and never filed (#338, PR #340)
+
+**Task given:** The owner checked the contact form on production after release #337, and reported that nothing in the admin panel links to the messages page.
+
+**Agent(s) used:** The Senior Dev (Opus) wrote the fix. A fresh Opus agent gave it a cold review.
+
+**What went wrong (be specific):** #213 noticed the missing link on 2026-09-20. It said so in the template's comment and in the CHANGELOG, called it "a gap worth its own fix", and filed no issue. #60 edited the same comment when it added the analytics link, and left the gap in place. The fix itself made a stylesheet comment stale, and described #339 more firmly than its measurements; the cold review caught both.
+
+**How it was caught:** By the owner, using the site.
+
+**Fix applied:** The row of links on the project list has "View messages", and the test that pins the row expects it.
+
+**Takeaway for next time:** A gap named in a comment or a changelog is not tracked. File the issue in the session that names it.
+
 ## 2026-11-05 - Senior Dev: two reasons nobody had run, one of them a gap in the suite (#318, PR #336)
 
 **Task given:** Drop the emptied `contact_message.requester_ip_hash` column, step two of #309, and record the last two releases in the same PR, on the owner's choice.

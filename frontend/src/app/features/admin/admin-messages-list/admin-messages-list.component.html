@@ -5,21 +5,32 @@
 } @else if (messages().length === 0) {
   <p>No messages yet.</p>
 } @else {
-  <table>
+  <!-- The roles restate what the elements already are, because the phone layout (#339) sets
+       `display` on them, and some browsers then drop a table's semantics. The project list has the
+       same layout and the full reasoning (#312): see admin-projects-list.component.html. -->
+  <table role="table">
     <caption class="visually-hidden">Contact messages</caption>
-    <thead>
-      <tr>
-        <th scope="col">From</th>
-        <th scope="col">Received</th>
-        <th scope="col"></th>
+    <thead role="rowgroup">
+      <tr role="row">
+        <th role="columnheader" scope="col">{{ column.from }}</th>
+        <th role="columnheader" scope="col">{{ column.received }}</th>
+        <!-- Named for a screen reader only: a lone "View" needs no heading to a sighted reader, and
+             a columnheader stated by its role should not be an empty one. -->
+        <th role="columnheader" scope="col"><span class="visually-hidden">{{ column.actions }}</span></th>
       </tr>
     </thead>
-    <tbody>
+    <tbody role="rowgroup">
       @for (message of messages(); track message.id) {
-        <tr>
-          <td>{{ message.name }} &lt;{{ message.email }}&gt;</td>
-          <td><time [attr.datetime]="message.createdAt">{{ message.createdAt | date: 'medium' }}</time></td>
-          <td><a [routerLink]="['/admin/messages', message.id]">View</a></td>
+        <tr role="row">
+          <td role="cell">{{ message.name }} &lt;{{ message.email }}&gt;</td>
+          <td role="cell" class="labelled">
+            <!-- The column's name, drawn by the SCSS in the stacked layout only, and aria-hidden
+                 because the header row should still give it to a screen reader there. The sender
+                 opens its block as a heading would, and View needs none, so this is the one label. -->
+            <span class="cell-label" aria-hidden="true" [attr.data-label]="column.received"></span>
+            <time [attr.datetime]="message.createdAt">{{ message.createdAt | date: 'medium' }}</time>
+          </td>
+          <td role="cell"><a [routerLink]="['/admin/messages', message.id]">View</a></td>
         </tr>
       }
     </tbody>
